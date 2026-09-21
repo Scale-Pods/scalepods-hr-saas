@@ -39,5 +39,15 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/web/**"],
+      "css": {
+        "parser": {
+          "tailwindDirectives": true
+        }
+      }
+    }
+  ]
 }
