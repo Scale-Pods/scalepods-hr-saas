@@ -128,12 +128,40 @@ export const funnelConversionRowSchema = z.object({
   intake_to_signed_pct: z.number().nullable().optional(),
 });
 
+/**
+ * One row of the `time_to_hire` report. Carries both the legacy per-stage
+ * slices (`median_days` / `hires`, used by the pre-migration dashboard) and the
+ * newer aggregate metrics mandated by spec Section 13b PATCH 1. Everything is
+ * optional so a partial backend contract degrades to an empty widget.
+ */
 export const timeToHireSliceSchema = z.object({
   stage: z.string().optional(),
   median_days: z.number().nullable().optional(),
   average_days: z.number().nullable().optional(),
   hires: z.number().optional().default(0),
   outlier_entries: z.number().optional().default(0),
+  avg_days_intake_to_offer_signed: z.number().nullable().optional(),
+  avg_hours_per_round: z.number().nullable().optional(),
+  no_show_count: z.number().optional().default(0),
+  platform_fault_count: z.number().optional().default(0),
+});
+
+/**
+ * One row of `source_effectiveness`. Spec Section 13b PATCH 1 reports per
+ * channel + stage delivery metrics; the legacy `source`/`conversations` fields
+ * are retained for the pre-migration dashboard.
+ */
+export const sourceEffectivenessRowSchema = z.object({
+  source: z.string().optional(),
+  conversations: z.number().optional().default(0),
+  offers: z.number().optional().default(0),
+  rate: z.number().nullable().optional(),
+  channel: z.string().optional(),
+  stage: z.string().optional(),
+  messages_sent: z.number().optional().default(0),
+  delivered: z.number().optional().default(0),
+  fell_back: z.number().optional().default(0),
+  delivery_rate_pct: z.number().nullable().optional(),
 });
 
 export const reportsSchema = z.object({
@@ -147,16 +175,7 @@ export const reportsSchema = z.object({
   active_campaigns: z.number().optional(),
   funnel_conversion: z.array(funnelConversionRowSchema).optional(),
   time_to_hire: z.array(timeToHireSliceSchema).optional(),
-  source_effectiveness: z
-    .array(
-      z.object({
-        source: z.string().optional(),
-        conversations: z.number().optional().default(0),
-        offers: z.number().optional().default(0),
-        rate: z.number().nullable().optional(),
-      }),
-    )
-    .optional(),
+  source_effectiveness: z.array(sourceEffectivenessRowSchema).optional(),
 });
 
 export type Reports = z.infer<typeof reportsSchema>;

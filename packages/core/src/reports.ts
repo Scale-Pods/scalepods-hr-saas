@@ -96,6 +96,90 @@ export interface SourceRow {
   rate: number | null;
 }
 
+export interface TimeToHireCard {
+  avg_days_intake_to_offer_signed: number | null;
+  avg_hours_per_round: number | null;
+  no_show_count: number;
+  platform_fault_count: number;
+}
+
+/**
+ * Spec Section 13b PATCH 1 time-to-hire card. Averages the per-slice averages
+ * and totals the counts. Returns null when the backend reports no rows (or no
+ * slice carries any of the newer metrics) so the UI shows its empty state
+ * instead of zeros pretending to be data.
+ */
+export function summarizeTimeToHireCard(reports: Reports): TimeToHireCard | null {
+  const slices = reports.time_to_hire;
+  if (!slices || slices.length === 0) return null;
+
+  const card: TimeToHireCard = {
+    avg_days_intake_to_offer_signed: null,
+    avg_hours_per_round: null,
+    no_show_count: 0,
+    platform_fault_count: 0,
+  };
+  let sawDays = false;
+  let sawHours = false;
+  for (const s of slices) {
+    card.no_show_count += s.no_show_count || 0;
+    card.platform_fault_count += s.platform_fault_count || 0;
+    if (s.avg_days_intake_to_offer_signed != null) {
+      sawDays = true;
+      card.avg_days_intake_to_offer_signed =
+        card.avg_days_intake_to_offer_signed == null
+          ? s.avg_days_intake_to_offer_signed
+          : (card.avg_days_intake_to_offer_signed + s.avg_days_intake_to_offer_signed) / 2;
+    }
+    if (s.avg_hours_per_round != null) {
+      sawHours = true;
+      card.avg_hours_per_round =
+        card.avg_hours_per_round == null
+          ? s.avg_hours_per_round
+          : (card.avg_hours_per_round + s.avg_hours_per_round) / 2;
+    }
+  }
+  if (!sawDays && !sawHours && card.no_show_count === 0 && card.platform_fault_count === 0) {
+    return null;
+  }
+  return card;
+}
+
+export interface SourceEffectivenessRow {
+  channel: string;
+  stage: string | null;
+  messages_sent: number;
+  delivered: number;
+  fell_back: number;
+  delivery_rate_pct: number | null;
+}
+
+/**
+ * Spec Section 13b PATCH 1 source-effectiveness table. Keeps rows with a usable
+ * channel label and derives `delivery_rate_pct` when the backend omits it.
+ */
+export function sourceEffectivenessRows(reports: Reports): SourceEffectivenessRow[] {
+  const rows = reports.source_effectiveness;
+  if (!rows) return [];
+  const out: SourceEffectivenessRow[] = [];
+  for (const r of rows) {
+    const channel = r.channel ?? r.source;
+    if (typeof channel !== "string" || channel.length === 0) continue;
+    const sent = r.messages_sent || r.conversations || 0;
+    const delivered = r.delivered || 0;
+    out.push({
+      channel,
+      stage: r.stage ?? null,
+      messages_sent: sent,
+      delivered,
+      fell_back: r.fell_back || 0,
+      delivery_rate_pct:
+        r.delivery_rate_pct ?? (sent > 0 ? Math.round((delivered / sent) * 1000) / 10 : null),
+    });
+  }
+  return out;
+}
+
 /** Keep only source rows that carry a usable label. */
 export function sourceRows(reports: Reports): SourceRow[] {
   const rows = reports.source_effectiveness;
