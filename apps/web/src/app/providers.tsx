@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { ThemeProvider } from "next-themes";
 import { useState } from "react";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { makeQueryClient } from "@/lib/query-client";
 
 const ReactQueryDevtools = dynamic(
@@ -17,8 +19,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-        {children}
+        <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
       </ThemeProvider>
+      <Toaster richColors closeButton position="top-right" />
       {process.env.NODE_ENV === "development" ? <ReactQueryDevtools initialIsOpen={false} /> : null}
     </QueryClientProvider>
   );
