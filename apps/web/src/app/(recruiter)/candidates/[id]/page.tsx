@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDateTime, TIER_LIMITS } from "@scalepods/core";
+import { formatDateTime } from "@scalepods/core";
 import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, FileText, Redo2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";

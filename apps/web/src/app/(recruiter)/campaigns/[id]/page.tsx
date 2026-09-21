@@ -1,7 +1,6 @@
 "use client";
 
 import type { RoundType } from "@scalepods/core";
-import { formatDateTime } from "@scalepods/core";
 import { ArrowLeft, Upload } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
