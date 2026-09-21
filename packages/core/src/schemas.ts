@@ -154,7 +154,7 @@ export const reportsSchema = z.object({
         conversations: z.number().optional().default(0),
         offers: z.number().optional().default(0),
         rate: z.number().nullable().optional(),
-      })
+      }),
     )
     .optional(),
 });

@@ -13,9 +13,7 @@ export interface TierLimitToastContent {
 export function tierLimitToastContent(err: TierLimitError): TierLimitToastContent {
   const reason = err.reason;
   const title = reason ? `Plan limit reached: ${reason}` : "Plan limit reached";
-  const message =
-    err.detail ||
-    `${err.message} Upgrade or top up to keep using this feature.`;
+  const message = err.detail || `${err.message} Upgrade or top up to keep using this feature.`;
   return { title, message };
 }
 

@@ -1,4 +1,4 @@
-import type { Tier, RoundType } from "./types";
+import type { RoundType, Tier } from "./types";
 
 /**
  * Static client-side mirror of the tier limits. These numbers are
@@ -143,7 +143,10 @@ export function usagePercent(used: number, granted: number | null | undefined): 
 }
 
 /** Cap labels used by overage notices / hard-stop copy. */
-export const OVERAGE_CAP_LABELS: Record<keyof Pick<TierLimits, "maxRounds" | "activeCampaigns">, string> = {
+export const OVERAGE_CAP_LABELS: Record<
+  keyof Pick<TierLimits, "maxRounds" | "activeCampaigns">,
+  string
+> = {
   maxRounds: "rounds per campaign",
   activeCampaigns: "active campaigns",
 };
@@ -164,7 +167,7 @@ export function overageAllowed(tier: Tier): boolean {
  */
 export function overageNotice(
   tier: Tier,
-  capKey: keyof Pick<TierLimits, "maxRounds" | "activeCampaigns">
+  capKey: keyof Pick<TierLimits, "maxRounds" | "activeCampaigns">,
 ): string | null {
   const t = TIER_LIMITS[tier];
   if (t.overageBehavior !== "metered") return null;

@@ -1,5 +1,5 @@
-import type { Tier, RoundType } from "./types";
 import { TIER_LIMITS } from "./tier";
+import type { RoundType, Tier } from "./types";
 
 /**
  * Candidate outreach cadence - default/placeholder values that mirror the
@@ -57,8 +57,7 @@ export const CADENCE_STAGES: CadenceStageDef[] = [
     key: "interview_day",
     label: "Interview-day link",
     dayLabel: "Interview day",
-    description:
-      "9 AM local: AI interview link or Google Meet link for the scheduled slot.",
+    description: "9 AM local: AI interview link or Google Meet link for the scheduled slot.",
     channels: ["email", "whatsapp"],
     appliesTo: ["ai_interview", "human_interview"],
   },
@@ -108,10 +107,7 @@ export function tierEntitlementReason(tier: Tier, channel: CadenceChannel): stri
  * Renders the cadence the way the account's tier would actually receive it:
  * email always on; WhatsApp/voice stages filtered out below their tier gates.
  */
-export function cadenceForTier(
-  tier: Tier,
-  roundType: RoundType
-): CadenceRenderRow[] {
+export function cadenceForTier(tier: Tier, roundType: RoundType): CadenceRenderRow[] {
   const limits = TIER_LIMITS[tier];
   return CADENCE_STAGES.map((stage) => {
     const applies = stage.appliesTo.length === 0 || stage.appliesTo.includes(roundType);

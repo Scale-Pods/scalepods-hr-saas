@@ -20,7 +20,10 @@ const STAGES = [
   "Offers signed",
 ] as const;
 
-function sum(rows: Exclude<Reports["funnel_conversion"], undefined>, pick: (r: (typeof rows)[number]) => number) {
+function sum(
+  rows: Exclude<Reports["funnel_conversion"], undefined>,
+  pick: (r: (typeof rows)[number]) => number,
+) {
   return rows.reduce((acc, r) => acc + (pick(r) || 0), 0);
 }
 
@@ -76,15 +79,11 @@ export function summarizeTimeToHire(reports: Reports): TimeToHireSummary | null 
     summary.outlier_entries += s.outlier_entries || 0;
     if (s.median_days != null) {
       summary.median_days =
-        summary.median_days == null
-          ? s.median_days
-          : (summary.median_days + s.median_days) / 2;
+        summary.median_days == null ? s.median_days : (summary.median_days + s.median_days) / 2;
     }
     if (s.average_days != null) {
       summary.average_days =
-        summary.average_days == null
-          ? s.average_days
-          : (summary.average_days + s.average_days) / 2;
+        summary.average_days == null ? s.average_days : (summary.average_days + s.average_days) / 2;
     }
   }
   return summary;

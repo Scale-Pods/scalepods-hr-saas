@@ -6,7 +6,7 @@ export class N8nError extends Error {
 
   constructor(
     message: string,
-    opts: { status: number; path: string; detail?: string; reason?: string }
+    opts: { status: number; path: string; detail?: string; reason?: string },
   ) {
     super(message);
     this.name = "N8nError";
@@ -29,7 +29,7 @@ export class TierLimitError extends N8nError {
     message: string,
     detail?: string,
     reason?: string,
-    status: number = 403
+    status: number = 403,
   ) {
     super(message, { status, path, detail, reason });
     this.name = "TierLimitError";

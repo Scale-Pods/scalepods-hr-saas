@@ -131,11 +131,7 @@ export function timeAgo(iso: string, now: Date = new Date()): string {
  * Bucket ISO date strings into per-day counts for the last `days` days,
  * oldest → newest. Pure + testable (inject `now`).
  */
-export function dailySeries(
-  isos: string[],
-  days: number,
-  now: Date = new Date()
-): number[] {
+export function dailySeries(isos: string[], days: number, now: Date = new Date()): number[] {
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - (days - 1));
