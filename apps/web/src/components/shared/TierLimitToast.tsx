@@ -22,6 +22,11 @@ export interface TierLimitToastProps {
   onDismiss?: () => void;
 }
 
+/** Quick toast for non-tier-limit informational messages. */
+export function showToast(message: string, opts?: { kind?: "success" | "info" | "error" }) {
+  toast[opts?.kind ?? "info"](message);
+}
+
 /**
  * The one and only renderer for 402/403 tier-limit failures. `hard_stop` gets
  * an upgrade CTA and destructive emphasis; `held_for_*` stays neutral.
