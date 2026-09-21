@@ -16,16 +16,38 @@ These are blockers that must be answered by the human owner. Recommended default
 
 | # | Issue | Recommended default |
 |---|-------|---------------------|
-| D1 | Spec mandates Next.js but references `VITE_N8N_BASE_URL`. Next uses `NEXT_PUBLIC_*` (client) / unprefixed (server). | Rename to `NEXT_PUBLIC_N8N_BASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (server only). |
-| D2 | Referenced **Section 13 / 13a / 13c / 4.1 / 3.2** are not in the repo or the prompt. | Do not guess. Phase 1 uses the contracts already encoded in `apps/legacy/src/lib/*` as the source of truth until 13 is provided. |
+| D1 | Spec mandates Next.js but Section 13c references `VITE_*` names. Next uses `NEXT_PUBLIC_*` (client) / unprefixed (server). | Map 13c exactly: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_N8N_BASE_URL`, `NEXT_PUBLIC_FRONTEND_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_APP_ENV`. Server-only: `SUPABASE_SERVICE_ROLE_KEY`. |
+| D2 | ~~Section 13 not provided~~ **RESOLVED.** Sections 13/13a/13b/13c/15/16/17 supplied by the owner and persisted at `docs/spec/scalepods-frontend-spec.md`. | That file is the authoritative functional contract for all Phase 1+ work; it supersedes guessing from legacy `lib/*`. Legacy remains the parity oracle for behavior already shipped. |
 | D3 | Tooling: repo uses ESLint 9; spec allows "Biome or ESLint+Prettier". | Adopt **Biome** for new `apps/web`; leave legacy ESLint in place until cutover. |
 | D4 | shadcn/ui (Radix) vs existing custom primitives + `@headlessui/react`. | shadcn/ui in `apps/web`; delete custom primitives only at cutover. |
 | D5 | Chart library: spec says pick one. | **Recharts** (already used; keep one lib everywhere). |
-| D6 | Tier-limit status codes (402 vs 403) — spec says verify against workflow 7. Legacy code treats **402** as the tier-limit block (`TierLimitError`). | Phase 1 encodes a single `WorkflowError` that maps 402/403 → tier state; reconcile when Section 13 lands. |
-| D7 | Not a git repository (`NO_GIT_DIR`). Conventional Commits, commitlint, CI all require git. | `git init` in Phase 0. |
+| D6 | Tier-limit status codes. **Section 17 resolves this: 403 = tier-limit block, 402 = credit exhaustion.** Legacy code treats 402 as the tier-limit block (`TierLimitError`). | Encode one `WorkflowError` carrying `status` + `reason`; `<TierLimitToast />` is the **only** renderer for both 402 and 403. Reconcile legacy's 402 mapping at cutover. |
+| D7 | Not a git repository (`NO_GIT_DIR`). Conventional Commits, commitlint, CI all require git. | `git init` in Phase 0 (done). Add commitlint in Task 0.4. |
 | D8 | Auth: legacy is Supabase session in React context via `react-router`. Next needs server-cookie sessions + middleware. | Use `@supabase/ssr` with cookie storage; middleware guards `(recruiter)`; `(candidate)` stays public token-gated. |
+| D9 | **Section 17 backend gap:** the Upgrade modal's inline Stripe Payment Element needs a server-created PaymentIntent/SetupIntent + subscription (client secret). No such endpoint exists (only workflow 12 webhook + checkout/portal edge fns). | Build a new Supabase edge function (e.g. `create-subscription` returning a client secret, and `update-subscription` for plan change/proration preview). Do **not** fake it client-side. Tracked in Task 3.6.1. |
+| D10 | Storybook for `.stories.tsx` on shared components is a spec convention but adds setup cost. | Add lightweight Storybook in Task 2.4 (`@storybook/react-vite`); if it proves heavy, use a `/dev/components` scratch route instead and note the deviation. |
+| D11 | Section 13c sets `N8N_BASE_URL=https://<host>/webhook` yet pages call `{N8N_BASE_URL}/webhook/reports` — a double `/webhook`. Legacy `apps/legacy/src/lib/n8n.ts` already encodes the real behavior. | Adopt the legacy convention (base ends in `/webhook`, paths appended without repeating it) and encode it once in `callWorkflow`; verify against a live n8n instance before Phase 5 e2e. |
+| D12 | Three thin endpoints are not among the 13 delivered workflows: public read-only round_instance lookup (booking), Stripe Checkout/top-up session creator, assignment-scoring trigger. | Treat as explicit backend dependencies: (a) anon RLS read of `round_instances` by id, (b) Stripe route handler/edge fn for top-ups, (c) assignment scoring as a workflow-8 extension. Never fake client-side. |
 
 ---
+
+## Governing Conventions (Section 16 / principal-engineer prompt — non-negotiable)
+
+These are review gates, not suggestions. Every Phase 1+ task must satisfy them.
+
+1. **RSC by default.** `"use client"` only for forms, real-time/polling, charts, and stateful widgets.
+2. **Feature-based structure.** `src/features/<domain>/{api,hooks,schema,components}`. A component never imports from another feature's folder — cross-feature reuse goes through `components/shared/` or `lib/`.
+3. **All server state through TanStack Query v5.** No `useEffect` fetching anywhere. Supabase reads are wrapped so they use the same `useQuery`/`useMutation` story as webhooks. Query keys are `['feature','resource',params]`.
+4. **Zustand for surviving UI state only** (wizard step, sidebar collapse, active filters). Never server data. Local `useState` for everything else.
+5. **RHF + Zod for every form**, schema-first; the same schema types the webhook payload (no shape drift).
+6. **One `callWorkflow(path, body)`** in `lib/webhooks.ts` — no scattered raw `fetch`. Typed per-call via Zod.
+7. **Typed errors + `<TierLimitToast />` is the ONLY path a 402/403 reaches the user.** `reason: 'hard_stop'` → upgrade CTA; `'held_for_window'|'held_for_cap'` → informational, no red styling. Every `useMutation.onError` reports to error tracking (path + `account_id`) before showing the toast. Network/5xx → generic toast with a working Retry wired to the same mutation.
+8. **Recharts only** (D5). **next/image** for logos/avatars/resume thumbnails. Dynamic-import heavy rare pieces (uploader, recording player, non-dashboard charts).
+9. **staleTime 30s default**; `Infinity` for `tier_limits` and notification templates. Prefer Supabase Realtime where RLS-scoped; else `refetchInterval` 5–30s.
+10. **A11y WCAG 2.1 AA**: real `<label>`s, `aria-describedby` errors, visible focus rings never overridden, axe-core in CI. Interview Conduct page needs visible transcript/captions + plain-language proctoring consent.
+11. **Named exports** everywhere except Next.js `page.tsx`/`layout.tsx`. Co-located `.stories.tsx` for shared components (both themes).
+12. **Conventional Commits + commitlint**; no commented-out code committed.
+13. **Three environments** (local→staging, staging→auto on main, prod→manual promote), separate Supabase projects + n8n per env, `env.ts` validated at build time (Task 1.3).
 
 ## Phase Overview
 
@@ -428,7 +450,13 @@ For every task here: create `features/<name>/{api.ts,hooks.ts,schema.ts,componen
 - **3.3 Campaign new (wizard)** — RHF + Zod, Zustand wizard step store, JD text extraction (dynamic-import `pdfjs-dist`/`mammoth`), cadence preview from `@scalepods/core`. `useMutation` on success invalidates `['campaigns','list']`.
 - **3.4 Campaign detail** — toggle status, candidates table, resume intake dropzone (dynamic import), 5s `refetchInterval` on the decision ledger until scored (or Realtime if wired). Tests for the tier-limit path rendering `TierLimitToast`.
 - **3.5 Candidate profile** — timeline scorecards, retention-gated recordings, manual override mutation → invalidates `['candidates','detail',id]` and `['campaigns','detail',campaignId]`.
-- **3.6 Billing** — tier compare + Stripe checkout/portal via edge functions; `TierGate` shared component.
+- **3.6 Billing & Payments module** — built to **Section 17**, which supersedes the thin Section 13 item 5. Route `/billing`, a four-sub-view module (never separate routes), role-gated so **only `owner`/`admin` see the nav item at all** (hidden, not disabled, for `interviewer`).
+  - **3.6.1 Backend dependency (D9):** new Supabase edge function(s) to create/update the Stripe subscription and return a client secret for inline Payment Element (`create-subscription`, `update-subscription` + proration preview). Ship this before 3.6.3; do not fake payment client-side.
+  - **3.6.2 Overview view:** plan card (tier name + price, `billing_status` badge active/trialing/past_due/canceled/incomplete, renews-on / Enterprise true-up date); one `MetricCard` per `credit_type` (`ai_interview`, `ai_voice_screening`, `scheduled_round`, `offer_letters`) with used/included progress — amber >80%, red >100% with metered-overage copy for Growth, hard-stop upgrade CTA at 100% for hard_stop tiers. CTAs switch the view in-place: "Change plan", "Manage payment method", "View invoices".
+  - **3.6.3 Upgrade / Change-plan modal:** monthly/annual toggle only if annual pricing exists; 3–4 plan cards with **feature checklist pulled live from `tier_limits`** (never hardcoded); current plan visually distinct + disabled CTA; `Upgrade to {tier}` (filled) vs `Downgrade to {tier}` (ghost/quieter); Enterprise = "Contact sales" only. Upgrade with no `stripe_customer_id` → inline Stripe Payment Element step (no redirect); with one → confirmation step showing Stripe's **server-computed proration** ("charged {proration} now, then {price}/mo from {date}"). Downgrade → confirmation listing what's lost (from `tier_limits` diff) + "keep {tier} until {anchor}". After submit: spinner "Updating your plan…" then **poll/refetch `accounts.tier`** until it reflects the change before closing (webhook is async; never optimistically close).
+  - **3.6.4 Payment method view:** card brand + last4 + expiry + "Default" badge; "Update payment method" opens the **same** Payment Element component (one component, two entry points). `past_due` → red-bordered card + "Your last payment failed — update your payment method to avoid service interruption".
+  - **3.6.5 Invoices view:** table (date, description, amount, status paid/open/void) with "Download PDF" via Stripe's `hosted_invoice_url`/`invoice_pdf` (never re-render invoices). Free-tier empty state repeats the upgrade CTA.
+  - Tests: `tier_limits`-driven checklist, current-plan disabled CTA, downgrade-loss copy, `past_due` red state, 403 → `TierLimitToast`.
 - **3.7 Settings** — company/calendar OAuth chain, team round assignment, profile/password.
 - **3.8 Auth pages** — `(auth)` route group: sign in/up/forgot/reset/OTP using RHF+Zod and shadcn form primitives; server actions where appropriate.
 
