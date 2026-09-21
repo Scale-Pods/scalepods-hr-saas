@@ -1,6 +1,6 @@
 import { Bot, CalendarClock, ClipboardList, Trophy } from "lucide-react";
 import { cn } from "../lib/cn";
-import type { RoundType } from "../lib/types";
+import type { RoundType } from "@scalepods/core";
 
 export const ROUND_TYPE_META: Record<
   RoundType,

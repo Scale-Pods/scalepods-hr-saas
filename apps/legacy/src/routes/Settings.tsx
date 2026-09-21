@@ -4,8 +4,7 @@ import { Calendar, ExternalLink, Globe, Mail, MessageSquare, Phone } from "lucid
 import { useAuth } from "../hooks/useAuth";
 import { browserClient } from "../lib/supabase";
 import { callWebhook, webhookUrl } from "../lib/n8n";
-import { TIER_LIMITS } from "../lib/tier";
-import type { CalendarConnectionRow, TeamMemberRow } from "../lib/types";
+import { TIER_LIMITS, type CalendarConnectionRow, type TeamMemberRow } from "@scalepods/core";
 import { Button } from "../components/ui/Button";
 import { Card, CardHeader } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";

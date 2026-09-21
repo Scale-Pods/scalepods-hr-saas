@@ -4,7 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import { browserClient } from "../lib/supabase";
 import { callWebhook } from "../lib/n8n";
 import { parseResumeContact } from "../lib/parse-resume";
-import type { CampaignRoundsRow, CampaignsRow } from "../lib/types";
+import type { CampaignRoundsRow, CampaignsRow } from "@scalepods/core";
 import { Button } from "../components/ui/Button";
 import { Card, CardHeader } from "../components/ui/Card";
 import { Toggle } from "../components/ui/Toggle";

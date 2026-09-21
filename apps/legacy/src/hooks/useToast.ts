@@ -1,7 +1,6 @@
 import { useCallback, useRef } from "react";
 import { useSyncExternalStore } from "react";
-import { TierLimitError } from "../lib/n8n";
-import { tierLimitToastContent } from "../lib/tier-toast";
+import { TierLimitError, tierLimitToastContent } from "@scalepods/core";
 
 export interface Toast {
   id: number;

@@ -3,17 +3,9 @@ import { Link, useParams } from "react-router-dom";
 import { ChevronDown, ChevronUp, ExternalLink, FileText, Redo2 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { browserClient } from "../lib/supabase";
-import { TIER_LIMITS } from "../lib/tier";
+import { TIER_LIMITS } from "@scalepods/core";
 import { BUCKETS } from "../lib/storage";
-import { formatDateTime } from "../lib/format";
-import type {
-  CandidatesRow,
-  DecisionLedgerRow,
-  InterviewSessionRow,
-  OutreachLogRow,
-  RoundInstancesRow,
-  ScorecardRow,
-} from "../lib/types";
+import { formatDateTime, type CandidatesRow, type DecisionLedgerRow, type InterviewSessionRow, type OutreachLogRow, type RoundInstancesRow, type ScorecardRow } from "@scalepods/core";
 import { Button } from "../components/ui/Button";
 import { Card, CardHeader } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cadenceForTier, voiceScreeningEnabledForTier } from "./cadence";
+import { cadenceForTier, voiceScreeningEnabledForTier } from "@scalepods/core";
 
 describe("cadence filtering by tier", () => {
   it("keeps email-only stages for the free tier", () => {

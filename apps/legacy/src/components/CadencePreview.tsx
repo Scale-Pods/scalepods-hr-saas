@@ -1,5 +1,5 @@
 import { Check, MessageSquare, Phone } from "lucide-react";
-import type { CadenceRenderRow } from "../lib/cadence";
+import type { CadenceRenderRow } from "@scalepods/core";
 import { cn } from "../lib/cn";
 
 const CHANNEL_META = {

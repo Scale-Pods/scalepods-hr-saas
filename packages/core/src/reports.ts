@@ -1,5 +1,10 @@
 import type { Reports } from "./schemas";
-import type { FunnelRow } from "../components/FunnelChart";
+
+export interface FunnelRow {
+  stage: string;
+  entered: number;
+  converted?: number;
+}
 
 /**
  * Pure helpers that turn the deployed `/webhook/reports` payload (per-campaign

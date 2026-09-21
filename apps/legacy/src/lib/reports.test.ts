@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { reportsSchema } from "./schemas";
 import {
+  reportsSchema,
   buildFunnelRows,
   summarizeTimeToHire,
   sourceRows,
-} from "./reports";
+} from "@scalepods/core";
 
 /** Exact payload captured from the deployed `/webhook/reports` (2026-09-19). */
 const LIVE_REPORTS = {

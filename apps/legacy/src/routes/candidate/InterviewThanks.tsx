@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { anonClient } from "../../lib/supabase";
-import { sessionContextSchema, type SessionContext } from "../../lib/schemas";
+import { sessionContextSchema, type SessionContext } from "@scalepods/core";
 import { CandidateShell, ErrorCard, useCandidateToken } from "./shared";
 
 export function InterviewThanksPage() {

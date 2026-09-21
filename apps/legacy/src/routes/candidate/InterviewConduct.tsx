@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { anonClient } from "../../lib/supabase";
 import { callEdge } from "../../lib/edge";
-import { sessionContextSchema, type SessionContext } from "../../lib/schemas";
+import { sessionContextSchema, type SessionContext } from "@scalepods/core";
 import { CandidateShell, ErrorCard, useCandidateToken } from "./shared";
 
 type QFormat = "open_ended" | "mcq" | "rating";

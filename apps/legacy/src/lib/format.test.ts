@@ -7,7 +7,7 @@ import {
   formatCountdown,
   timeAgo,
   dailySeries,
-} from "./format";
+} from "@scalepods/core";
 
 describe("buildTimeSlots", () => {
   it("splits a window into step-sized slots with the given duration", () => {

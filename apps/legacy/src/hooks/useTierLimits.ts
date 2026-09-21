@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { browserClient } from "../lib/supabase";
-import { TIER_LIMITS, type TierLimits } from "../lib/tier";
-import type { Tier } from "../lib/types";
+import { TIER_LIMITS, type Tier, type TierLimits } from "@scalepods/core";
 
 /**
  * Loads the account tier's allowance from the public, anon-readable

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { anonClient } from "../../lib/supabase";
 import { callEdge } from "../../lib/edge";
-import { assignmentContextSchema, type AssignmentContext } from "../../lib/schemas";
+import { assignmentContextSchema, type AssignmentContext } from "@scalepods/core";
 import { CandidateShell, ErrorCard, useCandidateToken } from "./shared";
 
 export function AssignmentPage() {

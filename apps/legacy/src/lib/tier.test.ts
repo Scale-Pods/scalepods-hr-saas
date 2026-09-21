@@ -9,7 +9,7 @@ import {
   usagePercent,
   overageAllowed,
   overageNotice,
-} from "./tier";
+} from "@scalepods/core";
 
 describe("tier gating", () => {
   it("orders tiers and enforces at-least comparisons", () => {

@@ -7,7 +7,7 @@ import {
 } from "react";
 import { browserClient } from "../lib/supabase";
 import type { User, Session } from "@supabase/supabase-js";
-import type { AccountsRow } from "../lib/types";
+import type { AccountsRow } from "@scalepods/core";
 import { showErrorToast } from "./useToast";
 
 interface AuthState {

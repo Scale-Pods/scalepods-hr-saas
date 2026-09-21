@@ -1,4 +1,4 @@
-import { TierLimitError } from "./n8n";
+import { TierLimitError } from "./errors";
 
 /**
  * Pure presentation helpers for the global tier-limit toast so the messaging

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { anonClient } from "../../lib/supabase";
-import { buildTimeSlots, browserTimeZone, formatDateTime, formatTime } from "../../lib/format";
-import { availableSlotsSchema, bookingContextSchema, type BookingContext, type AvailableSlots } from "../../lib/schemas";
+import { buildTimeSlots, browserTimeZone, formatDateTime, formatTime, availableSlotsSchema, bookingContextSchema, type BookingContext, type AvailableSlots } from "@scalepods/core";
 import { CandidateShell, ErrorCard, useCandidateToken } from "./shared";
 import { EmptyState } from "../../components/EmptyState";
 

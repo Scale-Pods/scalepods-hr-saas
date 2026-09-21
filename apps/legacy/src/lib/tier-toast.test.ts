@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TierLimitError, N8nError } from "./n8n";
-import { tierLimitToastContent, describeError, upgradeTarget } from "./tier-toast";
+import { TierLimitError, N8nError, tierLimitToastContent, describeError, upgradeTarget } from "@scalepods/core";
 
 describe("tier limit toast messaging", () => {
   it("composes a title from the reason when present", () => {

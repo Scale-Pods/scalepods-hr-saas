@@ -4,9 +4,15 @@ import { useAuth } from "../hooks/useAuth";
 import { browserClient } from "../lib/supabase";
 import { callEdge, EdgeError } from "../lib/edge";
 import { callWebhook } from "../lib/n8n";
-import { reportsSchema, type Reports } from "../lib/schemas";
-import { TIER_LIMITS, limitLabel, tierAtLeast, type TierLimits } from "../lib/tier";
-import type { Tier } from "../lib/types";
+import {
+  reportsSchema,
+  type Reports,
+  TIER_LIMITS,
+  limitLabel,
+  tierAtLeast,
+  type Tier,
+  type TierLimits,
+} from "@scalepods/core";
 import { Button } from "../components/ui/Button";
 import { Card, CardHeader } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";

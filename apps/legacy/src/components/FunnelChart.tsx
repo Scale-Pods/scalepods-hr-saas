@@ -1,10 +1,7 @@
 import { cn } from "../lib/cn";
+import type { FunnelRow } from "@scalepods/core";
 
-export interface FunnelRow {
-  stage: string;
-  entered: number;
-  converted?: number;
-}
+export type { FunnelRow };
 
 /**
  * Renders a funnel from generic rows (PATCH 1) - either the backend's

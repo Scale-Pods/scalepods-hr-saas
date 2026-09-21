@@ -19,8 +19,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { cn } from "../lib/cn";
-import { TIER_LIMITS } from "../lib/tier";
-import { initials } from "../lib/format";
+import { TIER_LIMITS, initials } from "@scalepods/core";
 import { ThemeToggle } from "./ThemeToggle";
 import { Logo } from "./Logo";
 import { Badge } from "./ui/Badge";

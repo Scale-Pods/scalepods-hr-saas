@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Lock } from "lucide-react";
-import type { Tier } from "../lib/types";
-import { TIER_ORDER, tierAtLeast } from "../lib/tier";
+import { TIER_ORDER, tierAtLeast, type Tier } from "@scalepods/core";
 
 /**
  * Advisory client-side gate. Every gate is informational - server-side
