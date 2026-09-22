@@ -40,6 +40,7 @@ import {
   useReports,
   useUpcomingInterviews,
 } from "@/features/dashboard/hooks";
+import { reconcileUsage } from "@/features/dashboard/usage";
 import { cn } from "@/lib/utils";
 
 function roundTypeLabel(t: string | null): string {
@@ -105,10 +106,9 @@ export default function DashboardPage() {
       ? null
       : kpis.data.interviewsThisWeek - kpis.data.interviewsPriorWeek;
 
-  const usage = reports.data?.usage;
-  const aiUsage = usage?.ai_interview;
-  const aiGranted = aiUsage?.granted ?? TIER_LIMITS[tier].aiInterview;
-  const aiUsed = aiUsage?.used ?? 0;
+  const reconciled = reconcileUsage(reports.data?.usage, tier);
+  const aiGranted = reconciled.ai_interview.granted;
+  const aiUsed = reconciled.ai_interview.used;
   const creditsRemaining = aiGranted != null ? Math.max(0, aiGranted - aiUsed) : null;
   const creditsLow = aiGranted != null && aiUsed / Math.max(1, aiGranted) > 0.9;
 
@@ -204,7 +204,7 @@ export default function DashboardPage() {
           {reports.data ? (
             <SectionCard title="Usage" subtitle="Used vs. granted this month · red past 90%">
               <UsageBars
-                slices={usage ?? {}}
+                slices={reconciled}
                 tierLabel={tierLabel.toUpperCase()}
                 fallback={{
                   aiInterview: TIER_LIMITS[tier].aiInterview,
