@@ -10,7 +10,7 @@ export type CreditType = "ai_interview" | "ai_voice_screening" | "scheduled_roun
 /** Report slice fields the reconcile reads (structurally a subset of UsageSlice). */
 export interface CreditUsage {
   used?: number;
-  granted?: number;
+  granted?: number | null;
   rolled_over?: number;
   purchased?: number;
 }
