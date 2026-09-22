@@ -14,6 +14,7 @@ import { Progress } from "@/components/ui/progress";
 import { useAccount } from "@/features/account/hooks";
 import { useSession } from "@/features/auth/hooks";
 import { useReports } from "@/features/dashboard/hooks";
+import { reconcileUsage } from "@/features/dashboard/usage";
 import { callEdge, EdgeError } from "@/lib/edge";
 import { cn } from "@/lib/utils";
 
@@ -94,21 +95,22 @@ export default function BillingPage() {
 
   const statusMeta = BILLING_STATUS_TONE[billingStatus] ?? BILLING_STATUS_TONE.active;
 
+  const reconciled = reconcileUsage(reports?.usage, tier);
   const usageRows = [
     {
       label: "AI interviews",
-      used: reports?.usage?.ai_interview?.used ?? 0,
-      granted: reports?.usage?.ai_interview?.granted ?? TIER_LIMITS[tier].aiInterview,
+      used: reconciled.ai_interview.used,
+      granted: reconciled.ai_interview.granted,
     },
     {
       label: "Voice screens",
-      used: reports?.usage?.ai_voice_screening?.used ?? 0,
-      granted: reports?.usage?.ai_voice_screening?.granted ?? TIER_LIMITS[tier].aiVoiceScreening,
+      used: reconciled.ai_voice_screening.used,
+      granted: reconciled.ai_voice_screening.granted,
     },
     {
       label: "Scheduled rounds",
-      used: reports?.usage?.scheduled_round?.used ?? 0,
-      granted: reports?.usage?.scheduled_round?.granted ?? TIER_LIMITS[tier].scheduledRound,
+      used: reconciled.scheduled_round.used,
+      granted: reconciled.scheduled_round.granted,
     },
   ];
 
