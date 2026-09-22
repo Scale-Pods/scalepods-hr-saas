@@ -61,14 +61,16 @@ export function UsageBars({ slices, fallback, tierLabel }: UsageBarsProps) {
       {USAGE_DEFS.map((def) => {
         const slice = slices[def.key];
         const tierCap = fallback[def.fallback];
-        const granted = slice?.granted ?? tierCap ?? null;
+        // An explicit `granted` (even null = unlimited) always wins over the
+        // legacy tier-cap fallback, which only applies to a missing slice.
+        const granted = slice ? (slice.granted ?? null) : (tierCap ?? null);
         return (
           <UsageBar
             key={def.key}
             label={def.label}
             used={slice?.used ?? 0}
             granted={granted}
-            sub={slice?.granted == null && tierCap != null ? `${tierLabel} allowance` : undefined}
+            sub={slice === undefined && tierCap != null ? `${tierLabel} allowance` : undefined}
           />
         );
       })}
