@@ -53,6 +53,7 @@ function StatCell({
   loading,
 }: StatBandStat) {
   const gradientId = useId();
+  const subId = useId();
   const over = progress ? progress.used / Math.max(1, progress.granted) > 0.9 : false;
   const pct = progress ? Math.min(100, (progress.used / Math.max(1, progress.granted)) * 100) : 0;
 
@@ -83,6 +84,7 @@ function StatCell({
         role={onClick ? "button" : undefined}
         tabIndex={onClick ? 0 : undefined}
         aria-label={onClick ? `${label}: ${String(value)}` : undefined}
+        aria-describedby={onClick && sub ? subId : undefined}
         onClick={onClick}
         onKeyDown={
           onClick
@@ -171,7 +173,11 @@ function StatCell({
                 ) : null}
               </div>
             ) : null}
-            {sub ? <p className="mt-1.5 text-xs text-muted-foreground">{sub}</p> : null}
+            {sub ? (
+              <p id={sub ? subId : undefined} className="mt-1.5 text-xs text-muted-foreground">
+                {sub}
+              </p>
+            ) : null}
           </>
         )}
       </div>
