@@ -146,7 +146,8 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
         </div>
       </header>
 
-      <main className={cn(collapsed ? "lg:pl-16" : "lg:pl-60")}>
+      <main className={cn("relative", collapsed ? "lg:pl-16" : "lg:pl-60")}>
+        <div aria-hidden className="glass-glow pointer-events-none absolute inset-0 -z-10" />
         {billingStatus === "past_due" ? (
           <div className="flex items-center justify-center gap-2 bg-warning/15 px-4 py-2 text-center text-xs font-medium text-warning">
             <span>
@@ -169,7 +170,9 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
             </span>
           </div>
         ) : null}
-        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
+        <div className="glass-viewport relative z-10 mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+          {children}
+        </div>
       </main>
     </div>
   );
