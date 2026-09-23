@@ -10,11 +10,19 @@ import { cn } from "@/lib/utils";
 export type MetricTone = "campaigns" | "candidates" | "interviews" | "credits" | "custom";
 
 const TONE_TILES: Record<MetricTone, string> = {
-  campaigns: "bg-gradient-to-br from-sky-400 to-sky-600",
-  candidates: "bg-gradient-to-br from-emerald-400 to-emerald-600",
-  interviews: "bg-gradient-to-br from-amber-400 to-amber-600",
-  credits: "bg-gradient-to-br from-violet-400 to-violet-600",
-  custom: "bg-gradient-to-br from-sky-500 to-violet-600",
+  campaigns: "bg-gradient-to-br from-[#6c5ce7] to-[#4c3fc7]",
+  candidates: "bg-gradient-to-br from-[#8b7af6] to-[#5b4bd6]",
+  interviews: "bg-gradient-to-br from-[#a78bfa] to-[#7c5ce0]",
+  credits: "bg-gradient-to-br from-[#c9e85c] to-[#a7c63b]",
+  custom: "bg-gradient-to-br from-[#6c5ce7] to-[#c9e85c]",
+};
+
+const TONE_ICON: Record<MetricTone, string> = {
+  campaigns: "text-white",
+  candidates: "text-white",
+  interviews: "text-white",
+  credits: "text-[#17161f]",
+  custom: "text-white",
 };
 
 export interface MetricCardProps {
@@ -86,7 +94,8 @@ export function MetricCard({
                   type="button"
                   aria-label={`What does ${label} mean`}
                   className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white",
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                    TONE_ICON[tone ?? "custom"],
                     "shadow-md shadow-black/10",
                     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                     TONE_TILES[tone ?? "custom"],
@@ -102,7 +111,8 @@ export function MetricCard({
           ) : (
             <span
               className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white",
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                TONE_ICON[tone ?? "custom"],
                 "shadow-md shadow-black/10",
                 TONE_TILES[tone ?? "custom"],
               )}
