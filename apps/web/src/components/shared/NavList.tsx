@@ -44,7 +44,7 @@ export function NavList({ pathname, collapsed = false, onNavigate }: NavListProp
               "group flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               collapsed && "justify-center px-2",
               active
-                ? "bg-accent text-accent-foreground"
+                ? "bg-accent text-accent-foreground dark:bg-sidebar-primary dark:text-white"
                 : "text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground",
             )}
           >
