@@ -35,6 +35,12 @@
   --sidebar-border: #1f2937;
   --sidebar-accent: #1f2937;
   --sidebar-primary: #0cad5d;
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.55);
+  --glass-highlight: rgba(255, 255, 255, 0.75);
+  --glass-shadow: 0 10px 30px -12px rgb(18 26 38 / 0.25);
+  --glass-blur: 24px;
+  --glow-opacity: 0.25;
 }
 
 .dark {
@@ -70,6 +76,12 @@
   --sidebar-border: #2d3748;
   --sidebar-accent: #2d3748;
   --sidebar-primary: #27a376;
+  --glass-bg: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-highlight: rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 12px 32px -16px rgb(0 0 0 / 0.55);
+  --glass-blur: 24px;
+  --glow-opacity: 0.45;
 }
 
 /* Keka-inspired landing palette. Applied only within `.keka-landing`. */
@@ -208,5 +220,41 @@
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
     }
+  }
+}
+
+@layer components {
+  .glass-glow {
+    background:
+      radial-gradient(
+        closest-side at 15% 25%,
+        color-mix(in srgb, var(--chart-2) 45%, transparent),
+        transparent
+      ),
+      radial-gradient(
+        closest-side at 85% 15%,
+        color-mix(in srgb, var(--chart-3) 35%, transparent),
+        transparent
+      ),
+      radial-gradient(
+        closest-side at 70% 80%,
+        color-mix(in srgb, var(--chart-4) 30%, transparent),
+        transparent
+      );
+    opacity: var(--glow-opacity);
+  }
+
+  .glass-viewport [data-slot="card"] {
+    background: var(--glass-bg);
+    border-color: var(--glass-border);
+    box-shadow:
+      var(--glass-shadow),
+      inset 0 1px 0 0 var(--glass-highlight);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+  }
+
+  .glass-viewport [data-slot="card"]:hover {
+    background: color-mix(in srgb, var(--glass-bg) 92%, var(--card));
   }
 }
