@@ -7,6 +7,16 @@ import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
+export type MetricTone = "campaigns" | "candidates" | "interviews" | "credits" | "custom";
+
+const TONE_TILES: Record<MetricTone, string> = {
+  campaigns: "bg-gradient-to-br from-sky-400 to-sky-600",
+  candidates: "bg-gradient-to-br from-emerald-400 to-emerald-600",
+  interviews: "bg-gradient-to-br from-amber-400 to-amber-600",
+  credits: "bg-gradient-to-br from-violet-400 to-violet-600",
+  custom: "bg-gradient-to-br from-sky-500 to-violet-600",
+};
+
 export interface MetricCardProps {
   label: string;
   value: ReactNode;
@@ -18,6 +28,7 @@ export interface MetricCardProps {
   onClick?: () => void;
   loading?: boolean;
   className?: string;
+  tone?: MetricTone;
 }
 
 export function MetricCard({
@@ -31,6 +42,7 @@ export function MetricCard({
   onClick,
   loading,
   className,
+  tone,
 }: MetricCardProps) {
   const gradientId = useId();
 
@@ -73,7 +85,11 @@ export function MetricCard({
                 <button
                   type="button"
                   aria-label={`What does ${label} mean`}
-                  className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary focus-visible:ring-2 focus-visible:ring-ring"
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white",
+                    "shadow-md shadow-black/10",
+                    TONE_TILES[tone ?? "custom"],
+                  )}
                 >
                   {icon}
                 </button>
@@ -83,7 +99,13 @@ export function MetricCard({
               </PopoverContent>
             </Popover>
           ) : (
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <span
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white",
+                "shadow-md shadow-black/10",
+                TONE_TILES[tone ?? "custom"],
+              )}
+            >
               {icon}
             </span>
           )
@@ -105,7 +127,7 @@ export function MetricCard({
               <span
                 role="img"
                 className={cn(
-                  "flex items-center gap-0.5 text-xs font-medium tabular-nums",
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums",
                   deltaTone,
                 )}
                 aria-label={`${deltaLabel} vs previous period`}

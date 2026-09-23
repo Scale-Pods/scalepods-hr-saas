@@ -150,6 +150,7 @@ export default function DashboardPage() {
           icon={<FolderKanban className="h-4 w-4" aria-hidden />}
           description="Recruiting drives that are currently live and accepting candidates."
           onClick={() => router.push("/campaigns")}
+          tone="campaigns"
         />
         <MetricCard
           label="Candidates in pipeline"
@@ -160,6 +161,7 @@ export default function DashboardPage() {
           icon={<Users className="h-4 w-4" aria-hidden />}
           sub={`${currentTotal} added in the last 7 days`}
           description="Total candidates enrolled across your campaigns. The sparkline shows candidates added per day over the past two weeks."
+          tone="candidates"
         />
         <MetricCard
           label="Interviews this week"
@@ -177,6 +179,7 @@ export default function DashboardPage() {
                 }`
           }
           description="Interviews scheduled in the last 7 days, compared with the prior week."
+          tone="interviews"
         />
         <MetricCard
           label="AI credits remaining"
@@ -193,6 +196,7 @@ export default function DashboardPage() {
             ) : undefined
           }
           description="AI interview credits left this billing month before hitting your tier limit."
+          tone="credits"
         />
       </CardGrid>
 
