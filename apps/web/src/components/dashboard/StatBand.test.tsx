@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StatBand } from "./StatBand";
 
@@ -60,7 +60,7 @@ describe("StatBand", () => {
     expect(screen.getByRole("img", { name: /progress/i })).toBeInTheDocument();
   });
 
-  it("exposes a button role and keyboard activation when clickable and keeps the info popover", () => {
+  it("exposes a button role and keyboard activation when clickable", () => {
     const onClick = vi.fn();
     render(
       <StatBand
@@ -69,7 +69,25 @@ describe("StatBand", () => {
         ]}
       />,
     );
-    expect(screen.getByRole("button", { name: /^Active campaigns/ })).toBeInTheDocument();
-    expect(screen.getByLabelText(/What does Active campaigns mean/)).toBeInTheDocument();
+    const cell = screen.getByRole("button", { name: /^Active campaigns/ });
+    fireEvent.click(cell);
+    expect(onClick).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(cell, { key: "Enter" });
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the info popover independent of the clickable cell", () => {
+    const onClick = vi.fn();
+    render(
+      <StatBand
+        stats={[
+          { id: "a", label: "Active campaigns", value: "3", onClick, description: "Live drives" },
+        ]}
+      />,
+    );
+    screen.getByRole("button", { name: /^Active campaigns/ });
+    const info = screen.getByLabelText(/What does Active campaigns mean/);
+    fireEvent.click(info);
+    expect(onClick).not.toHaveBeenCalled();
   });
 });
