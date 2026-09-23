@@ -10,7 +10,7 @@ import { useDecisions } from "@/features/notifications/hooks";
 import { computeUnread, readSeenAt, writeSeenAt } from "@/features/notifications/unread";
 
 export function NotificationBell() {
-  const { data: decisions, isPending } = useDecisions();
+  const { data: decisions, isPending, isError } = useDecisions();
   const candidateIds = useMemo(() => (decisions ?? []).map((d) => d.candidate_id), [decisions]);
   const names = useCandidateNames(candidateIds);
   const nameMap = names.data ?? {};
@@ -38,20 +38,22 @@ export function NotificationBell() {
           className="relative inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           <Bell className="h-4 w-4" aria-hidden />
-          {!isPending && unread > 0 ? (
+          {!isPending && !isError && unread > 0 ? (
             <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
               {unread > 9 ? "9+" : unread}
             </span>
           ) : null}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-0">
+      <PopoverContent align="end" className="w-80 p-0" aria-labelledby="notifications-heading">
         <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
-          <p className="text-sm font-semibold text-foreground">Notifications</p>
+          <p id="notifications-heading" className="text-sm font-semibold text-foreground">
+            Notifications
+          </p>
           <button
             type="button"
             onClick={markRead}
-            className="text-xs text-muted-foreground hover:text-foreground"
+            className="text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             Mark all read
           </button>
@@ -62,6 +64,10 @@ export function NotificationBell() {
             <div className="h-4 animate-pulse rounded bg-muted" />
             <div className="h-4 animate-pulse rounded bg-muted" />
           </div>
+        ) : isError ? (
+          <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+            Couldn't load notifications
+          </p>
         ) : latest.length === 0 ? (
           <p className="px-3 py-6 text-center text-xs text-muted-foreground">No new decisions</p>
         ) : (
