@@ -12,7 +12,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CadencePreview } from "@/components/campaigns/CadencePreview";
 import { ChannelToggle } from "@/components/campaigns/ChannelToggle";
 import { DEFAULT_ROUND, type RoundDraft, RoundEditor } from "@/components/campaigns/RoundEditor";
@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccount } from "@/features/account/hooks";
+import { syncRoundCount } from "@/features/campaigns/rounds";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { callWorkflow } from "@/lib/webhooks";
 
@@ -52,6 +53,10 @@ export default function CampaignNewPage() {
   const [rounds, setRounds] = useState<RoundDraft[]>([DEFAULT_ROUND]);
   const [whatsappOn, setWhatsappOn] = useState(tierConfig.whatsapp);
   const [voiceOn, setVoiceOn] = useState(tierConfig.voiceScreening);
+
+  useEffect(() => {
+    setRounds((prev) => syncRoundCount(prev, numberOfRounds));
+  }, [numberOfRounds]);
 
   const { data: teamMembers = [] } = useQuery({
     queryKey: ["team_members"] as const,
