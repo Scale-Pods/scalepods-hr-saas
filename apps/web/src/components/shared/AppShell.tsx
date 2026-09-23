@@ -136,7 +136,7 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
 
       <header
         className={cn(
-          "sticky top-0 z-20 hidden items-center justify-between gap-3 border-b border-border bg-card/80 px-6 py-3 backdrop-blur lg:flex",
+          "sticky top-0 z-20 hidden items-center justify-between gap-3 border-b border-border bg-card px-6 py-3 lg:flex",
           collapsed ? "lg:ml-16" : "lg:ml-60",
         )}
       >
@@ -146,10 +146,9 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
         </div>
       </header>
 
-      <main className={cn("relative z-0", collapsed ? "lg:pl-16" : "lg:pl-60")}>
-        <div aria-hidden className="glass-glow pointer-events-none absolute inset-0 -z-10" />
+      <main className={cn(collapsed ? "lg:pl-16" : "lg:pl-60")}>
         {billingStatus === "past_due" ? (
-          <div className="flex items-center justify-center gap-2 bg-warning/15 px-4 py-2 text-center text-xs font-medium text-warning">
+          <div className="flex items-center justify-center gap-2 bg-accent px-4 py-2 text-center text-xs font-medium text-accent-foreground">
             <span>
               Your billing is past due.{" "}
               <Link href="/billing" className="underline underline-offset-2">
@@ -170,9 +169,7 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
             </span>
           </div>
         ) : null}
-        <div className="glass-viewport relative z-10 mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-          {children}
-        </div>
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
       </main>
     </div>
   );
