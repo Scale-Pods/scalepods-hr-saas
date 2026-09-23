@@ -27,7 +27,7 @@ export function FunnelChart({
         return (
           <div key={row.stage} className="flex items-center gap-3">
             <span className="w-36 shrink-0 text-xs text-muted-foreground">{row.stage}</span>
-            <div className="h-7 flex-1 overflow-hidden rounded-md bg-muted">
+            <div className="h-5 flex-1 overflow-hidden rounded-full bg-muted/60">
               {row.entered > 0 ? (
                 <div
                   className="flex h-full items-center justify-end rounded-md bg-primary pr-2 transition-all"
