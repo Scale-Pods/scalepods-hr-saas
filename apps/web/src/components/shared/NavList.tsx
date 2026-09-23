@@ -41,7 +41,7 @@ export function NavList({ pathname, collapsed = false, onNavigate }: NavListProp
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "group flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+              "group flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               collapsed && "justify-center px-2",
               active
                 ? "bg-sidebar-primary text-white shadow-sm shadow-black/20"
