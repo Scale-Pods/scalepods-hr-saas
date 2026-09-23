@@ -146,7 +146,7 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
         </div>
       </header>
 
-      <main className={cn("relative", collapsed ? "lg:pl-16" : "lg:pl-60")}>
+      <main className={cn("relative z-0", collapsed ? "lg:pl-16" : "lg:pl-60")}>
         <div aria-hidden className="glass-glow pointer-events-none absolute inset-0 -z-10" />
         {billingStatus === "past_due" ? (
           <div className="flex items-center justify-center gap-2 bg-warning/15 px-4 py-2 text-center text-xs font-medium text-warning">
