@@ -11,6 +11,8 @@ export interface StatBandStat {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
+  icon?: ReactNode;
+  hero?: boolean;
   delta?: number | null;
   trend?: number[] | null;
   progress?: { used: number; granted: number } | null;
@@ -29,7 +31,7 @@ export function StatBand({ stats, className }: StatBandProps) {
   return (
     <div
       className={cn(
-        "grid gap-6 sm:grid-cols-2 lg:grid-cols-5",
+        "grid gap-6 sm:grid-cols-2 lg:grid-cols-6",
         "lg:[&>*:first-child]:border-0 lg:[&>*:first-child]:pl-0",
         className,
       )}
@@ -45,6 +47,8 @@ function StatCell({
   label,
   value,
   sub,
+  icon,
+  hero,
   delta,
   trend,
   progress,
@@ -58,9 +62,16 @@ function StatCell({
   const pct = progress ? Math.min(100, (progress.used / Math.max(1, progress.granted)) * 100) : 0;
 
   return (
-    <div className="min-w-0 border-border lg:border-l lg:pl-6">
+    <div className={cn("min-w-0 border-border lg:border-l lg:pl-6", hero && "lg:col-span-2")}>
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-xs font-medium text-muted-foreground">{label}</p>
+        <div className="flex min-w-0 items-center gap-2">
+          {icon ? (
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground">
+              {icon}
+            </span>
+          ) : null}
+          <p className="truncate text-xs font-medium text-muted-foreground">{label}</p>
+        </div>
         {description ? (
           <Popover>
             <PopoverTrigger asChild>
@@ -109,7 +120,12 @@ function StatCell({
         ) : (
           <>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
-              <p className="text-3xl font-semibold tabular-nums tracking-tight text-foreground">
+              <p
+                className={cn(
+                  "font-semibold tabular-nums tracking-tight text-foreground",
+                  hero ? "text-4xl xl:text-5xl" : "text-2xl",
+                )}
+              >
                 {value}
               </p>
               {delta != null && delta !== 0 ? (
@@ -132,7 +148,7 @@ function StatCell({
             </div>
             {trend && trend.length > 1 ? (
               <div
-                className="-mx-1 mt-1 h-9"
+                className={cn("-mx-1 mt-1", hero ? "h-14" : "h-9")}
                 role="img"
                 aria-label={`${label} trend: ${trend.join(", ")}`}
               >

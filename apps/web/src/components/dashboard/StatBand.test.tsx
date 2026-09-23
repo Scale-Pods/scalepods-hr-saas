@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { Users } from "lucide-react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StatBand } from "./StatBand";
 
@@ -89,5 +90,29 @@ describe("StatBand", () => {
     const info = screen.getByLabelText(/What does Active campaigns mean/);
     fireEvent.click(info);
     expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("renders a muted icon chip when an icon is provided", () => {
+    render(
+      <StatBand
+        stats={[
+          {
+            id: "a",
+            label: "Active campaigns",
+            value: "3",
+            icon: <Users data-testid="stat-icon" />,
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("stat-icon")).toBeInTheDocument();
+  });
+
+  it("widens the hero cell across two columns", () => {
+    render(
+      <StatBand stats={[{ id: "p", label: "Candidates in pipeline", value: "12", hero: true }]} />,
+    );
+    const cell = screen.getByText("12").closest(".min-w-0");
+    expect(cell?.className ?? "").toContain("lg:col-span-2");
   });
 });
