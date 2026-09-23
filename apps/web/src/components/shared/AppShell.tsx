@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/stores/sidebar";
 import { Logo } from "./Logo";
 import { NavList } from "./NavList";
+import { NotificationBell } from "./NotificationBell";
 import { ThemeToggle } from "./ThemeToggle";
 
 export type BillingStatus = "active" | "trialing" | "past_due" | "canceled" | "incomplete";
@@ -119,6 +120,7 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
           <span className="text-sm font-semibold text-foreground">ScalePods</span>
         </Link>
         <div className="flex items-center gap-2">
+          <NotificationBell />
           <ThemeToggle />
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
@@ -142,6 +144,7 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
       >
         <Badge variant="secondary">{tierLabel} plan</Badge>
         <div className="flex items-center gap-2">
+          <NotificationBell />
           <ThemeToggle />
         </div>
       </header>
