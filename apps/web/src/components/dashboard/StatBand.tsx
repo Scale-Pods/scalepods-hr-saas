@@ -26,7 +26,10 @@ export interface StatBandProps {
   className?: string;
 }
 
-/** Flat, hairline-separated KPI row. No cards, no boxes. */
+/**
+ * Flat, hairline-separated KPI row. No cards, no boxes.
+ * `hero` stat, if present, must be the first entry and there must be at most one.
+ */
 export function StatBand({ stats, className }: StatBandProps) {
   return (
     <div
@@ -66,7 +69,10 @@ function StatCell({
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {icon ? (
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground">
+            <span
+              aria-hidden
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground"
+            >
               {icon}
             </span>
           ) : null}
