@@ -88,6 +88,7 @@ export function MetricCard({
                   className={cn(
                     "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white",
                     "shadow-md shadow-black/10",
+                    "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                     TONE_TILES[tone ?? "custom"],
                   )}
                 >
