@@ -30,7 +30,7 @@ export function FunnelChart({
             <div className="h-5 flex-1 overflow-hidden rounded-full bg-muted/60">
               {row.entered > 0 ? (
                 <div
-                  className="flex h-full items-center justify-end rounded-md bg-primary pr-2 transition-all"
+                  className="flex h-full items-center justify-end rounded-full bg-primary pr-2 transition-all"
                   style={{ width: `${Math.max(6, width)}%` }}
                 >
                   <span className="text-xs font-semibold text-primary-foreground">

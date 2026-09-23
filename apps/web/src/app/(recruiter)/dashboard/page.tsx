@@ -8,29 +8,19 @@ import {
   TIER_LIMITS,
   timeAgo,
 } from "@scalepods/core";
-import {
-  ArrowUpRight,
-  CalendarClock,
-  CheckCircle2,
-  FolderKanban,
-  Megaphone,
-  Plus,
-  Users,
-  XCircle,
-} from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Plus, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { FunnelChart } from "@/components/dashboard/FunnelChart";
 import { ReportsNotice } from "@/components/dashboard/ReportsNotice";
 import { SourceEffectivenessTable } from "@/components/dashboard/SourceEffectivenessTable";
+import { StatBand } from "@/components/dashboard/StatBand";
 import { TimeToHireCard } from "@/components/dashboard/TimeToHireCard";
 import { UsageBars } from "@/components/dashboard/UsageBars";
-import { CardGrid } from "@/components/shared/CardGrid";
+import { DashboardSection } from "@/components/shared/DashboardSection";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { MetricCard } from "@/components/shared/MetricCard";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { SectionCard } from "@/components/shared/SectionCard";
 import { Button } from "@/components/ui/button";
 import { useAccount } from "@/features/account/hooks";
 import {
@@ -83,6 +73,21 @@ export default function DashboardPage() {
     () => ledgerRows.filter((r) => r.stage.toLowerCase().includes("offer")).length,
     [ledgerRows],
   );
+
+  const offers7d = useMemo(() => {
+    const day = 86_400_000;
+    const now = Date.now();
+    const wkStart = now - 7 * day;
+    const priorStart = now - 14 * day;
+    const offers = ledgerRows.filter((r) => r.stage.toLowerCase().includes("offer"));
+    const within = (t: number) => t >= wkStart && t <= now;
+    const current = offers.filter((r) => within(new Date(r.decided_at).getTime())).length;
+    const prior = offers.filter((r) => {
+      const t = new Date(r.decided_at).getTime();
+      return t >= priorStart && t < wkStart;
+    }).length;
+    return { current, prior };
+  }, [ledgerRows]);
 
   const reportedFunnel = reports.data ? buildFunnelRows(reports.data) : null;
   const useReportedFunnel = Boolean(reportedFunnel?.some((r) => r.entered > 0));
@@ -142,63 +147,72 @@ export default function DashboardPage() {
         }
       />
 
-      <CardGrid cols={{ base: 1, sm: 2, lg: 4 }}>
-        <MetricCard
-          label="Active campaigns"
-          value={kpis.data?.activeCampaigns ?? "—"}
-          loading={kpis.isPending}
-          icon={<FolderKanban className="h-4 w-4" aria-hidden />}
-          description="Recruiting drives that are currently live and accepting candidates."
-          onClick={() => router.push("/campaigns")}
-          tone="campaigns"
-        />
-        <MetricCard
-          label="Candidates in pipeline"
-          value={kpis.data?.candidateCount ?? "—"}
-          loading={kpis.isPending}
-          delta={pipelineDelta}
-          trend={pipelineTrend}
-          icon={<Users className="h-4 w-4" aria-hidden />}
-          sub={`${currentTotal} added in the last 7 days`}
-          description="Total candidates enrolled across your campaigns. The sparkline shows candidates added per day over the past two weeks."
-          tone="candidates"
-        />
-        <MetricCard
-          label="Interviews this week"
-          value={kpis.data?.interviewsThisWeek ?? "—"}
-          loading={kpis.isPending}
-          delta={interviewsDelta}
-          icon={<CalendarClock className="h-4 w-4" aria-hidden />}
-          sub={
-            kpis.data?.interviewsThisWeek == null
-              ? undefined
-              : `${kpis.data.interviewsThisWeek} scheduled${
-                  interviewsDelta != null
-                    ? ` · ${interviewsDelta > 0 ? "+" : ""}${interviewsDelta} vs last week`
-                    : ""
-                }`
-          }
-          description="Interviews scheduled in the last 7 days, compared with the prior week."
-          tone="interviews"
-        />
-        <MetricCard
-          label="AI credits remaining"
-          value={creditsRemaining ?? "—"}
-          loading={reports.isPending}
-          icon={<Megaphone className="h-4 w-4" aria-hidden />}
-          sub={
-            creditsLow ? (
-              <span className="text-warning">
+      <StatBand
+        stats={[
+          {
+            id: "active-campaigns",
+            label: "Active campaigns",
+            value: kpis.data?.activeCampaigns ?? "—",
+            loading: kpis.isPending,
+            sub: "Currently live and accepting candidates",
+            description: "Recruiting drives that are currently live and accepting candidates.",
+            onClick: () => router.push("/campaigns"),
+          },
+          {
+            id: "pipeline",
+            label: "Candidates in pipeline",
+            value: kpis.data?.candidateCount ?? "—",
+            loading: kpis.isPending,
+            delta: pipelineDelta,
+            trend: pipelineTrend,
+            sub: `${currentTotal} added in the last 7 days`,
+            description:
+              "Total candidates enrolled across your campaigns. The sparkline shows candidates added per day over the past two weeks.",
+          },
+          {
+            id: "interviews",
+            label: "Interviews this week",
+            value: kpis.data?.interviewsThisWeek ?? "—",
+            loading: kpis.isPending,
+            delta: interviewsDelta,
+            sub:
+              kpis.data?.interviewsThisWeek == null
+                ? undefined
+                : `${kpis.data.interviewsThisWeek} scheduled${
+                    interviewsDelta != null
+                      ? ` · ${interviewsDelta > 0 ? "+" : ""}${interviewsDelta} vs last week`
+                      : ""
+                  }`,
+            description: "Interviews scheduled in the last 7 days, compared with the prior week.",
+          },
+          {
+            id: "credits",
+            label: "AI credits remaining",
+            value: creditsRemaining ?? "—",
+            loading: reports.isPending,
+            progress: aiGranted != null ? { used: aiUsed, granted: aiGranted } : undefined,
+            sub: creditsLow ? (
+              <span className="text-destructive">
                 90% of your AI interview allowance is used — upgrade to extend it.
               </span>
             ) : aiGranted != null ? (
               `${aiUsed} of ${aiGranted} used this month`
-            ) : undefined
-          }
-          description="AI interview credits left this billing month before hitting your tier limit."
-          tone="credits"
-        />
-      </CardGrid>
+            ) : undefined,
+            description:
+              "AI interview credits left this billing month before hitting your tier limit.",
+            onClick: () => router.push("/billing"),
+          },
+          {
+            id: "offers-7d",
+            label: "Offers sent (7d)",
+            value: offers7d.current,
+            loading: ledger.isPending,
+            delta: offers7d.current - offers7d.prior,
+            sub: `${offers7d.prior} in the prior week`,
+            description: "Offer decisions recorded in your decision ledger over the last 7 days.",
+          },
+        ]}
+      />
 
       {reports.isPending ? <ReportsNotice state="loading" /> : null}
       {reports.isError ? <ReportsNotice state="unavailable" /> : null}
@@ -206,7 +220,7 @@ export default function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {reports.data ? (
-            <SectionCard title="Usage" subtitle="Used vs. granted this month · red past 90%">
+            <DashboardSection title="Usage" subtitle="Used vs. granted this month · red past 90%">
               <UsageBars
                 slices={reconciled}
                 tierLabel={tierLabel.toUpperCase()}
@@ -216,10 +230,10 @@ export default function DashboardPage() {
                   scheduledRound: TIER_LIMITS[tier].scheduledRound,
                 }}
               />
-            </SectionCard>
+            </DashboardSection>
           ) : null}
 
-          <SectionCard
+          <DashboardSection
             title="Candidate funnel"
             subtitle={
               useReportedFunnel
@@ -228,9 +242,9 @@ export default function DashboardPage() {
             }
           >
             <FunnelChart rows={funnelRows} />
-          </SectionCard>
+          </DashboardSection>
 
-          <SectionCard title="Recent activity" subtitle="Latest pipeline decisions">
+          <DashboardSection title="Recent activity" subtitle="Latest pipeline decisions">
             {activity.length === 0 ? (
               <EmptyState
                 title="No activity yet"
@@ -243,14 +257,7 @@ export default function DashboardPage() {
                   const Icon = meta.icon;
                   return (
                     <li key={row.id} className="flex items-start gap-3 py-2.5">
-                      <span
-                        className={cn(
-                          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted",
-                          meta.tone,
-                        )}
-                      >
-                        <Icon className="h-3.5 w-3.5" aria-hidden />
-                      </span>
+                      <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", meta.tone)} aria-hidden />
                       <div className="min-w-0 flex-1">
                         <Link
                           href={`/candidates/${row.candidate_id}`}
@@ -272,11 +279,11 @@ export default function DashboardPage() {
                 })}
               </ul>
             )}
-          </SectionCard>
+          </DashboardSection>
         </div>
 
         <div className="space-y-6">
-          <SectionCard
+          <DashboardSection
             title="Source effectiveness"
             subtitle="Which channels start conversations that convert"
           >
@@ -288,9 +295,9 @@ export default function DashboardPage() {
                 hint="Per-channel delivery comes from GET /webhook/reports."
               />
             )}
-          </SectionCard>
+          </DashboardSection>
 
-          <SectionCard title="Time to hire" subtitle="Offer-accepted lag across recent hires">
+          <DashboardSection title="Time to hire" subtitle="Offer-accepted lag across recent hires">
             {reports.data ? (
               <TimeToHireCard reports={reports.data} />
             ) : (
@@ -299,9 +306,9 @@ export default function DashboardPage() {
                 hint="Intake-to-offer lag comes from GET /webhook/reports."
               />
             )}
-          </SectionCard>
+          </DashboardSection>
 
-          <SectionCard title="Upcoming interviews" subtitle="Next scheduled rounds">
+          <DashboardSection title="Upcoming interviews" subtitle="Next scheduled rounds">
             {upcomingRows.length === 0 ? (
               <EmptyState
                 title="Nothing scheduled"
@@ -326,9 +333,9 @@ export default function DashboardPage() {
                 ))}
               </ul>
             )}
-          </SectionCard>
+          </DashboardSection>
 
-          <SectionCard title="Needs your review" subtitle="Latest workflow decisions">
+          <DashboardSection title="Needs your review" subtitle="Latest workflow decisions">
             {needsReview.length === 0 ? (
               <EmptyState
                 title="All caught up"
@@ -351,7 +358,7 @@ export default function DashboardPage() {
                 ))}
               </ul>
             )}
-          </SectionCard>
+          </DashboardSection>
         </div>
       </div>
     </div>
