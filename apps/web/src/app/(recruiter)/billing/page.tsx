@@ -73,14 +73,6 @@ const COMPARE_METRICS: {
   },
 ];
 
-const FEATURE_ROWS: { label: string; ok: (t: TierLimits) => boolean }[] = [
-  { label: "WhatsApp outreach", ok: (t) => t.whatsapp },
-  { label: "Automated voice screening", ok: (t) => t.voiceScreening },
-  { label: "Assignment rounds", ok: (t) => t.assignment },
-  { label: "Custom sending identity", ok: (t) => t.customIdentity },
-  { label: "SMS channel", ok: (t) => t.sms },
-];
-
 export default function BillingPage() {
   const { account } = useAccount();
   const { data: session } = useSession();
@@ -256,52 +248,62 @@ function TierCompareModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>Compare plans</DialogTitle>
         </DialogHeader>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="py-2 pr-4 font-medium">Feature</th>
-                {TIER_ORDER_COMPARE.map((t) => (
-                  <th key={t} className="px-2 py-2 font-medium">
-                    <div className={t === currentTier ? "text-primary font-semibold" : ""}>
-                      {TIER_LIMITS[t].label}
-                      {t === currentTier && <span className="ml-1 font-normal">· you</span>}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {COMPARE_METRICS.map((m) => (
-                <tr key={m.key}>
-                  <td className="py-2.5 pr-4 text-foreground">{m.label}</td>
-                  {TIER_ORDER_COMPARE.map((t) => (
-                    <td key={t} className="px-2 py-2.5 text-muted-foreground">
-                      {m.format(TIER_LIMITS[t])}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-              {FEATURE_ROWS.map((f) => (
-                <tr key={f.label}>
-                  <td className="py-2.5 pr-4 text-foreground">{f.label}</td>
-                  {TIER_ORDER_COMPARE.map((t) => (
-                    <td key={t} className="px-2 py-2.5">
-                      {f.ok(TIER_LIMITS[t]) ? (
-                        <span className="text-success">✓</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="max-h-[70vh] overflow-y-auto pr-1">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {TIER_ORDER_COMPARE.map((t) => {
+              const limits = TIER_LIMITS[t];
+              const isCurrent = t === currentTier;
+              return (
+                <div
+                  key={t}
+                  className={cn(
+                    "flex flex-col gap-3 rounded-xl border p-4",
+                    isCurrent
+                      ? "border-primary/60 bg-primary/5 shadow-sm ring-1 ring-primary/30"
+                      : "border-border",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-foreground">{limits.label}</p>
+                    {isCurrent ? (
+                      <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px]">
+                        Current
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <ul className="space-y-1.5 text-xs text-muted-foreground">
+                    {COMPARE_METRICS.slice(0, 4).map((m) => (
+                      <li key={m.key} className="flex items-center justify-between gap-2">
+                        <span>{m.label}</span>
+                        <span className="font-medium tabular-nums text-foreground">
+                          {m.format(limits)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="pt-1 mt-auto">
+                    {t === "enterprise" ? (
+                      <Button variant="outline" className="w-full" size="sm">
+                        Contact sales
+                      </Button>
+                    ) : (
+                      <Button
+                        variant={isCurrent ? "outline" : "default"}
+                        className="w-full"
+                        size="sm"
+                      >
+                        {isCurrent ? "Current plan" : "Upgrade"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
           Usage gates are indicative here; the credit guard enforces limits server-side.
