@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 export interface RoundDraft {
+  id: string;
   round_type: RoundType;
   interviewer_email: string;
   cutoff_score: number;
@@ -16,6 +17,7 @@ export interface RoundDraft {
 }
 
 export const DEFAULT_ROUND: RoundDraft = {
+  id: "round-default",
   round_type: "ai_interview",
   interviewer_email: "",
   cutoff_score: 70,
@@ -24,6 +26,13 @@ export const DEFAULT_ROUND: RoundDraft = {
   brief_text: "",
   assignment_deadline_hours: 72,
 };
+
+let draftSequence = 0;
+
+export function makeRound(): RoundDraft {
+  draftSequence += 1;
+  return { ...DEFAULT_ROUND, id: `round-${draftSequence}` };
+}
 
 export const ROUND_TYPE_OPTIONS: { value: RoundType; label: string }[] = [
   { value: "ai_interview", label: "Live AI interview" },

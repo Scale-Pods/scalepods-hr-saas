@@ -1,4 +1,4 @@
-import { DEFAULT_ROUND, type RoundDraft } from "@/components/campaigns/RoundEditor";
+import { makeRound, type RoundDraft } from "@/components/campaigns/RoundEditor";
 
 /**
  * Resize a list of round drafts to `count`, appending fresh defaults for new
@@ -8,6 +8,6 @@ import { DEFAULT_ROUND, type RoundDraft } from "@/components/campaigns/RoundEdit
 export function syncRoundCount(rounds: RoundDraft[], count: number): RoundDraft[] {
   if (rounds.length === count) return rounds;
   const next = rounds.slice(0, count);
-  while (next.length < count) next.push(DEFAULT_ROUND);
+  while (next.length < count) next.push(makeRound());
   return next;
 }

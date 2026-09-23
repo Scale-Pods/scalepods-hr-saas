@@ -319,7 +319,7 @@ export default function CampaignNewPage() {
           <div className="space-y-6">
             {rounds.slice(0, numberOfRounds).map((r, i) => (
               <RoundEditor
-                key={`${r.round_type}-${r.cutoff_score}-${r.interviewer_email}-${r.brief_text}`}
+                key={r.id}
                 index={i}
                 round={r}
                 tier={tier}
