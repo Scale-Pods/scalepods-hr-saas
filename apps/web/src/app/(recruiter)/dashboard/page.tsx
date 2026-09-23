@@ -60,7 +60,7 @@ export default function DashboardPage() {
   const upcoming = useUpcomingInterviews();
   const ledger = useLedger();
 
-  const ledgerRows = ledger.data ?? [];
+  const ledgerRows = useMemo(() => ledger.data ?? [], [ledger.data]);
   const upcomingRows = upcoming.data ?? [];
 
   const names = useCandidateNames([
@@ -74,18 +74,19 @@ export default function DashboardPage() {
     [ledgerRows],
   );
 
+  /** Ledger query is capped at the 200 most-recent rows, so the prior-week count may undercount once a 14-day window exceeds 200 decision entries (acceptable at current volume). */
   const offers7d = useMemo(() => {
     const day = 86_400_000;
     const now = Date.now();
     const wkStart = now - 7 * day;
     const priorStart = now - 14 * day;
     const offers = ledgerRows.filter((r) => r.stage.toLowerCase().includes("offer"));
-    const within = (t: number) => t >= wkStart && t <= now;
-    const current = offers.filter((r) => within(new Date(r.decided_at).getTime())).length;
-    const prior = offers.filter((r) => {
-      const t = new Date(r.decided_at).getTime();
-      return t >= priorStart && t < wkStart;
-    }).length;
+    const bucket = (t: number) =>
+      t >= priorStart && t < wkStart ? "prior" : t >= wkStart && t <= now ? "current" : "none";
+    const current = offers.filter(
+      (r) => bucket(new Date(r.decided_at).getTime()) === "current",
+    ).length;
+    const prior = offers.filter((r) => bucket(new Date(r.decided_at).getTime()) === "prior").length;
     return { current, prior };
   }, [ledgerRows]);
 

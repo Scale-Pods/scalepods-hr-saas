@@ -1,6 +1,6 @@
 "use client";
 
-import { Info, Minus, TrendingDown, TrendingUp } from "lucide-react";
+import { Info, TrendingDown, TrendingUp } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -53,14 +53,6 @@ function StatCell({
   loading,
 }: StatBandStat) {
   const gradientId = useId();
-  const DeltaIcon = delta == null || delta === 0 ? Minus : delta > 0 ? TrendingUp : TrendingDown;
-  const deltaTone =
-    delta == null || delta === 0
-      ? "text-muted-foreground"
-      : delta > 0
-        ? "text-success"
-        : "text-destructive";
-  const deltaLabel = delta == null ? "" : delta > 0 ? `+${delta}` : `${delta}`;
   const over = progress ? progress.used / Math.max(1, progress.granted) > 0.9 : false;
   const pct = progress ? Math.min(100, (progress.used / Math.max(1, progress.granted)) * 100) : 0;
 
@@ -90,7 +82,7 @@ function StatCell({
       <div
         role={onClick ? "button" : undefined}
         tabIndex={onClick ? 0 : undefined}
-        aria-label={onClick ? label : undefined}
+        aria-label={onClick ? `${label}: ${String(value)}` : undefined}
         onClick={onClick}
         onKeyDown={
           onClick
@@ -123,12 +115,16 @@ function StatCell({
                   role="img"
                   className={cn(
                     "inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums",
-                    deltaTone,
+                    delta > 0 ? "text-success" : "text-destructive",
                   )}
-                  aria-label={`${deltaLabel} vs previous period`}
+                  aria-label={`${delta > 0 ? `+${delta}` : `${delta}`} vs previous period`}
                 >
-                  <DeltaIcon className="h-3.5 w-3.5" aria-hidden />
-                  {deltaLabel}
+                  {delta > 0 ? (
+                    <TrendingUp className="h-3.5 w-3.5" aria-hidden />
+                  ) : (
+                    <TrendingDown className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                  {delta > 0 ? `+${delta}` : `${delta}`}
                 </span>
               ) : null}
             </div>
