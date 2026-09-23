@@ -316,9 +316,9 @@ export default function DashboardPage() {
                 hint="Booked rounds will appear here as candidates pick interview slots."
               />
             ) : (
-              <ul className="space-y-3">
+              <ul className="divide-y divide-border">
                 {upcomingRows.map((row) => (
-                  <li key={row.id} className="flex items-center justify-between gap-3">
+                  <li key={row.id} className="flex items-center justify-between gap-3 py-2.5">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground">
                         {nameMap[row.candidate_id] ?? "Candidate"}
@@ -327,7 +327,7 @@ export default function DashboardPage() {
                         {formatDateTime(row.scheduled_at)}
                       </p>
                     </div>
-                    <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
+                    <span className="shrink-0 text-xs font-medium text-muted-foreground">
                       {roundTypeLabel(row.round_type)} · {row.status}
                     </span>
                   </li>
