@@ -1,4 +1,4 @@
-import { TIER_LIMITS } from "./tier";
+import { roundTypeAllowed, TIER_LIMITS } from "./tier";
 import type { RoundType, Tier } from "./types";
 
 /**
@@ -52,6 +52,14 @@ export const CADENCE_STAGES: CadenceStageDef[] = [
     description: "Final nudge - one touch before the interview day.",
     channels: ["email", "whatsapp"],
     appliesTo: [],
+  },
+  {
+    key: "pre_interview_reminder",
+    label: "Pre-interview reminder",
+    dayLabel: "24h before",
+    description: "Reminder about the upcoming interview, sent shortly before the slot.",
+    channels: ["email", "whatsapp"],
+    appliesTo: ["ai_interview", "human_interview"],
   },
   {
     key: "interview_day",
@@ -123,4 +131,125 @@ export function cadenceForTier(tier: Tier, roundType: RoundType): CadenceRenderR
 
 export function voiceScreeningEnabledForTier(tier: Tier): boolean {
   return TIER_LIMITS[tier].voiceScreening;
+}
+
+export type CadenceStageKey =
+  | "shortlist"
+  | "reminder_day1"
+  | "reminder_day3"
+  | "reminder_day5"
+  | "pre_interview_reminder"
+  | "interview_day"
+  | "voice_screen"
+  | "assignment_deadline_24h"
+  | "result";
+
+export interface CadenceConfigStage {
+  enabled: boolean;
+  channels: CadenceChannel[];
+  /** Pre-interview / assignment stages. Clamped to 0-168. Growth+ only. */
+  hoursBefore?: number;
+  /** Interview-day link dispatch hour. Clamped to 0-23. Growth+ only. */
+  sendHour?: number;
+}
+
+export interface CadenceConfig {
+  stages: Partial<Record<CadenceStageKey, CadenceConfigStage>>;
+}
+
+/** Defaults for timing-aware stages. Keys mirror CADENCE_STAGES. */
+export const CADENCE_TIMING_DEFAULTS: Partial<
+  Record<CadenceStageKey, Partial<CadenceConfigStage>>
+> = {
+  pre_interview_reminder: { hoursBefore: 24 },
+  interview_day: { sendHour: 9 },
+  assignment_deadline_24h: { hoursBefore: 24 },
+};
+
+/**
+ * Full plan-default config for a tier: every stage the plan can reach is on,
+ * with exactly the channels the tier entitles. Drives the editor's seed state.
+ */
+export function defaultCadenceForTier(tier: Tier): CadenceConfig {
+  const stages: CadenceConfig["stages"] = {};
+  for (const stage of CADENCE_STAGES) {
+    const key = stage.key as CadenceStageKey;
+    const channels = stage.channels.filter((c) => {
+      if (c === "email") return true;
+      if (c === "whatsapp") return TIER_LIMITS[tier].whatsapp;
+      if (c === "voice_call") return TIER_LIMITS[tier].voiceScreening;
+      return false;
+    });
+    const roundTypeFits =
+      stage.appliesTo.length === 0 || stage.appliesTo.some((t) => roundTypeAllowed(tier, t));
+    const enabled = channels.length > 0 && roundTypeFits;
+    stages[key] = { enabled, channels, ...CADENCE_TIMING_DEFAULTS[key] };
+  }
+  return { stages };
+}
+
+/** How much control a tier gets over the editor. */
+export function cadenceTierEditability(tier: Tier): {
+  stages: boolean;
+  channels: boolean;
+  timing: boolean;
+} {
+  if (tier === "free") return { stages: false, channels: false, timing: false };
+  if (tier === "basic") return { stages: true, channels: true, timing: false };
+  return { stages: true, channels: true, timing: true };
+}
+
+function clampInt(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+/**
+ * Normalize a (possibly partial) config against a tier: drop unknown stages,
+ * coerce enabled to boolean, subset channels to the tier's entitlement, and
+ * clamp timing to bounded integers. Missing fields fall back to the tier
+ * defaults, so callers treat this as "overrides over the plan default".
+ */
+export function clampCadence(config: CadenceConfig, tier: Tier): CadenceConfig {
+  const defaults = defaultCadenceForTier(tier);
+  const stages: CadenceConfig["stages"] = {};
+  for (const [key, raw] of Object.entries(config.stages)) {
+    const base = defaults.stages[key as CadenceStageKey];
+    if (!base) continue;
+    const stage: CadenceConfigStage = {
+      enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
+      channels: raw.channels?.filter((c) => base.channels.includes(c)) ?? base.channels,
+    };
+    if (raw.hoursBefore != null) stage.hoursBefore = clampInt(raw.hoursBefore, 0, 168);
+    if (raw.sendHour != null) stage.sendHour = clampInt(raw.sendHour, 0, 23);
+    stages[key as CadenceStageKey] = stage;
+  }
+  return { stages };
+}
+
+function sameChannels(a: CadenceChannel[] | undefined, b: CadenceChannel[] | undefined): boolean {
+  const sorted = (xs: CadenceChannel[] | undefined) => (xs ?? []).slice().sort().join(",");
+  return sorted(a) === sorted(b);
+}
+
+/**
+ * Slim webhook payload: only stages that differ from the tier plan defaults.
+ * Sent as `cadence_config` in the /campaigns create body.
+ */
+export function cadenceConfigPayload(config: CadenceConfig, tier: Tier): CadenceConfig {
+  const clamped = clampCadence(config, tier);
+  const defaults = defaultCadenceForTier(tier);
+  const stages: CadenceConfig["stages"] = {};
+  for (const [key, cur] of Object.entries(clamped.stages)) {
+    const base = defaults.stages[key as CadenceStageKey];
+    if (!base) continue;
+    const diff: Partial<CadenceConfigStage> = {};
+    if (cur.enabled !== base.enabled) diff.enabled = cur.enabled;
+    if (!sameChannels(cur.channels, base.channels)) diff.channels = cur.channels;
+    if (cur.hoursBefore != null && cur.hoursBefore !== base.hoursBefore)
+      diff.hoursBefore = cur.hoursBefore;
+    if (cur.sendHour != null && cur.sendHour !== base.sendHour) diff.sendHour = cur.sendHour;
+    if (Object.keys(diff).length > 0) stages[key as CadenceStageKey] = diff as CadenceConfigStage;
+  }
+  return { stages };
 }
