@@ -73,6 +73,32 @@ describe("clampCadence", () => {
     expect(c.stages.pre_interview_reminder?.hoursBefore).toBe(168);
     expect(c.stages.interview_day?.sendHour).toBe(23);
   });
+
+  it("drops hoursBefore on a tier without timing editability", () => {
+    const c = clampCadence(
+      {
+        stages: {
+          pre_interview_reminder: { enabled: true, channels: ["email"], hoursBefore: 48 },
+        },
+      },
+      "basic",
+    );
+    expect(c.stages.pre_interview_reminder?.enabled).toBe(true);
+    expect(c.stages.pre_interview_reminder?.hoursBefore).toBeUndefined();
+  });
+
+  it("drops sendHour on a stage without that knob", () => {
+    const c = clampCadence(
+      {
+        stages: {
+          assignment_deadline_24h: { enabled: true, channels: ["email"], sendHour: 12 },
+        },
+      },
+      "growth",
+    );
+    expect(c.stages.assignment_deadline_24h?.enabled).toBe(true);
+    expect(c.stages.assignment_deadline_24h?.sendHour).toBeUndefined();
+  });
 });
 
 describe("cadenceConfigPayload", () => {
@@ -88,5 +114,21 @@ describe("cadenceConfigPayload", () => {
     );
     expect(Object.keys(payload.stages)).toEqual(["reminder_day3"]);
     expect(payload.stages.reminder_day3).toEqual({ enabled: false });
+  });
+
+  it("emits no stage entry when only a wrong-knob timing value differs", () => {
+    const payload = cadenceConfigPayload(
+      {
+        stages: {
+          assignment_deadline_24h: {
+            enabled: true,
+            channels: ["email", "whatsapp"],
+            sendHour: 12,
+          },
+        },
+      } as CadenceConfig,
+      "growth",
+    );
+    expect(payload.stages).toEqual({});
   });
 });

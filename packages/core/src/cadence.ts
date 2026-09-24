@@ -20,7 +20,7 @@ export interface CadenceStageDef {
   appliesTo: RoundType[];
 }
 
-export const CADENCE_STAGES: CadenceStageDef[] = [
+export const CADENCE_STAGES = [
   {
     key: "shortlist",
     label: "Shortlist & booking",
@@ -93,7 +93,7 @@ export const CADENCE_STAGES: CadenceStageDef[] = [
     channels: ["email", "whatsapp"],
     appliesTo: [],
   },
-];
+] as const satisfies readonly CadenceStageDef[];
 
 export interface CadenceRenderRow {
   stage: CadenceStageDef;
@@ -117,7 +117,7 @@ export function tierEntitlementReason(tier: Tier, channel: CadenceChannel): stri
  */
 export function cadenceForTier(tier: Tier, roundType: RoundType): CadenceRenderRow[] {
   const limits = TIER_LIMITS[tier];
-  return CADENCE_STAGES.map((stage) => {
+  return CADENCE_STAGES.map((stage: CadenceStageDef) => {
     const applies = stage.appliesTo.length === 0 || stage.appliesTo.includes(roundType);
     const channels = stage.channels.filter((c) => {
       if (c === "email") return true;
@@ -133,16 +133,7 @@ export function voiceScreeningEnabledForTier(tier: Tier): boolean {
   return TIER_LIMITS[tier].voiceScreening;
 }
 
-export type CadenceStageKey =
-  | "shortlist"
-  | "reminder_day1"
-  | "reminder_day3"
-  | "reminder_day5"
-  | "pre_interview_reminder"
-  | "interview_day"
-  | "voice_screen"
-  | "assignment_deadline_24h"
-  | "result";
+export type CadenceStageKey = (typeof CADENCE_STAGES)[number]["key"];
 
 export interface CadenceConfigStage {
   enabled: boolean;
@@ -200,29 +191,36 @@ export function cadenceTierEditability(tier: Tier): {
 }
 
 function clampInt(n: number, min: number, max: number): number {
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, Math.round(n)));
+  const v = Number(n);
+  if (!Number.isFinite(v)) return min;
+  return Math.max(min, Math.min(max, Math.round(v)));
 }
 
 /**
  * Normalize a (possibly partial) config against a tier: drop unknown stages,
  * coerce enabled to boolean, subset channels to the tier's entitlement, and
- * clamp timing to bounded integers. Missing fields fall back to the tier
- * defaults, so callers treat this as "overrides over the plan default".
+ * clamp timing to bounded integers. The result is overrides-only: fields the
+ * input omits are not backfilled from the tier defaults, and timing knobs are
+ * only forwarded for stages that own them on tiers whose editability allows
+ * timing.
  */
 export function clampCadence(config: CadenceConfig, tier: Tier): CadenceConfig {
   const defaults = defaultCadenceForTier(tier);
+  const timing = cadenceTierEditability(tier).timing;
   const stages: CadenceConfig["stages"] = {};
   for (const [key, raw] of Object.entries(config.stages)) {
-    const base = defaults.stages[key as CadenceStageKey];
+    const stageKey = key as CadenceStageKey;
+    const base = defaults.stages[stageKey];
     if (!base) continue;
     const stage: CadenceConfigStage = {
       enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
       channels: raw.channels?.filter((c) => base.channels.includes(c)) ?? base.channels,
     };
-    if (raw.hoursBefore != null) stage.hoursBefore = clampInt(raw.hoursBefore, 0, 168);
-    if (raw.sendHour != null) stage.sendHour = clampInt(raw.sendHour, 0, 23);
-    stages[key as CadenceStageKey] = stage;
+    if (timing && raw.hoursBefore != null && CADENCE_TIMING_DEFAULTS[stageKey]?.hoursBefore != null)
+      stage.hoursBefore = clampInt(raw.hoursBefore, 0, 168);
+    if (timing && raw.sendHour != null && CADENCE_TIMING_DEFAULTS[stageKey]?.sendHour != null)
+      stage.sendHour = clampInt(raw.sendHour, 0, 23);
+    stages[stageKey] = stage;
   }
   return { stages };
 }
