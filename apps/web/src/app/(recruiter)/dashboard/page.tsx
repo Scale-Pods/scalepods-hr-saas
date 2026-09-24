@@ -8,7 +8,7 @@ import {
   TIER_LIMITS,
   timeAgo,
 } from "@scalepods/core";
-import { ArrowUpRight, CheckCircle2, Plus, XCircle } from "lucide-react";
+import { BadgeCheck, CalendarClock, Coins, FolderKanban, Plus, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
@@ -22,6 +22,14 @@ import { DashboardSection } from "@/components/shared/DashboardSection";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useAccount } from "@/features/account/hooks";
 import {
   useCandidateNames,
@@ -43,10 +51,10 @@ function roundTypeLabel(t: string | null): string {
 function stageMeta(stage: string) {
   const s = stage.toLowerCase();
   if (s.includes("reject") || s.includes("fail"))
-    return { icon: XCircle, tone: "text-destructive" };
+    return { pill: "bg-destructive/10 text-destructive", label: "Rejected" };
   if (s.includes("offer") || s.includes("pass"))
-    return { icon: CheckCircle2, tone: "text-success" };
-  return { icon: ArrowUpRight, tone: "text-chart-1" };
+    return { pill: "bg-success/10 text-success", label: s.includes("offer") ? "Offer" : "Passed" };
+  return { pill: "bg-chart-1/10 text-chart-1", label: "In progress" };
 }
 
 export default function DashboardPage() {
@@ -151,17 +159,10 @@ export default function DashboardPage() {
       <StatBand
         stats={[
           {
-            id: "active-campaigns",
-            label: "Active campaigns",
-            value: kpis.data?.activeCampaigns ?? "—",
-            loading: kpis.isPending,
-            sub: "Currently live and accepting candidates",
-            description: "Recruiting drives that are currently live and accepting candidates.",
-            onClick: () => router.push("/campaigns"),
-          },
-          {
             id: "pipeline",
             label: "Candidates in pipeline",
+            icon: <Users className="h-4 w-4" aria-hidden />,
+            hero: true,
             value: kpis.data?.candidateCount ?? "—",
             loading: kpis.isPending,
             delta: pipelineDelta,
@@ -171,8 +172,19 @@ export default function DashboardPage() {
               "Total candidates enrolled across your campaigns. The sparkline shows candidates added per day over the past two weeks.",
           },
           {
+            id: "active-campaigns",
+            label: "Active campaigns",
+            icon: <FolderKanban className="h-4 w-4" aria-hidden />,
+            value: kpis.data?.activeCampaigns ?? "—",
+            loading: kpis.isPending,
+            sub: "Currently live and accepting candidates",
+            description: "Recruiting drives that are currently live and accepting candidates.",
+            onClick: () => router.push("/campaigns"),
+          },
+          {
             id: "interviews",
             label: "Interviews this week",
+            icon: <CalendarClock className="h-4 w-4" aria-hidden />,
             value: kpis.data?.interviewsThisWeek ?? "—",
             loading: kpis.isPending,
             delta: interviewsDelta,
@@ -189,6 +201,7 @@ export default function DashboardPage() {
           {
             id: "credits",
             label: "AI credits remaining",
+            icon: <Coins className="h-4 w-4" aria-hidden />,
             value: creditsRemaining ?? "—",
             loading: reports.isPending,
             progress: aiGranted != null ? { used: aiUsed, granted: aiGranted } : undefined,
@@ -206,6 +219,7 @@ export default function DashboardPage() {
           {
             id: "offers-7d",
             label: "Offers sent (7d)",
+            icon: <BadgeCheck className="h-4 w-4" aria-hidden />,
             value: offers7d.current,
             loading: ledger.isPending,
             delta: offers7d.current - offers7d.prior,
@@ -252,33 +266,54 @@ export default function DashboardPage() {
                 hint="Decisions from resume screenings, interviews and manual overrides will show up here."
               />
             ) : (
-              <ul className="divide-y divide-border">
-                {activity.map((row) => {
-                  const meta = stageMeta(row.stage);
-                  const Icon = meta.icon;
-                  return (
-                    <li key={row.id} className="flex items-start gap-3 py-2.5">
-                      <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", meta.tone)} aria-hidden />
-                      <div className="min-w-0 flex-1">
-                        <Link
-                          href={`/candidates/${row.candidate_id}`}
-                          className="text-sm font-medium text-foreground hover:underline"
-                        >
-                          {nameMap[row.candidate_id] ?? "Candidate"}
-                        </Link>
-                        <p className="truncate text-xs text-muted-foreground">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Candidate</TableHead>
+                    <TableHead>Stage</TableHead>
+                    <TableHead>Score</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">When</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {activity.map((row) => {
+                    const meta = stageMeta(row.stage);
+                    return (
+                      <TableRow key={row.id}>
+                        <TableCell>
+                          <Link
+                            href={`/candidates/${row.candidate_id}`}
+                            className="font-medium text-foreground hover:underline"
+                          >
+                            {nameMap[row.candidate_id] ?? "Candidate"}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
                           {row.stage}
-                          {row.score != null ? ` · scored ${row.score}` : ""}
-                          {row.source === "manual" ? " · manual override" : ""}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {timeAgo(row.decided_at)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+                          {row.source === "manual" ? " · manual" : ""}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {row.score != null ? row.score : "—"}
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                              meta.pill,
+                            )}
+                          >
+                            {meta.label}
+                          </span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-right tabular-nums text-muted-foreground">
+                          {timeAgo(row.decided_at)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             )}
           </DashboardSection>
         </div>
@@ -344,19 +379,29 @@ export default function DashboardPage() {
               />
             ) : (
               <ul className="space-y-2">
-                {needsReview.map((row) => (
-                  <li key={row.id}>
-                    <Link
-                      href={`/candidates/${row.candidate_id}`}
-                      className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
-                    >
-                      <span className="truncate font-medium text-foreground">
-                        {nameMap[row.candidate_id] ?? "Candidate"}
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{row.stage}</span>
-                    </Link>
-                  </li>
-                ))}
+                {needsReview.map((row) => {
+                  const meta = stageMeta(row.stage);
+                  return (
+                    <li key={row.id}>
+                      <Link
+                        href={`/candidates/${row.candidate_id}`}
+                        className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
+                      >
+                        <span className="truncate font-medium text-foreground">
+                          {nameMap[row.candidate_id] ?? "Candidate"}
+                        </span>
+                        <span
+                          className={cn(
+                            "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                            meta.pill,
+                          )}
+                        >
+                          {meta.label}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </DashboardSection>
