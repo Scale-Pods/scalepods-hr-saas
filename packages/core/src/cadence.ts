@@ -199,10 +199,9 @@ function clampInt(n: number, min: number, max: number): number {
 /**
  * Normalize a (possibly partial) config against a tier: drop unknown stages,
  * coerce enabled to boolean, subset channels to the tier's entitlement, and
- * clamp timing to bounded integers. The result is overrides-only: fields the
- * input omits are not backfilled from the tier defaults, and timing knobs are
- * only forwarded for stages that own them on tiers whose editability allows
- * timing.
+ * clamp timing to bounded integers. Optional timing knobs are only forwarded
+ * for stages that own them on tiers whose editability allows timing; every
+ * other field the input omits falls back to the tier default.
  */
 export function clampCadence(config: CadenceConfig, tier: Tier): CadenceConfig {
   const defaults = defaultCadenceForTier(tier);
