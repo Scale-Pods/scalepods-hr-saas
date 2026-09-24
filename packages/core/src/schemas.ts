@@ -15,6 +15,22 @@ export const campaignRoundSchema = z.object({
   assignment_deadline_hours: z.number().int().min(1).max(168).optional().nullable(),
 });
 
+export const cadenceChannelSchema = z.enum(["email", "whatsapp", "voice_call"]);
+
+export const cadenceConfigSchema = z
+  .object({
+    stages: z.record(
+      z.string(),
+      z.object({
+        enabled: z.boolean().optional(),
+        channels: z.array(cadenceChannelSchema).optional(),
+        hoursBefore: z.number().int().min(0).max(168).optional(),
+        sendHour: z.number().int().min(0).max(23).optional(),
+      }),
+    ),
+  })
+  .optional();
+
 export const campaignCreateSchema = z.object({
   action: z.literal("create"),
   account_id: z.string().uuid(),
@@ -22,6 +38,7 @@ export const campaignCreateSchema = z.object({
   jd_text: z.string().min(1),
   number_of_rounds: z.number().int().min(1).max(6),
   rounds: z.array(campaignRoundSchema),
+  cadence_config: cadenceConfigSchema,
 });
 
 export const campaignUpdateSchema = z.object({
