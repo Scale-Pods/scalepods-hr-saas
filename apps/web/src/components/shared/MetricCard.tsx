@@ -9,20 +9,12 @@ import { cn } from "@/lib/utils";
 
 export type MetricTone = "campaigns" | "candidates" | "interviews" | "credits" | "custom";
 
-const TONE_TILES: Record<MetricTone, string> = {
-  campaigns: "bg-gradient-to-br from-[#6c5ce7] to-[#4c3fc7]",
-  candidates: "bg-gradient-to-br from-[#8b7af6] to-[#5b4bd6]",
-  interviews: "bg-gradient-to-br from-[#a78bfa] to-[#7c5ce0]",
-  credits: "bg-gradient-to-br from-[#c9e85c] to-[#a7c63b]",
-  custom: "bg-gradient-to-br from-[#6c5ce7] to-[#c9e85c]",
-};
-
-const TONE_ICON: Record<MetricTone, string> = {
-  campaigns: "text-white",
-  candidates: "text-white",
-  interviews: "text-white",
-  credits: "text-[#17161f]",
-  custom: "text-white",
+const TONE_ACCENT: Record<MetricTone, string> = {
+  campaigns: "var(--blue)",
+  candidates: "var(--green)",
+  interviews: "var(--indigo)",
+  credits: "var(--orange)",
+  custom: "var(--purple)",
 };
 
 export interface MetricCardProps {
@@ -53,6 +45,7 @@ export function MetricCard({
   tone,
 }: MetricCardProps) {
   const gradientId = useId();
+  const accent = TONE_ACCENT[tone ?? "custom"];
 
   const DeltaIcon = delta == null || delta === 0 ? Minus : delta > 0 ? TrendingUp : TrendingDown;
   const deltaTone =
@@ -62,6 +55,11 @@ export function MetricCard({
         ? "text-success"
         : "text-destructive";
   const deltaLabel = delta == null ? "" : delta > 0 ? `+${delta}` : `${delta}`;
+
+  const iconChipStyle = {
+    backgroundColor: `color-mix(in srgb, ${accent} 16%, transparent)`,
+    color: accent,
+  };
 
   return (
     <Card
@@ -78,14 +76,15 @@ export function MetricCard({
             }
           : undefined
       }
+      style={{ "--tile-accent": accent } as React.CSSProperties}
       className={cn(
-        "flex flex-col gap-2 p-5",
-        onClick && "cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md",
+        "metric-tile flex h-full flex-col gap-2 p-5",
+        onClick && "cursor-pointer",
         className,
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="metric-label">{label}</p>
         {icon ? (
           description ? (
             <Popover>
@@ -93,12 +92,10 @@ export function MetricCard({
                 <button
                   type="button"
                   aria-label={`What does ${label} mean`}
+                  style={iconChipStyle}
                   className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
-                    TONE_ICON[tone ?? "custom"],
-                    "shadow-md shadow-black/10",
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full shadow-sm transition-opacity hover:opacity-85",
                     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                    TONE_TILES[tone ?? "custom"],
                   )}
                 >
                   {icon}
@@ -110,12 +107,8 @@ export function MetricCard({
             </Popover>
           ) : (
             <span
-              className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
-                TONE_ICON[tone ?? "custom"],
-                "shadow-md shadow-black/10",
-                TONE_TILES[tone ?? "custom"],
-              )}
+              style={iconChipStyle}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full shadow-sm"
             >
               {icon}
             </span>
@@ -125,20 +118,18 @@ export function MetricCard({
 
       {loading ? (
         <div className="space-y-2">
-          <div className="h-8 w-24 animate-pulse rounded bg-muted" />
-          <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+          <div className="h-8 w-24 animate-pulse rounded-full bg-fill-quaternary" />
+          <div className="h-4 w-40 animate-pulse rounded-full bg-fill-quaternary" />
         </div>
       ) : (
         <>
           <div className="flex flex-wrap items-baseline gap-2">
-            <p className="text-3xl font-semibold tabular-nums tracking-tight text-foreground">
-              {value}
-            </p>
+            <p className="metric-value">{value}</p>
             {delta != null && delta !== 0 ? (
               <span
                 role="img"
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums",
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
                   deltaTone,
                 )}
                 aria-label={`${deltaLabel} vs previous period`}
@@ -148,10 +139,10 @@ export function MetricCard({
               </span>
             ) : null}
           </div>
-          {sub ? <p className="text-xs text-muted-foreground">&nbsp;</p> : null}
+          {sub ? <p className="metric-label text-xs">&nbsp;</p> : null}
           {trend && trend.length > 1 ? (
             <div
-              className="-mx-1 h-10"
+              className="-mx-1 mt-1 h-10"
               role="img"
               aria-label={`${label} trend: ${trend.join(", ")}`}
             >
@@ -162,14 +153,14 @@ export function MetricCard({
                 >
                   <defs>
                     <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
+                      <stop offset="0%" stopColor={accent} stopOpacity={0.3} />
+                      <stop offset="100%" stopColor={accent} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <Area
                     type="monotone"
                     dataKey="v"
-                    stroke="var(--chart-1)"
+                    stroke={accent}
                     strokeWidth={1.5}
                     fill={`url(#${gradientId})`}
                     isAnimationActive={false}
@@ -178,7 +169,7 @@ export function MetricCard({
               </ResponsiveContainer>
             </div>
           ) : null}
-          {sub ? <p className="text-xs text-muted-foreground">{sub}</p> : null}
+          {sub ? <p className="text-xs text-label-secondary">{sub}</p> : null}
         </>
       )}
     </Card>

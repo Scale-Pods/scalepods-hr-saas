@@ -2,10 +2,6 @@ import type { Reports } from "@scalepods/core";
 import { summarizeTimeToHireCard } from "@scalepods/core";
 import { EmptyState } from "@/components/shared/EmptyState";
 
-function metric(value: number | null, unit: string): string {
-  return value == null ? "—" : `${value} ${unit}`;
-}
-
 /** Spec Section 13b PATCH 1 time-to-hire card. */
 export function TimeToHireCard({ reports }: { reports: Reports }) {
   const card = summarizeTimeToHireCard(reports);
@@ -21,19 +17,25 @@ export function TimeToHireCard({ reports }: { reports: Reports }) {
   const metrics = [
     {
       label: "Intake → signed offer",
-      value: metric(card.avg_days_intake_to_offer_signed, "days"),
+      value: card.avg_days_intake_to_offer_signed,
+      unit: "days",
     },
-    { label: "Avg. hours per round", value: metric(card.avg_hours_per_round, "hrs") },
-    { label: "No-shows", value: String(card.no_show_count) },
-    { label: "Platform faults", value: String(card.platform_fault_count) },
+    { label: "Avg. hours per round", value: card.avg_hours_per_round, unit: "hrs" },
+    { label: "No-shows", value: card.no_show_count, unit: null },
+    { label: "Platform faults", value: card.platform_fault_count, unit: null },
   ];
 
   return (
     <dl className="grid grid-cols-2 gap-4">
       {metrics.map((m) => (
         <div key={m.label}>
-          <dt className="text-xs text-muted-foreground">{m.label}</dt>
-          <dd className="mt-0.5 text-2xl font-semibold tabular-nums text-foreground">{m.value}</dd>
+          <dt className="metric-label">{m.label}</dt>
+          <dd className="mt-0.5 flex items-baseline gap-1.5">
+            <span className="text-[34px] font-light leading-none tracking-[-0.03em] tabular-nums text-label-primary">
+              {m.value == null ? "—" : String(m.value)}
+            </span>
+            {m.unit ? <span className="text-xs text-label-secondary">{m.unit}</span> : null}
+          </dd>
         </div>
       ))}
     </dl>

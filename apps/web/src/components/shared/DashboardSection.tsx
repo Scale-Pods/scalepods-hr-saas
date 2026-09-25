@@ -23,8 +23,8 @@ export function DashboardSection({
     <section className={cn("py-5", className)}>
       <header className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-3">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-foreground">{title}</h2>
-          {subtitle ? <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p> : null}
+          <h2 className="text-xl font-semibold tracking-[-0.022em] text-foreground">{title}</h2>
+          {subtitle ? <p className="mt-0.5 text-sm text-label-secondary">{subtitle}</p> : null}
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
       </header>

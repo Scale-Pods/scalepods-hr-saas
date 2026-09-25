@@ -28,13 +28,13 @@ const BILLING_STATUS_TONE: Record<
     label: string;
   }
 > = {
-  active: { variant: "secondary", className: "bg-success/10 text-success", label: "Active" },
+  active: { variant: "secondary", className: "bg-success/15 text-success", label: "Active" },
   trialing: { variant: "default", label: "Trialing" },
-  past_due: { variant: "secondary", className: "bg-warning/10 text-warning", label: "Past due" },
+  past_due: { variant: "secondary", className: "bg-warning/15 text-warning", label: "Past due" },
   canceled: { variant: "destructive", label: "Canceled" },
   incomplete: {
     variant: "secondary",
-    className: "bg-warning/10 text-warning",
+    className: "bg-warning/15 text-warning",
     label: "Incomplete",
   },
 };
@@ -147,7 +147,7 @@ export default function BillingPage() {
         subtitle={
           <>
             Current plan{" "}
-            <Badge variant="secondary" className="bg-accent text-primary">
+            <Badge variant="secondary" className="bg-primary/15 text-primary">
               {TIER_LIMITS[tier].label}
             </Badge>
             <Badge variant={statusMeta.variant} className={cn("ml-1", statusMeta.className)}>
@@ -270,7 +270,7 @@ function TierCompareModal({
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-semibold text-foreground">{limits.label}</p>
                     {isCurrent ? (
-                      <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px]">
+                      <Badge variant="secondary" className="bg-primary/15 text-primary text-[10px]">
                         Current
                       </Badge>
                     ) : null}

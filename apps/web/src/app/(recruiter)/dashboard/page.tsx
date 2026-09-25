@@ -51,10 +51,10 @@ function roundTypeLabel(t: string | null): string {
 function stageMeta(stage: string) {
   const s = stage.toLowerCase();
   if (s.includes("reject") || s.includes("fail"))
-    return { pill: "bg-destructive/10 text-destructive", label: "Rejected" };
+    return { pill: "bg-destructive/15 text-destructive", label: "Rejected" };
   if (s.includes("offer") || s.includes("pass"))
-    return { pill: "bg-success/10 text-success", label: s.includes("offer") ? "Offer" : "Passed" };
-  return { pill: "bg-chart-1/10 text-chart-1", label: "In progress" };
+    return { pill: "bg-success/15 text-success", label: s.includes("offer") ? "Offer" : "Passed" };
+  return { pill: "bg-chart-1/15 text-chart-1", label: "In progress" };
 }
 
 export default function DashboardPage() {
@@ -385,7 +385,7 @@ export default function DashboardPage() {
                     <li key={row.id}>
                       <Link
                         href={`/candidates/${row.candidate_id}`}
-                        className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
+                        className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-fill-tertiary"
                       >
                         <span className="truncate font-medium text-foreground">
                           {nameMap[row.candidate_id] ?? "Candidate"}

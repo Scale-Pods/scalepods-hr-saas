@@ -14,16 +14,16 @@ export function EmptyState({ icon, title, hint, action, className }: EmptyStateP
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/40 px-6 py-10 text-center",
+        "flex flex-col items-center justify-center gap-2 px-6 py-10 text-center",
         className,
       )}
     >
-      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-fill-quaternary text-label-secondary">
         {icon ?? <Inbox className="h-5 w-5" aria-hidden />}
       </span>
-      <p className="text-sm font-medium text-foreground">{title}</p>
+      <p className="text-sm font-semibold tracking-[-0.01em] text-foreground">{title}</p>
       {hint ? (
-        <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">{hint}</p>
+        <p className="max-w-sm text-sm leading-relaxed text-label-secondary">{hint}</p>
       ) : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>

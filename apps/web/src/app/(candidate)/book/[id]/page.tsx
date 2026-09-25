@@ -102,9 +102,7 @@ export default function BookPage() {
   if (view === "error") return <ErrorCard message={error ?? undefined} />;
   if (view === "loading") {
     return (
-      <div className="py-20 text-center text-sm text-muted-foreground">
-        Loading booking details…
-      </div>
+      <div className="py-20 text-center text-sm text-label-secondary">Loading booking details…</div>
     );
   }
   if (view === "booked" && (success || ctx)) {
@@ -112,12 +110,14 @@ export default function BookPage() {
     const meetLink = r?.meet_link ?? ctx?.round_instance.meet_link ?? null;
     return (
       <div className="py-12 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-2xl">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-fill-quaternary/70 text-2xl">
           ✓
         </div>
-        <h1 className="text-lg font-semibold text-foreground">Your slot is booked!</h1>
+        <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">
+          Your slot is booked!
+        </h1>
         {r?.scheduled_at && (
-          <p className="mt-2 text-sm text-muted-foreground">{formatDateTime(r?.scheduled_at)}</p>
+          <p className="mt-2 text-sm text-label-secondary">{formatDateTime(r?.scheduled_at)}</p>
         )}
         {meetLink && (
           <p className="mt-3">
@@ -125,14 +125,14 @@ export default function BookPage() {
               href={meetLink}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="inline-flex items-center gap-1.5 rounded-[14px] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               Join via Google Meet
             </a>
           </p>
         )}
         {!meetLink && (
-          <p className="mt-3 text-sm text-muted-foreground">
+          <p className="mt-3 text-sm text-label-secondary">
             The interview link will be emailed to you at 9 AM on the interview day.
           </p>
         )}
@@ -151,8 +151,8 @@ export default function BookPage() {
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-foreground">Pick a time</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">Pick a time</h1>
+      <p className="mt-1.5 text-sm text-label-secondary">
         {mode === "reschedule"
           ? "Select a new slot below:"
           : "Choose a slot to book your interview."}
@@ -270,9 +270,9 @@ function SlotPicker({
   };
 
   return (
-    <div className="mt-6 space-y-4">
+    <div className="glass-panel mt-6 space-y-5 rounded-[28px] p-5 sm:p-6">
       <div>
-        <p className="mb-1 text-xs font-medium text-muted-foreground">Select a day</p>
+        <p className="mb-1 text-xs font-medium text-label-secondary">Select a day</p>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {next10.map((d) => {
             const key = d.toISOString().slice(0, 10);
@@ -281,17 +281,17 @@ function SlotPicker({
                 type="button"
                 key={key}
                 onClick={() => setActiveDay(key)}
-                className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
                   activeDay === key
-                    ? "border-primary bg-accent text-accent-foreground"
-                    : "border-border bg-card text-muted-foreground hover:bg-muted"
+                    ? "border-transparent bg-primary text-primary-foreground"
+                    : "border-border/60 bg-fill-quaternary text-foreground hover:bg-fill-secondary"
                 }`}
               >
                 <div className="text-[11px] uppercase">
                   {d.toLocaleDateString(undefined, { weekday: "short" })}
                 </div>
                 <div>{d.getDate()}</div>
-                <div className="text-[10px] text-muted-foreground">
+                <div className="text-[10px] text-label-tertiary">
                   {d.toLocaleDateString(undefined, { month: "short" })}
                 </div>
               </button>
@@ -301,7 +301,7 @@ function SlotPicker({
       </div>
 
       <div>
-        <p className="mb-1 text-xs font-medium text-muted-foreground">Pick a slot · {tz}</p>
+        <p className="mb-1 text-xs font-medium text-label-secondary">Pick a slot · {tz}</p>
         {loadingSlots ? (
           <div className="space-y-2 py-6">
             <Skeleton className="h-8 w-full" />
@@ -321,10 +321,10 @@ function SlotPicker({
                   key={s.start}
                   onClick={() => setSelected(active ? null : { start: s.start, end: s.end })}
                   disabled={loading}
-                  className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${
+                  className={`rounded-xl border px-2 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                     active
-                      ? "border-primary bg-accent text-accent-foreground"
-                      : "border-border bg-card text-foreground hover:bg-muted"
+                      ? "border-transparent bg-primary text-primary-foreground"
+                      : "border-border/60 bg-fill-quaternary text-foreground hover:bg-fill-secondary"
                   }`}
                 >
                   {formatTime(s.start)} – {formatTime(s.end)}

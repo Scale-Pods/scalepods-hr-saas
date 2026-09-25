@@ -20,9 +20,7 @@ export function NavList({ pathname, collapsed = false, onNavigate }: NavListProp
       {collapsed ? (
         <div className="mx-3 mb-1 h-px bg-sidebar-border" />
       ) : (
-        <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
-          Recruiter
-        </p>
+        <p className="nav-section-label">Recruiter</p>
       )}
       {RECRUITER_NAV.map((item) => {
         const active = isNavItemActive(pathname, item);
@@ -41,11 +39,9 @@ export function NavList({ pathname, collapsed = false, onNavigate }: NavListProp
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "group flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              "nav-item",
               collapsed && "justify-center px-2",
-              active
-                ? "bg-accent text-accent-foreground dark:bg-sidebar-primary dark:text-white"
-                : "text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+              active && "nav-item-active",
             )}
           >
             {collapsed ? (

@@ -41,14 +41,14 @@ export function SourceEffectivenessTable({ reports }: { reports: Reports }) {
       <TableBody>
         {rows.map((row) => (
           <TableRow key={`${row.channel}-${row.stage ?? "all"}`}>
-            <TableCell className="font-medium text-foreground">{row.channel}</TableCell>
-            <TableCell className="text-xs text-muted-foreground">{row.stage ?? "—"}</TableCell>
+            <TableCell className="font-medium text-label-primary">{row.channel}</TableCell>
+            <TableCell className="text-xs text-label-secondary">{row.stage ?? "—"}</TableCell>
             <TableCell className="text-right tabular-nums">{row.messages_sent}</TableCell>
             <TableCell className="text-right tabular-nums">{row.delivered}</TableCell>
-            <TableCell className="text-right tabular-nums text-muted-foreground">
+            <TableCell className="text-right tabular-nums text-label-secondary">
               {row.fell_back}
             </TableCell>
-            <TableCell className="text-right font-medium tabular-nums">
+            <TableCell className="text-right font-medium tabular-nums text-label-primary">
               {rateLabel(row.delivery_rate_pct)}
             </TableCell>
           </TableRow>

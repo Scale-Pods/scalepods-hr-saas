@@ -3,7 +3,7 @@
 import { AuthError } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
+import { showToast } from "@/components/shared/TierLimitToast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (session) {
     router.replace("/dashboard");
@@ -27,6 +28,7 @@ export default function AuthPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg(null);
     setBusy(true);
     try {
       const supabase = supabaseBrowser();
@@ -44,7 +46,13 @@ export default function AuthPage() {
         router.push("/dashboard");
       }
     } catch (err) {
-      showErrorToast(err instanceof AuthError ? err.message : err);
+      const msg =
+        err instanceof AuthError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "An unexpected error occurred. Please try again.";
+      setErrorMsg(msg);
     } finally {
       setBusy(false);
     }
@@ -73,6 +81,14 @@ export default function AuthPage() {
         </p>
 
         <form onSubmit={submit} className="mt-5 space-y-3">
+          {errorMsg && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive"
+            >
+              {errorMsg}
+            </div>
+          )}
           <div>
             <label htmlFor="email" className="mb-1 block text-xs font-medium text-muted-foreground">
               Work email

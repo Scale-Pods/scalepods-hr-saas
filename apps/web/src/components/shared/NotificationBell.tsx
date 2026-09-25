@@ -35,11 +35,11 @@ export function NotificationBell() {
         <button
           type="button"
           aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ""}`}
-          className="relative inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="relative inline-flex size-8 items-center justify-center rounded-[10px] bg-fill-tertiary text-label-secondary transition-colors hover:bg-fill-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           <Bell className="h-4 w-4" aria-hidden />
           {!isPending && !isError && unread > 0 ? (
-            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
               {unread > 9 ? "9+" : unread}
             </span>
           ) : null}

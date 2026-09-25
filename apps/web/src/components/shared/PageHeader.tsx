@@ -13,8 +13,12 @@ export function PageHeader({ title, subtitle, actions, className }: PageHeaderPr
       className={cn("flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between", className)}
     >
       <div className="min-w-0">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">{title}</h1>
-        {subtitle ? <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p> : null}
+        <h1 className="text-[28px] font-bold leading-[1.21] tracking-[-0.022em] text-foreground">
+          {title}
+        </h1>
+        {subtitle ? (
+          <p className="mt-1 text-sm tracking-[-0.011em] text-label-secondary">{subtitle}</p>
+        ) : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </header>

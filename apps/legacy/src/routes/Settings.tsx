@@ -78,7 +78,7 @@ export function SettingsPage() {
 
   const connectCalendar = () => {
     if (!user) return;
-    window.location.href = webhookUrl("calendar/connect", { account_id: user.id });
+    window.location.href = webhookUrl("calendar/oauth/start", { account_id: user.id });
   };
 
   const savePrefs = async () => {

@@ -1,15 +1,17 @@
 "use client";
 
 import type { SessionContext } from "@scalepods/core";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetchSessionContext } from "@/features/candidate/api";
 
 function ErrorCard({ message }: { message?: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-6 text-center shadow-sm">
-      <h1 className="text-sm font-semibold text-foreground">This link isn&apos;t working</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
+    <div className="glass-surface rounded-[24px] p-6 text-center">
+      <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">
+        This link isn&apos;t working
+      </h1>
+      <p className="mt-1.5 text-sm text-label-secondary">
         {message ?? "The link may have expired. Ask the recruiter for a fresh link."}
       </p>
     </div>
@@ -18,14 +20,13 @@ function ErrorCard({ message }: { message?: string }) {
 
 export default function InterviewThanksPage() {
   const { session_id } = useParams<{ session_id: string }>();
-  const token = useSearchParams().get("tok") ?? "";
   const [ctx, setCtx] = useState<SessionContext | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!session_id || !token) return;
+    if (!session_id) return;
     let cancelled = false;
-    fetchSessionContext(session_id, token)
+    fetchSessionContext(session_id)
       .then((c) => {
         if (!cancelled) setCtx(c);
       })
@@ -35,7 +36,7 @@ export default function InterviewThanksPage() {
     return () => {
       cancelled = true;
     };
-  }, [session_id, token]);
+  }, [session_id]);
 
   const nRounds = ctx?.campaign.number_of_rounds ?? 0;
   const n = ctx?.round.round_number ?? 0;
@@ -44,11 +45,13 @@ export default function InterviewThanksPage() {
 
   return (
     <div className="py-12 text-center">
-      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-2xl">
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-fill-quaternary/70 text-2xl">
         🎉
       </div>
-      <h1 className="text-lg font-semibold text-foreground">You&apos;re all done!</h1>
-      <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+      <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">
+        You&apos;re all done!
+      </h1>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-label-secondary">
         {ctx
           ? n >= nRounds
             ? "That was your last round — the recruiter will be in touch soon."

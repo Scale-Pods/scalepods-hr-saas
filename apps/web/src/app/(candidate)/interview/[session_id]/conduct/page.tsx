@@ -1,7 +1,7 @@
 "use client";
 
 import type { SessionContext } from "@scalepods/core";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,9 +20,7 @@ interface InterviewQuestion {
   format: "open_ended" | "mcq" | "rating";
   options?: string[];
   is_final_question: boolean;
-}
-interface InterviewFinish {
-  type: "finished";
+  interviewer_text?: string;
 }
 interface TranscriptTurn {
   q: string;
@@ -44,7 +42,6 @@ function ErrorCard({ message, title }: { message?: string; title?: string }) {
 
 export default function InterviewConductPage() {
   const { session_id } = useParams<{ session_id: string }>();
-  const token = useSearchParams().get("tok") ?? "";
   const router = useRouter();
 
   const [ctx, setCtx] = useState<SessionContext | null>(null);
@@ -57,18 +54,34 @@ export default function InterviewConductPage() {
   const [answer, setAnswer] = useState("");
   const [mcq, setMcq] = useState<number | null>(null);
   const [visits, setVisits] = useState(0);
+  const [recording, setRecording] = useState(false);
+  const [muted, setMuted] = useState(false);
 
   const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const transcriptRef = useRef(transcript);
   transcriptRef.current = transcript;
 
   useEffect(() => {
-    if (!session_id || !token) {
-      setError("Missing session or token.");
+    return () => {
+      try {
+        window.speechSynthesis?.cancel();
+      } catch {
+        /* ignore */
+      }
+      const tracks = streamRef.current?.getTracks();
+      if (tracks) for (const t of tracks) t.stop();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!session_id) {
+      setError("Missing session id.");
       return;
     }
     let cancelled = false;
-    fetchSessionContext(session_id, token)
+    fetchSessionContext(session_id)
       .then((c) => {
         if (cancelled) return;
         setCtx(c);
@@ -83,59 +96,88 @@ export default function InterviewConductPage() {
     return () => {
       cancelled = true;
     };
-  }, [session_id, token]);
+  }, [session_id]);
 
   // Proctoring: log tab switches
   useEffect(() => {
-    if (!session_id || !token) return;
+    if (!session_id) return;
     const onHide = () => {
       if (!document.hidden) return;
       setVisits((v) => v + 1);
       void insertProctoringEvent(
         session_id,
-        token,
         "tab_switch",
         `tab switched away ${visits + 1} time(s)`,
       );
     };
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
-  }, [session_id, token, visits]);
+  }, [session_id, visits]);
 
   const flushChunk = useCallback(
     async (blob: Blob) => {
-      const name = `rec-${Date.now()}.webm`;
-      const { uploads } = await signUploads(token, "recording", session_id, [name]);
-      const target = uploads.find((u) => u.name === name);
-      if (target)
-        await fetch(target.url, {
-          method: "PUT",
-          body: blob,
-          headers: { "Content-Type": "audio/webm" },
-        }).catch(() => {});
+      try {
+        const name = `rec-${Date.now()}.webm`;
+        const { uploads } = await signUploads("recording", session_id, [name]);
+        const target = uploads.find((u) => u.name === name);
+        if (target)
+          await fetch(target.url, {
+            method: "PUT",
+            body: blob,
+            headers: { "Content-Type": "audio/webm" },
+          });
+      } catch {
+        /* best-effort - recording upload unavailable */
+      }
     },
-    [session_id, token],
+    [session_id],
   );
+
+  const speakText = useCallback(
+    (text: string) => {
+      if (muted || !text.trim()) return;
+      try {
+        const synth = window.speechSynthesis;
+        if (!synth) return;
+        synth.cancel();
+        synth.speak(new SpeechSynthesisUtterance(text));
+      } catch {
+        /* ignore */
+      }
+    },
+    [muted],
+  );
+
+  useEffect(() => {
+    if (!recording || !streamRef.current || !videoRef.current) return;
+    videoRef.current.srcObject = streamRef.current;
+    void videoRef.current.play().catch(() => {});
+  }, [recording]);
 
   const startRecording = useCallback(async () => {
     try {
-      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(mic, { mimeType: "audio/webm" });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      streamRef.current = stream;
+      setRecording(true);
+      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       rec.ondataavailable = (e) => {
-        if (e.data.size > 0 && session_id && token) void flushChunk(e.data);
+        if (e.data.size > 0 && session_id) void flushChunk(e.data);
       };
       rec.start(10000);
       mediaRecRef.current = rec;
     } catch {
       /* best-effort */
     }
-  }, [session_id, token, flushChunk]);
+  }, [session_id, flushChunk]);
 
   const stopRecording = useCallback(() => {
     mediaRecRef.current?.stop();
-    const tracks = mediaRecRef.current?.stream.getTracks();
+    const tracks = streamRef.current?.getTracks();
     if (tracks) for (const t of tracks) t.stop();
     mediaRecRef.current = null;
+    streamRef.current = null;
+    setRecording(false);
   }, []);
 
   const submitTurn = async (responseTo: string | null, answerText: string) => {
@@ -153,12 +195,16 @@ export default function InterviewConductPage() {
         finishInterview();
         return;
       }
-      const q = data as unknown as InterviewQuestion;
-      setQuestion(q);
+      const q = data as unknown as Partial<InterviewQuestion>;
+      if (!q || typeof q.prompt !== "string" || q.prompt.trim().length === 0) {
+        throw new Error("The interview engine returned an unexpected response.");
+      }
+      setQuestion(q as InterviewQuestion);
       setAnswer("");
       setMcq(null);
       setStatus("answering");
       void startRecording();
+      speakText([(q as InterviewQuestion).interviewer_text, q.prompt].filter(Boolean).join(" "));
     } catch (err) {
       setStatus("failed");
       setError(err instanceof Error ? err.message : "Could not reach the interview engine.");
@@ -181,7 +227,11 @@ export default function InterviewConductPage() {
     const qid = question.question_id;
     if (question.format === "mcq" && mcq == null) return;
     setStatus("submitting");
-    void submitTurn(qid, text);
+    if (question.is_final_question) {
+      void finishInterview();
+    } else {
+      void submitTurn(qid, text);
+    }
   };
 
   const finishInterview = async () => {
@@ -193,7 +243,7 @@ export default function InterviewConductPage() {
         session_id,
         candidate_id: ctx?.candidate.id ?? "",
       });
-      router.push(`/interview/${session_id}/thanks?tok=${token}`);
+      router.push(`/interview/${session_id}/thanks`);
     } catch {
       setStatus("failed");
       setError("Interview complete, but the evaluation step failed.");
@@ -234,10 +284,28 @@ export default function InterviewConductPage() {
     return <p className="py-10 text-center text-sm text-muted-foreground">Thanks — wrapping up…</p>;
   }
 
-  const q = question as InterviewQuestion;
+  if (!question) {
+    return (
+      <div className="py-20 text-center text-sm text-muted-foreground">
+        Preparing the first question…
+      </div>
+    );
+  }
+
+  const q = question;
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setMuted((m) => !m)}
+          className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+        >
+          {muted ? "Unmute speaker" : "Mute speaker"}
+        </button>
+      </div>
+
       <div className="rounded-xl bg-foreground p-4 text-background">
         <div className="mb-1 flex items-center gap-2">
           <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
@@ -245,13 +313,37 @@ export default function InterviewConductPage() {
             AI Interviewer
           </span>
         </div>
-        <p className="text-sm leading-relaxed">{q.prompt}</p>
+        {q.interviewer_text && (
+          <p className="text-sm leading-relaxed text-background/70">{q.interviewer_text}</p>
+        )}
+        <p className={`text-sm leading-relaxed ${q.interviewer_text ? "mt-2 font-medium" : ""}`}>
+          {q.prompt}
+        </p>
         {transcript.length > 0 && (
           <p className="mt-2 text-[11px] text-muted-foreground">
             {transcript.length} question{transcript.length > 1 ? "s" : ""} answered so far
           </p>
         )}
       </div>
+
+      {(recording || streamRef.current) && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <div className="relative h-36 w-28 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-lg">
+            <video
+              ref={videoRef}
+              muted
+              playsInline
+              className="h-full w-full -scale-x-100 object-cover"
+            />
+            {recording && (
+              <span className="absolute left-2 top-2 flex items-center gap-1.5 rounded-full bg-red-600/90 px-2 py-0.5 text-[10px] font-semibold text-white">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                REC
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {q.format === "mcq" && q.options && (
         <div className="space-y-2">
@@ -260,10 +352,10 @@ export default function InterviewConductPage() {
               type="button"
               key={opt}
               onClick={() => setMcq(i)}
-              className={`w-full rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+              className={`w-full rounded-[12px] border px-3 py-2.5 text-left text-sm transition-colors ${
                 mcq === i
-                  ? "border-primary bg-accent text-accent-foreground"
-                  : "border-border bg-card text-foreground hover:bg-muted"
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-border bg-card text-foreground hover:bg-fill-tertiary"
               }`}
             >
               {String.fromCharCode(65 + i)}. {opt}
@@ -279,10 +371,10 @@ export default function InterviewConductPage() {
               type="button"
               key={n}
               onClick={() => setMcq(n)}
-              className={`h-9 w-9 rounded-lg border text-sm font-medium transition-colors ${
+              className={`h-9 w-9 rounded-[10px] border text-sm font-medium transition-colors ${
                 mcq === n
-                  ? "border-primary bg-accent text-accent-foreground"
-                  : "border-border text-muted-foreground hover:bg-muted"
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-border text-muted-foreground hover:bg-fill-tertiary"
               }`}
             >
               {n}
@@ -297,7 +389,7 @@ export default function InterviewConductPage() {
           onChange={(e) => setAnswer(e.target.value)}
           rows={4}
           placeholder="Speak, or type your answer here…"
-          className="w-full rounded-lg border border-border p-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          className="apple-input w-full"
         />
       )}
 
@@ -306,6 +398,7 @@ export default function InterviewConductPage() {
         onClick={submitAnswer}
         disabled={
           status === "submitting" ||
+          status === "finishing" ||
           (q.format === "open_ended" && !answer.trim()) ||
           (q.format === "mcq" && mcq == null)
         }

@@ -43,12 +43,14 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
   };
 
   const sidebar = (
-    <div className="flex h-full flex-col bg-sidebar">
+    <div className="sidebar flex h-full flex-col">
       <div className="border-b border-sidebar-border px-4 py-4">
         <Link href="/dashboard" className="flex items-center gap-2.5">
           <Logo />
           {!collapsed ? (
-            <span className="text-base font-semibold text-sidebar-foreground">ScalePods</span>
+            <span className="text-base font-semibold tracking-[-0.022em] text-sidebar-foreground">
+              ScalePods
+            </span>
           ) : null}
         </Link>
       </div>
@@ -62,27 +64,26 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
       <div className="border-t border-sidebar-border p-3">
         <div
           className={cn(
-            "mb-2 flex items-center gap-2 rounded-xl bg-sidebar-accent p-2",
+            "mb-2 flex items-center gap-2 rounded-xl bg-fill-tertiary/70 p-2",
             collapsed && "justify-center bg-transparent p-0",
           )}
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-xs font-semibold text-white">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fill-secondary text-xs font-semibold text-foreground">
             {initials(email)}
           </span>
           {!collapsed ? (
             <div className="min-w-0">
-              <p className="truncate text-xs font-semibold text-sidebar-foreground">{email}</p>
-              <p className="text-[11px] text-sidebar-foreground/55">{tierLabel} plan</p>
+              <p className="truncate text-xs font-semibold tracking-[-0.01em] text-foreground">
+                {email}
+              </p>
+              <p className="text-[11px] text-label-secondary">{tierLabel} plan</p>
             </div>
           ) : null}
         </div>
         <button
           type="button"
           onClick={handleSignOut}
-          className={cn(
-            "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-            collapsed && "justify-center px-0",
-          )}
+          className={cn("nav-item w-full", collapsed && "justify-center px-0")}
         >
           <LogOut className="h-3.5 w-3.5 shrink-0" aria-hidden />
           {!collapsed ? <span>Sign out</span> : null}
@@ -107,14 +108,14 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
     <div className="min-h-screen bg-background">
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-30 hidden border-r border-sidebar-border transition-[width] duration-200 lg:block",
+          "sidebar fixed inset-y-0 left-0 z-30 hidden border-r border-sidebar-border transition-[width] duration-200 lg:block",
           collapsed ? "w-16" : "w-60",
         )}
       >
         {sidebar}
       </aside>
 
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-card px-4 py-3 lg:hidden">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-separator/60 bg-glass/70 px-4 py-3 backdrop-blur-2xl lg:hidden">
         <Link href="/dashboard" className="flex items-center gap-2">
           <Logo size="sm" />
           <span className="text-sm font-semibold text-foreground">ScalePods</span>
@@ -128,7 +129,7 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
                 <Menu className="h-5 w-5" aria-hidden />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-60 border-sidebar-border bg-sidebar p-0">
+            <SheetContent side="left" className="sidebar w-60 border-sidebar-border p-0">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
               {sidebar}
             </SheetContent>
@@ -138,7 +139,7 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
 
       <header
         className={cn(
-          "sticky top-0 z-20 hidden items-center justify-between gap-3 border-b border-border bg-card px-6 py-3 lg:flex",
+          "sticky top-0 z-20 hidden items-center justify-between gap-3 border-b border-separator/60 bg-glass/70 px-6 py-3 backdrop-blur-2xl lg:flex",
           collapsed ? "lg:ml-16" : "lg:ml-60",
         )}
       >

@@ -108,7 +108,7 @@ export default function CampaignsPage() {
                       className={
                         campaign.status === "on"
                           ? "bg-success/15 text-success"
-                          : "bg-muted text-muted-foreground"
+                          : "bg-fill-tertiary text-secondary-foreground"
                       }
                     >
                       {campaign.status === "on" ? "Active" : "Paused"}

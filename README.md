@@ -88,7 +88,7 @@ Webhook endpoints the frontend calls:
 | `/webhook/interview-engine` | POST | AI interview conduct |
 | `/webhook/score-interview` | POST | AI interview grading |
 | `/webhook/interviewers` | POST | Team member management |
-| `/webhook/calendar/connect` | GET redirect | Calendar OAuth start (backend drives the Google exchange and returns to `/settings?calendar=connected`) |
+| `/webhook/calendar/oauth/start` | GET redirect | Calendar OAuth start (redirects to Google; callback returns to `/settings?calendar=connected`) |
 | `/webhook/reports` | GET | Dashboard usage / `funnel_conversion` / `time_to_hire` / `source_effectiveness` |
 | `/webhook/round-evaluate` | POST | Assignment scoring (from edge fn) |
 

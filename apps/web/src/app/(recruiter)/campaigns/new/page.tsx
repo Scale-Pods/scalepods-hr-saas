@@ -238,7 +238,7 @@ export default function CampaignNewPage() {
                 placeholder="Paste the JD, or upload it below…"
               />
               <div className="mt-2 flex items-center gap-2">
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-separator bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-fill-tertiary">
                   <Upload className="h-3.5 w-3.5" aria-hidden />
                   Upload JD
                   <input type="file" accept=".pdf,.doc,.docx,.txt" className="hidden" disabled />
@@ -394,8 +394,8 @@ export default function CampaignNewPage() {
         </div>
       </SectionCard>
       <p className="text-center text-xs text-muted-foreground">
-        Created via <code className="rounded bg-muted px-1">POST /webhook/campaigns</code> (workflow
-        9).
+        Created via <code className="rounded bg-fill-tertiary px-1">POST /webhook/campaigns</code>{" "}
+        (workflow 9).
       </p>
     </div>
   );

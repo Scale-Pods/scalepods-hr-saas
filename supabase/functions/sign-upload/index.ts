@@ -36,42 +36,55 @@ Deno.serve(async (req) => {
   }
 
   const { token, kind, resource_id, file_names } = body ?? {};
-  if (!token || !kind || !resource_id || !Array.isArray(file_names) || file_names.length === 0) {
-    return json({ error: "token, kind, resource_id and file_names[] are required" }, 400);
+  if (!kind || !resource_id || !Array.isArray(file_names) || file_names.length === 0) {
+    return json({ error: "kind, resource_id and file_names[] are required" }, 400);
   }
   if (kind !== "recording" && kind !== "assignment") {
     return json({ error: "kind must be 'recording' or 'assignment'" }, 400);
   }
 
-  const lookupHash = await (async () => {
-    // SHA-256 hex of the raw token, matching candidate_token_valid in SQL.
-    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-    return Array.from(new Uint8Array(buf))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-  })();
-
-  const { data: tok, error: tokErr } = await supabase
-    .from("candidate_access_tokens")
-    .select("account_id, resource_type, resource_id, expires_at, revoked_at")
-    .eq("token_hash", lookupHash)
-    .eq("resource_id", resource_id)
-    .maybeSingle();
-
-  if (tokErr || !tok) return json({ error: "Invalid or expired link" }, 401);
-  if (tok.revoked_at) return json({ error: "Link has been revoked" }, 401);
-  if (new Date(tok.expires_at).getTime() < Date.now()) return json({ error: "Link has expired" }, 401);
-  const expectedType = kind === "recording" ? "session" : "assignment";
-  if (tok.resource_type !== expectedType) return json({ error: "Link is for a different resource" }, 401);
-
-  const accountId = tok.account_id;
-
+  let accountId: string;
   let pathBase: string;
   let bucket: string;
   if (kind === "recording") {
+    // Interviews authenticate by the session id alone (no token row needed).
     bucket = "interview-recordings";
+    const { data: sess, error: sessErr } = await supabase
+      .from("interview_sessions")
+      .select("account_id, expires_at")
+      .eq("id", resource_id)
+      .maybeSingle();
+    if (sessErr || !sess) return json({ error: "Session not found" }, 404);
+    if (sess.expires_at && new Date(sess.expires_at).getTime() < Date.now()) {
+      return json({ error: "Link has expired" }, 401);
+    }
+    accountId = sess.account_id;
     pathBase = `${accountId}/${resource_id}`;
   } else {
+    // Assignments keep the token-gated flow.
+    if (!token) return json({ error: "token is required for assignment uploads" }, 400);
+
+    const lookupHash = await (async () => {
+      // SHA-256 hex of the raw token, matching candidate_token_valid in SQL.
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+      return Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    })();
+
+    const { data: tok, error: tokErr } = await supabase
+      .from("candidate_access_tokens")
+      .select("account_id, resource_type, resource_id, expires_at, revoked_at")
+      .eq("token_hash", lookupHash)
+      .eq("resource_id", resource_id)
+      .maybeSingle();
+
+    if (tokErr || !tok) return json({ error: "Invalid or expired link" }, 401);
+    if (tok.revoked_at) return json({ error: "Link has been revoked" }, 401);
+    if (new Date(tok.expires_at).getTime() < Date.now()) return json({ error: "Link has expired" }, 401);
+    if (tok.resource_type !== "assignment") return json({ error: "Link is for a different resource" }, 401);
+
+    accountId = tok.account_id;
     bucket = "assignments";
     const { data: ri, error: riErr } = await supabase
       .from("round_instances")

@@ -30,8 +30,10 @@ export function SectionCard({
   return (
     <Card className={cn("gap-0 py-5", className)}>
       <CardHeader className="border-b pb-4">
-        <CardTitle className="text-base">{title}</CardTitle>
-        {subtitle ? <CardDescription className="text-xs">{subtitle}</CardDescription> : null}
+        <CardTitle className="text-xl font-semibold tracking-[-0.022em]">{title}</CardTitle>
+        {subtitle ? (
+          <CardDescription className="text-sm text-label-secondary">{subtitle}</CardDescription>
+        ) : null}
         {action ? <CardAction>{action}</CardAction> : null}
       </CardHeader>
       <CardContent className={cn("pt-4", contentClassName)}>{children}</CardContent>

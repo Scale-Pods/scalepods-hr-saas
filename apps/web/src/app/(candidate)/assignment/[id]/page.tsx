@@ -76,10 +76,10 @@ export default function AssignmentPage() {
       let filePaths: string[] = [];
       if (files.length > 0) {
         const { uploads } = await signUploads(
-          token,
           "assignment",
           roundInstanceId,
           files.map((f) => f.name),
+          token,
         );
         const puts = files.map((f) => {
           const target = uploads.find((u) => u.name === f.name.replace(/[^A-Za-z0-9._-]/g, "_"));
@@ -109,18 +109,20 @@ export default function AssignmentPage() {
   if (error) return <ErrorCard message={error} />;
   if (!ctx) {
     return (
-      <div className="py-20 text-center text-sm text-muted-foreground">Loading assignment…</div>
+      <div className="py-20 text-center text-sm text-label-secondary">Loading assignment…</div>
     );
   }
 
   if (submitted) {
     return (
       <div className="py-12 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-2xl">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-fill-quaternary/70 text-2xl">
           📤
         </div>
-        <h1 className="text-lg font-semibold text-foreground">Assignment submitted</h1>
-        <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+        <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">
+          Assignment submitted
+        </h1>
+        <p className="mx-auto mt-2 max-w-sm text-sm text-label-secondary">
           Thanks! We&apos;ve received your submission for round {ctx.round.round_number}. The
           recruiter will get back to you within a few business days.
         </p>
@@ -131,13 +133,17 @@ export default function AssignmentPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-lg font-semibold text-foreground">Take-home assignment</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">
+          Take-home assignment
+        </h1>
+        <p className="mt-1.5 text-sm text-label-secondary">
           {ctx.campaign.name} · Round {ctx.round.round_number} of {ctx.campaign.number_of_rounds}
         </p>
         {deadline && (
           <p
-            className={`mt-1 text-xs font-medium ${deadline.includes("0h") ? "text-destructive" : "text-muted-foreground"}`}
+            className={`mt-4 text-[34px] font-light leading-none tracking-[-0.03em] tabular-nums ${
+              deadline.includes("0h") ? "text-destructive" : "text-foreground"
+            }`}
           >
             {deadline}
           </p>
@@ -145,35 +151,35 @@ export default function AssignmentPage() {
       </div>
 
       {ctx.campaign.jd_text && (
-        <details className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <details className="rounded-[20px] border border-border/60 bg-glass/70 p-4 backdrop-blur">
           <summary className="cursor-pointer text-sm font-medium text-foreground">
             Read the job description
           </summary>
-          <p className="mt-2 whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-2 whitespace-pre-wrap rounded-[14px] bg-fill-quaternary/70 p-3 text-xs leading-relaxed text-label-secondary">
             {ctx.campaign.jd_text}
           </p>
         </details>
       )}
 
       <div>
-        <p className="mb-1 text-xs font-medium text-muted-foreground">Your answer</p>
+        <p className="mb-1 text-xs font-medium text-label-secondary">Your answer</p>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={7}
           placeholder="Write your submission here… (you can also attach files)"
-          className="w-full rounded-lg border border-border p-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-full rounded-[14px] border border-border/70 bg-fill-quaternary/70 p-3 text-sm text-foreground placeholder:text-label-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
 
       <div>
-        <p className="mb-1 text-xs font-medium text-muted-foreground">Attachments (optional)</p>
+        <p className="mb-1 text-xs font-medium text-label-secondary">Attachments (optional)</p>
         {files.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {files.map((f, i) => (
               <span
                 key={f.name}
-                className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground"
+                className="inline-flex items-center gap-1 rounded-[14px] bg-fill-quaternary/70 px-3 py-2 text-xs text-foreground"
               >
                 {f.name}
                 <button
@@ -190,7 +196,7 @@ export default function AssignmentPage() {
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="w-full rounded-lg border border-dashed border-input bg-card px-3 py-4 text-sm text-muted-foreground hover:border-primary hover:text-primary"
+          className="w-full rounded-[14px] border border-dashed border-border/70 bg-fill-quaternary/70 px-3 py-4 text-sm text-label-secondary transition-colors hover:border-primary hover:bg-fill-secondary hover:text-primary"
         >
           + Add files (PDF, DOCX, images)
         </button>

@@ -62,8 +62,8 @@ export function RoundEditor({
   const live = round.round_type === "ai_interview" || round.round_type === "human_interview";
 
   return (
-    <div className="rounded-xl border border-border bg-muted/50 p-4">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="glass-surface p-4">
+      <p className="mb-3 text-base font-semibold tracking-[-0.022em] text-foreground">
         Round {index + 1}
       </p>
       <div className="grid gap-4 sm:grid-cols-2">

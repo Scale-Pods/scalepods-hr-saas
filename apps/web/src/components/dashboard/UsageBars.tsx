@@ -18,9 +18,12 @@ export function UsageBar({ label, used, granted, sub }: UsageBarProps) {
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
+        <span className="font-medium text-label-primary">{label}</span>
         <span
-          className={cn("text-xs text-muted-foreground", over && "font-semibold text-destructive")}
+          className={cn(
+            "text-xs tabular-nums text-label-secondary",
+            over && "font-semibold text-destructive",
+          )}
         >
           {used.toLocaleString()} / {granted ? granted.toLocaleString() : "unlimited"}
           {sub ? ` · ${sub}` : ""}
@@ -29,7 +32,10 @@ export function UsageBar({ label, used, granted, sub }: UsageBarProps) {
       <Progress
         value={pct}
         aria-label={`${label} usage`}
-        className={cn(over && "[&>[data-slot=progress-indicator]]:bg-destructive")}
+        className={cn(
+          over && "[&>[data-slot=progress-indicator]]:bg-destructive",
+          "[&>[data-slot=progress-indicator]]:transition-all",
+        )}
       />
     </div>
   );

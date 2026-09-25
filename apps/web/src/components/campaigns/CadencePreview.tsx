@@ -20,7 +20,7 @@ export function CadencePreview({ rows }: { rows: CadenceRenderRow[] }) {
   return (
     <Table>
       <TableHeader>
-        <TableRow className="bg-muted">
+        <TableRow className="bg-fill-quaternary/50">
           <TableHead>Day</TableHead>
           <TableHead>Stage</TableHead>
           <TableHead>Channels sent</TableHead>
@@ -29,7 +29,7 @@ export function CadencePreview({ rows }: { rows: CadenceRenderRow[] }) {
       <TableBody>
         {rows.map(({ stage, enabled }) => (
           <TableRow key={stage.key} className={cn(!enabled && "opacity-50")}>
-            <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+            <TableCell className="whitespace-nowrap text-xs text-label-secondary">
               {stage.dayLabel}
             </TableCell>
             <TableCell>
@@ -37,12 +37,12 @@ export function CadencePreview({ rows }: { rows: CadenceRenderRow[] }) {
                 <span
                   className={cn(
                     "h-1.5 w-1.5 shrink-0 rounded-full",
-                    enabled ? "bg-primary" : "bg-muted",
+                    enabled ? "bg-primary" : "bg-fill-quaternary",
                   )}
                 />
                 <div>
                   <p className="font-medium text-foreground">{stage.label}</p>
-                  <p className="text-xs text-muted-foreground">{stage.description}</p>
+                  <p className="text-xs text-label-secondary">{stage.description}</p>
                 </div>
               </div>
             </TableCell>
@@ -52,7 +52,7 @@ export function CadencePreview({ rows }: { rows: CadenceRenderRow[] }) {
                   <ChannelPill key={c} channel={c} />
                 ))}
                 {stage.channels.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">Not sent on this plan</span>
+                  <span className="text-xs text-label-tertiary">Not sent on this plan</span>
                 ) : null}
               </div>
             </TableCell>
@@ -67,7 +67,7 @@ function ChannelPill({ channel }: { channel: "email" | "whatsapp" | "voice_call"
   const meta = CHANNEL_META[channel];
   const Icon = meta.icon;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+    <span className="inline-flex items-center gap-1 rounded-full bg-fill-tertiary px-2 py-0.5 text-xs font-medium text-label-secondary">
       <Check className="h-3 w-3 text-success" aria-hidden />
       {Icon ? <Icon className="h-3 w-3" aria-hidden /> : null}
       {meta.label}

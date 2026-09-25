@@ -23,10 +23,7 @@ export function ThemeToggle({ className }: { className?: string }) {
 
   return (
     <fieldset
-      className={cn(
-        "flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5",
-        className,
-      )}
+      className={cn("flex items-center gap-0.5 rounded-lg bg-fill-tertiary p-0.5", className)}
     >
       <legend className="sr-only">Theme</legend>
       {OPTIONS.map((option) => {
@@ -41,10 +38,10 @@ export function ThemeToggle({ className }: { className?: string }) {
             disabled={!mounted}
             onClick={() => setTheme(option.value)}
             className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-60",
+              "flex size-8 items-center justify-center rounded-[10px] transition-colors disabled:opacity-60",
               selected
                 ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
+                : "bg-fill-tertiary text-label-secondary hover:bg-fill-secondary hover:text-foreground",
             )}
           >
             <Icon className="h-3.5 w-3.5" aria-hidden />

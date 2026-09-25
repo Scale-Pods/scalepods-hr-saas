@@ -45,8 +45,10 @@ export function TierLimitToast({
     <div
       role="status"
       className={cn(
-        "flex w-full flex-col gap-3 rounded-lg border bg-card p-3 shadow-lg",
-        hardStop ? "border-destructive/40" : "border-border",
+        "flex w-full flex-col gap-3 rounded-lg border p-3 shadow-lg",
+        hardStop
+          ? "border-destructive/40 bg-destructive/15 text-destructive"
+          : "border-border bg-card text-foreground",
       )}
     >
       <div>

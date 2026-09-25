@@ -3,6 +3,8 @@ import { cn } from "@/lib/utils";
 
 export type { FunnelRow };
 
+const CHART_FILLS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"] as const;
+
 /**
  * Funnel from generic rows: either the backend's `funnel_conversion` report or
  * a database-derived fallback. Bars scale against the peak `entered`;
@@ -22,25 +24,28 @@ export function FunnelChart({
 
   return (
     <div className={cn("space-y-2", className)}>
-      {rows.map((row) => {
+      {rows.map((row, i) => {
         const width = peak > 0 ? (row.entered / peak) * 100 : 0;
         return (
           <div key={row.stage} className="flex items-center gap-3">
-            <span className="w-36 shrink-0 text-xs text-muted-foreground">{row.stage}</span>
-            <div className="h-5 flex-1 overflow-hidden rounded-full bg-muted/60">
+            <span className="w-36 shrink-0 text-xs text-label-secondary">{row.stage}</span>
+            <div className="h-5 flex-1 overflow-hidden rounded-full bg-fill-tertiary">
               {row.entered > 0 ? (
                 <div
-                  className="flex h-full items-center justify-end rounded-full bg-primary pr-2 transition-all"
+                  className={cn(
+                    "flex h-full items-center justify-end rounded-full pr-2 transition-all",
+                    CHART_FILLS[i % CHART_FILLS.length],
+                  )}
                   style={{ width: `${Math.max(6, width)}%` }}
                 >
-                  <span className="text-xs font-semibold text-primary-foreground">
+                  <span className="text-xs font-semibold tabular-nums text-white">
                     {row.entered}
                   </span>
                 </div>
               ) : null}
             </div>
             {typeof row.converted === "number" ? (
-              <span className="w-24 shrink-0 text-right text-xs text-muted-foreground">
+              <span className="w-24 shrink-0 text-right text-xs tabular-nums text-label-secondary">
                 {row.converted} converted
               </span>
             ) : null}

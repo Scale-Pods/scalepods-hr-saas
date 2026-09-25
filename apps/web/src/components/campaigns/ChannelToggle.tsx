@@ -20,11 +20,18 @@ export function ChannelToggle({
   lockText,
   onCheckedChange,
 }: ChannelToggleProps) {
+  const locked = disabled && lockText;
   const row = (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-separator bg-card px-3 py-2.5">
       <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground">{label}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p
+          className={cn("text-sm font-medium", locked ? "text-label-tertiary" : "text-foreground")}
+        >
+          {label}
+        </p>
+        <p className={cn("text-xs", locked ? "text-label-tertiary" : "text-muted-foreground")}>
+          {description}
+        </p>
       </div>
       <Switch
         checked={checked}
@@ -39,7 +46,7 @@ export function ChannelToggle({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className={cn("opacity-80")}>{row}</div>
+          <div>{row}</div>
         </TooltipTrigger>
         <TooltipContent side="left">
           <div className="flex items-center gap-1.5">

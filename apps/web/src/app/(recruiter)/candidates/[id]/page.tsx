@@ -251,11 +251,11 @@ function Timeline({ rows }: { rows: LedgerView[] }) {
         const isOpen = open.has(row.id);
         return (
           <li key={row.id} className="relative">
-            <span className="absolute -left-[23px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-primary" />
+            <span className="absolute -left-[23px] top-1.5 h-3 w-3 rounded-full border-2 border-card bg-primary" />
             <button
               type="button"
               onClick={() => toggle(row.id)}
-              className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left hover:bg-muted"
+              className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left hover:bg-fill-tertiary"
             >
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -263,17 +263,17 @@ function Timeline({ rows }: { rows: LedgerView[] }) {
                     {stageLabel(row.stage)}
                   </span>
                   {row.source === "manual" && (
-                    <Badge variant="secondary" className="bg-warning/10 text-warning">
+                    <Badge variant="secondary" className="bg-warning/15 text-warning">
                       Manual override
                     </Badge>
                   )}
                   {row.forRound?.retake_of_round_instance_id && (
-                    <Badge variant="secondary" className="bg-warning/10 text-warning">
+                    <Badge variant="secondary" className="bg-warning/15 text-warning">
                       Platform-fault retake
                     </Badge>
                   )}
                   {row.forRound?.status === "no_show" && (
-                    <Badge variant="secondary" className="bg-warning/10 text-warning">
+                    <Badge variant="secondary" className="bg-warning/15 text-warning">
                       No-show
                     </Badge>
                   )}
@@ -293,7 +293,7 @@ function Timeline({ rows }: { rows: LedgerView[] }) {
               </div>
             </button>
             {isOpen && (
-              <div className="mt-1 rounded-lg bg-muted p-3 text-sm">
+              <div className="mt-1 rounded-lg bg-fill-quaternary/70 p-3 text-sm">
                 {row.rationale ? (
                   <p className="whitespace-pre-wrap text-muted-foreground">{row.rationale}</p>
                 ) : (
@@ -327,7 +327,7 @@ function ScorecardSummary({ row }: { row: LedgerView }) {
     ["Authenticity", sc.authenticity_score],
   ] as const;
   return (
-    <div className="mt-3 rounded-lg border border-border bg-card p-3">
+    <div className="mt-3 rounded-lg bg-fill-tertiary/70 p-3">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         AI scorecard
       </p>
@@ -361,7 +361,7 @@ function DeliveryState({ state }: { state: string }) {
   if (state === "held_for_window" || state === "held_for_cap") {
     return (
       <span className="inline-flex items-center gap-1.5">
-        <Badge variant="secondary" className="bg-warning/10 text-warning">
+        <Badge variant="secondary" className="bg-warning/15 text-warning">
           Held — will retry
         </Badge>
         <span className="text-xs text-muted-foreground">
@@ -376,10 +376,10 @@ function DeliveryState({ state }: { state: string }) {
       className={cn(
         "capitalize",
         state === "delivered" || state === "sent"
-          ? "bg-success/10 text-success"
+          ? "bg-success/15 text-success"
           : state === "failed"
-            ? "bg-destructive/10 text-destructive"
-            : "bg-muted text-muted-foreground",
+            ? "bg-destructive/15 text-destructive"
+            : "bg-fill-tertiary text-secondary-foreground",
       )}
     >
       {state}

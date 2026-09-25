@@ -1,17 +1,18 @@
 "use client";
 
 import type { RoundType } from "@scalepods/core";
-import { ArrowLeft, Upload } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo } from "react";
+import { ResumeUploader } from "@/components/campaigns/ResumeUploader";
 import { RoundStepper } from "@/components/campaigns/RoundStepper";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { showErrorToast } from "@/components/shared/TierLimitToast";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -31,6 +32,7 @@ import { cn } from "@/lib/utils";
 export default function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { account } = useAccount();
   const { data: session } = useSession();
 
@@ -126,16 +128,14 @@ export default function CampaignDetailPage() {
       <SectionCard
         title="Upload resumes"
         subtitle="Each file goes through intake, text extraction, and LLM scoring against this JD (workflow 1)."
-        action={
-          <Button size="sm" disabled>
-            <Upload className="h-4 w-4" aria-hidden /> Screen
-          </Button>
-        }
       >
-        <EmptyState
-          title="Resume upload coming soon"
-          hint="Browser-based PDF/DOCX text extraction is being migrated. Paste candidate details manually for now."
-          className="py-6"
+        <ResumeUploader
+          campaign={campaign}
+          accountId={account?.id}
+          accessToken={session?.access_token}
+          onComplete={() =>
+            queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] })
+          }
         />
       </SectionCard>
 

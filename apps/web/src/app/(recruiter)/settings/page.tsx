@@ -99,7 +99,7 @@ function SettingsPageInner() {
 
   const connectCalendar = () => {
     if (!account?.id) return;
-    window.location.href = workflowUrl("calendar/connect", { account_id: account.id });
+    window.location.href = workflowUrl("calendar/oauth/start", { account_id: account.id });
   };
 
   const savePrefs = async () => {

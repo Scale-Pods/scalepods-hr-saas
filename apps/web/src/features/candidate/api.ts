@@ -67,13 +67,10 @@ export async function bookSlot(payload: {
   }
 }
 
-export async function fetchSessionContext(
-  sessionId: string,
-  token: string,
-): Promise<SessionContext> {
+export async function fetchSessionContext(sessionId: string): Promise<SessionContext> {
   const { data, error } = await anonClient().rpc("get_session_context", {
     p_session_id: sessionId,
-    p_token: token,
+    p_token: "",
   });
   if (error) throw new Error(error.message ?? "Link invalid or expired.");
   return sessionContextSchema.parse(data);
@@ -81,13 +78,12 @@ export async function fetchSessionContext(
 
 export async function insertProctoringEvent(
   sessionId: string,
-  token: string,
   eventType: string,
   detail: string,
 ): Promise<void> {
   await anonClient().rpc("insert_proctoring_event", {
     p_session_id: sessionId,
-    p_token: token,
+    p_token: "",
     p_event_type: eventType,
     p_detail: detail,
   });
@@ -100,6 +96,53 @@ interface EngineResponse {
   format?: string;
   options?: string[];
   is_final_question?: boolean;
+  interviewer_text?: string;
+}
+
+function normalizeEngineResponse(raw: unknown): EngineResponse {
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return { type: "finished" };
+    const row = raw[0] as {
+      question_id?: string;
+      ai_live_note?: {
+        question_text?: string;
+        next_question_id?: string;
+        is_final_question?: boolean;
+        interviewer_text?: string;
+      };
+    };
+    const note = row?.ai_live_note;
+    if (!note || typeof note.question_text !== "string") {
+      throw new Error("The interview engine returned an unexpected response.");
+    }
+    return {
+      type: "question",
+      question_id: note.next_question_id ?? row.question_id ?? "",
+      prompt: note.question_text,
+      format: "open_ended",
+      is_final_question: Boolean(note.is_final_question),
+      interviewer_text: note.interviewer_text,
+    };
+  }
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    if (typeof obj.question_text === "string") {
+      const nextId = typeof obj.next_question_id === "string" ? obj.next_question_id : "";
+      return {
+        type: "question",
+        question_id: nextId,
+        prompt: obj.question_text,
+        format: "open_ended",
+        is_final_question: obj.is_final_question === true,
+        interviewer_text:
+          typeof obj.interviewer_text === "string" ? obj.interviewer_text : undefined,
+      };
+    }
+    if (obj.type === "question" || obj.type === "finished") {
+      return obj as unknown as EngineResponse;
+    }
+  }
+  throw new Error("The interview engine returned an unexpected response.");
 }
 
 export async function submitInterviewTurn(body: {
@@ -114,12 +157,13 @@ export async function submitInterviewTurn(body: {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(45000),
   });
   if (!res.ok) {
     const b = await res.json().catch(() => ({}));
     throw new Error(b.error ?? `Engine error (${res.status})`);
   }
-  return res.json();
+  return normalizeEngineResponse(await res.json());
 }
 
 export async function scoreInterview(body: {
@@ -148,14 +192,14 @@ export async function fetchAssignmentContext(
 }
 
 export async function signUploads(
-  token: string,
-  kind: string,
+  kind: "recording" | "assignment",
   resourceId: string,
   fileNames: string[],
+  token?: string,
 ): Promise<{ bucket: string; uploads: { name: string; url: string }[] }> {
   const { callEdge } = await import("@/lib/edge");
   return callEdge<{ bucket: string; uploads: { name: string; url: string }[] }>("sign-upload", {
-    body: { token, kind, resource_id: resourceId, file_names: fileNames },
+    body: { token: token ?? "", kind, resource_id: resourceId, file_names: fileNames },
   });
 }
 

@@ -33,25 +33,27 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardContent className="pt-6">
-        <h1 className="text-lg font-semibold text-foreground">Reset your password</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+    <Card className="glass-panel w-full max-w-sm rounded-[28px] p-0">
+      <CardContent className="p-8">
+        <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">
+          Reset your password
+        </h1>
+        <p className="mt-1.5 text-sm text-label-secondary">
           Enter the email you signed up with and we&apos;ll send a reset link.
         </p>
 
         {sent ? (
-          <div className="mt-5 space-y-3">
-            <p className="text-sm text-muted-foreground">
+          <div className="mt-6 space-y-3">
+            <p className="text-sm text-label-secondary">
               If that email is on file, a reset link was sent. Check your inbox.
             </p>
           </div>
         ) : (
-          <form onSubmit={submit} className="mt-5 space-y-3">
+          <form onSubmit={submit} className="mt-6 space-y-3">
             <div>
               <label
                 htmlFor="reset-email"
-                className="mb-1 block text-xs font-medium text-muted-foreground"
+                className="mb-1 block text-xs font-medium text-label-secondary"
               >
                 Work email
               </label>

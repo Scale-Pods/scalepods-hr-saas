@@ -38,10 +38,10 @@ function VerifyInner() {
 
   if (status === "loading") {
     return (
-      <Card className="w-full max-w-sm">
-        <CardContent className="flex flex-col items-center gap-3 py-10">
+      <Card className="glass-panel w-full max-w-sm rounded-[28px] p-0">
+        <CardContent className="flex flex-col items-center gap-3 p-8">
           <Skeleton className="h-5 w-48" />
-          <p className="text-sm text-muted-foreground">Verifying your link…</p>
+          <p className="text-sm text-label-secondary">Verifying your link…</p>
         </CardContent>
       </Card>
     );
@@ -49,9 +49,9 @@ function VerifyInner() {
 
   if (status === "error") {
     return (
-      <Card className="w-full max-w-sm">
-        <CardContent className="py-10 text-center">
-          <p className="text-sm text-muted-foreground">
+      <Card className="glass-panel w-full max-w-sm rounded-[28px] p-0">
+        <CardContent className="p-8 text-center">
+          <p className="text-sm text-label-secondary">
             This link may have expired or is invalid. Try signing in again.
           </p>
           <a
@@ -72,10 +72,10 @@ export default function VerifyPage() {
   return (
     <Suspense
       fallback={
-        <Card className="w-full max-w-sm">
-          <CardContent className="flex flex-col items-center gap-3 py-10">
+        <Card className="glass-panel w-full max-w-sm rounded-[28px] p-0">
+          <CardContent className="flex flex-col items-center gap-3 p-8">
             <Skeleton className="h-5 w-48" />
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <p className="text-sm text-label-secondary">Loading…</p>
           </CardContent>
         </Card>
       }

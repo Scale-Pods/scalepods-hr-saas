@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import { getEnv } from "@/env";
 import "./globals.css";
 import { Providers } from "./providers";
 
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
+const plusJakartaSans = Plus_Jakarta_Sans({
+  variable: "--font-jakarta",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "ScalePods",
@@ -15,7 +20,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   getEnv();
 
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${plusJakartaSans.variable} h-full antialiased`}
+    >
       <body className="flex min-h-full flex-col">
         <Providers>{children}</Providers>
       </body>
