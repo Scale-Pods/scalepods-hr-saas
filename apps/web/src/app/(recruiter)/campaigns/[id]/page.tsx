@@ -12,6 +12,8 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { showErrorToast } from "@/components/shared/TierLimitToast";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,7 +28,9 @@ import {
 } from "@/components/ui/table";
 import { useAccount } from "@/features/account/hooks";
 import { useSession } from "@/features/auth/hooks";
+import { callWorkflow } from "@/lib/webhooks";
 import { useCampaignDetail, useToggleCampaignStatus } from "@/features/campaigns/hooks";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 export default function CampaignDetailPage() {
@@ -54,6 +58,17 @@ export default function CampaignDetailPage() {
     for (const r of rounds) map[r.round_number] = r.round_type;
     return map;
   }, [rounds]);
+
+  const roundInterviewers: Record<number, string> = useMemo(() => {
+    const map: Record<number, string> = {};
+    for (const r of rounds) {
+      if (r.interviewer_email) map[r.round_number] = r.interviewer_email;
+    }
+    return map;
+  }, [rounds]);
+
+  const [bulkCutoff, setBulkCutoff] = useState<number>(60);
+  const [isBulkSending, setIsBulkSending] = useState(false);
 
   if (isPending) {
     return (
@@ -84,6 +99,47 @@ export default function CampaignDetailPage() {
       await toggleStatus.mutateAsync();
     } catch (err) {
       showErrorToast(err);
+    }
+  };
+
+  const handleBulkAdvance = async () => {
+    if (!account?.id || !session?.access_token || !campaign) return;
+
+    // Find candidates who scored at least the cutoff in resume screening
+    const eligibleCandidates = candidates.filter(
+      (c) =>
+        (c.latest_score ?? 0) >= bulkCutoff &&
+        (!c.decision || c.decision === "pending") &&
+        (c.current_stage === "resume screening" || c.current_stage === "resume"),
+    );
+
+    if (eligibleCandidates.length === 0) {
+      showErrorToast("No candidates meet this criteria to advance.");
+      return;
+    }
+
+    setIsBulkSending(true);
+    try {
+      let successCount = 0;
+      for (const c of eligibleCandidates) {
+        await callWorkflow(
+          "round-advance",
+          {
+            account_id: account.id,
+            campaign_id: campaign.id,
+            candidate_id: c.candidate_id,
+            round_number: 1, // Advance to round 1
+          },
+          session.access_token,
+        );
+        successCount++;
+      }
+      showErrorToast(`Successfully dispatched invites for ${successCount} candidates.`);
+      queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setIsBulkSending(false);
     }
   };
 
@@ -122,6 +178,7 @@ export default function CampaignDetailPage() {
           numberOfRounds={campaign.number_of_rounds}
           types={roundTypes}
           statuses={roundStatuses}
+          interviewers={roundInterviewers}
         />
       </SectionCard>
 
@@ -137,6 +194,29 @@ export default function CampaignDetailPage() {
             queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] })
           }
         />
+      </SectionCard>
+
+      <SectionCard
+        title="Bulk Candidate Outreach"
+        subtitle="Set a score threshold to manually advance and email qualifying candidates."
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-1.5 w-1/3">
+            <label className="text-sm font-medium">Score Threshold (0-100)</label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={bulkCutoff}
+              onChange={(e) => setBulkCutoff(Number(e.target.value))}
+            />
+          </div>
+          <div className="flex items-end h-[60px]">
+            <Button onClick={handleBulkAdvance} disabled={isBulkSending}>
+              {isBulkSending ? "Sending..." : "Send Interview Invites"}
+            </Button>
+          </div>
+        </div>
       </SectionCard>
 
       <SectionCard title="Candidates" subtitle={`${candidates.length} in this campaign`}>

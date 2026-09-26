@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     if (!sessionId || !file) {
       return NextResponse.json(
         { error: "sessionId and recording file are required." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -56,10 +56,7 @@ export async function POST(request: NextRequest) {
 
     if (uploadError) {
       console.error("[recording API] Upload error to bucket 'recordings':", uploadError);
-      return NextResponse.json(
-        { error: `Upload failed: ${uploadError.message}` },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
     }
 
     // 3. Update interview_sessions with the recording path and completion timestamp
@@ -104,7 +101,7 @@ export async function POST(request: NextRequest) {
     console.error("[recording API] Unexpected error:", err);
     return NextResponse.json(
       { error: (err as Error).message || "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -131,7 +128,7 @@ export async function GET(request: NextRequest) {
     if (!targetPath) {
       return NextResponse.json(
         { error: "Recording not found for the given session or path." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -142,7 +139,7 @@ export async function GET(request: NextRequest) {
     if (signedErr || !signedData?.signedUrl) {
       return NextResponse.json(
         { error: signedErr?.message || "Could not generate playback URL" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -153,7 +150,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     return NextResponse.json(
       { error: (err as Error).message || "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

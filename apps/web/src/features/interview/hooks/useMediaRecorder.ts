@@ -1,9 +1,15 @@
-import { useState, useRef, useCallback } from 'react';
-import { getMimeType, getCameraStream, getScreenStream, getAudioStream, createCompositeStream } from '../utils/mediaHelpers';
-import { anonClient } from '@/lib/supabase/anon';
+import { useState, useRef, useCallback } from "react";
+import {
+  getMimeType,
+  getCameraStream,
+  getScreenStream,
+  getAudioStream,
+  createCompositeStream,
+} from "../utils/mediaHelpers";
+import { anonClient } from "@/lib/supabase/anon";
 
 interface MediaRecorderState {
-  status: 'idle' | 'recording' | 'paused' | 'stopped';
+  status: "idle" | "recording" | "paused" | "stopped";
   duration: number;
   error: string | null;
   recordingId: string | null;
@@ -11,7 +17,7 @@ interface MediaRecorderState {
 
 export function useMediaRecorder() {
   const [state, setState] = useState<MediaRecorderState>({
-    status: 'idle',
+    status: "idle",
     duration: 0,
     error: null,
     recordingId: null,
@@ -21,23 +27,23 @@ export function useMediaRecorder() {
   const streamsRef = useRef<MediaStream[]>([]);
   const startTimeRef = useRef<number>(0);
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sessionIdRef = useRef<string>('');
-  const accountIdRef = useRef<string>('');
+  const sessionIdRef = useRef<string>("");
+  const accountIdRef = useRef<string>("");
   const compositeCleanupRef = useRef<(() => void) | null>(null);
-  const mimeTypeRef = useRef<string>('video/webm');
+  const mimeTypeRef = useRef<string>("video/webm");
   const chunksRef = useRef<Blob[]>([]);
 
   const start = useCallback(
     async (
       sessionId: string,
       existingStreams?: { camera?: MediaStream; screen?: MediaStream | null; audio?: MediaStream },
-      accountId?: string
+      accountId?: string,
     ) => {
       try {
         sessionIdRef.current = sessionId;
-        accountIdRef.current = accountId || '';
+        accountIdRef.current = accountId || "";
         chunksRef.current = [];
-        setState((prev) => ({ ...prev, status: 'recording', error: null }));
+        setState((prev) => ({ ...prev, status: "recording", error: null }));
 
         const cameraStream = existingStreams?.camera || (await getCameraStream());
         const screenStream =
@@ -71,12 +77,18 @@ export function useMediaRecorder() {
         }
 
         compositeCleanupRef.current = cleanup;
-        streamsRef.current = [cameraStream, ...(screenStream ? [screenStream] : []), ...(audioStream ? [audioStream] : [])];
+        streamsRef.current = [
+          cameraStream,
+          ...(screenStream ? [screenStream] : []),
+          ...(audioStream ? [audioStream] : []),
+        ];
 
         const mime = getMimeType();
         mimeTypeRef.current = mime;
 
-        const recorder = mime ? new MediaRecorder(mixedStream, { mimeType: mime }) : new MediaRecorder(mixedStream);
+        const recorder = mime
+          ? new MediaRecorder(mixedStream, { mimeType: mime })
+          : new MediaRecorder(mixedStream);
         mediaRecorderRef.current = recorder;
 
         recorder.ondataavailable = (e) => {
@@ -86,8 +98,8 @@ export function useMediaRecorder() {
         };
 
         recorder.onerror = (e) => {
-          console.warn('[useMediaRecorder] Recorder error:', e);
-          setState((prev) => ({ ...prev, error: 'Recording error' }));
+          console.warn("[useMediaRecorder] Recorder error:", e);
+          setState((prev) => ({ ...prev, error: "Recording error" }));
         };
 
         recorder.start(10000); // 10s chunk slices
@@ -101,12 +113,12 @@ export function useMediaRecorder() {
           }));
         }, 1000);
       } catch (err) {
-        console.error('[useMediaRecorder] Failed to start:', err);
-        setState((prev) => ({ ...prev, status: 'idle', error: (err as Error).message }));
+        console.error("[useMediaRecorder] Failed to start:", err);
+        setState((prev) => ({ ...prev, status: "idle", error: (err as Error).message }));
         throw err;
       }
     },
-    []
+    [],
   );
 
   const stop = useCallback(async (): Promise<Blob | null> => {
@@ -124,41 +136,41 @@ export function useMediaRecorder() {
 
     return new Promise((resolve) => {
       const rec = mediaRecorderRef.current;
-      if (!rec || rec.state === 'inactive') {
-        setState((prev) => ({ ...prev, status: 'stopped' }));
+      if (!rec || rec.state === "inactive") {
+        setState((prev) => ({ ...prev, status: "stopped" }));
         resolve(null);
         return;
       }
 
       rec.onstop = async () => {
-        setState((prev) => ({ ...prev, status: 'stopped' }));
-        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || 'video/webm' });
+        setState((prev) => ({ ...prev, status: "stopped" }));
+        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || "video/webm" });
 
         // Upload interview video to Supabase Storage via server endpoint
         if (sessionIdRef.current && blob.size > 0) {
           try {
             const formData = new FormData();
-            formData.append('sessionId', sessionIdRef.current);
-            formData.append('recording', blob, `interview_${sessionIdRef.current}.webm`);
+            formData.append("sessionId", sessionIdRef.current);
+            formData.append("recording", blob, `interview_${sessionIdRef.current}.webm`);
             if (accountIdRef.current) {
-              formData.append('accountId', accountIdRef.current);
+              formData.append("accountId", accountIdRef.current);
             }
 
-            const res = await fetch('/api/interview/recording', {
-              method: 'POST',
+            const res = await fetch("/api/interview/recording", {
+              method: "POST",
               body: formData,
             });
 
             if (res.ok) {
               const resData = await res.json();
-              console.log('[useMediaRecorder] Recording stored in Supabase:', resData.filePath);
+              console.log("[useMediaRecorder] Recording stored in Supabase:", resData.filePath);
               setState((prev) => ({ ...prev, recordingId: resData.filePath }));
             } else {
               const errData = await res.json().catch(() => ({}));
-              console.warn('[useMediaRecorder] Recording upload failed:', errData);
+              console.warn("[useMediaRecorder] Recording upload failed:", errData);
             }
           } catch (uploadErr) {
-            console.warn('[useMediaRecorder] Storage upload skipped/failed:', uploadErr);
+            console.warn("[useMediaRecorder] Storage upload skipped/failed:", uploadErr);
           }
         }
 

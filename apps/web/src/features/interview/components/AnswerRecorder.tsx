@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import type React from 'react';
+import { useState, useRef, useEffect, useCallback } from "react";
+import type React from "react";
 
-import { getAudioStream } from '../utils/mediaHelpers';
-import { normalizeTechnicalSpeech } from '../utils/speechNormalizer';
-import { DeepgramSTT } from '../utils/deepgram';
+import { getAudioStream } from "../utils/mediaHelpers";
+import { normalizeTechnicalSpeech } from "../utils/speechNormalizer";
+import { DeepgramSTT } from "../utils/deepgram";
 
 const SILENCE_TIMEOUT_MS = 7000;
 const COUNTDOWN_TENTHS = Math.floor(SILENCE_TIMEOUT_MS / 100);
@@ -43,14 +43,14 @@ export function AnswerRecorder({
   stopAndSubmitRef,
 }: AnswerRecorderProps) {
   const [duration, setDuration] = useState(0);
-  const [transcript, setTranscript] = useState('');
+  const [transcript, setTranscript] = useState("");
   const [silenceCountdown, setSilenceCountdown] = useState(COUNTDOWN_TENTHS);
   const [thinkingCountdown, setThinkingCountdown] = useState(THINKING_TENTHS);
   const [isThinking, setIsThinking] = useState(false);
-  const [sttProvider, setSttProvider] = useState<'deepgram' | 'webspeech' | 'none'>('none');
+  const [sttProvider, setSttProvider] = useState<"deepgram" | "webspeech" | "none">("none");
 
   const isRecordingRef = useRef(false);
-  const transcriptRef = useRef('');
+  const transcriptRef = useRef("");
   const audioBlobRef = useRef<Blob | null>(null);
   const submittedRef = useRef(false);
   const shouldSubmitRef = useRef(false);
@@ -114,7 +114,7 @@ export function AnswerRecorder({
     const canvas = externalCanvasRef?.current ?? canvasRef.current;
     const analyser = analyserRef.current;
     if (!canvas || !analyser) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const w = canvas.width;
     const h = canvas.height;
@@ -122,10 +122,10 @@ export function AnswerRecorder({
     const dataArray = new Uint8Array(bufferLength);
     analyser.getByteTimeDomainData(dataArray);
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = 'rgba(24, 26, 32, 0.4)';
+    ctx.fillStyle = "rgba(24, 26, 32, 0.4)";
     ctx.fillRect(0, 0, w, h);
     ctx.lineWidth = 2;
-    ctx.strokeStyle = '#3b82f6';
+    ctx.strokeStyle = "#3b82f6";
     ctx.beginPath();
     const sliceWidth = w / bufferLength;
     let x = 0;
@@ -145,14 +145,14 @@ export function AnswerRecorder({
       if (submittedRef.current) return;
       submittedRef.current = true;
 
-      onAnswerComplete(text || 'Candidate responded via voice.', blob);
+      onAnswerComplete(text || "Candidate responded via voice.", blob);
 
-      setTranscript('');
-      transcriptRef.current = '';
+      setTranscript("");
+      transcriptRef.current = "";
       setDuration(0);
       audioBlobRef.current = null;
     },
-    [onAnswerComplete]
+    [onAnswerComplete],
   );
 
   const stopSTTEngines = useCallback(() => {
@@ -168,40 +168,43 @@ export function AnswerRecorder({
     }
   }, []);
 
-  const stopAndSubmit = useCallback((overrideText?: string) => {
-    if (submittedRef.current) return;
-    shouldSubmitRef.current = true;
+  const stopAndSubmit = useCallback(
+    (overrideText?: string) => {
+      if (submittedRef.current) return;
+      shouldSubmitRef.current = true;
 
-    clearThinkingTimer();
-    clearCountdown();
-    isRecordingRef.current = false;
+      clearThinkingTimer();
+      clearCountdown();
+      isRecordingRef.current = false;
 
-    if (overrideText && overrideText.trim()) {
-      transcriptRef.current = overrideText.trim();
-      setTranscript(transcriptRef.current);
-    } else if (!transcriptRef.current.trim()) {
-      transcriptRef.current = 'Candidate submitted response.';
-      setTranscript(transcriptRef.current);
-    }
+      if (overrideText && overrideText.trim()) {
+        transcriptRef.current = overrideText.trim();
+        setTranscript(transcriptRef.current);
+      } else if (!transcriptRef.current.trim()) {
+        transcriptRef.current = "Candidate submitted response.";
+        setTranscript(transcriptRef.current);
+      }
 
-    const activeRecorder = mediaRecorderRef.current;
-    if (activeRecorder && activeRecorder.state !== 'inactive') {
-      mediaRecorderRef.current = null;
-      try {
-        activeRecorder.stop();
-      } catch {}
-    } else {
-      mediaRecorderRef.current = null;
-      shouldSubmitRef.current = false;
-      doSubmit(transcriptRef.current, audioBlobRef.current || undefined);
-    }
+      const activeRecorder = mediaRecorderRef.current;
+      if (activeRecorder && activeRecorder.state !== "inactive") {
+        mediaRecorderRef.current = null;
+        try {
+          activeRecorder.stop();
+        } catch {}
+      } else {
+        mediaRecorderRef.current = null;
+        shouldSubmitRef.current = false;
+        doSubmit(transcriptRef.current, audioBlobRef.current || undefined);
+      }
 
-    stopSTTEngines();
+      stopSTTEngines();
 
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    clearAudioActivityMonitor();
-    cancelAnimationFrame(rafRef.current);
-  }, [clearAudioActivityMonitor, clearCountdown, clearThinkingTimer, doSubmit, stopSTTEngines]);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      clearAudioActivityMonitor();
+      cancelAnimationFrame(rafRef.current);
+    },
+    [clearAudioActivityMonitor, clearCountdown, clearThinkingTimer, doSubmit, stopSTTEngines],
+  );
 
   useEffect(() => {
     if (stopAndSubmitRef) {
@@ -219,9 +222,9 @@ export function AnswerRecorder({
     clearThinkingTimer();
     clearCountdown();
     isRecordingRef.current = false;
-    setTranscript('');
-    transcriptRef.current = '';
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    setTranscript("");
+    transcriptRef.current = "";
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       try {
         mediaRecorderRef.current.stop();
       } catch {}
@@ -247,7 +250,7 @@ export function AnswerRecorder({
       if (isThinkingRef.current && isRecordingRef.current) {
         clearThinkingTimer();
         if (!transcriptRef.current.trim()) {
-          transcriptRef.current = 'No response provided within the 25-second thinking limit.';
+          transcriptRef.current = "No response provided within the 25-second thinking limit.";
           setTranscript(transcriptRef.current);
         }
         stopAndSubmit();
@@ -255,7 +258,7 @@ export function AnswerRecorder({
     }, THINKING_TIMEOUT_MS);
 
     thinkingIntervalRef.current = setInterval(() => {
-      setThinkingCountdown(prev => {
+      setThinkingCountdown((prev) => {
         if (prev <= 1) return 0;
         return prev - 1;
       });
@@ -281,7 +284,7 @@ export function AnswerRecorder({
     }, SILENCE_TIMEOUT_MS);
 
     countdownIntervalRef.current = setInterval(() => {
-      setSilenceCountdown(prev => {
+      setSilenceCountdown((prev) => {
         if (prev <= 1) return 0;
         return prev - 1;
       });
@@ -291,15 +294,15 @@ export function AnswerRecorder({
   const startWebSpeechFallback = useCallback(
     (gen: number) => {
       const SpeechRecognitionAPI =
-        typeof window !== 'undefined'
+        typeof window !== "undefined"
           ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
           : null;
       if (!SpeechRecognitionAPI) {
-        setSttProvider(prev => (prev === 'none' ? 'none' : prev));
+        setSttProvider((prev) => (prev === "none" ? "none" : prev));
         return;
       }
 
-      setSttProvider('webspeech');
+      setSttProvider("webspeech");
 
       const launchInstance = () => {
         if (gen !== generationRef.current || !isRecordingRef.current) return;
@@ -315,16 +318,17 @@ export function AnswerRecorder({
           recognition.continuous = true;
           recognition.interimResults = true;
           recognition.maxAlternatives = 1;
-          recognition.lang = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
+          recognition.lang =
+            typeof navigator !== "undefined" ? navigator.language || "en-US" : "en-US";
 
           recognition.onresult = (event: any) => {
             if (gen !== generationRef.current) return;
 
-            let final = '';
-            let interim = '';
+            let final = "";
+            let interim = "";
             for (let i = 0; i < event.results.length; i++) {
               if (event.results[i].isFinal) {
-                final += event.results[i][0].transcript + ' ';
+                final += event.results[i][0].transcript + " ";
               } else {
                 interim += event.results[i][0].transcript;
               }
@@ -354,8 +358,8 @@ export function AnswerRecorder({
           };
 
           recognition.onerror = (event: any) => {
-            if (event.error !== 'no-speech' && event.error !== 'aborted') {
-              console.log('[WebSpeech] Event:', event.error);
+            if (event.error !== "no-speech" && event.error !== "aborted") {
+              console.log("[WebSpeech] Event:", event.error);
             }
           };
 
@@ -372,13 +376,13 @@ export function AnswerRecorder({
           recognition.start();
           recognitionRef.current = recognition;
         } catch (err) {
-          console.warn('[WebSpeech] Failed to start recognition instance:', err);
+          console.warn("[WebSpeech] Failed to start recognition instance:", err);
         }
       };
 
       launchInstance();
     },
-    [clearCountdown, clearThinkingTimer, startCountdown]
+    [clearCountdown, clearThinkingTimer, startCountdown],
   );
 
   const startRecording = useCallback(async () => {
@@ -389,13 +393,13 @@ export function AnswerRecorder({
 
     shouldSubmitRef.current = false;
     clearCountdown();
-    setTranscript('');
-    transcriptRef.current = '';
+    setTranscript("");
+    transcriptRef.current = "";
     audioBlobRef.current = null;
     try {
       const stream = audioStream || (await getAudioStream());
       if (!stream) {
-        console.warn('No audio stream available');
+        console.warn("No audio stream available");
         startWebSpeechFallback(gen);
         return;
       }
@@ -403,11 +407,13 @@ export function AnswerRecorder({
       // Try setting up Web Audio analyser for waveform
       try {
         const AudioCtxClass =
-          typeof window !== 'undefined' ? window.AudioContext || (window as any).webkitAudioContext : null;
+          typeof window !== "undefined"
+            ? window.AudioContext || (window as any).webkitAudioContext
+            : null;
         if (AudioCtxClass) {
           const audioCtx = new AudioCtxClass();
           audioCtxRef.current = audioCtx;
-          if (audioCtx.state === 'suspended') {
+          if (audioCtx.state === "suspended") {
             void audioCtx.resume().catch(() => {});
           }
 
@@ -437,7 +443,8 @@ export function AnswerRecorder({
 
               if (calibrationTicks < 10) {
                 calibrationTicks++;
-                ambientNoiseFloor = ambientNoiseFloor === 0 ? vocalEnergy : Math.max(ambientNoiseFloor, vocalEnergy);
+                ambientNoiseFloor =
+                  ambientNoiseFloor === 0 ? vocalEnergy : Math.max(ambientNoiseFloor, vocalEnergy);
                 return;
               }
 
@@ -465,7 +472,8 @@ export function AnswerRecorder({
                 }
               }
 
-              const isConfirmedSpeech = speechStreak >= 2 || transcriptRef.current.trim().length > 0;
+              const isConfirmedSpeech =
+                speechStreak >= 2 || transcriptRef.current.trim().length > 0;
               if (isConfirmedSpeech && isThinkingRef.current) {
                 clearThinkingTimer();
               }
@@ -473,7 +481,7 @@ export function AnswerRecorder({
           }, 200);
         }
       } catch (audioCtxErr) {
-        console.warn('AudioContext setup skipped:', audioCtxErr);
+        console.warn("AudioContext setup skipped:", audioCtxErr);
       }
 
       // Start MediaRecorder for capturing answer audio blob
@@ -481,14 +489,14 @@ export function AnswerRecorder({
         const recorder = new MediaRecorder(stream);
         chunksRef.current = [];
 
-        recorder.ondataavailable = e => {
+        recorder.ondataavailable = (e) => {
           if (e.data.size > 0) chunksRef.current.push(e.data);
         };
 
         recorder.onstop = () => {
           if (gen !== generationRef.current) return;
 
-          const actualType = recorder.mimeType || 'audio/webm';
+          const actualType = recorder.mimeType || "audio/webm";
           const blob = new Blob(chunksRef.current, { type: actualType });
           audioBlobRef.current = blob;
           clearAudioActivityMonitor();
@@ -508,7 +516,7 @@ export function AnswerRecorder({
         recorder.start();
         mediaRecorderRef.current = recorder;
       } catch (recErr) {
-        console.warn('MediaRecorder audio capture skipped:', recErr);
+        console.warn("MediaRecorder audio capture skipped:", recErr);
       }
 
       isRecordingRef.current = true;
@@ -520,12 +528,12 @@ export function AnswerRecorder({
         drawWaveform();
       }, 50);
 
-      intervalRef.current = setInterval(() => setDuration(prev => prev + 1), 1000);
+      intervalRef.current = setInterval(() => setDuration((prev) => prev + 1), 1000);
 
       // Start STT: Try Deepgram with timeout, fallback immediately to Web Speech API
       let sttConnected = false;
       let deepgramHasTranscribed = false;
-      let accumulatedFinal = '';
+      let accumulatedFinal = "";
 
       if (DeepgramSTT.isConfigured()) {
         try {
@@ -534,12 +542,13 @@ export function AnswerRecorder({
               if (gen !== generationRef.current) return;
               if (isFinal) {
                 if (rawText.trim()) {
-                  accumulatedFinal = (accumulatedFinal ? accumulatedFinal + ' ' : '') + rawText.trim();
+                  accumulatedFinal =
+                    (accumulatedFinal ? accumulatedFinal + " " : "") + rawText.trim();
                 }
               }
               const display = isFinal
                 ? accumulatedFinal
-                : ((accumulatedFinal ? accumulatedFinal + ' ' : '') + rawText.trim()).trim();
+                : ((accumulatedFinal ? accumulatedFinal + " " : "") + rawText.trim()).trim();
 
               const normalized = normalizeTechnicalSpeech(display);
               if (normalized.trim().length > 0) {
@@ -560,8 +569,8 @@ export function AnswerRecorder({
                 }
               }
             },
-            onError: err => {
-              console.warn('Deepgram WebSocket error, falling back to Web Speech API:', err);
+            onError: (err) => {
+              console.warn("Deepgram WebSocket error, falling back to Web Speech API:", err);
               startWebSpeechFallback(gen);
             },
           });
@@ -569,21 +578,27 @@ export function AnswerRecorder({
 
           const connectPromise = deepgram.start(stream);
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Deepgram timeout')), 2500)
+            setTimeout(() => reject(new Error("Deepgram timeout")), 2500),
           );
           await Promise.race([connectPromise, timeoutPromise]);
-          setSttProvider('deepgram');
+          setSttProvider("deepgram");
           sttConnected = true;
 
           // Simultaneous watchdog: if candidate speaks and Deepgram has no transcript within 2.5s, engage Web Speech API
           setTimeout(() => {
-            if (gen === generationRef.current && isRecordingRef.current && !deepgramHasTranscribed) {
-              console.log('[AnswerRecorder] Starting Web Speech alongside Deepgram for reliability.');
+            if (
+              gen === generationRef.current &&
+              isRecordingRef.current &&
+              !deepgramHasTranscribed
+            ) {
+              console.log(
+                "[AnswerRecorder] Starting Web Speech alongside Deepgram for reliability.",
+              );
               startWebSpeechFallback(gen);
             }
           }, 2500);
         } catch (err) {
-          console.warn('Deepgram unavailable, falling back to Web Speech API:', err);
+          console.warn("Deepgram unavailable, falling back to Web Speech API:", err);
         }
       }
 
@@ -591,7 +606,7 @@ export function AnswerRecorder({
         startWebSpeechFallback(gen);
       }
     } catch (err) {
-      console.error('Failed to start recording stream:', err);
+      console.error("Failed to start recording stream:", err);
       startWebSpeechFallback(gen);
     }
   }, [
@@ -648,7 +663,7 @@ export function AnswerRecorder({
 
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = "auto";
       const newHeight = Math.max(70, Math.min(textareaRef.current.scrollHeight, 400));
       textareaRef.current.style.height = `${newHeight}px`;
     }
@@ -677,18 +692,18 @@ export function AnswerRecorder({
             <div className="flex items-center gap-1.5 h-8">
               <span
                 className="w-1.5 h-4 rounded-full animate-bounce"
-                style={{ background: 'var(--blue)', animationDelay: '0ms' }}
+                style={{ background: "var(--blue)", animationDelay: "0ms" }}
               />
               <span
                 className="w-1.5 h-7 rounded-full animate-bounce"
-                style={{ background: 'var(--blue)', animationDelay: '150ms' }}
+                style={{ background: "var(--blue)", animationDelay: "150ms" }}
               />
               <span
                 className="w-1.5 h-3 rounded-full animate-bounce"
-                style={{ background: 'var(--blue)', animationDelay: '300ms' }}
+                style={{ background: "var(--blue)", animationDelay: "300ms" }}
               />
             </div>
-            <p className="text-sm font-medium" style={{ color: 'var(--label-secondary)' }}>
+            <p className="text-sm font-medium" style={{ color: "var(--label-secondary)" }}>
               AI is speaking... Please listen carefully.
             </p>
           </div>
@@ -698,15 +713,21 @@ export function AnswerRecorder({
               <div className="flex items-center gap-2">
                 {isThinking ? (
                   <>
-                    <span className="w-2 h-2 rounded-full animate-ping" style={{ background: 'var(--orange)' }} />
-                    <span className="text-xs font-semibold" style={{ color: 'var(--orange)' }}>
+                    <span
+                      className="w-2 h-2 rounded-full animate-ping"
+                      style={{ background: "var(--orange)" }}
+                    />
+                    <span className="text-xs font-semibold" style={{ color: "var(--orange)" }}>
                       Thinking Time
                     </span>
                   </>
                 ) : (
                   <>
-                    <span className="w-2 h-2 rounded-full animate-ping" style={{ background: 'var(--green)' }} />
-                    <span className="text-xs font-semibold" style={{ color: 'var(--green)' }}>
+                    <span
+                      className="w-2 h-2 rounded-full animate-ping"
+                      style={{ background: "var(--green)" }}
+                    />
+                    <span className="text-xs font-semibold" style={{ color: "var(--green)" }}>
                       Listening
                     </span>
                   </>
@@ -714,35 +735,35 @@ export function AnswerRecorder({
                 <span
                   className="px-2 py-0.5 text-[10px] font-medium rounded-md flex items-center gap-1"
                   style={{
-                    background: 'rgba(16, 185, 129, 0.1)',
-                    border: '1px solid rgba(16, 185, 129, 0.25)',
-                    color: 'var(--green)',
+                    background: "rgba(16, 185, 129, 0.1)",
+                    border: "1px solid rgba(16, 185, 129, 0.25)",
+                    color: "var(--green)",
                   }}
                   title="Noise suppression and voice detection active"
                 >
                   <span className="w-1 h-1 rounded-full bg-emerald-400" />
                   Voice Active
                 </span>
-                {sttProvider === 'deepgram' && (
+                {sttProvider === "deepgram" && (
                   <span
                     className="px-2 py-0.5 text-[10px] font-semibold rounded-md flex items-center gap-1.5"
                     style={{
-                      background: 'rgba(147, 51, 234, 0.12)',
-                      border: '1px solid rgba(147, 51, 234, 0.3)',
-                      color: '#c084fc',
+                      background: "rgba(147, 51, 234, 0.12)",
+                      border: "1px solid rgba(147, 51, 234, 0.3)",
+                      color: "#c084fc",
                     }}
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
                     Deepgram Nova-2
                   </span>
                 )}
-                {sttProvider === 'webspeech' && (
+                {sttProvider === "webspeech" && (
                   <span
                     className="px-2 py-0.5 text-[10px] font-medium rounded-md text-xs"
                     style={{
-                      background: 'var(--fill-tertiary)',
-                      border: '1px solid var(--separator)',
-                      color: 'var(--label-secondary)',
+                      background: "var(--fill-tertiary)",
+                      border: "1px solid var(--separator)",
+                      color: "var(--label-secondary)",
                     }}
                   >
                     Speech-to-Text
@@ -751,15 +772,36 @@ export function AnswerRecorder({
               </div>
               <div className="flex items-center gap-3">
                 {isThinking ? (
-                  <div className="flex items-center gap-1.5" title="Time remaining to begin speaking or typing your response">
-                    <svg width={16} height={16} viewBox="0 0 16 16" className="transform -rotate-90">
-                      <circle cx={8} cy={8} r={6.5} fill="none" stroke="var(--fill-tertiary)" strokeWidth={2} />
+                  <div
+                    className="flex items-center gap-1.5"
+                    title="Time remaining to begin speaking or typing your response"
+                  >
+                    <svg
+                      width={16}
+                      height={16}
+                      viewBox="0 0 16 16"
+                      className="transform -rotate-90"
+                    >
                       <circle
                         cx={8}
                         cy={8}
                         r={6.5}
                         fill="none"
-                        stroke={thinkingCountdown < 30 ? 'var(--red)' : thinkingCountdown < 70 ? 'var(--orange)' : 'var(--blue)'}
+                        stroke="var(--fill-tertiary)"
+                        strokeWidth={2}
+                      />
+                      <circle
+                        cx={8}
+                        cy={8}
+                        r={6.5}
+                        fill="none"
+                        stroke={
+                          thinkingCountdown < 30
+                            ? "var(--red)"
+                            : thinkingCountdown < 70
+                              ? "var(--orange)"
+                              : "var(--blue)"
+                        }
                         strokeWidth={2}
                         strokeDasharray={`${(thinkingCountdown / THINKING_TENTHS) * 40.84} 40.84`}
                         strokeLinecap="round"
@@ -771,25 +813,46 @@ export function AnswerRecorder({
                       style={{
                         color:
                           thinkingCountdown < 30
-                            ? 'var(--red)'
+                            ? "var(--red)"
                             : thinkingCountdown < 70
-                            ? 'var(--orange)'
-                            : 'var(--label-secondary)',
+                              ? "var(--orange)"
+                              : "var(--label-secondary)",
                       }}
                     >
                       {(thinkingCountdown / 10).toFixed(1)}s limit
                     </span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1.5" title="Silence countdown before auto-submission">
-                    <svg width={16} height={16} viewBox="0 0 16 16" className="transform -rotate-90">
-                      <circle cx={8} cy={8} r={6.5} fill="none" stroke="var(--fill-tertiary)" strokeWidth={2} />
+                  <div
+                    className="flex items-center gap-1.5"
+                    title="Silence countdown before auto-submission"
+                  >
+                    <svg
+                      width={16}
+                      height={16}
+                      viewBox="0 0 16 16"
+                      className="transform -rotate-90"
+                    >
                       <circle
                         cx={8}
                         cy={8}
                         r={6.5}
                         fill="none"
-                        stroke={silenceCountdown < 5 ? 'var(--red)' : silenceCountdown < 12 ? 'var(--orange)' : 'var(--blue)'}
+                        stroke="var(--fill-tertiary)"
+                        strokeWidth={2}
+                      />
+                      <circle
+                        cx={8}
+                        cy={8}
+                        r={6.5}
+                        fill="none"
+                        stroke={
+                          silenceCountdown < 5
+                            ? "var(--red)"
+                            : silenceCountdown < 12
+                              ? "var(--orange)"
+                              : "var(--blue)"
+                        }
                         strokeWidth={2}
                         strokeDasharray={`${(silenceCountdown / COUNTDOWN_TENTHS) * 40.84} 40.84`}
                         strokeLinecap="round"
@@ -801,18 +864,21 @@ export function AnswerRecorder({
                       style={{
                         color:
                           silenceCountdown < 5
-                            ? 'var(--red)'
+                            ? "var(--red)"
                             : silenceCountdown < 12
-                            ? 'var(--orange)'
-                            : 'var(--label-secondary)',
+                              ? "var(--orange)"
+                              : "var(--label-secondary)",
                       }}
                     >
                       {(silenceCountdown / 10).toFixed(1)}s
                     </span>
                   </div>
                 )}
-                <span className="text-xs font-mono font-bold" style={{ color: 'var(--label-secondary)' }}>
-                  {minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
+                <span
+                  className="text-xs font-mono font-bold"
+                  style={{ color: "var(--label-secondary)" }}
+                >
+                  {minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")}
                 </span>
               </div>
             </div>
@@ -822,13 +888,13 @@ export function AnswerRecorder({
               width={600}
               height={60}
               className="w-full h-14 rounded-lg"
-              style={{ background: 'var(--fill-quaternary)' }}
+              style={{ background: "var(--fill-quaternary)" }}
             />
 
             <textarea
               ref={textareaRef}
               value={transcript}
-              onChange={e => {
+              onChange={(e) => {
                 const val = e.target.value;
                 setTranscript(val);
                 transcriptRef.current = val;
@@ -843,21 +909,21 @@ export function AnswerRecorder({
               }}
               placeholder={
                 isThinking
-                  ? 'Speak your response now (you have 25s to begin speaking)...'
-                  : 'Speak your response now (you can also edit or type words here)...'
+                  ? "Speak your response now (you have 25s to begin speaking)..."
+                  : "Speak your response now (you can also edit or type words here)..."
               }
               className="w-full text-sm leading-relaxed font-medium rounded-xl p-3 min-h-[70px] max-h-[400px] overflow-y-auto transition-all duration-150 resize-none"
               style={{
-                background: 'var(--fill-quaternary)',
-                border: '1px solid var(--separator)',
-                color: 'var(--label-primary)',
+                background: "var(--fill-quaternary)",
+                border: "1px solid var(--separator)",
+                color: "var(--label-primary)",
               }}
             />
 
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[10px]" style={{ color: 'var(--label-tertiary)' }}>
+              <p className="text-[10px]" style={{ color: "var(--label-tertiary)" }}>
                 {isThinking
-                  ? 'Start speaking within 25s | Auto-submits after 4s of silence once spoken'
+                  ? "Start speaking within 25s | Auto-submits after 4s of silence once spoken"
                   : `Auto-submits after ${(SILENCE_TIMEOUT_MS / 1000).toFixed(0)}s of silence`}
               </p>
               <button
@@ -865,8 +931,8 @@ export function AnswerRecorder({
                 disabled={!transcript.trim()}
                 className="px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-200 disabled:cursor-not-allowed"
                 style={{
-                  background: transcript.trim() ? 'var(--blue)' : 'var(--fill-tertiary)',
-                  color: transcript.trim() ? 'white' : 'var(--label-tertiary)',
+                  background: transcript.trim() ? "var(--blue)" : "var(--fill-tertiary)",
+                  color: transcript.trim() ? "white" : "var(--label-tertiary)",
                 }}
               >
                 Submit Answer

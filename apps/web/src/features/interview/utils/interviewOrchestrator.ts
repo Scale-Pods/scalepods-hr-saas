@@ -1,19 +1,26 @@
-import type { InterviewBlueprint, InterviewPlanItem, InterviewQuestion, LiveAssessmentNote } from '../types';
+import type {
+  InterviewBlueprint,
+  InterviewPlanItem,
+  InterviewQuestion,
+  LiveAssessmentNote,
+} from "../types";
 
 /** Selects the highest-priority plan item with no primary question yet asked. */
 export function selectNextPlanItem(
   blueprint: InterviewBlueprint | null,
   questions: InterviewQuestion[],
-  notes: LiveAssessmentNote[]
+  notes: LiveAssessmentNote[],
 ): InterviewPlanItem | null {
   if (!blueprint) return null;
   const asked = new Set(questions.map((question) => question.plan_item_id).filter(Boolean));
   const unansweredEvidence = new Set(
     notes.flatMap((note) =>
       (note.competency_evidence || [])
-        .filter((evidence) => evidence.rating === 'insufficient' || evidence.rating === 'developing')
-        .map((evidence) => evidence.competency_id)
-    )
+        .filter(
+          (evidence) => evidence.rating === "insufficient" || evidence.rating === "developing",
+        )
+        .map((evidence) => evidence.competency_id),
+    ),
   );
   const pending = blueprint.question_plan.filter((item) => !asked.has(item.id));
   return (
@@ -29,11 +36,11 @@ export function selectNextPlanItem(
 export function shouldAskFollowUp(
   note: LiveAssessmentNote | null,
   followUpCount: number,
-  maxFollowUps: number
+  maxFollowUps: number,
 ): boolean {
   return Boolean(
-    note?.recommended_action === 'follow_up' &&
+    note?.recommended_action === "follow_up" &&
       note.follow_up_question &&
-      followUpCount < maxFollowUps
+      followUpCount < maxFollowUps,
   );
 }

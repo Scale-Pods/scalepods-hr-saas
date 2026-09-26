@@ -1,11 +1,5 @@
 // SuggestiveSearch.tsx
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
+import React, { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { Search } from "lucide-react";
@@ -71,9 +65,7 @@ export const TypewriterEffect: React.FC<EffectRendererProps> = ({
   onDeleteComplete,
   containerRef,
 }) => {
-  const [phase, setPhase] = useState<"typing" | "paused" | "deleting">(
-    "typing"
-  );
+  const [phase, setPhase] = useState<"typing" | "paused" | "deleting">("typing");
   const timers = useRef<ReturnType<typeof window.setTimeout>[]>([]);
 
   useEffect(() => {
@@ -98,20 +90,11 @@ export const TypewriterEffect: React.FC<EffectRendererProps> = ({
     if (!isActive) return;
     if (prefersReducedMotion) {
       if (!allowDelete) return;
-      const t = window.setTimeout(
-        () => onDeleteComplete?.(),
-        Math.max(200, pauseAfterTypeMs)
-      );
+      const t = window.setTimeout(() => onDeleteComplete?.(), Math.max(200, pauseAfterTypeMs));
       timers.current.push(t);
       return () => timers.current.forEach(clearTimeout);
     }
-  }, [
-    isActive,
-    prefersReducedMotion,
-    allowDelete,
-    pauseAfterTypeMs,
-    onDeleteComplete,
-  ]);
+  }, [isActive, prefersReducedMotion, allowDelete, pauseAfterTypeMs, onDeleteComplete]);
 
   if (!isActive) return null;
 
@@ -126,9 +109,7 @@ export const TypewriterEffect: React.FC<EffectRendererProps> = ({
       }}
     >
       {prefersReducedMotion ? (
-        <span className="text-sm text-muted-foreground select-none">
-          {text}
-        </span>
+        <span className="text-sm text-muted-foreground select-none">{text}</span>
       ) : (
         <motion.div
           key={text}
@@ -137,24 +118,21 @@ export const TypewriterEffect: React.FC<EffectRendererProps> = ({
             phase === "typing"
               ? { width: "100%" }
               : phase === "deleting"
-              ? { width: "0%" }
-              : { width: "100%" }
+                ? { width: "0%" }
+                : { width: "100%" }
           }
           transition={
             phase === "typing"
               ? { duration: typeDurationMs / 1000, ease: "linear" }
               : phase === "deleting"
-              ? { duration: deleteDurationMs / 1000, ease: "linear" }
-              : {}
+                ? { duration: deleteDurationMs / 1000, ease: "linear" }
+                : {}
           }
           onAnimationComplete={() => {
             if (phase === "typing") {
               setPhase("paused");
               if (allowDelete) {
-                const t = window.setTimeout(
-                  () => setPhase("deleting"),
-                  pauseAfterTypeMs
-                );
+                const t = window.setTimeout(() => setPhase("deleting"), pauseAfterTypeMs);
                 timers.current.push(t);
               }
             } else if (phase === "deleting") {
@@ -168,9 +146,7 @@ export const TypewriterEffect: React.FC<EffectRendererProps> = ({
             whiteSpace: "nowrap",
           }}
         >
-          <span className="text-sm text-muted-foreground select-none">
-            {text}
-          </span>
+          <span className="text-sm text-muted-foreground select-none">{text}</span>
 
           {/* blinking cursor */}
           <motion.span
@@ -184,9 +160,7 @@ export const TypewriterEffect: React.FC<EffectRendererProps> = ({
             }}
             className="bg-muted-foreground"
             animate={
-              phase === "typing" || phase === "paused"
-                ? { opacity: [0, 1, 0] }
-                : { opacity: 0 }
+              phase === "typing" || phase === "paused" ? { opacity: [0, 1, 0] } : { opacity: 0 }
             }
             transition={
               phase === "typing" || phase === "paused"
@@ -242,16 +216,11 @@ export const SlideEffect: React.FC<EffectRendererProps> = ({
   if (prefersReducedMotion) {
     useEffect(() => {
       if (!allowDelete) return;
-      const t = window.setTimeout(
-        () => onDeleteComplete?.(),
-        Math.max(200, pauseAfterTypeMs)
-      );
+      const t = window.setTimeout(() => onDeleteComplete?.(), Math.max(200, pauseAfterTypeMs));
       timers.current.push(t);
       return () => timers.current.forEach(clearTimeout);
     }, [onDeleteComplete, pauseAfterTypeMs, allowDelete]);
-    return (
-      <span className="text-sm text-muted-foreground select-none">{text}</span>
-    );
+    return <span className="text-sm text-muted-foreground select-none">{text}</span>;
   }
 
   return (
@@ -267,13 +236,7 @@ export const SlideEffect: React.FC<EffectRendererProps> = ({
       <motion.div
         key={text}
         initial={{ y: "-100%" }}
-        animate={
-          phase === "enter"
-            ? { y: "0%" }
-            : phase === "exit"
-            ? { y: "100%" }
-            : { y: "0%" }
-        }
+        animate={phase === "enter" ? { y: "0%" } : phase === "exit" ? { y: "100%" } : { y: "0%" }}
         transition={
           phase === "enter"
             ? { duration: typeDurationMs / 1000, ease: "easeOut" }
@@ -283,10 +246,7 @@ export const SlideEffect: React.FC<EffectRendererProps> = ({
           if (phase === "enter") {
             setPhase("pause");
             if (allowDelete) {
-              const t = window.setTimeout(
-                () => setPhase("exit"),
-                pauseAfterTypeMs
-              );
+              const t = window.setTimeout(() => setPhase("exit"), pauseAfterTypeMs);
               timers.current.push(t);
             }
           } else if (phase === "exit") {
@@ -295,9 +255,7 @@ export const SlideEffect: React.FC<EffectRendererProps> = ({
         }}
         style={{ display: "inline-block" }}
       >
-        <span className="text-sm text-muted-foreground select-none">
-          {text}
-        </span>
+        <span className="text-sm text-muted-foreground select-none">{text}</span>
       </motion.div>
     </div>
   );
@@ -344,16 +302,11 @@ export const FadeEffect: React.FC<EffectRendererProps> = ({
   if (prefersReducedMotion) {
     useEffect(() => {
       if (!allowDelete) return;
-      const t = window.setTimeout(
-        () => onDeleteComplete?.(),
-        Math.max(200, pauseAfterTypeMs)
-      );
+      const t = window.setTimeout(() => onDeleteComplete?.(), Math.max(200, pauseAfterTypeMs));
       timers.current.push(t);
       return () => timers.current.forEach(clearTimeout);
     }, [onDeleteComplete, pauseAfterTypeMs, allowDelete]);
-    return (
-      <span className="text-sm text-muted-foreground select-none">{text}</span>
-    );
+    return <span className="text-sm text-muted-foreground select-none">{text}</span>;
   }
 
   return (
@@ -372,8 +325,8 @@ export const FadeEffect: React.FC<EffectRendererProps> = ({
           phase === "fadeIn"
             ? { opacity: 1 }
             : phase === "fadeOut"
-            ? { opacity: 0 }
-            : { opacity: 1 }
+              ? { opacity: 0 }
+              : { opacity: 1 }
         }
         transition={
           phase === "fadeIn"
@@ -384,10 +337,7 @@ export const FadeEffect: React.FC<EffectRendererProps> = ({
           if (phase === "fadeIn") {
             setPhase("hold");
             if (allowDelete) {
-              const t = window.setTimeout(
-                () => setPhase("fadeOut"),
-                pauseAfterTypeMs
-              );
+              const t = window.setTimeout(() => setPhase("fadeOut"), pauseAfterTypeMs);
               timers.current.push(t);
             }
           } else if (phase === "fadeOut") {
@@ -396,9 +346,7 @@ export const FadeEffect: React.FC<EffectRendererProps> = ({
         }}
         style={{ display: "inline-block" }}
       >
-        <span className="text-sm text-muted-foreground select-none">
-          {text}
-        </span>
+        <span className="text-sm text-muted-foreground select-none">{text}</span>
       </motion.div>
     </div>
   );
@@ -440,18 +388,14 @@ export const SuggestiveSearch: React.FC<SuggestiveSearchProps> = ({
   const [rightOffsetPx, setRightOffsetPx] = useState<number | null>(null);
 
   // pixel width of the longest suggestion text (measured via canvas)
-  const [measuredLongestTextPx, setMeasuredLongestTextPx] = useState<
-    number | null
-  >(null);
+  const [measuredLongestTextPx, setMeasuredLongestTextPx] = useState<number | null>(null);
   // available width for text inside wrapper (wrapper width minus left/right offsets)
-  const [availableTextAreaPx, setAvailableTextAreaPx] = useState<number | null>(
-    null
-  );
+  const [availableTextAreaPx, setAvailableTextAreaPx] = useState<number | null>(null);
 
   // compute longest suggestion string
   const longestSuggestion = useMemo(
     () => suggestions.reduce((a, b) => (a.length > b.length ? a : b), ""),
-    [suggestions]
+    [suggestions],
   );
 
   // measure paddings & leading/trailing width to compute overlay left/right & available area
@@ -465,10 +409,8 @@ export const SuggestiveSearch: React.FC<SuggestiveSearchProps> = ({
       const cs = getComputedStyle(wrapper);
       const padLeft = parseFloat(cs.paddingLeft || "0");
       const padRight = parseFloat(cs.paddingRight || "0");
-      const leadW = showLeading ? lead?.getBoundingClientRect().width ?? 0 : 0;
-      const trailW = showTrailing
-        ? trail?.getBoundingClientRect().width ?? 0
-        : 0;
+      const leadW = showLeading ? (lead?.getBoundingClientRect().width ?? 0) : 0;
+      const trailW = showTrailing ? (trail?.getBoundingClientRect().width ?? 0) : 0;
       const left = padLeft + leadW + 8; // small gap
       setLeftOffsetPx(left);
       const right = padRight + trailW;
@@ -504,8 +446,7 @@ export const SuggestiveSearch: React.FC<SuggestiveSearchProps> = ({
 
     const elForFont = input ?? wrapperRef.current;
     if (!elForFont) {
-      ctx.font =
-        "14px system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial";
+      ctx.font = "14px system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial";
     } else {
       const cs = getComputedStyle(elForFont);
       const font = `${cs.fontStyle} ${cs.fontVariant} ${cs.fontWeight} ${cs.fontSize} / ${cs.lineHeight} ${cs.fontFamily}`;
@@ -546,8 +487,8 @@ export const SuggestiveSearch: React.FC<SuggestiveSearchProps> = ({
     measuredLongestTextPx != null && availableTextAreaPx != null
       ? Math.min(measuredLongestTextPx, availableTextAreaPx)
       : measuredLongestTextPx != null
-      ? measuredLongestTextPx
-      : undefined;
+        ? measuredLongestTextPx
+        : undefined;
 
   // overlay is active only when input empty AND not focused
   const overlayActive = !search && !isFocused;
@@ -561,7 +502,7 @@ export const SuggestiveSearch: React.FC<SuggestiveSearchProps> = ({
       ref={wrapperRef}
       className={cn(
         "relative flex items-center gap-x-2 py-2 px-4 border border-border rounded-full",
-        className
+        className,
       )}
       style={{ maxWidth: "100%" }}
     >
@@ -581,11 +522,7 @@ export const SuggestiveSearch: React.FC<SuggestiveSearchProps> = ({
         placeholder=""
         aria-label="search"
         // set minWidth based on pixel measurement (if available)
-        style={
-          minWidthPx != null
-            ? { minWidth: `${minWidthPx}px` }
-            : { minWidth: undefined }
-        }
+        style={minWidthPx != null ? { minWidth: `${minWidthPx}px` } : { minWidth: undefined }}
       />
 
       {/* Trailing icon (optional) */}
@@ -600,10 +537,7 @@ export const SuggestiveSearch: React.FC<SuggestiveSearchProps> = ({
           aria-hidden
           style={{
             position: "absolute",
-            left:
-              leftOffsetPx != null
-                ? `${leftOffsetPx}px`
-                : "calc(0.5rem + 1.5rem + 8px)",
+            left: leftOffsetPx != null ? `${leftOffsetPx}px` : "calc(0.5rem + 1.5rem + 8px)",
             right: rightOffsetPx != null ? `${rightOffsetPx}px` : "0.5rem",
             top: 0,
             bottom: 0,

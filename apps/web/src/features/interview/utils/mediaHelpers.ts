@@ -1,28 +1,38 @@
 export function getMimeType(): string {
-  if (typeof MediaRecorder === 'undefined') return '';
+  if (typeof MediaRecorder === "undefined") return "";
   const candidates = [
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm',
-    'video/mp4;codecs=avc1,mp4a.40.2',
-    'video/mp4',
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+    "video/mp4;codecs=avc1,mp4a.40.2",
+    "video/mp4",
   ];
   for (const mime of candidates) {
     if (MediaRecorder.isTypeSupported(mime)) return mime;
   }
-  return '';
+  return "";
 }
 
-export async function getCameraStream(constraints?: MediaTrackConstraints, timeoutMs = 6000): Promise<MediaStream> {
-  const tmr = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs));
-  const stream = await Promise.race([
-    navigator.mediaDevices.getUserMedia({ video: constraints || { width: 640, height: 480, frameRate: 15 } }),
+export async function getCameraStream(
+  constraints?: MediaTrackConstraints,
+  timeoutMs = 6000,
+): Promise<MediaStream> {
+  const tmr = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("timeout")), timeoutMs),
+  );
+  const stream = (await Promise.race([
+    navigator.mediaDevices.getUserMedia({
+      video: constraints || { width: 640, height: 480, frameRate: 15 },
+    }),
     tmr,
-  ]) as MediaStream;
+  ])) as MediaStream;
   return stream;
 }
 
-export async function getMediaDevicesStream(): Promise<{ camera: MediaStream; audio: MediaStream | null }> {
+export async function getMediaDevicesStream(): Promise<{
+  camera: MediaStream;
+  audio: MediaStream | null;
+}> {
   try {
     const combined = await navigator.mediaDevices.getUserMedia({
       video: { width: 640, height: 480, frameRate: 15 },
@@ -56,29 +66,31 @@ export const OPTIMAL_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
 } as unknown as MediaTrackConstraints;
 
 export async function getAudioStream(timeoutMs = 4000): Promise<MediaStream | null> {
-  const audioOnlyTimeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs));
+  const audioOnlyTimeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("timeout")), timeoutMs),
+  );
 
   try {
-    return await Promise.race([
+    return (await Promise.race([
       navigator.mediaDevices.getUserMedia({ audio: OPTIMAL_AUDIO_CONSTRAINTS }),
       audioOnlyTimeout,
-    ]) as MediaStream;
+    ])) as MediaStream;
   } catch {}
 
   try {
-    return await Promise.race([
+    return (await Promise.race([
       navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       }),
       audioOnlyTimeout,
-    ]) as MediaStream;
+    ])) as MediaStream;
   } catch {}
 
   try {
-    return await Promise.race([
+    return (await Promise.race([
       navigator.mediaDevices.getUserMedia({ audio: true }),
       audioOnlyTimeout,
-    ]) as MediaStream;
+    ])) as MediaStream;
   } catch {}
 
   return null;
@@ -86,16 +98,16 @@ export async function getAudioStream(timeoutMs = 4000): Promise<MediaStream | nu
 
 export async function getScreenStream(timeoutMs = 15000): Promise<MediaStream | null> {
   const tmr = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('timeout')), timeoutMs)
+    setTimeout(() => reject(new Error("timeout")), timeoutMs),
   );
   try {
-    const stream = await Promise.race([
+    const stream = (await Promise.race([
       navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }),
       tmr,
-    ]) as MediaStream;
+    ])) as MediaStream;
     return stream;
   } catch (err: unknown) {
-    if ((err as Error)?.message === 'timeout') {
+    if ((err as Error)?.message === "timeout") {
       console.warn(`getScreenStream timed out after ${timeoutMs}ms`);
     }
     return null;
@@ -122,27 +134,22 @@ export function createCompositeStream(
   cameraStream: MediaStream,
   screenStream: MediaStream,
   audioStream: MediaStream,
-  options: CompositeStreamOptions = {}
+  options: CompositeStreamOptions = {},
 ): { stream: MediaStream; cleanup: () => void } {
-  const {
-    cameraWidth = 240,
-    cameraHeight = 180,
-    cameraMargin = 16,
-    frameRate = 15,
-  } = options;
+  const { cameraWidth = 240, cameraHeight = 180, cameraMargin = 16, frameRate = 15 } = options;
 
-  const canvas = document.createElement('canvas');
+  const canvas = document.createElement("canvas");
   canvas.width = 1280;
   canvas.height = 720;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext("2d");
 
-  const screenVideo = document.createElement('video');
+  const screenVideo = document.createElement("video");
   screenVideo.srcObject = screenStream;
   screenVideo.muted = true;
   screenVideo.playsInline = true;
   void screenVideo.play().catch(() => {});
 
-  const cameraVideo = document.createElement('video');
+  const cameraVideo = document.createElement("video");
   cameraVideo.srcObject = cameraStream;
   cameraVideo.muted = true;
   cameraVideo.playsInline = true;
@@ -154,7 +161,7 @@ export function createCompositeStream(
   const draw = () => {
     if (!isRunning) return;
     if (ctx) {
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = "#000000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       if (screenVideo.readyState >= 2) {
@@ -165,9 +172,9 @@ export function createCompositeStream(
         const x = canvas.width - cameraWidth - cameraMargin;
         const y = canvas.height - cameraHeight - cameraMargin;
         ctx.save();
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowColor = "rgba(0,0,0,0.5)";
         ctx.shadowBlur = 10;
-        ctx.fillStyle = '#000';
+        ctx.fillStyle = "#000";
         ctx.fillRect(x - 2, y - 2, cameraWidth + 4, cameraHeight + 4);
         ctx.drawImage(cameraVideo, x, y, cameraWidth, cameraHeight);
         ctx.restore();

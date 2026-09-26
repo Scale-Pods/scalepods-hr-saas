@@ -35,7 +35,12 @@ export function makeRound(): RoundDraft {
   return { ...DEFAULT_ROUND, id: `round-${draftSequence}` };
 }
 
-export const ROUND_TYPE_OPTIONS: { value: RoundType; label: string; desc: string; icon: React.ReactNode }[] = [
+export const ROUND_TYPE_OPTIONS: {
+  value: RoundType;
+  label: string;
+  desc: string;
+  icon: React.ReactNode;
+}[] = [
   {
     value: "ai_interview",
     label: "Live AI Interview",
@@ -117,7 +122,12 @@ export function RoundEditor({
             {ROUND_TYPE_OPTIONS.map((opt) => {
               const locked = opt.value === "assignment" && !growthPlus;
               return (
-                <option key={opt.value} value={opt.value} disabled={locked} className="bg-card text-foreground dark:bg-gray-900">
+                <option
+                  key={opt.value}
+                  value={opt.value}
+                  disabled={locked}
+                  className="bg-card text-foreground dark:bg-gray-900"
+                >
                   {opt.label} {locked ? "— (Upgrade to Growth tier)" : ""}
                 </option>
               );
@@ -173,10 +183,7 @@ export function RoundEditor({
         {/* Human Interviewer Field */}
         {round.round_type === "human_interview" ? (
           <div className="sm:col-span-2 rounded-xl bg-accent/40 p-4 border border-primary/20 space-y-2">
-            <label
-              htmlFor={`int-${index}`}
-              className="block text-xs font-semibold text-foreground"
-            >
+            <label htmlFor={`int-${index}`} className="block text-xs font-semibold text-foreground">
               Assigned Lead Interviewer Email *
             </label>
             {teamMembers.length > 0 ? (
@@ -190,9 +197,15 @@ export function RoundEditor({
                   "dark:bg-card dark:text-foreground",
                 )}
               >
-                <option value="" className="bg-card text-foreground dark:bg-gray-900">Select an interviewer from your team…</option>
+                <option value="" className="bg-card text-foreground dark:bg-gray-900">
+                  Select an interviewer from your team…
+                </option>
                 {teamMembers.map((m) => (
-                  <option key={m.id} value={m.email} className="bg-card text-foreground dark:bg-gray-900">
+                  <option
+                    key={m.id}
+                    value={m.email}
+                    className="bg-card text-foreground dark:bg-gray-900"
+                  >
                     {m.name} ({m.email})
                   </option>
                 ))}
@@ -230,7 +243,9 @@ export function RoundEditor({
                 onChange={(e) => onChange({ daily_start_time: e.target.value })}
                 className="bg-card"
               />
-              <span className="mt-1 block text-[11px] text-muted-foreground">Earliest daily interview slot</span>
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                Earliest daily interview slot
+              </span>
             </div>
             <div>
               <label
@@ -246,7 +261,9 @@ export function RoundEditor({
                 onChange={(e) => onChange({ daily_end_time: e.target.value })}
                 className="bg-card"
               />
-              <span className="mt-1 block text-[11px] text-muted-foreground">Latest daily interview slot</span>
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                Latest daily interview slot
+              </span>
             </div>
           </div>
         ) : null}
@@ -289,7 +306,8 @@ export function RoundEditor({
                 className="w-36 bg-card"
               />
               <span className="mt-1 block text-xs text-muted-foreground">
-                Candidates must submit their completed work within this time window (e.g. 72 hours = 3 days).
+                Candidates must submit their completed work within this time window (e.g. 72 hours =
+                3 days).
               </span>
             </div>
           </div>

@@ -103,8 +103,19 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         .order("created_at", { ascending: false }),
     ]);
 
-    const candsList = (candsRes.data ?? []) as { id: string; name: string | null; email: string; phone: string | null }[];
-    const dlList = ((dlRes.data ?? []) as unknown) as { id: string; candidate_id: string; stage: string; score: number | null; created_at: string }[];
+    const candsList = (candsRes.data ?? []) as {
+      id: string;
+      name: string | null;
+      email: string;
+      phone: string | null;
+    }[];
+    const dlList = (dlRes.data ?? []) as unknown as {
+      id: string;
+      candidate_id: string;
+      stage: string;
+      score: number | null;
+      created_at: string;
+    }[];
 
     candidates = candsList.map((cand) => {
       const candDl = dlList.find((d) => d.candidate_id === cand.id);

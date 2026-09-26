@@ -5,5 +5,5 @@ import { ResetPasswordPage } from "@/components/ui/reset-password-page";
 createRoot(document.getElementById("reset-root")!).render(
   <StrictMode>
     <ResetPasswordPage />
-  </StrictMode>
+  </StrictMode>,
 );

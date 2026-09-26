@@ -1,7 +1,7 @@
 "use client";
 
 import { limitLabel, TIER_LIMITS, type Tier, type TierLimits, tierAtLeast } from "@scalepods/core";
-import { ExternalLink, Zap } from "lucide-react";
+import { ExternalLink, Zap, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -44,7 +44,7 @@ const COMPARE_METRICS: {
   label: string;
   format: (t: TierLimits) => string;
 }[] = [
-  { key: "maxRounds", label: "Rounds per campaign", format: (t) => String(t.maxRounds) },
+  { key: "maxRounds", label: "Rounds / campaign", format: (t) => String(t.maxRounds) },
   {
     key: "activeCampaigns",
     label: "Active campaigns",
@@ -52,7 +52,7 @@ const COMPARE_METRICS: {
   },
   {
     key: "resumesScreened",
-    label: "Resume screenings / mo",
+    label: "Resume screens / mo",
     format: (t) => limitLabel(t.resumesScreened),
   },
   { key: "aiInterview", label: "AI interviews / mo", format: (t) => limitLabel(t.aiInterview) },
@@ -248,7 +248,7 @@ function TierCompareModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl">
+      <DialogContent className="sm:max-w-5xl w-[95vw]">
         <DialogHeader>
           <DialogTitle>Compare plans</DialogTitle>
         </DialogHeader>
@@ -267,33 +267,53 @@ function TierCompareModal({
                       : "border-border",
                   )}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold text-foreground">{limits.label}</p>
-                    {isCurrent ? (
-                      <Badge variant="secondary" className="bg-primary/15 text-primary text-[10px]">
-                        Current
-                      </Badge>
-                    ) : null}
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                        <p className="font-semibold text-foreground text-base">{limits.label}</p>
+                      </div>
+                      {isCurrent ? (
+                        <Badge
+                          variant="secondary"
+                          className="bg-primary/15 text-primary text-[10px]"
+                        >
+                          Current
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground pb-3 border-b border-border/50">
+                      {t === "free"
+                        ? "Basic plan to get started"
+                        : t === "basic"
+                          ? "Ideal for individual recruiters"
+                          : t === "growth"
+                            ? "Best for growing agencies"
+                            : "Custom solutions for large orgs"}
+                    </p>
                   </div>
-                  <ul className="space-y-1.5 text-xs text-muted-foreground">
+                  <ul className="space-y-3 text-xs text-muted-foreground mt-2">
                     {COMPARE_METRICS.slice(0, 4).map((m) => (
-                      <li key={m.key} className="flex items-center justify-between gap-2">
-                        <span>{m.label}</span>
-                        <span className="font-medium tabular-nums text-foreground">
-                          {m.format(limits)}
+                      <li key={m.key} className="flex items-start gap-2">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                        <span className="leading-snug">
+                          <strong className="font-medium text-foreground">
+                            {m.format(limits)}
+                          </strong>{" "}
+                          {m.label}
                         </span>
                       </li>
                     ))}
                   </ul>
-                  <div className="pt-1 mt-auto">
+                  <div className="pt-4 mt-auto">
                     {t === "enterprise" ? (
-                      <Button variant="outline" className="w-full" size="sm">
+                      <Button variant="outline" className="w-full rounded-full" size="sm">
                         Contact sales
                       </Button>
                     ) : (
                       <Button
                         variant={isCurrent ? "outline" : "default"}
-                        className="w-full"
+                        className="w-full rounded-full"
                         size="sm"
                       >
                         {isCurrent ? "Current plan" : "Upgrade"}

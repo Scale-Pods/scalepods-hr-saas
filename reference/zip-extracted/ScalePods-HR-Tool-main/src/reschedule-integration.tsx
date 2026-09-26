@@ -30,12 +30,12 @@ window.openRescheduleModal = (params: RescheduleParams) => {
     if (!rescheduleRoot) {
       rescheduleRoot = createRoot(rescheduleRootEl);
     }
-    
+
     rescheduleRoot.render(
       <StrictMode>
-        <RescheduleCalendar 
-          eventId={params.eventId} 
-          email={params.email} 
+        <RescheduleCalendar
+          eventId={params.eventId}
+          email={params.email}
           candidate={params.candidate}
           onSuccess={() => {
             window.closeRescheduleModal();
@@ -43,7 +43,7 @@ window.openRescheduleModal = (params: RescheduleParams) => {
           }}
           onCancel={() => window.closeRescheduleModal()}
         />
-      </StrictMode>
+      </StrictMode>,
     );
 
     overlay.classList.add("open");
@@ -66,4 +66,3 @@ window.closeRescheduleModal = () => {
     }, 400);
   }
 };
-

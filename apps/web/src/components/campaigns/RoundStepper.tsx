@@ -41,25 +41,37 @@ export function RoundStepper({
   types,
   currentRound,
   statuses,
+  interviewers,
 }: {
   numberOfRounds: number;
   types: Record<number, RoundType>;
   currentRound?: number;
   statuses?: Record<number, string>;
+  interviewers?: Record<number, string>;
 }) {
   return (
-    <ol className="flex items-center gap-1 overflow-x-auto">
+    <ol className="flex items-center gap-2 overflow-x-auto pb-2">
       {Array.from({ length: numberOfRounds }, (_, i) => i + 1).map((n) => (
-        <li key={n} className="flex shrink-0 items-center gap-1">
+        <li key={n} className="flex shrink-0 items-center gap-2">
           <div
             className={cn(
-              "flex items-center gap-1.5 rounded-full border px-2.5 py-1",
+              "flex flex-col justify-center rounded-lg border px-3 py-1.5",
               currentRound === n ? "border-primary bg-accent" : "border-border bg-card",
             )}
           >
-            <span className="text-xs font-semibold text-muted-foreground">Round {n}</span>
-            {types[n] ? <RoundTypeIcon type={types[n]} /> : null}
-            {statuses?.[n] ? <StatusChip status={statuses[n]} /> : null}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-muted-foreground">Round {n}</span>
+              {types[n] ? <RoundTypeIcon type={types[n]} /> : null}
+              {statuses?.[n] ? <StatusChip status={statuses[n]} /> : null}
+            </div>
+            {interviewers?.[n] ? (
+              <span
+                className="mt-1 text-[10px] text-muted-foreground max-w-[120px] truncate"
+                title={interviewers[n]}
+              >
+                {interviewers[n]}
+              </span>
+            ) : null}
           </div>
           {n < numberOfRounds ? <span className="text-muted-foreground">→</span> : null}
         </li>

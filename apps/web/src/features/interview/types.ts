@@ -1,9 +1,9 @@
-export type InterviewerTurnType = 'question' | 'follow_up' | 'transition' | 'closing';
+export type InterviewerTurnType = "question" | "follow_up" | "transition" | "closing";
 
 export interface InterviewerTurn {
   interviewer_text?: string | null;
   turn_type: InterviewerTurnType;
-  question_type?: 'technical' | 'behavioral' | 'situational' | 'cultural';
+  question_type?: "technical" | "behavioral" | "situational" | "cultural";
   should_continue: boolean;
   question_text?: string;
 }
@@ -16,7 +16,14 @@ export interface Candidate {
   created_at?: string;
 }
 
-export type SessionStatus = 'pending' | 'invited' | 'in_progress' | 'completed' | 'expired' | 'cancelled' | 'flagged';
+export type SessionStatus =
+  | "pending"
+  | "invited"
+  | "in_progress"
+  | "completed"
+  | "expired"
+  | "cancelled"
+  | "flagged";
 
 export interface InterviewSession {
   id: string;
@@ -35,13 +42,13 @@ export interface InterviewSession {
   resume_text?: string;
 }
 
-export type AnswerInsufficiencyReason = 'lacks_depth' | 'lacks_evidence' | 'vague' | 'irrelevant';
+export type AnswerInsufficiencyReason = "lacks_depth" | "lacks_evidence" | "vague" | "irrelevant";
 
 export interface InterviewQuestion {
   id: string;
   session_id: string;
   question_text: string;
-  question_type: 'technical' | 'behavioral' | 'situational' | 'cultural';
+  question_type: "technical" | "behavioral" | "situational" | "cultural";
   source?: string;
   order_index: number;
   parent_question_id?: string | null;
@@ -54,25 +61,30 @@ export interface InterviewQuestion {
 
 export interface LiveAssessmentNote {
   question_id: string;
-  authenticity_signal: 'genuine' | 'vague' | 'suspicious' | 'inconsistent';
-  depth_signal: 'deep' | 'surface' | 'empty';
+  authenticity_signal: "genuine" | "vague" | "suspicious" | "inconsistent";
+  depth_signal: "deep" | "surface" | "empty";
   red_flags?: string[];
   note?: string;
   follow_up_prompted?: boolean;
   follow_up_question?: string;
   rephrased_question?: string;
   insufficiency_reason?: AnswerInsufficiencyReason | null;
-  recommended_action: 'advance' | 'follow_up' | 'rephrase_primary';
+  recommended_action: "advance" | "follow_up" | "rephrase_primary";
   confidence?: number;
   requested_clarification?: boolean;
   answer_was_irrelevant?: boolean;
-  competency_evidence?: Array<{ competency: string; evidence: string; rating?: string; competency_id?: string }>;
+  competency_evidence?: Array<{
+    competency: string;
+    evidence: string;
+    rating?: string;
+    competency_id?: string;
+  }>;
 }
 
 export interface AuthenticitySignal {
   question_id: string;
-  signal: 'genuine' | 'vague' | 'suspicious' | 'inconsistent';
-  depth: 'deep' | 'surface' | 'empty';
+  signal: "genuine" | "vague" | "suspicious" | "inconsistent";
+  depth: "deep" | "surface" | "empty";
   follow_up_count: number;
 }
 
@@ -88,13 +100,21 @@ export interface InterviewAnswer {
 }
 
 export type ProctoringEventType =
-  | 'tab_switch' | 'window_blur' | 'browser_resize'
-  | 'face_absent' | 'face_multiple' | 'face_mismatch'
-  | 'audio_silence' | 'audio_level' | 'copy_paste'
-  | 'keyboard_shortcut' | 'fullscreen_exit'
-  | 'gaze_away' | 'head_down';
+  | "tab_switch"
+  | "window_blur"
+  | "browser_resize"
+  | "face_absent"
+  | "face_multiple"
+  | "face_mismatch"
+  | "audio_silence"
+  | "audio_level"
+  | "copy_paste"
+  | "keyboard_shortcut"
+  | "fullscreen_exit"
+  | "gaze_away"
+  | "head_down";
 
-export type ProctoringSeverity = 'info' | 'warning' | 'critical';
+export type ProctoringSeverity = "info" | "warning" | "critical";
 
 export interface ProctoringEvent {
   id?: string;
@@ -124,7 +144,7 @@ export interface ProctoringSummary {
 export interface JdTool {
   name: string;
   category?: string;
-  importance: 'must_have' | 'nice_to_have';
+  importance: "must_have" | "nice_to_have";
   mentioned_in_resume: boolean;
   resume_context?: string | null;
 }
@@ -151,10 +171,10 @@ export interface InterviewPlanItem {
   category: string;
   competency_ids: string[];
   objective: string;
-  question_type?: 'technical' | 'behavioral' | 'situational' | 'cultural';
+  question_type?: "technical" | "behavioral" | "situational" | "cultural";
   difficulty?: string;
   target_tool?: string;
-  verification_mode?: 'verify_claim' | 'baseline_check';
+  verification_mode?: "verify_claim" | "baseline_check";
   gap_ref?: {
     description: string;
     probe_direction?: string;
@@ -192,7 +212,7 @@ export interface Scorecard {
   cultural_fit_score?: number;
   overall_score?: number;
   authenticity_score?: number;
-  recommendation?: 'strong_hire' | 'hire' | 'consider' | 'no_go';
+  recommendation?: "strong_hire" | "hire" | "consider" | "no_go";
   red_flags?: string[];
   strengths?: string[];
   weaknesses?: string[];

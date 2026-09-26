@@ -10,7 +10,19 @@ import {
   TIER_LIMITS,
 } from "@scalepods/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, FileText, Info, Layers, Sparkles, Upload, Users, X } from "lucide-react";
+import {
+  Calendar,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Info,
+  Layers,
+  Sparkles,
+  Upload,
+  Users,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { CadencePreview } from "@/components/campaigns/CadencePreview";
@@ -221,7 +233,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             Launch a New Hiring Campaign
           </h2>
           <p className="mt-1 text-xs text-muted-foreground font-medium">
-            Active Subscription: <span className="font-semibold text-foreground capitalize">{tierConfig.label}</span> · Supports up to {tierConfig.maxRounds} interview stages per role.
+            Active Subscription:{" "}
+            <span className="font-semibold text-foreground capitalize">{tierConfig.label}</span> ·
+            Supports up to {tierConfig.maxRounds} interview stages per role.
           </p>
         </div>
         {onCancel && (
@@ -275,7 +289,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 className="rounded-xl text-foreground font-medium"
               />
               <span className="mt-1.5 block text-xs text-muted-foreground">
-                A descriptive title used for internal reporting and visible to applicants on invitation portals.
+                A descriptive title used for internal reporting and visible to applicants on
+                invitation portals.
               </span>
             </div>
 
@@ -298,7 +313,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
               />
               <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">
-                  ScalePods AI uses this JD to automatically generate custom candidate evaluation scores (0-100).
+                  ScalePods AI uses this JD to automatically generate custom candidate evaluation
+                  scores (0-100).
                 </p>
                 <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors">
                   <Upload className="h-3.5 w-3.5 text-primary" aria-hidden />
@@ -326,9 +342,21 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                     const over = n > tierConfig.maxRounds;
                     const hardStop = tierConfig.overageBehavior === "hard_stop";
                     return (
-                      <option key={n} value={n} disabled={hardStop && over} className="bg-card text-foreground dark:bg-gray-900">
-                        {n} {n === 1 ? "Round (Single stage screening)" : `Rounds (Multi-stage evaluation)`}
-                        {over ? (hardStop ? ` — (Requires plan upgrade)` : " — (Billed as metered overage)") : ""}
+                      <option
+                        key={n}
+                        value={n}
+                        disabled={hardStop && over}
+                        className="bg-card text-foreground dark:bg-gray-900"
+                      >
+                        {n}{" "}
+                        {n === 1
+                          ? "Round (Single stage screening)"
+                          : `Rounds (Multi-stage evaluation)`}
+                        {over
+                          ? hardStop
+                            ? ` — (Requires plan upgrade)`
+                            : " — (Billed as metered overage)"
+                          : ""}
                       </option>
                     );
                   })}
@@ -361,7 +389,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                     onChange={(e) => setStartDate(e.target.value)}
                     className="rounded-xl text-foreground"
                   />
-                  <span className="mt-1 block text-[11px] text-muted-foreground">Intake begins</span>
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    Intake begins
+                  </span>
                 </div>
                 <div>
                   <label
@@ -377,7 +407,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                     onChange={(e) => setEndDate(e.target.value)}
                     className="rounded-xl text-foreground"
                   />
-                  <span className="mt-1 block text-[11px] text-muted-foreground">Decisions deadline</span>
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    Decisions deadline
+                  </span>
                 </div>
               </div>
             </div>
@@ -390,7 +422,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             <div className="flex items-center gap-2 rounded-xl bg-accent/40 border border-primary/20 p-3.5 text-xs text-muted-foreground">
               <Info className="h-4 w-4 text-primary shrink-0" />
               <span>
-                Each round operates sequentially. Candidates must score at or above the designated <strong>Minimum Passing Score</strong> to automatically unlock and advance to the next round.
+                Each round operates sequentially. Candidates must score at or above the designated{" "}
+                <strong>Minimum Passing Score</strong> to automatically unlock and advance to the
+                next round.
               </span>
             </div>
 
@@ -426,7 +460,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 description="Delivers automated interview reminder alerts and direct portal links via WhatsApp for 3× faster candidate response rates."
                 checked={whatsappOn}
                 disabled={!tierConfig.whatsapp}
-                lockText={!tierConfig.whatsapp ? "Available on the Basic plan and above" : undefined}
+                lockText={
+                  !tierConfig.whatsapp ? "Available on the Basic plan and above" : undefined
+                }
                 onCheckedChange={setWhatsappOn}
               />
               <ChannelToggle
@@ -434,7 +470,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 description="ScalePods conversational AI initiates a 5-minute automated phone screening ahead of Round 1 to verify candidate communication and availability."
                 checked={voiceOn}
                 disabled={!tierConfig.voiceScreening}
-                lockText={!tierConfig.voiceScreening ? "Available on the Basic plan and above" : undefined}
+                lockText={
+                  !tierConfig.voiceScreening ? "Available on the Basic plan and above" : undefined
+                }
                 onCheckedChange={setVoiceOn}
               />
             </div>
@@ -447,7 +485,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 </h4>
               </div>
               <p className="text-xs text-muted-foreground">
-                Here is the sequence of touchpoints and notifications candidates will receive based on your active channels and plan tier:
+                Here is the sequence of touchpoints and notifications candidates will receive based
+                on your active channels and plan tier:
               </p>
               <div className="mt-3">
                 <CadencePreview rows={previewRows} />
@@ -498,7 +537,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
 
       <div className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
         <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-        <span>Campaigns are powered by ScalePods automated AI screening and evaluation pipelines.</span>
+        <span>
+          Campaigns are powered by ScalePods automated AI screening and evaluation pipelines.
+        </span>
       </div>
     </div>
   );

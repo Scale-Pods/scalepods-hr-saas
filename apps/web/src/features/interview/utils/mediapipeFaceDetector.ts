@@ -5,7 +5,7 @@
  * The WASM model (~2 MB) is downloaded once on first call and cached.
  */
 
-import { FaceDetector, FilesetResolver } from '@mediapipe/tasks-vision';
+import { FaceDetector, FilesetResolver } from "@mediapipe/tasks-vision";
 
 let detector: FaceDetector | null = null;
 let initialising = false;
@@ -19,23 +19,23 @@ async function getDetector(): Promise<FaceDetector | null> {
   initialising = true;
   try {
     const vision = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
     );
 
     detector = await FaceDetector.createFromOptions(vision, {
       baseOptions: {
         modelAssetPath:
-          'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite',
-        delegate: 'GPU',
+          "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite",
+        delegate: "GPU",
       },
-      runningMode: 'VIDEO',
+      runningMode: "VIDEO",
       minDetectionConfidence: 0.6,
       minSuppressionThreshold: 0.4,
     });
 
     return detector;
   } catch (err) {
-    console.warn('[MediaPipe] FaceDetector initialisation failed:', err);
+    console.warn("[MediaPipe] FaceDetector initialisation failed:", err);
     initFailed = true;
     return null;
   } finally {

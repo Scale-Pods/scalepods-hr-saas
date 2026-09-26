@@ -44,9 +44,12 @@ export function AIScoreGauge({ score, label, size = 140 }: AIScoreGaugeProps) {
       : "";
 
   const quality =
-    clampedScore >= 85 ? "High Quality Matches" : clampedScore >= 65 ? "Good Matches" : "Review Recommended";
-  const qualityColor =
-    clampedScore >= 85 ? "#10b981" : clampedScore >= 65 ? "#2563eb" : "#f59e0b";
+    clampedScore >= 85
+      ? "High Quality Matches"
+      : clampedScore >= 65
+        ? "Good Matches"
+        : "Review Recommended";
+  const qualityColor = clampedScore >= 85 ? "#10b981" : clampedScore >= 65 ? "#2563eb" : "#f59e0b";
 
   return (
     <div className="flex flex-col items-center">

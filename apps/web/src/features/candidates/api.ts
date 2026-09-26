@@ -29,7 +29,8 @@ export interface CandidateProfile {
 function roundNumberFromStage(stage: string): number | null {
   const m = /^round_(\d+)$/.exec(stage);
   if (m) return Number(m[1]);
-  if (stage === "round_undefined" || stage.includes("round") || stage.includes("interview")) return 1;
+  if (stage === "round_undefined" || stage.includes("round") || stage.includes("interview"))
+    return 1;
   return null;
 }
 
@@ -46,7 +47,9 @@ export async function fetchCandidateProfile(id: string, tier: string): Promise<C
   const [ledger, rounds, sessions, logs] = await Promise.all([
     supabase
       .from("decision_ledger")
-      .select("id,account_id,candidate_id,round_instance_id,stage,score,rationale,weight,created_at,raw_text")
+      .select(
+        "id,account_id,candidate_id,round_instance_id,stage,score,rationale,weight,created_at,raw_text",
+      )
       .eq("candidate_id", id)
       .order("created_at", { ascending: true }),
     supabase.from("round_instances").select("*").eq("candidate_id", id).order("round_number"),
@@ -64,7 +67,7 @@ export async function fetchCandidateProfile(id: string, tier: string): Promise<C
   ]);
 
   const roundRows = (rounds.data ?? []) as RoundInstancesRow[];
-  const sessionRows = ((sessions.data ?? []) as unknown) as InterviewSessionRow[];
+  const sessionRows = (sessions.data ?? []) as unknown as InterviewSessionRow[];
   const roundIds = roundRows.map((r) => r.id);
 
   const campaignIds = Array.from(new Set(roundRows.map((r) => r.campaign_id)));
@@ -155,7 +158,7 @@ export async function fetchCandidateProfile(id: string, tier: string): Promise<C
         recordingExpired,
         recordingSignedUrl,
       };
-    })
+    }),
   );
 
   let resumeUrl: string | null = null;

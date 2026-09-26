@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from "react";
 
 interface TTSEngine {
   speak: (text: string, onend?: () => void) => void;
@@ -17,7 +17,7 @@ export function useTTSEngine(): TTSEngine {
 
   useEffect(() => {
     const loadVoices = () => {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
         const availableVoices = window.speechSynthesis.getVoices();
         setVoices(availableVoices);
         voicesRef.current = availableVoices;
@@ -25,12 +25,12 @@ export function useTTSEngine(): TTSEngine {
     };
 
     loadVoices();
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
 
     return () => {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.onvoiceschanged = null;
       }
     };
@@ -42,7 +42,7 @@ export function useTTSEngine(): TTSEngine {
       safetyTimerRef.current = null;
     }
     activeUtteranceRef.current = null;
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
       try {
         window.speechSynthesis.cancel();
       } catch {}
@@ -52,8 +52,8 @@ export function useTTSEngine(): TTSEngine {
 
   const speakWithWebSpeech = useCallback(
     (text: string, onend?: () => void) => {
-      if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-        console.warn('SpeechSynthesis not available in this browser');
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        console.warn("SpeechSynthesis not available in this browser");
         if (onend) onend();
         return;
       }
@@ -76,18 +76,20 @@ export function useTTSEngine(): TTSEngine {
         const preferredVoice = currentVoices.find((v) => {
           const name = v.name.toLowerCase();
           return (
-            (name.includes('male') ||
-              name.includes('david') ||
-              name.includes('alex') ||
-              name.includes('mark') ||
-              name.includes('daniel') ||
-              name.includes('george') ||
-              name.includes('natural') ||
-              name.includes('guy')) &&
-            (v.lang.includes('en') || v.lang.includes('EN'))
+            (name.includes("male") ||
+              name.includes("david") ||
+              name.includes("alex") ||
+              name.includes("mark") ||
+              name.includes("daniel") ||
+              name.includes("george") ||
+              name.includes("natural") ||
+              name.includes("guy")) &&
+            (v.lang.includes("en") || v.lang.includes("EN"))
           );
         });
-        const fallbackEnglish = currentVoices.find((v) => v.lang.includes('en') || v.lang.includes('EN'));
+        const fallbackEnglish = currentVoices.find(
+          (v) => v.lang.includes("en") || v.lang.includes("EN"),
+        );
         utterance.voice = preferredVoice || fallbackEnglish || currentVoices[0] || null;
       }
 
@@ -113,8 +115,8 @@ export function useTTSEngine(): TTSEngine {
       };
 
       utterance.onerror = (e) => {
-        if (e.error !== 'interrupted') {
-          console.warn('Speech synthesis error:', e);
+        if (e.error !== "interrupted") {
+          console.warn("Speech synthesis error:", e);
         }
         finish();
       };
@@ -125,7 +127,7 @@ export function useTTSEngine(): TTSEngine {
       const expectedDurationMs = Math.max(3500, Math.min(30000, words * 380 + 2500));
       safetyTimerRef.current = setTimeout(() => {
         if (!finished) {
-          console.log('TTS safety timeout triggered, proceeding to answer phase');
+          console.log("TTS safety timeout triggered, proceeding to answer phase");
           finish();
         }
       }, expectedDurationMs);
@@ -133,11 +135,11 @@ export function useTTSEngine(): TTSEngine {
       try {
         window.speechSynthesis.speak(utterance);
       } catch (err) {
-        console.warn('Failed to speak text:', err);
+        console.warn("Failed to speak text:", err);
         finish();
       }
     },
-    [cancel]
+    [cancel],
   );
 
   const speak = useCallback(
@@ -148,7 +150,7 @@ export function useTTSEngine(): TTSEngine {
       }
       speakWithWebSpeech(text, onend);
     },
-    [speakWithWebSpeech]
+    [speakWithWebSpeech],
   );
 
   const isSpeaking = useCallback(() => isSpeakingRef.current, []);

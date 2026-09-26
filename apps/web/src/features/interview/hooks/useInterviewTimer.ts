@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from "react";
 
 export function useInterviewTimer(durationMinutes: number) {
   const [remaining, setRemaining] = useState(durationMinutes * 60);
@@ -31,7 +31,7 @@ export function useInterviewTimer(durationMinutes: number) {
 
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
-  const formatted = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  const formatted = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 
   return {
     remaining,

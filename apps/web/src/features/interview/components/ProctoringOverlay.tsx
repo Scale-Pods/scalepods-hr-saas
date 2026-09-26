@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
-import { AlertTriangle, Eye, Monitor, Mic, X, Shield, Info, AlertCircle } from 'lucide-react';
-import type { ProctoringEvent, ProctoringSeverity } from '../types';
-import { supabaseBrowser } from '@/lib/supabase/client';
+import { useEffect, useState, useRef } from "react";
+import { AlertTriangle, Eye, Monitor, Mic, X, Shield, Info, AlertCircle } from "lucide-react";
+import type { ProctoringEvent, ProctoringSeverity } from "../types";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 interface ProctoringOverlayProps {
   violations: ProctoringEvent[];
@@ -10,8 +10,8 @@ interface ProctoringOverlayProps {
 
 export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayProps) {
   const [showWarning, setShowWarning] = useState(false);
-  const [warningMessage, setWarningMessage] = useState('');
-  const [warningSeverity, setWarningSeverity] = useState<ProctoringSeverity>('warning');
+  const [warningMessage, setWarningMessage] = useState("");
+  const [warningSeverity, setWarningSeverity] = useState<ProctoringSeverity>("warning");
   const [isDisabled, setIsDisabled] = useState(false);
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [totalViolationCount, setTotalViolationCount] = useState(0);
@@ -22,14 +22,14 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
       try {
         const supabase = supabaseBrowser();
         const { data, error } = await supabase
-          .from('proctoring_events')
-          .select('event_type, severity')
-          .eq('session_id', sessionId);
+          .from("proctoring_events")
+          .select("event_type, severity")
+          .eq("session_id", sessionId);
         if (!error && data) {
           setTabSwitchCount(
             (data as Array<{ event_type: string; severity?: string }>).filter(
-              e => e.event_type === 'tab_switch' || e.event_type === 'window_blur'
-            ).length
+              (e) => e.event_type === "tab_switch" || e.event_type === "window_blur",
+            ).length,
           );
           setTotalViolationCount(data.length);
         }
@@ -49,71 +49,80 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
     setTotalViolationCount(violations.length);
 
     // Intentional violations toward termination
-    const INTENTIONAL_TYPES: string[] = ['fullscreen_exit', 'keyboard_shortcut', 'copy_paste', 'tab_switch'];
+    const INTENTIONAL_TYPES: string[] = [
+      "fullscreen_exit",
+      "keyboard_shortcut",
+      "copy_paste",
+      "tab_switch",
+    ];
     const intentionalCritical = violations.filter(
-      v => v.severity === 'critical' && INTENTIONAL_TYPES.includes(v.event_type)
+      (v) => v.severity === "critical" && INTENTIONAL_TYPES.includes(v.event_type),
     ).length;
 
     if (intentionalCritical >= 5) {
       setIsDisabled(true);
-      setWarningMessage('Interview terminated due to multiple critical security violations.');
+      setWarningMessage("Interview terminated due to multiple critical security violations.");
       return;
     }
 
-    if (last.event_type === 'tab_switch' || last.event_type === 'window_blur') {
-      setTabSwitchCount(prev => prev + 1);
+    if (last.event_type === "tab_switch" || last.event_type === "window_blur") {
+      setTabSwitchCount((prev) => prev + 1);
     }
 
-    let message = '';
+    let message = "";
     const payload = (last.payload || {}) as Record<string, unknown>;
-    const action = (payload.action as string) || '';
-    const key = (payload.key as string) || '';
+    const action = (payload.action as string) || "";
+    const key = (payload.key as string) || "";
 
     switch (last.event_type) {
-      case 'tab_switch':
-        message = 'Tab switching detected. Please stay focused on the interview window.';
+      case "tab_switch":
+        message = "Tab switching detected. Please stay focused on the interview window.";
         break;
-      case 'window_blur':
-        message = 'Window focus lost. Please keep the interview window active and visible.';
+      case "window_blur":
+        message = "Window focus lost. Please keep the interview window active and visible.";
         break;
-      case 'browser_resize':
-        message = 'Browser window resized. Please keep the interview window maximized.';
+      case "browser_resize":
+        message = "Browser window resized. Please keep the interview window maximized.";
         break;
-      case 'fullscreen_exit':
-        message = 'Fullscreen mode exited. Please return to full screen mode to continue.';
+      case "fullscreen_exit":
+        message = "Fullscreen mode exited. Please return to full screen mode to continue.";
         break;
-      case 'face_absent':
-        message = 'Face not detected in camera feed. Please align yourself directly in front of the camera.';
+      case "face_absent":
+        message =
+          "Face not detected in camera feed. Please align yourself directly in front of the camera.";
         break;
-      case 'face_multiple':
-        message = 'Multiple faces detected in camera feed. Only the candidate should be in view.';
+      case "face_multiple":
+        message = "Multiple faces detected in camera feed. Only the candidate should be in view.";
         break;
-      case 'face_mismatch':
-        message = 'Camera feed mismatch detected. Please remain clearly visible.';
+      case "face_mismatch":
+        message = "Camera feed mismatch detected. Please remain clearly visible.";
         break;
-      case 'gaze_away':
-        message = 'You appear to be looking away from the screen. Please keep your eyes on the interview window.';
+      case "gaze_away":
+        message =
+          "You appear to be looking away from the screen. Please keep your eyes on the interview window.";
         break;
-      case 'head_down':
-        message = 'Please look at the camera. Looking down for extended periods is not permitted during the interview.';
+      case "head_down":
+        message =
+          "Please look at the camera. Looking down for extended periods is not permitted during the interview.";
         break;
-      case 'audio_silence':
-        message = 'No audio input detected for an extended period. Please speak your answer.';
+      case "audio_silence":
+        message = "No audio input detected for an extended period. Please speak your answer.";
         break;
-      case 'audio_level':
-        message = 'Audio level anomaly detected. Please check your microphone setup.';
+      case "audio_level":
+        message = "Audio level anomaly detected. Please check your microphone setup.";
         break;
-      case 'copy_paste':
-        if (action === 'paste') message = 'Pasting text is strictly prohibited during the interview.';
-        else if (action === 'copy') message = 'Copying text is prohibited during the interview.';
-        else message = 'Copying or pasting content is prohibited during the interview.';
+      case "copy_paste":
+        if (action === "paste")
+          message = "Pasting text is strictly prohibited during the interview.";
+        else if (action === "copy") message = "Copying text is prohibited during the interview.";
+        else message = "Copying or pasting content is prohibited during the interview.";
         break;
-      case 'keyboard_shortcut':
+      case "keyboard_shortcut":
         if (key) message = `Keyboard shortcut (${key}) is disabled during the interview.`;
-        else message = 'Keyboard shortcuts are disabled during the interview.';
+        else message = "Keyboard shortcuts are disabled during the interview.";
         break;
       default:
-        message = 'Security alert: Please adhere to all interview proctoring guidelines.';
+        message = "Security alert: Please adhere to all interview proctoring guidelines.";
     }
 
     setWarningMessage(message);
@@ -122,7 +131,8 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
 
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
 
-    const duration = last.severity === 'critical' ? 6000 : last.severity === 'warning' ? 5000 : 4000;
+    const duration =
+      last.severity === "critical" ? 6000 : last.severity === "warning" ? 5000 : 4000;
     dismissTimerRef.current = setTimeout(() => {
       setShowWarning(false);
     }, duration);
@@ -136,15 +146,21 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
     return (
       <div
         className="fixed inset-0 z-[100] flex items-center justify-center"
-        style={{ background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(10px)' }}
+        style={{ background: "rgba(0,0,0,0.92)", backdropFilter: "blur(10px)" }}
       >
         <div
           className="text-center max-w-md p-8 rounded-2xl"
-          style={{ background: 'var(--card-bg)', border: '1px solid var(--separator)' }}
+          style={{ background: "var(--card-bg)", border: "1px solid var(--separator)" }}
         >
-          <AlertTriangle size={64} className="mx-auto mb-4 animate-bounce" style={{ color: 'var(--red)' }} />
+          <AlertTriangle
+            size={64}
+            className="mx-auto mb-4 animate-bounce"
+            style={{ color: "var(--red)" }}
+          />
           <h2 className="text-2xl font-bold text-white mb-2">Interview Terminated</h2>
-          <p className="text-sm" style={{ color: 'var(--label-secondary)' }}>{warningMessage}</p>
+          <p className="text-sm" style={{ color: "var(--label-secondary)" }}>
+            {warningMessage}
+          </p>
         </div>
       </div>
     );
@@ -152,26 +168,26 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
 
   const getBannerStyle = () => {
     switch (warningSeverity) {
-      case 'critical':
+      case "critical":
         return {
-          bg: 'rgba(255, 69, 58, 0.95)',
-          border: '1px solid rgba(255, 69, 58, 0.5)',
-          shadow: '0 8px 32px rgba(255, 69, 58, 0.4)',
+          bg: "rgba(255, 69, 58, 0.95)",
+          border: "1px solid rgba(255, 69, 58, 0.5)",
+          shadow: "0 8px 32px rgba(255, 69, 58, 0.4)",
           Icon: AlertCircle,
         };
-      case 'warning':
+      case "warning":
         return {
-          bg: 'rgba(255, 159, 10, 0.95)',
-          border: '1px solid rgba(255, 159, 10, 0.5)',
-          shadow: '0 8px 32px rgba(255, 159, 10, 0.3)',
+          bg: "rgba(255, 159, 10, 0.95)",
+          border: "1px solid rgba(255, 159, 10, 0.5)",
+          shadow: "0 8px 32px rgba(255, 159, 10, 0.3)",
           Icon: AlertTriangle,
         };
-      case 'info':
+      case "info":
       default:
         return {
-          bg: 'rgba(10, 132, 255, 0.95)',
-          border: '1px solid rgba(10, 132, 255, 0.5)',
-          shadow: '0 8px 32px rgba(10, 132, 255, 0.3)',
+          bg: "rgba(10, 132, 255, 0.95)",
+          border: "1px solid rgba(10, 132, 255, 0.5)",
+          shadow: "0 8px 32px rgba(10, 132, 255, 0.3)",
           Icon: Info,
         };
     }
@@ -217,7 +233,7 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
           >
             <Eye size={12} />
             <span>
-              {tabSwitchCount} {tabSwitchCount === 1 ? 'switch' : 'switches'}
+              {tabSwitchCount} {tabSwitchCount === 1 ? "switch" : "switches"}
             </span>
           </div>
         )}
@@ -227,47 +243,47 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
             className="badge-grey flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full shadow-sm"
             title="Total proctoring events recorded"
           >
-            <AlertTriangle size={12} style={{ color: 'var(--orange)' }} />
+            <AlertTriangle size={12} style={{ color: "var(--orange)" }} />
             <span>{totalViolationCount}</span>
           </div>
         )}
 
-        {violations.some(v => v.event_type.startsWith('face')) && (
+        {violations.some((v) => v.event_type.startsWith("face")) && (
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center shadow-sm"
             style={{
-              background: 'color-mix(in srgb, var(--orange) 20%, transparent)',
-              border: '1px solid var(--orange)',
+              background: "color-mix(in srgb, var(--orange) 20%, transparent)",
+              border: "1px solid var(--orange)",
             }}
             title="Camera/Face warning recorded"
           >
-            <Monitor size={13} style={{ color: 'var(--orange)' }} />
+            <Monitor size={13} style={{ color: "var(--orange)" }} />
           </div>
         )}
 
-        {violations.some(v => v.event_type.startsWith('audio')) && (
+        {violations.some((v) => v.event_type.startsWith("audio")) && (
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center shadow-sm"
             style={{
-              background: 'color-mix(in srgb, var(--blue) 20%, transparent)',
-              border: '1px solid var(--blue)',
+              background: "color-mix(in srgb, var(--blue) 20%, transparent)",
+              border: "1px solid var(--blue)",
             }}
             title="Audio warning recorded"
           >
-            <Mic size={13} style={{ color: 'var(--blue)' }} />
+            <Mic size={13} style={{ color: "var(--blue)" }} />
           </div>
         )}
 
         <div
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium shadow-sm"
           style={{
-            background: 'var(--glass-fill)',
-            border: '1px solid var(--separator)',
-            color: 'var(--label-secondary)',
-            backdropFilter: 'blur(8px)',
+            background: "var(--glass-fill)",
+            border: "1px solid var(--separator)",
+            color: "var(--label-secondary)",
+            backdropFilter: "blur(8px)",
           }}
         >
-          <Shield size={11} style={{ color: 'var(--green)' }} />
+          <Shield size={11} style={{ color: "var(--green)" }} />
           <span>Monitored</span>
         </div>
       </div>

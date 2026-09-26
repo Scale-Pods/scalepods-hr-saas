@@ -46,15 +46,13 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
   const sidebar = (
     <div className="flex h-full flex-col py-7 px-3.5">
       {/* Logo */}
-      <div className={cn(
-        "mb-8 flex items-center border-b border-border pb-6",
-        collapsed ? "justify-center" : "px-2"
-      )}>
-        {collapsed ? (
-          <Logo variant="mark" size="md" />
-        ) : (
-          <Logo variant="full" size="md" />
+      <div
+        className={cn(
+          "mb-8 flex items-center border-b border-border pb-6",
+          collapsed ? "justify-center" : "px-2",
         )}
+      >
+        {collapsed ? <Logo variant="mark" size="md" /> : <Logo variant="full" size="md" />}
       </div>
 
       {/* Nav */}
@@ -131,10 +129,12 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
       </aside>
 
       {/* Main content area */}
-      <div className={cn(
-        "relative z-10 flex flex-1 flex-col transition-[margin] duration-300 min-w-0",
-        collapsed ? "lg:ml-[calc(72px+40px)]" : "lg:ml-[calc(220px+40px)]"
-      )}>
+      <div
+        className={cn(
+          "relative z-10 flex flex-1 flex-col transition-[margin] duration-300 min-w-0",
+          collapsed ? "lg:ml-[calc(72px+40px)]" : "lg:ml-[calc(220px+40px)]",
+        )}
+      >
         {/* Floating glass topbar — desktop */}
         <header className="sticky top-4 z-20 mx-5 hidden lg:block">
           <div className="sp-topbar flex items-center justify-between gap-4 px-5 py-3">
@@ -154,7 +154,9 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
             <div className="flex max-w-sm flex-1 items-center justify-between rounded-full bg-black/[0.03] px-3.5 py-1.5 transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-primary/20 dark:bg-white/[0.05]">
               <div className="flex items-center gap-2.5 min-w-0">
                 <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                <span className="truncate text-xs text-muted-foreground">Search candidates, campaigns…</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  Search candidates, campaigns…
+                </span>
               </div>
               <kbd className="hidden sm:inline-flex items-center rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground shadow-xs">
                 ⌘K
@@ -165,7 +167,10 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
             <div className="flex items-center gap-1.5">
               <NotificationBell />
               <ThemeToggle />
-              <Badge variant="secondary" className="ml-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border border-border">
+              <Badge
+                variant="secondary"
+                className="ml-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border border-border"
+              >
                 {tierLabel}
               </Badge>
             </div>

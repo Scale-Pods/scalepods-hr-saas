@@ -58,12 +58,9 @@ function greeting(email?: string | null) {
 
 function stageMeta(stage: string) {
   const s = stage.toLowerCase();
-  if (s.includes("reject") || s.includes("fail"))
-    return { color: "#ef4444", label: "Rejected" };
-  if (s.includes("offer"))
-    return { color: "#10b981", label: "Offer" };
-  if (s.includes("pass"))
-    return { color: "#2563eb", label: "Passed" };
+  if (s.includes("reject") || s.includes("fail")) return { color: "#ef4444", label: "Rejected" };
+  if (s.includes("offer")) return { color: "#10b981", label: "Offer" };
+  if (s.includes("pass")) return { color: "#2563eb", label: "Passed" };
   return { color: "#f59e0b", label: "In progress" };
 }
 
@@ -116,9 +113,7 @@ function KpiCard({
         <div className="ref-kpi-icon" style={{ background: iconBg }}>
           {icon}
         </div>
-        {badge && (
-          <span className={cn("ref-kpi-badge", badgeClass)}>{badge}</span>
-        )}
+        {badge && <span className={cn("ref-kpi-badge", badgeClass)}>{badge}</span>}
       </div>
       {loading ? (
         <div className="mt-2 space-y-2">
@@ -239,9 +234,11 @@ export default function DashboardPage() {
   const funnelColors = ["#2563eb", "#06b6d4", "#2563eb", "#0ea5e9", "#10b981"];
 
   /* conversion rates between stages */
-  const conversionRates = funnelRows.slice(1).map((r, i) =>
-    funnelRows[i].entered > 0 ? Math.round((r.entered / funnelRows[i].entered) * 100) : 0,
-  );
+  const conversionRates = funnelRows
+    .slice(1)
+    .map((r, i) =>
+      funnelRows[i].entered > 0 ? Math.round((r.entered / funnelRows[i].entered) * 100) : 0,
+    );
   const avgConversionRate =
     conversionRates.length > 0
       ? Math.round(conversionRates.reduce((a, b) => a + b, 0) / conversionRates.length)
@@ -251,11 +248,27 @@ export default function DashboardPage() {
 
   /* city distribution (from ledger source if available) */
   const cityData = [
-    { city: "Bangalore", count: Math.round((kpis.data?.candidateCount ?? 0) * 0.35), color: "#2563eb" },
-    { city: "Mumbai", count: Math.round((kpis.data?.candidateCount ?? 0) * 0.25), color: "#06b6d4" },
+    {
+      city: "Bangalore",
+      count: Math.round((kpis.data?.candidateCount ?? 0) * 0.35),
+      color: "#2563eb",
+    },
+    {
+      city: "Mumbai",
+      count: Math.round((kpis.data?.candidateCount ?? 0) * 0.25),
+      color: "#06b6d4",
+    },
     { city: "Delhi", count: Math.round((kpis.data?.candidateCount ?? 0) * 0.2), color: "#10b981" },
-    { city: "Chennai", count: Math.round((kpis.data?.candidateCount ?? 0) * 0.12), color: "#f59e0b" },
-    { city: "Hyderabad", count: Math.round((kpis.data?.candidateCount ?? 0) * 0.08), color: "#8b5cf6" },
+    {
+      city: "Chennai",
+      count: Math.round((kpis.data?.candidateCount ?? 0) * 0.12),
+      color: "#f59e0b",
+    },
+    {
+      city: "Hyderabad",
+      count: Math.round((kpis.data?.candidateCount ?? 0) * 0.08),
+      color: "#8b5cf6",
+    },
   ];
   const cityMax = Math.max(...cityData.map((c) => c.count), 1);
 
@@ -281,7 +294,6 @@ export default function DashboardPage() {
 
   return (
     <div className="animate-glass-fade space-y-6">
-
       {/* ── Hero Section ── */}
       <div className="ref-dash-hero">
         {/* Left: greeting + actions */}
@@ -305,18 +317,28 @@ export default function DashboardPage() {
           <p className="ref-hero-sub">
             Your hiring intelligence is live.{" "}
             <strong>{kpis.data?.candidateCount?.toLocaleString() ?? 0}</strong> candidates flowing
-            through the pipeline with a{" "}
-            <strong>{avgScore ?? 0}</strong> mean score.
+            through the pipeline with a <strong>{avgScore ?? 0}</strong> mean score.
           </p>
 
           <div className="flex items-center gap-3">
-            <Button asChild className="rounded-full gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-md shadow-blue-500/20 transition-all hover:shadow-lg hover:shadow-blue-500/30">
+            <Button
+              asChild
+              className="rounded-full gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-md shadow-blue-500/20 transition-all hover:shadow-lg hover:shadow-blue-500/30"
+            >
               <Link href="/campaigns?tab=new">
                 <Sparkles className="h-4 w-4" />
                 Create Campaign
               </Link>
             </Button>
-            <Button variant="outline" className="rounded-full gap-2 px-5 py-2.5 font-medium border-border/80 hover:bg-accent transition-all">
+            <Button
+              variant="outline"
+              className="rounded-full gap-2 px-5 py-2.5 font-medium border-border/80 hover:bg-accent transition-all"
+              onClick={() => {
+                document
+                  .querySelector(".ref-analytics-grid")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            >
               <BarChart2 className="h-4 w-4" />
               View Report
             </Button>
@@ -348,7 +370,8 @@ export default function DashboardPage() {
             </ResponsiveContainer>
             <div className="ref-hero-chart-label">
               <span className="ref-chart-label-value">
-                {pipelineDeltaPct >= 0 ? "+" : ""}{pipelineDeltaPct}%
+                {pipelineDeltaPct >= 0 ? "+" : ""}
+                {pipelineDeltaPct}%
               </span>
               <span className="ref-chart-label-text">pipeline growth</span>
             </div>
@@ -357,7 +380,10 @@ export default function DashboardPage() {
           {/* Mini metric cards */}
           <div className="ref-hero-metrics">
             <div className="ref-hero-metric">
-              <span className="ref-hero-metric-icon" style={{ background: "rgba(37,99,235,0.1)", color: "var(--blue)" }}>
+              <span
+                className="ref-hero-metric-icon"
+                style={{ background: "rgba(37,99,235,0.1)", color: "var(--blue)" }}
+              >
                 <Users className="h-4 w-4" />
               </span>
               <div className="flex-1">
@@ -367,11 +393,15 @@ export default function DashboardPage() {
                 <div className="ref-hero-metric-label">Total Candidates</div>
               </div>
               <span className="ref-metric-change up">
-                {pipelineDeltaPct >= 0 ? "+" : ""}{pipelineDeltaPct}%
+                {pipelineDeltaPct >= 0 ? "+" : ""}
+                {pipelineDeltaPct}%
               </span>
             </div>
             <div className="ref-hero-metric">
-              <span className="ref-hero-metric-icon" style={{ background: "rgba(6,182,212,0.1)", color: "var(--cyan)" }}>
+              <span
+                className="ref-hero-metric-icon"
+                style={{ background: "rgba(6,182,212,0.1)", color: "var(--cyan)" }}
+              >
                 <Star className="h-4 w-4" />
               </span>
               <div className="flex-1">
@@ -381,16 +411,17 @@ export default function DashboardPage() {
               <span className="ref-metric-change up">+1.5</span>
             </div>
             <div className="ref-hero-metric">
-              <span className="ref-hero-metric-icon" style={{ background: "rgba(59,130,246,0.1)", color: "var(--blue)" }}>
-                <Clock className="h-4 w-4" />
+              <span
+                className="ref-hero-metric-icon"
+                style={{ background: "rgba(59,130,246,0.1)", color: "var(--blue)" }}
+              >
+                <Briefcase className="h-4 w-4" />
               </span>
               <div className="flex-1">
-                <div className="ref-hero-metric-value">
-                  {avgDaysToHire != null ? `${avgDaysToHire}d` : "—"}
-                </div>
-                <div className="ref-hero-metric-label">Time to Hire</div>
+                <div className="ref-hero-metric-value">{kpis.data?.activeCampaigns ?? "0"}</div>
+                <div className="ref-hero-metric-label">Active Campaigns</div>
               </div>
-              <span className="ref-metric-change down">-1.1d</span>
+              <span className="ref-metric-change up">+1</span>
             </div>
           </div>
         </div>
@@ -403,11 +434,7 @@ export default function DashboardPage() {
             <h2 className="ref-section-title">Key Metrics</h2>
             <span className="ref-section-badge">Live</span>
           </div>
-          <button
-            type="button"
-            className="ref-btn-ghost-sm"
-            onClick={() => kpis.refetch()}
-          >
+          <button type="button" className="ref-btn-ghost-sm" onClick={() => kpis.refetch()}>
             <RefreshCw className="h-3 w-3" />
             Refresh
           </button>
@@ -469,14 +496,17 @@ export default function DashboardPage() {
             {funnelRows.map((row, i) => {
               const pct = funnelMax > 0 ? (row.entered / funnelMax) * 100 : 0;
               const color = funnelColors[i % funnelColors.length];
-              const colorLight = color === "#2563eb" ? "#3b82f6" : color === "#06b6d4" ? "#22d3ee" : color;
+              const colorLight =
+                color === "#2563eb" ? "#3b82f6" : color === "#06b6d4" ? "#22d3ee" : color;
               return (
                 <div key={row.stage} className="ref-pipeline-node">
                   <div className="ref-pipeline-dot" style={{ background: color }} />
                   <div className="ref-pipeline-content">
                     <div className="ref-pipeline-label">
                       <span>{row.stage}</span>
-                      <span className="font-semibold text-foreground">{row.entered.toLocaleString()}</span>
+                      <span className="font-semibold text-foreground">
+                        {row.entered.toLocaleString()}
+                      </span>
                     </div>
                     <div className="ref-pipeline-bar">
                       <div
@@ -502,10 +532,25 @@ export default function DashboardPage() {
         >
           <div className="ref-conversion-visual">
             <div className="ref-conversion-ring">
-              <svg width="120" height="120" viewBox="0 0 120 120" aria-label={`Conversion rate: ${avgConversionRate}%`}>
-                <circle cx="60" cy="60" r="48" fill="none" stroke="var(--fill-tertiary)" strokeWidth="8" />
+              <svg
+                width="120"
+                height="120"
+                viewBox="0 0 120 120"
+                aria-label={`Conversion rate: ${avgConversionRate}%`}
+              >
                 <circle
-                  cx="60" cy="60" r="48" fill="none"
+                  cx="60"
+                  cy="60"
+                  r="48"
+                  fill="none"
+                  stroke="var(--fill-tertiary)"
+                  strokeWidth="8"
+                />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="48"
+                  fill="none"
                   stroke="url(#conv-grad)"
                   strokeWidth="8"
                   strokeDasharray={`${convDash} ${convCircumference}`}
@@ -519,10 +564,26 @@ export default function DashboardPage() {
                     <stop offset="100%" stopColor="#06b6d4" />
                   </linearGradient>
                 </defs>
-                <text x="60" y="56" textAnchor="middle" fill="currentColor" fontSize="22" fontWeight="700" fontFamily="Inter">
+                <text
+                  x="60"
+                  y="56"
+                  textAnchor="middle"
+                  fill="currentColor"
+                  fontSize="22"
+                  fontWeight="700"
+                  fontFamily="Inter"
+                >
                   {avgConversionRate}
                 </text>
-                <text x="60" y="72" textAnchor="middle" fill="var(--label-tertiary)" fontSize="10" fontWeight="500" fontFamily="Inter">
+                <text
+                  x="60"
+                  y="72"
+                  textAnchor="middle"
+                  fill="var(--label-tertiary)"
+                  fontSize="10"
+                  fontWeight="500"
+                  fontFamily="Inter"
+                >
                   percent
                 </text>
               </svg>
@@ -596,28 +657,32 @@ export default function DashboardPage() {
             {[
               {
                 icon: <TrendingUp className="h-4 w-4" />,
-                bg: "rgba(37,99,235,0.1)", color: "var(--blue)",
+                bg: "rgba(37,99,235,0.1)",
+                color: "var(--blue)",
                 title: "Conversion spike detected",
                 desc: "HR Round to Manager Interview up 23% this week",
                 action: "Recommendation: Increase Manager bandwidth",
               },
               {
                 icon: <Star className="h-4 w-4" />,
-                bg: "rgba(6,182,212,0.1)", color: "var(--cyan)",
+                bg: "rgba(6,182,212,0.1)",
+                color: "var(--cyan)",
                 title: "Top performer identified",
                 desc: `Avg AI score of ${avgScore ?? 94}% — pipeline quality high`,
                 action: "Insight: Best AI match rate",
               },
               {
                 icon: <AlertTriangle className="h-4 w-4" />,
-                bg: "rgba(239,68,68,0.1)", color: "var(--red)",
+                bg: "rgba(239,68,68,0.1)",
+                color: "var(--red)",
                 title: "Pipeline bottleneck",
                 desc: "Round 2 has candidates waiting — avg 8 days",
                 action: "Action: Schedule panel this week",
               },
               {
                 icon: <Users className="h-4 w-4" />,
-                bg: "rgba(16,185,129,0.1)", color: "var(--emerald)",
+                bg: "rgba(16,185,129,0.1)",
+                color: "var(--emerald)",
                 title: "Source performance",
                 desc: "Inbound candidates have highest conversion at 34%",
                 action: "Insight: Focus on top channels",
@@ -690,7 +755,9 @@ export default function DashboardPage() {
                     <div className="ref-activity-text">
                       <strong>{nameMap[row.candidate_id] ?? "Candidate"}</strong>
                       {" — "}
-                      <span className="text-muted-foreground capitalize">{row.round_type?.replace("_", " ")}</span>
+                      <span className="text-muted-foreground capitalize">
+                        {row.round_type?.replace("_", " ")}
+                      </span>
                     </div>
                     <div className="ref-activity-time">{formatDateTime(row.scheduled_at)}</div>
                   </div>
@@ -711,10 +778,38 @@ export default function DashboardPage() {
           </div>
           <div className="ref-leaderboard">
             {[
-              { rank: 1, initials: "AP", name: "Anika Patel", role: "Senior HR Manager", score: 92, rankClass: "gold" },
-              { rank: 2, initials: "RS", name: "Rahul Sharma", role: "HR Manager", score: 87, rankClass: "silver" },
-              { rank: 3, initials: "MK", name: "Meera Kumar", role: "Talent Acquisition", score: 81, rankClass: "bronze" },
-              { rank: 4, initials: "VR", name: "Vikram Rao", role: "HR Specialist", score: 74, rankClass: "" },
+              {
+                rank: 1,
+                initials: "AP",
+                name: "Anika Patel",
+                role: "Senior HR Manager",
+                score: 92,
+                rankClass: "gold",
+              },
+              {
+                rank: 2,
+                initials: "RS",
+                name: "Rahul Sharma",
+                role: "HR Manager",
+                score: 87,
+                rankClass: "silver",
+              },
+              {
+                rank: 3,
+                initials: "MK",
+                name: "Meera Kumar",
+                role: "Talent Acquisition",
+                score: 81,
+                rankClass: "bronze",
+              },
+              {
+                rank: 4,
+                initials: "VR",
+                name: "Vikram Rao",
+                role: "HR Specialist",
+                score: 74,
+                rankClass: "",
+              },
             ].map((lb) => (
               <div key={lb.name} className="ref-lb-row">
                 <span className={cn("ref-lb-rank", lb.rankClass)}>{lb.rank}</span>

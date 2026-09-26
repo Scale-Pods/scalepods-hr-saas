@@ -59,15 +59,12 @@ function Calendar({
       }),
       {} as any,
     ),
-    ...Object.keys(classNames || {}).reduce(
-      (acc, key) => {
-        if (!(key in defaultClassNames)) {
-          (acc as any)[key] = classNames![key as keyof typeof classNames];
-        }
-        return acc;
-      },
-      {} as any,
-    ),
+    ...Object.keys(classNames || {}).reduce((acc, key) => {
+      if (!(key in defaultClassNames)) {
+        (acc as any)[key] = classNames![key as keyof typeof classNames];
+      }
+      return acc;
+    }, {} as any),
   };
 
   const defaultComponents = {

@@ -16,7 +16,7 @@ function AuthGate() {
   useEffect(() => {
     // Safety timeout to prevent permanent loading if getSession() hangs
     const timeout = setTimeout(() => {
-      setSession(prev => prev === null ? false : prev);
+      setSession((prev) => (prev === null ? false : prev));
     }, 3000);
 
     supabase.auth.getSession().then(({ data: { session: s }, error: sessionError }) => {
@@ -26,19 +26,21 @@ function AuthGate() {
         setSession(false);
         return;
       }
-      
+
       const loggedIn = !!s;
       setSession(loggedIn);
       if (loggedIn) {
-        document.body.classList.add('logged-in');
+        document.body.classList.add("logged-in");
       }
     });
 
     // Only listen for explicit sign-out
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, _s) => {
-      if (event === 'SIGNED_OUT') {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, _s) => {
+      if (event === "SIGNED_OUT") {
         setSession(false);
-        document.body.classList.remove('logged-in');
+        document.body.classList.remove("logged-in");
       }
     });
 
@@ -53,7 +55,9 @@ function AuthGate() {
     return (
       <div className="login-overlay active-loading">
         <div className="login-loader" />
-        <div className="login-loader-text" style={{ marginTop: '12px', color: '#94a3b8' }}>Establishing secure connection...</div>
+        <div className="login-loader-text" style={{ marginTop: "12px", color: "#94a3b8" }}>
+          Establishing secure connection...
+        </div>
       </div>
     );
   }
@@ -74,6 +78,6 @@ if (container) {
   window.__reactRoot.render(
     <StrictMode>
       <AuthGate />
-    </StrictMode>
+    </StrictMode>,
   );
 }

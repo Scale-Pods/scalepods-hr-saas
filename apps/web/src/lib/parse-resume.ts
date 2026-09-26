@@ -8,34 +8,50 @@ export interface ParsedContact {
   error?: string;
 }
 
-const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
-// Plain phone heuristics: optional country code, optional area-code parens.
-// Handles +1 (415) 555-0132, (415) 555-0132, 415-555-0132, 555-0109,
-// and +44 20 7946 0958. The final 4-digit group is optional so 7-digit
-// local numbers still match.
-const PHONE_RE =
-  /(?<![\d])(?:\+\d{1,3}[\s.-]?)?\(?\d{2,3}\)?[\s.-]?\d{3,4}(?:[\s.-]?\d{4})?(?![\d])/;
+// Allow optional spaces around @ and . to handle pdf-parse artifacts
+const EMAIL_RE = /[A-Z0-9._%+-]+\s*@\s*[A-Z0-9.-]+\s*\.\s*[A-Z]{2,}/i;
+// Phone heuristics: find groups of digits (even single digits if spaced), then filter for >= 10 digits
+const PHONE_RE = /(?:\+\d{1,3}[\s.-]?)?\(?\d{1,5}\)?(?:[\s.-]?\d{1,5}){1,9}/g;
+
 // Lines that are never a candidate name (common header/section titles).
 const SKIP_LINE_RE =
-  /@|www\.|http|tel:|linkedin|github|summary|profile|objective|education|experience|skills|contact|address|resume|curriculum|reference|available|\bdate\b|\bcreated\b|\bupdated\b|^email|^phone|^name\b/i;
+  /@|www\.|http|tel:|linkedin|github|summary|profile|objective|education|experience|skills|contact|address|resume|curriculum|reference|available|\bdate\b|\bcreated\b|\bupdated\b|^email|^phone|^name\b|personal details|details|hobbies|interests|languages|projects|playing|stats/i;
 // Words that smell like a job title rather than a person.
 const JOB_WORDS =
-  /(^|\s)(intern|engineer|developer|designer|manager|architect|lead|analyst|specialist|consultant|associate|recruiter|marketing|sales|software|product|data|senior|junior|founder|owner|assistant|coordinator|head|director)(\s|$)/i;
+  /(^|\s)(intern|engineer|engineering|developer|designer|manager|architect|lead|analyst|specialist|consultant|associate|recruiter|marketing|sales|software|product|data|senior|junior|founder|owner|assistant|coordinator|head|director|business|development|export|revenue)(\s|$)/i;
 // Words that smell like a company rather than a person.
 const COMPANY_WORDS =
-  /\b(corp|inc|ltd|llc|gmbh|technolog|tech|lab|group|solution|system|compan|universit|hospital|agency|studio|global|health|scienc|partner|digital)\b/i;
+  /\b(corp|inc|ltd|llc|gmbh|technologies|technology|tech|labs?|group|solutions?|systems?|company|companies|university|universities|hospital|agency|studio|global|health|sciences?|partners?|digital|polytechnic|college|school|institute|academy|foundation|industries|industry)\b/i;
 
 export function parseResumeText(text: string): ParsedContact {
-  const email = text.match(EMAIL_RE)?.[0];
-  const phone = text.match(PHONE_RE)?.[0];
-  return { email, phone, name: guessName(text) };
+  const rawEmail = text.match(EMAIL_RE)?.[0];
+  const email = rawEmail ? rawEmail.replace(/\s+/g, "") : undefined;
+
+  const phoneMatches = text.match(PHONE_RE);
+  const phone = phoneMatches?.find((p) => {
+    if (p.match(/\b\d{2}[./-]\d{2}[./-]\d{4}\b/)) return false;
+    const digits = p.replace(/\D/g, "");
+    return digits.length >= 10 && digits.length <= 15;
+  });
+
+  let name = guessName(text);
+
+  if (!name && email) {
+    const localPart = email
+      .split("@")[0]
+      .replace(/[0-9_.-]+/g, " ")
+      .trim();
+    if (localPart) {
+      name = localPart
+        .split(" ")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
+    }
+  }
+
+  return { email, phone, name };
 }
 
-/**
- * Extract email / phone / probable name straight from the file's text so the
- * uploader can prefill them (the user can still edit any value). The backend
- * keeps full control - n8n workflow 1 re-extracts whatever it needs server-side.
- */
 export async function parseResumeContact(file: File): Promise<ParsedContact> {
   const res = await extractTextFromFile(file);
   if ("error" in res) return { error: res.error };
@@ -44,12 +60,54 @@ export async function parseResumeContact(file: File): Promise<ParsedContact> {
 
 function guessName(text: string): string | undefined {
   const seen = new Set<string>();
-  for (const raw of text.split(/\r?\n/).slice(0, 20)) {
-    const line = raw.trim().replace(/^[#*>·•-]+\s*/, "");
+
+  const rawLines = text
+    .split(/\r?\n/)
+    .slice(0, 30)
+    .map((l) => {
+      let clean = l.trim().replace(/^[#*>·•-]+\s*/, "");
+      // If the line is highly fragmented single letters e.g. "K e v i n   S h e t h"
+      // collapse single spaces between letters, but preserve double spaces as word boundaries
+      if (/^([A-Za-z]\s+)+[A-Za-z]$/.test(clean)) {
+        clean = clean.replace(/([A-Za-z]) (?! )/g, "$1").replace(/\s{2,}/g, " ");
+      }
+      return clean;
+    });
+
+  const mergedLines: string[] = [];
+  let buffer: string[] = [];
+
+  for (const line of rawLines) {
+    if (!line) continue;
+    if (
+      line.indexOf(" ") === -1 &&
+      /^[A-Z][a-zA-Z]*$/.test(line) &&
+      !SKIP_LINE_RE.test(line) &&
+      !JOB_WORDS.test(line) &&
+      !COMPANY_WORDS.test(line)
+    ) {
+      buffer.push(line);
+      if (buffer.length === 2) {
+        mergedLines.push(buffer.join(" "));
+        buffer = [];
+      }
+    } else {
+      if (buffer.length > 0) {
+        mergedLines.push(...buffer);
+        buffer = [];
+      }
+      mergedLines.push(line);
+    }
+  }
+  if (buffer.length > 0) mergedLines.push(...buffer);
+
+  for (const raw of mergedLines) {
+    const line = raw.replace(/\s*[|,\-—]\s*.*$/, "");
+
     if (!line || line.length > 60) continue;
     if (SKIP_LINE_RE.test(line)) continue;
 
-    const words = line.trim().split(/\s+/).filter(Boolean);
+    const words = line.split(/\s+/).filter(Boolean);
     if (words.length < 2 || words.length > 4) continue;
     if (!words.every((w) => /^[A-Za-z][\w'.-]*$/.test(w))) continue;
     if (!words.every((w) => /^[A-Z]/.test(w))) continue;
@@ -58,6 +116,11 @@ function guessName(text: string): string | undefined {
     const key = words.join(" ").toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
+
+    if (words.every((w) => w === w.toUpperCase())) {
+      return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+    }
+
     return words.join(" ");
   }
   return undefined;

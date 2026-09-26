@@ -50,7 +50,7 @@ const { error: upsertError } = await supabase.from("users").upsert(
     created_at: new Date().toISOString(),
     passwords_changed_at: new Date().toISOString(),
   },
-  { onConflict: "email" }
+  { onConflict: "email" },
 );
 
 if (upsertError) {

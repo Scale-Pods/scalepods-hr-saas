@@ -14,13 +14,7 @@ interface PipelineFlowChartProps {
   className?: string;
 }
 
-const DEFAULT_COLORS = [
-  "#2563eb",
-  "#06b6d4",
-  "#10b981",
-  "#f59e0b",
-  "#8b5cf6",
-];
+const DEFAULT_COLORS = ["#2563eb", "#06b6d4", "#10b981", "#f59e0b", "#8b5cf6"];
 
 /**
  * Horizontal funnel / pipeline flow chart matching the reference UI.
@@ -71,10 +65,7 @@ export function PipelineFlowChart({ stages, className }: PipelineFlowChartProps)
               {/* Label */}
               <div className="mt-2 text-center">
                 <p className="text-xs font-medium text-muted-foreground">{stage.label}</p>
-                <p
-                  className="text-xl font-bold tracking-[-0.03em]"
-                  style={{ color }}
-                >
+                <p className="text-xl font-bold tracking-[-0.03em]" style={{ color }}>
                   {stage.count.toLocaleString()}
                 </p>
               </div>

@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/supabase";
-import { CheckCircle2, Lock, KeyRound, Loader2, ArrowLeft, Mail, Send, ChevronRight } from "lucide-react";
+import {
+  CheckCircle2,
+  Lock,
+  KeyRound,
+  Loader2,
+  ArrowLeft,
+  Mail,
+  Send,
+  ChevronRight,
+} from "lucide-react";
 
 export function ResetPasswordPage() {
   const [view, setView] = useState<"loading" | "request" | "reset" | "success">("loading");
@@ -13,7 +22,9 @@ export function ResetPasswordPage() {
 
   useEffect(() => {
     // Listen for the recovery event which is triggered by clicking the email link
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
         setView("reset");
       }
@@ -27,7 +38,7 @@ export function ResetPasswordPage() {
         // If no session and not a recovery event, show the request form
         // But wait a small beat to let onAuthStateChange trigger if it's a redirect landing
         setTimeout(() => {
-          setView(prev => prev === "loading" ? "request" : prev);
+          setView((prev) => (prev === "loading" ? "request" : prev));
         }, 800);
       }
     });
@@ -40,12 +51,9 @@ export function ResetPasswordPage() {
     setLoading(true);
     setError("");
 
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      email,
-      {
-        redirectTo: `${window.location.origin}/reset-password`,
-      }
-    );
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
 
     setLoading(false);
 
@@ -58,7 +66,7 @@ export function ResetPasswordPage() {
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -97,7 +105,7 @@ export function ResetPasswordPage() {
 
     setLoading(false);
     setView("success");
-    
+
     setTimeout(() => {
       window.location.href = "/";
     }, 3000);
@@ -112,14 +120,14 @@ export function ResetPasswordPage() {
 
       <div className="reset-content">
         <header className="reset-header">
-          <div className="reset-brand" onClick={() => window.location.href = "/"}>
+          <div className="reset-brand" onClick={() => (window.location.href = "/")}>
             <img
               src="https://www.scalepods.co/_next/image?url=%2Fscalepods-navbar-logo.png&w=256&q=75&dpl=dpl_DX4go8Z4Sy3vBkyqLBb8kxYXVNrc"
               alt="ScalePods"
               className="reset-logo-img"
             />
           </div>
-          <button className="reset-back-btn" onClick={() => window.location.href = "/"}>
+          <button className="reset-back-btn" onClick={() => (window.location.href = "/")}>
             <ArrowLeft size={16} />
             Back to Home
           </button>
@@ -137,7 +145,8 @@ export function ResetPasswordPage() {
             <div className="reset-view-box">
               <h1 className="reset-title">Restoration</h1>
               <p className="reset-desc">
-                Recover access to your ScalePods account. Enter your registered email to receive a secure link.
+                Recover access to your ScalePods account. Enter your registered email to receive a
+                secure link.
               </p>
 
               <form onSubmit={handleRequestLink} className="reset-form">
@@ -177,7 +186,8 @@ export function ResetPasswordPage() {
             <div className="reset-view-box">
               <h1 className="reset-title">New Credentials</h1>
               <p className="reset-desc">
-                Your identity has been verified. Please choose a strong new password for your account.
+                Your identity has been verified. Please choose a strong new password for your
+                account.
               </p>
 
               <form onSubmit={handleReset} className="reset-form">

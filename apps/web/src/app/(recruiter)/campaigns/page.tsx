@@ -46,7 +46,8 @@ import { cn } from "@/lib/utils";
 function CampaignsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTab = searchParams.get("tab") === "new" || searchParams.get("create") === "true" ? "new" : "list";
+  const initialTab =
+    searchParams.get("tab") === "new" || searchParams.get("create") === "true" ? "new" : "list";
   const [activeTab, setActiveTab] = useState<"list" | "new">(initialTab);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
@@ -76,7 +77,11 @@ function CampaignsContent() {
 
   const activeCount = useMemo(() => rows.filter((c) => c.status === "on").length, [rows]);
 
-  const handleToggleStatus = async (e: React.MouseEvent, campaignId: string, currentStatus: string) => {
+  const handleToggleStatus = async (
+    e: React.MouseEvent,
+    campaignId: string,
+    currentStatus: string,
+  ) => {
     e.stopPropagation();
     if (!account?.id) return;
     setTogglingId(campaignId);
@@ -355,11 +360,13 @@ function CampaignsContent() {
                         </span>
                         <span>
                           <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                          <strong className="text-foreground">{c.candidates}</strong> candidates in pipeline
+                          <strong className="text-foreground">{c.candidates}</strong> candidates in
+                          pipeline
                         </span>
                         <span>
                           <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                          {c.number_of_rounds} interview {c.number_of_rounds === 1 ? "round" : "rounds"}
+                          {c.number_of_rounds} interview{" "}
+                          {c.number_of_rounds === 1 ? "round" : "rounds"}
                         </span>
                       </div>
 
@@ -458,7 +465,10 @@ function CampaignsContent() {
 
             <div className="capabilities-grid">
               <div className="cap-card">
-                <div className="cap-icon" style={{ background: "rgba(37, 99, 235, 0.1)", color: "#2563eb" }}>
+                <div
+                  className="cap-icon"
+                  style={{ background: "rgba(37, 99, 235, 0.1)", color: "#2563eb" }}
+                >
                   <Upload className="h-5 w-5" />
                 </div>
                 <div className="cap-title">Bulk Resume Upload</div>
@@ -468,7 +478,10 @@ function CampaignsContent() {
               </div>
 
               <div className="cap-card">
-                <div className="cap-icon" style={{ background: "rgba(6, 182, 212, 0.1)", color: "#06b6d4" }}>
+                <div
+                  className="cap-icon"
+                  style={{ background: "rgba(6, 182, 212, 0.1)", color: "#06b6d4" }}
+                >
                   <Brain className="h-5 w-5" />
                 </div>
                 <div className="cap-title">AI-Powered Analysis</div>
@@ -478,7 +491,10 @@ function CampaignsContent() {
               </div>
 
               <div className="cap-card">
-                <div className="cap-icon" style={{ background: "rgba(59, 130, 246, 0.1)", color: "#3b82f6" }}>
+                <div
+                  className="cap-icon"
+                  style={{ background: "rgba(59, 130, 246, 0.1)", color: "#3b82f6" }}
+                >
                   <Layers className="h-5 w-5" />
                 </div>
                 <div className="cap-title">Smart Scoring System</div>
@@ -488,7 +504,10 @@ function CampaignsContent() {
               </div>
 
               <div className="cap-card">
-                <div className="cap-icon" style={{ background: "rgba(16, 185, 129, 0.1)", color: "#10b981" }}>
+                <div
+                  className="cap-icon"
+                  style={{ background: "rgba(16, 185, 129, 0.1)", color: "#10b981" }}
+                >
                   <CheckCircle2 className="h-5 w-5" />
                 </div>
                 <div className="cap-title">Multi-Round Tracking</div>

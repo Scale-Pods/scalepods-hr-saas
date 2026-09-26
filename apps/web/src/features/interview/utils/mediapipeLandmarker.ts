@@ -5,7 +5,7 @@
  * Detects gaze away and head down posture for integrity monitoring.
  */
 
-import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 export interface BehaviorResult {
   gazeAway: boolean;
@@ -15,9 +15,9 @@ export interface BehaviorResult {
   pitchDeg: number;
 }
 
-const GAZE_BLEND_THRESHOLD = 0.30;
+const GAZE_BLEND_THRESHOLD = 0.3;
 const GAZE_YAW_THRESHOLD = 18;
-const HEAD_DOWN_BLEND_THRESHOLD = 0.30;
+const HEAD_DOWN_BLEND_THRESHOLD = 0.3;
 const HEAD_DOWN_PITCH_THRESHOLD = -14;
 
 let landmarker: FaceLandmarker | null = null;
@@ -32,16 +32,16 @@ async function getLandmarker(): Promise<FaceLandmarker | null> {
   initialising = true;
   try {
     const vision = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
     );
 
     landmarker = await FaceLandmarker.createFromOptions(vision, {
       baseOptions: {
         modelAssetPath:
-          'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task',
-        delegate: 'GPU',
+          "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
+        delegate: "GPU",
       },
-      runningMode: 'VIDEO',
+      runningMode: "VIDEO",
       numFaces: 2,
       outputFaceBlendshapes: true,
       outputFacialTransformationMatrixes: true,
@@ -51,7 +51,7 @@ async function getLandmarker(): Promise<FaceLandmarker | null> {
 
     return landmarker;
   } catch (err) {
-    console.warn('[MediaPipe] FaceLandmarker initialisation failed:', err);
+    console.warn("[MediaPipe] FaceLandmarker initialisation failed:", err);
     initFailed = true;
     return null;
   } finally {
@@ -76,7 +76,9 @@ function extractHeadPose(matrix: number[]): { yawDeg: number; pitchDeg: number }
   };
 }
 
-export async function detectBehavior(videoElement: HTMLVideoElement): Promise<BehaviorResult | null> {
+export async function detectBehavior(
+  videoElement: HTMLVideoElement,
+): Promise<BehaviorResult | null> {
   if (!videoElement || videoElement.readyState < 2 || videoElement.paused) {
     return null;
   }
@@ -96,22 +98,23 @@ export async function detectBehavior(videoElement: HTMLVideoElement): Promise<Be
     const shapeMap = new Map<string, number>(blendshapes.map((c) => [c.categoryName, c.score]));
 
     const lookLeftScore = Math.max(
-      shapeMap.get('eyeLookOutLeft') || 0,
-      shapeMap.get('eyeLookInRight') || 0
+      shapeMap.get("eyeLookOutLeft") || 0,
+      shapeMap.get("eyeLookInRight") || 0,
     );
     const lookRightScore = Math.max(
-      shapeMap.get('eyeLookOutRight') || 0,
-      shapeMap.get('eyeLookInLeft') || 0
+      shapeMap.get("eyeLookOutRight") || 0,
+      shapeMap.get("eyeLookInLeft") || 0,
     );
     const lookDownScore = Math.max(
-      shapeMap.get('eyeLookDownLeft') || 0,
-      shapeMap.get('eyeLookDownRight') || 0
+      shapeMap.get("eyeLookDownLeft") || 0,
+      shapeMap.get("eyeLookDownRight") || 0,
     );
 
     const matrix = result.facialTransformationMatrixes?.[0]?.data as number[] | undefined;
     const { yawDeg, pitchDeg } = matrix ? extractHeadPose(matrix) : { yawDeg: 0, pitchDeg: 0 };
 
-    const eyeGazeAway = lookLeftScore > GAZE_BLEND_THRESHOLD || lookRightScore > GAZE_BLEND_THRESHOLD;
+    const eyeGazeAway =
+      lookLeftScore > GAZE_BLEND_THRESHOLD || lookRightScore > GAZE_BLEND_THRESHOLD;
     const headTurned = Math.abs(yawDeg) > GAZE_YAW_THRESHOLD;
     const gazeAway = eyeGazeAway && headTurned;
 

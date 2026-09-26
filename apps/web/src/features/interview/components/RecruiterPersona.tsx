@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Brain, Mic, Search, CheckCircle, AlertTriangle } from 'lucide-react';
-import type { LiveAssessmentNote } from '../types';
+import { useEffect, useState } from "react";
+import { Brain, Mic, Search, CheckCircle, AlertTriangle } from "lucide-react";
+import type { LiveAssessmentNote } from "../types";
 
 interface RecruiterPersonaProps {
   isAiSpeaking: boolean;
@@ -9,10 +9,10 @@ interface RecruiterPersonaProps {
   liveAssessmentNotes: LiveAssessmentNote[];
   currentQuestionIndex: number;
   currentQuestionId: string;
-  speakingPhase?: 'acknowledgment' | 'question' | null;
+  speakingPhase?: "acknowledgment" | "question" | null;
 }
 
-type PersonaState = 'idle' | 'speaking' | 'analyzing' | 'generating';
+type PersonaState = "idle" | "speaking" | "analyzing" | "generating";
 
 export function RecruiterPersona({
   isAiSpeaking,
@@ -20,36 +20,36 @@ export function RecruiterPersona({
   isGeneratingTurn,
   speakingPhase,
 }: RecruiterPersonaProps) {
-  const [personaState, setPersonaState] = useState<PersonaState>('idle');
-  const [statusText, setStatusText] = useState('Listening...');
+  const [personaState, setPersonaState] = useState<PersonaState>("idle");
+  const [statusText, setStatusText] = useState("Listening...");
   const [pulseKey, setPulseKey] = useState(0);
 
   useEffect(() => {
     if (isAiSpeaking) {
-      setPersonaState('speaking');
-      if (speakingPhase === 'acknowledgment') {
-        setStatusText('Acknowledging your answer...');
-      } else if (speakingPhase === 'question') {
-        setStatusText('Reading question aloud...');
+      setPersonaState("speaking");
+      if (speakingPhase === "acknowledgment") {
+        setStatusText("Acknowledging your answer...");
+      } else if (speakingPhase === "question") {
+        setStatusText("Reading question aloud...");
       } else {
-        setStatusText('Speaking...');
+        setStatusText("Speaking...");
       }
     } else if (isAnalyzingAnswer) {
-      setPersonaState('analyzing');
-      setStatusText('Analyzing response...');
+      setPersonaState("analyzing");
+      setStatusText("Analyzing response...");
     } else if (isGeneratingTurn) {
-      setPersonaState('generating');
-      setStatusText('Preparing next question...');
+      setPersonaState("generating");
+      setStatusText("Preparing next question...");
     } else {
-      setPersonaState('idle');
-      setStatusText('Listening...');
+      setPersonaState("idle");
+      setStatusText("Listening...");
     }
-    setPulseKey(k => k + 1);
+    setPulseKey((k) => k + 1);
 
     if (isAnalyzingAnswer || isGeneratingTurn) {
       const phrases = isAnalyzingAnswer
-        ? ['Analyzing response...', 'Evaluating technical details...', 'Checking evidence...']
-        : ['Preparing next question...', 'Structuring interview focus...', 'Crafting response...'];
+        ? ["Analyzing response...", "Evaluating technical details...", "Checking evidence..."]
+        : ["Preparing next question...", "Structuring interview focus...", "Crafting response..."];
       let idx = 0;
       const timer = setInterval(() => {
         idx = Math.min(idx + 1, phrases.length - 1);
@@ -66,86 +66,86 @@ export function RecruiterPersona({
     const base = {
       width: 56,
       height: 56,
-      borderRadius: '50%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
       flexShrink: 0,
-      position: 'relative' as const,
-      transition: 'all 0.3s ease',
+      position: "relative" as const,
+      transition: "all 0.3s ease",
     };
     switch (personaState) {
-      case 'speaking':
+      case "speaking":
         return {
           ...base,
-          background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
-          boxShadow: '0 0 0 3px rgba(99,102,241,0.3)',
+          background: "linear-gradient(135deg, #3b82f6, #6366f1)",
+          boxShadow: "0 0 0 3px rgba(99,102,241,0.3)",
         };
-      case 'analyzing':
+      case "analyzing":
         return {
           ...base,
-          background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
-          boxShadow: '0 0 0 3px rgba(245,158,11,0.3)',
+          background: "linear-gradient(135deg, #f59e0b, #ef4444)",
+          boxShadow: "0 0 0 3px rgba(245,158,11,0.3)",
         };
-      case 'generating':
+      case "generating":
         return {
           ...base,
-          background: 'linear-gradient(135deg, #10b981, #3b82f6)',
-          boxShadow: '0 0 0 3px rgba(16,185,129,0.3)',
+          background: "linear-gradient(135deg, #10b981, #3b82f6)",
+          boxShadow: "0 0 0 3px rgba(16,185,129,0.3)",
         };
       default:
-        return { ...base, background: 'linear-gradient(135deg, #1d4ed8, #6d28d9)' };
+        return { ...base, background: "linear-gradient(135deg, #1d4ed8, #6d28d9)" };
     }
   };
 
   const StateIcon =
-    personaState === 'speaking'
+    personaState === "speaking"
       ? Mic
-      : personaState === 'analyzing'
-      ? Search
-      : personaState === 'generating'
-      ? Brain
-      : Mic;
+      : personaState === "analyzing"
+        ? Search
+        : personaState === "generating"
+          ? Brain
+          : Mic;
 
   return (
     <div
       className="rounded-2xl p-4 space-y-3 animate-fade-in"
       style={{
-        background: 'rgba(28,28,30,0.6)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        background: "rgba(28,28,30,0.6)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,0.07)",
       }}
     >
       {/* Avatar row */}
       <div className="flex items-center gap-3">
         <div style={getAvatarStyle()}>
           {/* Pulse ring when active */}
-          {personaState !== 'idle' && (
+          {personaState !== "idle" && (
             <div
               key={pulseKey}
               className="absolute inset-0 rounded-full animate-ping opacity-30"
               style={{
                 background:
-                  personaState === 'speaking'
-                    ? '#6366f1'
-                    : personaState === 'analyzing'
-                    ? '#f59e0b'
-                    : '#10b981',
+                  personaState === "speaking"
+                    ? "#6366f1"
+                    : personaState === "analyzing"
+                      ? "#f59e0b"
+                      : "#10b981",
               }}
             />
           )}
           <StateIcon
             size={22}
-            className={`relative z-10 text-white ${personaState !== 'idle' ? 'animate-pulse' : ''}`}
+            className={`relative z-10 text-white ${personaState !== "idle" ? "animate-pulse" : ""}`}
           />
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold" style={{ color: 'var(--label-primary)' }}>
+          <p className="text-sm font-semibold" style={{ color: "var(--label-primary)" }}>
             Alex
           </p>
-          <p className="text-xs" style={{ color: 'var(--label-tertiary)' }}>
+          <p className="text-xs" style={{ color: "var(--label-tertiary)" }}>
             AI Technical Recruiter
           </p>
         </div>
@@ -153,16 +153,16 @@ export function RecruiterPersona({
         {/* Live activity indicator */}
         <div className="flex items-center gap-1.5">
           <div
-            className={`w-2 h-2 rounded-full ${personaState !== 'idle' ? 'animate-pulse' : ''}`}
+            className={`w-2 h-2 rounded-full ${personaState !== "idle" ? "animate-pulse" : ""}`}
             style={{
               background:
-                personaState === 'speaking'
-                  ? '#6366f1'
-                  : personaState === 'analyzing'
-                  ? '#f59e0b'
-                  : personaState === 'generating'
-                  ? '#10b981'
-                  : 'rgba(255,255,255,0.2)',
+                personaState === "speaking"
+                  ? "#6366f1"
+                  : personaState === "analyzing"
+                    ? "#f59e0b"
+                    : personaState === "generating"
+                      ? "#10b981"
+                      : "rgba(255,255,255,0.2)",
             }}
           />
         </div>
@@ -172,22 +172,22 @@ export function RecruiterPersona({
       <div
         className="rounded-xl px-3 py-2 text-xs"
         style={{
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          color: 'var(--label-secondary)',
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.06)",
+          color: "var(--label-secondary)",
         }}
       >
         <div className="flex items-center gap-2">
-          {personaState !== 'idle' && (
+          {personaState !== "idle" && (
             <div
               className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0"
               style={{
                 background:
-                  personaState === 'speaking'
-                    ? '#6366f1'
-                    : personaState === 'analyzing'
-                    ? '#f59e0b'
-                    : '#10b981',
+                  personaState === "speaking"
+                    ? "#6366f1"
+                    : personaState === "analyzing"
+                      ? "#f59e0b"
+                      : "#10b981",
               }}
             />
           )}

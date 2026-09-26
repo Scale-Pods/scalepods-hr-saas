@@ -2,7 +2,6 @@ import { useState } from "react";
 import { supabase } from "@/supabase";
 import { Mail, Lock, Loader2 } from "lucide-react";
 
-
 export function LoginPage({ isModal = false }: { isModal?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,7 +29,9 @@ export function LoginPage({ isModal = false }: { isModal?: boolean }) {
       (async () => {
         try {
           await supabase.rpc("sync_password_hash", { p_email: email, p_password: password });
-        } catch { /* non-blocking */ }
+        } catch {
+          /* non-blocking */
+        }
       })();
 
       window.location.reload();
@@ -38,7 +39,7 @@ export function LoginPage({ isModal = false }: { isModal?: boolean }) {
   };
 
   const loginCard = (
-    <div className={`login-card ${isModal ? 'modal-mode' : ''}`}>
+    <div className={`login-card ${isModal ? "modal-mode" : ""}`}>
       <div className="login-logo">
         <img
           src="https://www.scalepods.co/_next/image?url=%2Fscalepods-navbar-logo.png&w=256&q=75&dpl=dpl_DX4go8Z4Sy3vBkyqLBb8kxYXVNrc"
@@ -94,7 +95,7 @@ export function LoginPage({ isModal = false }: { isModal?: boolean }) {
           )}
         </button>
 
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: "16px" }}>
           <button
             type="button"
             className="login-link-btn"
@@ -131,30 +132,32 @@ export function LoginPage({ isModal = false }: { isModal?: boolean }) {
             Scale your hiring. <span className="text-blue">Intelligently.</span>
           </h1>
           <p className="login-marketing-desc">
-            The world's most advanced AI-powered recruitment platform. 
-            Automate screening, analyze candidates, and close talent 10x faster.
+            The world's most advanced AI-powered recruitment platform. Automate screening, analyze
+            candidates, and close talent 10x faster.
           </p>
-          
+
           <div className="login-features">
             <div className="login-feature">
-              <div className="login-feature-icon"><i className="ti ti-brain"></i></div>
+              <div className="login-feature-icon">
+                <i className="ti ti-brain"></i>
+              </div>
               <div className="login-feature-text">
                 <strong>AI-Powered Analysis</strong>
                 <span>Deep candidate intelligence from every resume.</span>
               </div>
             </div>
             <div className="login-feature">
-              <div className="login-feature-icon"><i className="ti ti-chart-dots"></i></div>
+              <div className="login-feature-icon">
+                <i className="ti ti-chart-dots"></i>
+              </div>
               <div className="login-feature-text">
                 <strong>Pipeline Prediction</strong>
                 <span>Predict hiring outcomes before they happen.</span>
               </div>
             </div>
           </div>
-          
-          <div className="login-marketing-footer">
-            Used by hyper-growth teams globally.
-          </div>
+
+          <div className="login-marketing-footer">Used by hyper-growth teams globally.</div>
         </div>
 
         {loginCard}

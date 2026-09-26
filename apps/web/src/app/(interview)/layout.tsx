@@ -1,8 +1,8 @@
-import type { Metadata } from 'next';
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: 'AI Interview Room | ScalePods',
-  description: 'AI-guided interview session with real-time proctoring and assessment.',
+  title: "AI Interview Room | ScalePods",
+  description: "AI-guided interview session with real-time proctoring and assessment.",
 };
 
 export default function InterviewLayout({ children }: { children: React.ReactNode }) {

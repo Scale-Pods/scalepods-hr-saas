@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from '../types';
-import { useProctoring } from '../hooks/useProctoring';
+import React, { createContext, useContext, useState, useCallback } from "react";
+import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from "../types";
+import { useProctoring } from "../hooks/useProctoring";
 
 interface ProctoringContextType {
   violations: ProctoringEvent[];
@@ -8,13 +8,17 @@ interface ProctoringContextType {
   recentEvent: ProctoringEvent | null;
   startProctoring: (sessionId: string) => Promise<void>;
   stopProctoring: () => void;
-  emitEvent: (type: ProctoringEventType, severity: ProctoringSeverity, payload?: Record<string, unknown>) => Promise<void>;
+  emitEvent: (
+    type: ProctoringEventType,
+    severity: ProctoringSeverity,
+    payload?: Record<string, unknown>,
+  ) => Promise<void>;
 }
 
 const ProctoringContext = createContext<ProctoringContextType | null>(null);
 
 export function ProctoringProvider({ children }: { children: React.ReactNode }) {
-  const [sessionId, setSessionId] = useState<string>('');
+  const [sessionId, setSessionId] = useState<string>("");
   const localProctoring = useProctoring(sessionId);
 
   const startProctoring = useCallback(
@@ -22,7 +26,7 @@ export function ProctoringProvider({ children }: { children: React.ReactNode }) 
       setSessionId(sid);
       await localProctoring.start(sid);
     },
-    [localProctoring]
+    [localProctoring],
   );
 
   const stopProctoring = useCallback(() => {
@@ -47,6 +51,6 @@ export function ProctoringProvider({ children }: { children: React.ReactNode }) 
 
 export function useProctoringContext() {
   const ctx = useContext(ProctoringContext);
-  if (!ctx) throw new Error('useProctoringContext must be used within ProctoringProvider');
+  if (!ctx) throw new Error("useProctoringContext must be used within ProctoringProvider");
   return ctx;
 }

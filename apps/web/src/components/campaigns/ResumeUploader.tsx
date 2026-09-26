@@ -24,7 +24,6 @@ export function ResumeUploader({
   onComplete: () => void;
 }) {
   const [files, setFiles] = useState<DropFile[]>([]);
-  const [resumeCutoff, setResumeCutoff] = useState(60);
   const [uploading, setUploading] = useState(false);
 
   const patch = (i: number, p: Partial<DropFile>) =>
@@ -72,7 +71,7 @@ export function ResumeUploader({
           form.append("candidate_email", row.email ?? "");
           form.append("candidate_name", row.name ?? row.file.name.replace(/\.[^.]+$/, ""));
           form.append("candidate_phone", row.phone ?? "");
-          form.append("resume_cutoff", String(resumeCutoff));
+          form.append("resume_cutoff", "0");
           try {
             await callWorkflow("candidate-intake", { formData: form, accessToken });
             patch(i, { status: "screening", note: "Screening…" });
@@ -112,27 +111,13 @@ export function ResumeUploader({
         }}
         onRemove={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
       />
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <label htmlFor="resume-cutoff" className="text-xs text-label-secondary">
-            Resume cutoff
-          </label>
-          <Input
-            id="resume-cutoff"
-            type="number"
-            min={0}
-            max={100}
-            value={resumeCutoff}
-            onChange={(e) => setResumeCutoff(Math.max(0, Math.min(100, Number(e.target.value))))}
-            className="w-20 !py-1 text-xs"
-          />
-        </div>
+      <div className="mt-4 flex items-center justify-end gap-3">
         <Button
           size="sm"
           onClick={() => void uploadAll()}
           disabled={uploading || files.length === 0}
         >
-          {uploading ? "Screening…" : `Screen ${files.length} file${files.length === 1 ? "" : "s"}`}
+          {uploading ? "Scoring…" : `Score ${files.length} file${files.length === 1 ? "" : "s"}`}
         </Button>
       </div>
       <div className="mt-3 space-y-1.5">
@@ -203,9 +188,17 @@ async function pollForScore(
         .eq("candidate_id", data.id)
         .order("created_at", { ascending: false });
 
-      const latest = (((rows ?? []) as any[]) as { stage: string; score: number | null; rationale: string | null }[]).find(
-        (r) => r.stage.toLowerCase().includes("resume") || r.stage.toLowerCase().includes("screen"),
-      ) || rows?.[0];
+      const latest =
+        (
+          (rows ?? []) as any[] as {
+            stage: string;
+            score: number | null;
+            rationale: string | null;
+          }[]
+        ).find(
+          (r) =>
+            r.stage.toLowerCase().includes("resume") || r.stage.toLowerCase().includes("screen"),
+        ) || rows?.[0];
 
       if (latest && latest.score != null) {
         onProgress(latest.score, latest.rationale ?? "");

@@ -5,25 +5,54 @@ import { SuggestiveSearch } from "./components/ui/suggestive-search";
 const suggestionsMap: Record<string, string[]> = {
   dashboard: ["Search candidates...", "Search campaigns...", "Search interviews..."],
   campaigns: [
-    "Quant Analyst", "Business Analyst", "Business Development",
-    "AI Automation Engineer", "Software Engineer", "Project Manager",
-    "HR Executive", "Data Analyst", "Marketing Executive",
-    "Sales Manager", "Accountant", "Graphic Designer",
-    "UI/UX Designer", "Operations Executive", "Team Lead",
-    "Customer Support Executive", "Office Administrator", "Product Manager"
+    "Quant Analyst",
+    "Business Analyst",
+    "Business Development",
+    "AI Automation Engineer",
+    "Software Engineer",
+    "Project Manager",
+    "HR Executive",
+    "Data Analyst",
+    "Marketing Executive",
+    "Sales Manager",
+    "Accountant",
+    "Graphic Designer",
+    "UI/UX Designer",
+    "Operations Executive",
+    "Team Lead",
+    "Customer Support Executive",
+    "Office Administrator",
+    "Product Manager",
   ],
   create: [
-    "Quant Analyst", "Business Analyst", "Business Development",
-    "AI Automation Engineer", "Software Engineer", "Project Manager",
-    "HR Executive", "Data Analyst", "Marketing Executive",
-    "Sales Manager", "Accountant", "Graphic Designer",
-    "UI/UX Designer", "Operations Executive", "Team Lead",
-    "Customer Support Executive", "Office Administrator", "Product Manager"
+    "Quant Analyst",
+    "Business Analyst",
+    "Business Development",
+    "AI Automation Engineer",
+    "Software Engineer",
+    "Project Manager",
+    "HR Executive",
+    "Data Analyst",
+    "Marketing Executive",
+    "Sales Manager",
+    "Accountant",
+    "Graphic Designer",
+    "UI/UX Designer",
+    "Operations Executive",
+    "Team Lead",
+    "Customer Support Executive",
+    "Office Administrator",
+    "Product Manager",
   ],
   meetings: ["Search interviews...", "Search by date...", "Search by interviewer..."],
   "campaign-detail": [
-    "Mithul CE", "Yash Rao", "Viraj Gosawami", "Abeer Gandhi",
-    "Mohammad Fazal Attar", "Deep Bartaria", "Tushar Funde"
+    "Mithul CE",
+    "Yash Rao",
+    "Viraj Gosawami",
+    "Abeer Gandhi",
+    "Mohammad Fazal Attar",
+    "Deep Bartaria",
+    "Tushar Funde",
   ],
 };
 
@@ -43,7 +72,7 @@ function mountSearch(page: string) {
           showTrailing={false}
           className="w-56"
         />
-      </StrictMode>
+      </StrictMode>,
     );
   }
 }

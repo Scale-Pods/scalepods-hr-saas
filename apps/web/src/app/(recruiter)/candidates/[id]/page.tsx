@@ -1,7 +1,15 @@
 "use client";
 
 import { formatDateTime } from "@scalepods/core";
-import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, FileText, Redo2, Video } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  FileText,
+  Redo2,
+  Video,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -33,7 +41,8 @@ import { cn } from "@/lib/utils";
 function roundNumberFromStage(stage: string): number | null {
   const m = /^round_(\d+)$/.exec(stage);
   if (m) return Number(m[1]);
-  if (stage === "round_undefined" || stage.includes("round") || stage.includes("interview")) return 1;
+  if (stage === "round_undefined" || stage.includes("round") || stage.includes("interview"))
+    return 1;
   return null;
 }
 
