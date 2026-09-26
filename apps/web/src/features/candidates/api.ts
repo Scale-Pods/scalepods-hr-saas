@@ -15,6 +15,7 @@ export interface LedgerView extends DecisionLedgerRow {
   scorecard?: ScorecardRow;
   forRound?: RoundInstancesRow;
   recordingExpired?: boolean;
+  recordingSignedUrl?: string | null;
 }
 
 export interface CandidateProfile {
@@ -27,7 +28,9 @@ export interface CandidateProfile {
 
 function roundNumberFromStage(stage: string): number | null {
   const m = /^round_(\d+)$/.exec(stage);
-  return m ? Number(m[1]) : null;
+  if (m) return Number(m[1]);
+  if (stage === "round_undefined" || stage.includes("round") || stage.includes("interview")) return 1;
+  return null;
 }
 
 export async function fetchCandidateProfile(id: string, tier: string): Promise<CandidateProfile> {
@@ -43,14 +46,14 @@ export async function fetchCandidateProfile(id: string, tier: string): Promise<C
   const [ledger, rounds, sessions, logs] = await Promise.all([
     supabase
       .from("decision_ledger")
-      .select("*")
+      .select("id,account_id,candidate_id,round_instance_id,stage,score,rationale,weight,created_at,raw_text")
       .eq("candidate_id", id)
-      .order("decided_at", { ascending: true }),
+      .order("created_at", { ascending: true }),
     supabase.from("round_instances").select("*").eq("candidate_id", id).order("round_number"),
     supabase
       .from("interview_sessions")
       .select(
-        "id,round_instance_id,candidate_id,status,invite_link,expires_at,created_at,account_id",
+        "id,round_instance_id,candidate_id,status,expires_at,started_at,completed_at,created_at,recording_url,account_id",
       )
       .eq("candidate_id", id),
     supabase
@@ -61,7 +64,8 @@ export async function fetchCandidateProfile(id: string, tier: string): Promise<C
   ]);
 
   const roundRows = (rounds.data ?? []) as RoundInstancesRow[];
-  const sessionRows = (sessions.data ?? []) as InterviewSessionRow[];
+  const sessionRows = ((sessions.data ?? []) as unknown) as InterviewSessionRow[];
+  const roundIds = roundRows.map((r) => r.id);
 
   const campaignIds = Array.from(new Set(roundRows.map((r) => r.campaign_id)));
   let campaignName: string | null = null;
@@ -74,41 +78,92 @@ export async function fetchCandidateProfile(id: string, tier: string): Promise<C
     campaignName = ((camps ?? []) as { name: string }[]).map((c) => c.name).join(", ") || null;
   }
 
-  const scorecardBySession = new Map<string, ScorecardRow>();
-  if (sessionRows.length > 0) {
-    const ids = sessionRows.map((s) => s.id);
-    const { data: cards } = await supabase.from("scorecards").select("*").in("session_id", ids);
-    for (const sc of (cards ?? []) as ScorecardRow[]) {
-      scorecardBySession.set(sc.session_id, sc);
+  const scorecardByRoundId = new Map<string, ScorecardRow>();
+  if (roundIds.length > 0) {
+    const { data: cards } = await supabase
+      .from("scorecards")
+      .select("*")
+      .in("round_instance_id", roundIds);
+
+    for (const raw of (cards ?? []) as any[]) {
+      const criteria = raw.criteria || {};
+      const sc: ScorecardRow = {
+        id: raw.id,
+        session_id: raw.round_instance_id,
+        technical_score: raw.technical_score ?? criteria.technical_score ?? null,
+        communication_score: raw.communication_score ?? criteria.communication_score ?? null,
+        problem_solving_score: raw.problem_solving_score ?? criteria.problem_solving_score ?? null,
+        cultural_fit_score: raw.cultural_fit_score ?? criteria.cultural_fit_score ?? null,
+        overall_score: raw.overall_score ?? criteria.overall_score ?? null,
+        authenticity_score: raw.authenticity_score ?? criteria.authenticity_score ?? null,
+        recommendation: raw.recommendation ?? criteria.recommendation ?? null,
+        red_flags: raw.red_flags ?? criteria.red_flags ?? null,
+        strengths: raw.strengths ?? criteria.strengths ?? null,
+        weaknesses: raw.weaknesses ?? criteria.weaknesses ?? null,
+        evaluated_at: raw.evaluated_at ?? criteria.evaluated_at ?? raw.created_at,
+      };
+      scorecardByRoundId.set(raw.round_instance_id, sc);
     }
   }
 
   const retentionDays = TIER_LIMITS[tier as keyof typeof TIER_LIMITS]?.retentionDays ?? 7;
   const now = Date.now();
 
-  const view: LedgerView[] = ((ledger.data ?? []) as DecisionLedgerRow[]).map((row) => {
-    const roundNumber = roundNumberFromStage(row.stage);
-    const forRound = roundNumber
-      ? roundRows.find((r) => r.round_number === roundNumber)
-      : undefined;
-    const session =
-      (forRound ? sessionRows.find((s) => s.round_instance_id === forRound.id) : undefined) ??
-      (roundNumber === 1 ? sessionRows[0] : undefined);
-    const scorecard = session ? scorecardBySession.get(session.id) : undefined;
-    let recordingExpired = false;
-    if (scorecard?.evaluated_at) {
-      recordingExpired =
-        now - new Date(scorecard.evaluated_at).getTime() > retentionDays * 86_400_000;
-    }
-    return { ...row, session, scorecard, forRound, recordingExpired };
-  });
+  const view: LedgerView[] = await Promise.all(
+    ((ledger.data ?? []) as any[]).map(async (row) => {
+      let roundNumber = roundNumberFromStage(row.stage);
+      let forRound = roundNumber
+        ? roundRows.find((r) => r.round_number === roundNumber)
+        : undefined;
+
+      if (!forRound && row.round_instance_id) {
+        forRound = roundRows.find((r) => r.id === row.round_instance_id);
+      }
+      if (!forRound && (row.stage === "round_undefined" || row.stage.includes("interview"))) {
+        forRound = roundRows[0];
+      }
+
+      const session =
+        (forRound ? sessionRows.find((s) => s.round_instance_id === forRound.id) : undefined) ??
+        sessionRows[0];
+
+      const scorecard = forRound ? scorecardByRoundId.get(forRound.id) : undefined;
+      let recordingExpired = false;
+      if (scorecard?.evaluated_at) {
+        recordingExpired =
+          now - new Date(scorecard.evaluated_at).getTime() > retentionDays * 86_400_000;
+      }
+
+      let recordingSignedUrl: string | null = null;
+      const recPath = session?.recording_url || (scorecard as any)?.recording_path;
+      if (recPath && !recordingExpired) {
+        try {
+          const { data: signed } = await supabase.storage
+            .from("recordings")
+            .createSignedUrl(recPath, 3600);
+          recordingSignedUrl = signed?.signedUrl ?? null;
+        } catch {}
+      }
+
+      return {
+        ...row,
+        decided_at: row.created_at,
+        source: row.source ?? "workflow",
+        session,
+        scorecard,
+        forRound,
+        recordingExpired,
+        recordingSignedUrl,
+      };
+    })
+  );
 
   let resumeUrl: string | null = null;
-  if (cand.resume_url) {
+  if ((cand as any).resume_url) {
     const { data } = await supabase.storage
       .from(BUCKETS.resumes)
-      .createSignedUrl(cand.resume_url, 3600);
-    resumeUrl = data?.signedUrl ?? cand.resume_url;
+      .createSignedUrl((cand as any).resume_url, 3600);
+    resumeUrl = data?.signedUrl ?? (cand as any).resume_url;
   }
 
   return {

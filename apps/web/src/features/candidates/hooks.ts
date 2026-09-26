@@ -8,6 +8,7 @@ export function useCandidateProfile(id: string | undefined, tier: string) {
     queryKey: ["candidates", "profile", id],
     queryFn: () => fetchCandidateProfile(id as string, tier),
     enabled: Boolean(id),
-    staleTime: 15_000,
+    staleTime: 4_000,
+    refetchInterval: 5_000,
   });
 }

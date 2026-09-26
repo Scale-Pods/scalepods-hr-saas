@@ -1,0 +1,1876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScalePods — Scale your hiring. Intelligently.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- ═══ LANDING PAGE (visible when NOT logged in) ═══ -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div id="landing-page" class="landing-page">
+
+  <!-- ─── Navbar ─── -->
+  <nav class="lp-navbar" id="lp-navbar">
+    <div class="lp-navbar-inner">
+      <a href="/" class="lp-logo">
+        <img src="https://www.scalepods.co/_next/image?url=%2Fscalepods-navbar-logo.png&w=256&q=75&dpl=dpl_AvW1R1yMJvpQiN2nqX9xH2iu1ETN" alt="ScalePods" class="lp-logo-img">
+      </a>
+      <div class="lp-nav-links">
+        <a href="#features" class="lp-nav-link">Features</a>
+        <a href="#benefits" class="lp-nav-link">Benefits</a>
+        <a href="#pipeline" class="lp-nav-link">Pipeline</a>
+        <a href="#pricing" class="lp-nav-link">Pricing</a>
+        <a href="#contact" class="lp-nav-link">Contact</a>
+      </div>
+      <div class="lp-nav-actions">
+        <button class="lp-theme-toggle" id="lp-theme-btn" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+          <i class="ti ti-moon"></i>
+        </button>
+        <button class="lp-btn-cta" id="lp-signin-btn">Sign In <i class="ti ti-arrow-right"></i></button>
+      </div>
+      <button class="lp-mobile-menu-btn" id="lp-mobile-toggle" onclick="document.querySelector('.lp-nav-links').classList.toggle('open'); document.querySelector('.lp-nav-actions').classList.toggle('open');">
+        <i class="ti ti-menu-2"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ─── Hero Section ─── -->
+  <section class="lp-hero">
+    <div class="lp-hero-bg-orbs">
+      <div class="lp-orb lp-orb-1"></div>
+      <div class="lp-orb lp-orb-2"></div>
+      <div class="lp-orb lp-orb-3"></div>
+    </div>
+    <div class="lp-hero-grid">
+      <div class="lp-hero-content">
+        <div class="lp-hero-badge">
+          <span class="lp-badge-dot"></span>
+          <span>AI-POWERED TALENT OS</span>
+        </div>
+        <h1 class="lp-hero-title">
+          Hire Smarter with<br>
+          <span class="lp-gradient-text">ScalePods Intel</span>
+        </h1>
+        <p class="lp-hero-desc">
+          The minimal, all-in-one recruitment platform with AI screening, automated pipelines, and intelligent offer management.
+        </p>
+        <div class="lp-hero-actions">
+          <button class="lp-btn-primary lp-btn-lg" id="lp-hero-cta">
+            Sign In to Dashboard <i class="ti ti-arrow-right"></i>
+          </button>
+          <button class="lp-btn-outline lp-btn-lg" onclick="document.getElementById('features').scrollIntoView({behavior:'smooth'})">
+            <i class="ti ti-player-play"></i> Watch Demo
+          </button>
+        </div>
+        <div class="lp-social-proof">
+          <div class="lp-avatar-stack">
+            <div class="lp-sp-avatar logo-avatar"><img src="https://victoryenergy.us/wp-content/uploads/2026/05/VE-Logo-Color.svg" alt="Victory Energy"></div>
+            <div class="lp-sp-avatar logo-avatar"><img src="https://zvsteels.com/assets/img/zv_logo.png" alt="ZV Steels"></div>
+          </div>
+          <div class="lp-sp-text">
+            <strong>Trusted by growing teams</strong>
+          </div>
+        </div>
+      </div>
+      <div class="lp-hero-visual">
+        <div class="lp-dashboard-mockup">
+          <div class="lp-mockup-chrome">
+            <div class="lp-chrome-dots">
+              <span style="background:#ef4444;"></span>
+              <span style="background:#f59e0b;"></span>
+              <span style="background:#10b981;"></span>
+            </div>
+            <div class="lp-chrome-url">app.scalepods.co/dashboard</div>
+          </div>
+          <img src="/src/dashboard-mockup.png" alt="ScalePods Dashboard" class="lp-mockup-img">
+          <!-- Floating Cards -->
+          <div class="lp-float-card lp-float-health">
+            <div class="lp-float-label">PIPELINE HEALTH</div>
+            <div class="lp-float-value">892</div>
+            <div class="lp-float-sub">active candidates</div>
+          </div>
+          <div class="lp-float-card lp-float-time">
+            <div class="lp-float-label">TIME TO HIRE</div>
+            <div class="lp-float-value lp-float-accent">8.2d</div>
+            <div class="lp-float-sub lp-float-green">↓ 35% vs last month</div>
+          </div>
+          <div class="lp-float-card lp-float-ai">
+            <div class="lp-float-icon"><i class="ti ti-brain"></i></div>
+            <div>
+              <div class="lp-float-label">AI SCORE</div>
+              <div class="lp-float-value">94%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Trusted By ─── -->
+  <section class="lp-trusted">
+    <p class="lp-trusted-label">TRUSTED BY INNOVATIVE TEAMS WORLDWIDE</p>
+    <div class="lp-trusted-logos">
+      <span class="lp-logo-text">Linear</span>
+      <span class="lp-logo-text">Stripe</span>
+      <span class="lp-logo-text">Vercel</span>
+      <span class="lp-logo-text">Notion</span>
+      <span class="lp-logo-text">Rippling</span>
+    </div>
+  </section>
+
+  <!-- ─── Features Section ─── -->
+  <section class="lp-section" id="features">
+    <div class="lp-section-badge"><i class="ti ti-sparkles"></i> PLATFORM FEATURES</div>
+    <h2 class="lp-section-title">Total Control of Your Pipeline</h2>
+    <p class="lp-section-desc">Everything you need to scale your team, condensed into a single elegant interface.</p>
+    <div class="lp-features-grid">
+      <div class="lp-feature-card">
+        <div class="lp-feature-icon" style="background:rgba(37,99,235,0.08);color:#2563eb;">
+          <i class="ti ti-settings-automation"></i>
+        </div>
+        <h3 class="lp-feature-title">AI Screening Engine</h3>
+        <p class="lp-feature-desc">Automatically parse, score, and rank every resume against your job descriptions with precision ML models.</p>
+      </div>
+      <div class="lp-feature-card">
+        <div class="lp-feature-icon" style="background:rgba(6,182,212,0.08);color:#06b6d4;">
+          <i class="ti ti-users-group"></i>
+        </div>
+        <h3 class="lp-feature-title">Smart Pipeline</h3>
+        <p class="lp-feature-desc">Multi-round interview tracking with intelligent scheduling, automated reminders, and bottleneck detection.</p>
+      </div>
+      <div class="lp-feature-card">
+        <div class="lp-feature-icon" style="background:rgba(16,185,129,0.08);color:#10b981;">
+          <i class="ti ti-chart-bar"></i>
+        </div>
+        <h3 class="lp-feature-title">Analytics Dashboard</h3>
+        <p class="lp-feature-desc">Real-time metrics on conversion rates, time-to-hire, city distribution, and recruiter performance leaderboards.</p>
+      </div>
+      <div class="lp-feature-card">
+        <div class="lp-feature-icon" style="background:rgba(139,92,246,0.08);color:#8b5cf6;">
+          <i class="ti ti-file-description"></i>
+        </div>
+        <h3 class="lp-feature-title">Offer Generator</h3>
+        <p class="lp-feature-desc">Generate beautiful, branded offer letters instantly with customizable templates and one-click PDF export.</p>
+      </div>
+      <div class="lp-feature-card">
+        <div class="lp-feature-icon" style="background:rgba(245,158,11,0.08);color:#f59e0b;">
+          <i class="ti ti-brain"></i>
+        </div>
+        <h3 class="lp-feature-title">Call Intelligence</h3>
+        <p class="lp-feature-desc">AI-powered call log analysis that extracts key insights, scores candidate responses, and flags red flags.</p>
+      </div>
+      <div class="lp-feature-card">
+        <div class="lp-feature-icon" style="background:rgba(236,72,153,0.08);color:#ec4899;">
+          <i class="ti ti-calendar-event"></i>
+        </div>
+        <h3 class="lp-feature-title">Interview Scheduler</h3>
+        <p class="lp-feature-desc">Integrated calendar with Google Meet/Zoom links, automated rescheduling, and timezone-aware booking.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Benefits / Pipeline Section ─── -->
+  <section class="lp-section lp-section-alt" id="pipeline">
+    <div class="lp-section-badge"><i class="ti ti-git-branch"></i> HOW IT WORKS</div>
+    <h2 class="lp-section-title">From Resume to Offer in Days, Not Weeks</h2>
+    <p class="lp-section-desc">Our AI-powered pipeline automates the tedious parts so you can focus on what matters — finding the right people.</p>
+    <div class="lp-pipeline-steps">
+      <div class="lp-pipe-step">
+        <div class="lp-pipe-num">01</div>
+        <div class="lp-pipe-icon"><i class="ti ti-upload"></i></div>
+        <h3>Upload Resumes</h3>
+        <p>Bulk upload resumes in any format. Our AI parses and structures the data instantly.</p>
+      </div>
+      <div class="lp-pipe-connector"><i class="ti ti-arrow-right"></i></div>
+      <div class="lp-pipe-step">
+        <div class="lp-pipe-num">02</div>
+        <div class="lp-pipe-icon"><i class="ti ti-brain"></i></div>
+        <h3>AI Analysis</h3>
+        <p>Each candidate is scored against your JD with weighted criteria and gap analysis.</p>
+      </div>
+      <div class="lp-pipe-connector"><i class="ti ti-arrow-right"></i></div>
+      <div class="lp-pipe-step">
+        <div class="lp-pipe-num">03</div>
+        <div class="lp-pipe-icon"><i class="ti ti-phone-call"></i></div>
+        <h3>Interview & Score</h3>
+        <p>Schedule multi-round interviews with automated meeting links and call analysis.</p>
+      </div>
+      <div class="lp-pipe-connector"><i class="ti ti-arrow-right"></i></div>
+      <div class="lp-pipe-step">
+        <div class="lp-pipe-num">04</div>
+        <div class="lp-pipe-icon"><i class="ti ti-check"></i></div>
+        <h3>Hire & Offer</h3>
+        <p>Generate offer letters, track acceptance, and onboard — all from one place.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Benefits Section ─── -->
+  <section class="lp-section" id="benefits">
+    <div class="lp-section-badge"><i class="ti ti-rocket"></i> WHY SCALEPODS</div>
+    <h2 class="lp-section-title">Built for Speed, Designed for Scale</h2>
+    <p class="lp-section-desc">Whether you're hiring 5 or 500, ScalePods scales with you.</p>
+    <div class="lp-stats-row">
+      <div class="lp-stat-card">
+        <div class="lp-stat-value">85%</div>
+        <div class="lp-stat-label">Faster Screening</div>
+        <div class="lp-stat-desc">AI-powered resume analysis cuts screening time dramatically</div>
+      </div>
+      <div class="lp-stat-card">
+        <div class="lp-stat-value">3.2x</div>
+        <div class="lp-stat-label">Better Hires</div>
+        <div class="lp-stat-desc">Data-driven decisions lead to higher quality candidates</div>
+      </div>
+      <div class="lp-stat-card">
+        <div class="lp-stat-value">60%</div>
+        <div class="lp-stat-label">Less Admin Work</div>
+        <div class="lp-stat-desc">Automated pipelines free your team to focus on people</div>
+      </div>
+      <div class="lp-stat-card">
+        <div class="lp-stat-value">8.2d</div>
+        <div class="lp-stat-label">Time to Hire</div>
+        <div class="lp-stat-desc">From application to offer, faster than industry average</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Pricing / Let's Talk Section ─── -->
+  <section class="lp-section lp-section-alt" id="pricing">
+    <div class="lp-section-badge"><i class="ti ti-messages"></i> LET'S TALK</div>
+    <h2 class="lp-section-title">Let's Find the Right Plan for You</h2>
+    <p class="lp-section-desc">Every hiring team works differently. Tell us what you're looking to automate, and we'll help you find the right setup for your team.</p>
+    <div class="lp-talk-box">
+      <p class="lp-talk-sub">Whether you're running a few hiring campaigns or managing recruitment at scale, we can tailor the platform around your workflow.</p>
+      <button class="lp-btn-primary lp-btn-lg" onclick="window.open('https://mail.google.com/mail/?view=cm&fs=1&to=raunak@scalepods.co&cc=adnan@scalepods.co&su=ScalePods%20Plan%20Discussion&body=Hi%2C%0A%0AI%E2%80%99m%20interested%20in%20learning%20more%20about%20your%20platform%20and%20would%20like%20to%20discuss%20how%20it%20could%20work%20for%20our%20hiring%20needs.%0A%0APlease%20get%20in%20touch%20so%20we%20can%20explore%20the%20options%20and%20next%20steps.%0A%0AThanks!','_blank')">
+        Let's Discuss <i class="ti ti-arrow-right"></i>
+      </button>
+    </div>
+  </section>
+
+  <!-- ─── CTA Section ─── -->
+  <section class="lp-cta-section" id="contact">
+    <div class="lp-cta-inner">
+      <h2 class="lp-cta-title">Ready to transform your hiring?</h2>
+      <p class="lp-cta-desc">Join hundreds of teams already hiring smarter with ScalePods Intel.</p>
+      <div class="lp-cta-actions">
+        <button class="lp-btn-white lp-btn-lg" id="lp-cta-final">
+          Get Started Free <i class="ti ti-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Footer ─── -->
+  <footer class="lp-footer">
+    <div class="lp-footer-inner">
+      <div class="lp-footer-brand">
+        <img src="https://www.scalepods.co/_next/image?url=%2Fscalepods-navbar-logo.png&w=256&q=75&dpl=dpl_AvW1R1yMJvpQiN2nqX9xH2iu1ETN" alt="ScalePods" class="lp-footer-logo">
+        <p class="lp-footer-tagline">Scale your hiring. Intelligently.</p>
+      </div>
+      <div class="lp-footer-links">
+        <div class="lp-footer-col">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#pipeline">How it works</a>
+        </div>
+        <div class="lp-footer-col">
+          <h4>Company</h4>
+          <a href="#">About</a>
+          <a href="#">Careers</a>
+          <a href="#">Blog</a>
+        </div>
+        <div class="lp-footer-col">
+          <h4>Legal</h4>
+          <a href="#">Privacy</a>
+          <a href="#">Terms</a>
+          <a href="#">Security</a>
+        </div>
+      </div>
+    </div>
+    <div class="lp-footer-bottom">
+      <span>© 2026 ScalePods. All rights reserved.</span>
+    </div>
+  </footer>
+
+</div><!-- /landing-page -->
+
+<!-- ═══ AUTH MODAL ═══ -->
+<div class="auth-overlay" id="auth-overlay"></div>
+<div class="auth-modal" id="auth-modal">
+  <button class="auth-close" id="auth-close"><i class="ti ti-x"></i></button>
+  <div class="auth-modal-inner">
+    <div class="auth-logo">
+      <img src="https://www.scalepods.co/_next/image?url=%2Fscalepods-navbar-logo.png&w=256&q=75&dpl=dpl_AvW1R1yMJvpQiN2nqX9xH2iu1ETN" alt="ScalePods" style="height:28px;">
+    </div>
+    <h2 class="auth-title" id="auth-title">Welcome back</h2>
+    <p class="auth-subtitle" id="auth-subtitle">Sign in to your ScalePods account</p>
+    <form id="auth-form" autocomplete="on">
+      <div class="auth-field">
+        <label for="auth-email">Email</label>
+        <input type="email" id="auth-email" placeholder="you@company.com" required autocomplete="email">
+      </div>
+      <div class="auth-field" id="auth-password-field">
+        <label for="auth-password">Password</label>
+        <input type="password" id="auth-password" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <div id="auth-error" class="auth-error"></div>
+      <button type="submit" class="lp-btn-primary lp-btn-full auth-submit" id="auth-submit-btn">Sign In</button>
+    </form>
+    <div class="auth-toggle" style="display: none;">
+      <span id="auth-toggle-text">Don't have an account?</span>
+      <button type="button" class="auth-toggle-btn" id="auth-toggle-btn">Sign Up</button>
+    </div>
+  </div>
+</div>
+
+<div id="react-root"></div>
+
+<div class="app-layout">
+
+  <!-- ─── Sidebar ─── -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="document.body.classList.remove('sidebar-open')"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-inner">
+      <div class="sidebar-logo">
+        <img src="https://www.scalepods.co/_next/image?url=%2Fscalepods-navbar-logo.png&w=256&q=75&dpl=dpl_AvW1R1yMJvpQiN2nqX9xH2iu1ETN"
+             alt="ScalePods"
+             class="sidebar-logo-img">
+      </div>
+
+      <div class="sidebar-nav-label">Menu</div>
+
+      <nav class="sidebar-nav">
+        <a href="/" class="nav-item active" data-page="dashboard" onclick="event.preventDefault(); navigate('dashboard', this)">
+          <i class="ti ti-layout-dashboard"></i>
+          <span>Dashboard</span>
+        </a>
+        <a href="/campaigns" class="nav-item" data-page="campaigns" onclick="event.preventDefault(); navigate('campaigns', this)">
+          <i class="ti ti-speakerphone"></i>
+          <span>Campaigns</span>
+          <span class="badge" id="campaign-badge">0</span>
+        </a>
+        <a href="/create" class="nav-item" data-page="create" onclick="event.preventDefault(); navigate('create', this)">
+          <i class="ti ti-plus"></i>
+          <span>New Campaign</span>
+        </a>
+        <a href="/meetings" class="nav-item" data-page="meetings" onclick="event.preventDefault(); navigate('meetings', this)">
+          <i class="ti ti-calendar-event"></i>
+          <span>Interviews</span>
+        </a>
+        <a href="/offer-letter" class="nav-item" data-page="offer-letter" onclick="event.preventDefault(); navigate('offer-letter', this)">
+          <i class="ti ti-file-description"></i>
+          <span>Offer Letter</span>
+        </a>
+        <a href="/users" class="nav-item flex" data-page="users" id="nav-users" style="display: none !important;" onclick="event.preventDefault(); navigate('users', this)">
+          <i class="ti ti-users"></i>
+          <span>User Management</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-nav-label">Development</div>
+
+      <nav class="sidebar-nav">
+        <a href="/kanban" class="nav-item" data-page="kanban" onclick="event.preventDefault(); navigate('kanban', this)">
+          <i class="ti ti-layout-kanban"></i>
+          <span>Kanban</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-mobile-actions">
+        <button class="nav-item" onclick="toggleTheme(); document.body.classList.remove('sidebar-open')">
+          <i class="ti ti-moon" id="sidebar-theme-icon"></i>
+          <span>Theme</span>
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <a href="https://support-ai-woad.vercel.app/?source=scalepods-hr" target="_blank" rel="noopener noreferrer" class="nav-item" title="Support">
+          <i class="ti ti-lifebuoy"></i>
+          <span>Support</span>
+        </a>
+        <div class="sidebar-user">
+          <div class="user-avatar">SP</div>
+          <div class="user-info">
+            <div class="user-name">Raunak</div>
+            <div class="user-role">Admin</div>
+          </div>
+          <button class="user-menu-btn" onclick="signOutUser()" title="Sign Out"><i class="ti ti-logout"></i></button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── Main Area ─── -->
+  <div class="main-area">
+
+    <!-- ─── Floating Topbar ─── -->
+    <header class="topbar" id="topbar">
+      <div class="topbar-left">
+        <button class="topbar-menu-btn" id="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
+          <i class="ti ti-menu-2"></i>
+        </button>
+        <div class="topbar-breadcrumb">
+          ScalePods <span class="breadcrumb-sep">/</span> <span id="page-title">Dashboard</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div id="search-root" class="flex items-center"></div>
+        <button class="icon-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">
+          <i class="ti ti-moon"></i>
+        </button>
+        <button class="icon-btn" onclick="alert('Notifications')" title="Notifications">
+          <i class="ti ti-bell"></i>
+          <span class="notif-dot"></span>
+        </button>
+        <div class="topbar-divider"></div>
+        <div class="topbar-profile" onclick="signOutUser()" style="cursor: pointer;" title="Sign Out">
+          <div class="profile-avatar">SP</div>
+          <div class="profile-info">
+            <div class="profile-name">Raunak</div>
+            <div class="profile-role">Administrator</div>
+          </div>
+          <i class="ti ti-logout" style="margin-left: 10px; opacity: 0.6;"></i>
+        </div>
+      </div>
+    </header>
+
+    <!-- ─── Content ─── -->
+    <div class="content" id="content-area">
+
+      <!-- ═══ USER MANAGEMENT PAGE ═══ -->
+      <div class="page" id="page-users">
+        <div class="section-header">
+          <div class="section-title-group">
+            <h2 class="section-title">User Management</h2>
+            <span class="section-badge admin-badge">System Admin</span>
+          </div>
+        </div>
+
+        <div class="user-management-grid">
+          <div class="user-admin-card">
+            <div class="admin-card-header">
+              <i class="ti ti-user-plus"></i>
+              <h3>Provision New User</h3>
+              <p>Create a new account with delegated access.</p>
+            </div>
+            
+            <form id="admin-create-user-form" class="admin-form">
+              <div class="form-group">
+                <label>Email Address</label>
+                <div class="input-with-icon">
+                  <i class="ti ti-mail"></i>
+                  <input type="email" id="admin-new-email" placeholder="user@scalepods.co" required>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Password</label>
+                <div class="input-with-icon">
+                  <i class="ti ti-lock"></i>
+                  <input type="password" id="admin-new-password" placeholder="••••••••" required>
+                </div>
+              </div>
+              <div id="admin-user-status" class="admin-status"></div>
+              <button type="submit" class="btn-primary btn-full">
+                <i class="ti ti-plus"></i> Create Account
+              </button>
+            </form>
+          </div>
+
+          <div class="user-info-panel">
+            <div class="info-icon"><i class="ti ti-shield-check"></i></div>
+            <h4>Security Policy</h4>
+            <p>Admin-created users are stored securely in Supabase Auth. Passwords are automatically hashed at the infrastructure level.</p>
+            <div class="info-list">
+              <div class="info-item">
+                <i class="ti ti-check"></i>
+                <span>Immediate Dashboard Access</span>
+              </div>
+              <div class="info-item">
+                <i class="ti ti-check"></i>
+                <span>Automated Password Hashing</span>
+              </div>
+              <div class="info-item">
+                <i class="ti ti-check"></i>
+                <span>Scalepods Domain Restricted</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ DASHBOARD PAGE ═══ -->
+      <div class="page active" id="page-dashboard">
+
+        <!-- Hero Section -->
+        <div class="dash-hero">
+          <div class="hero-greeting">
+            <div class="hero-chip">
+              <span class="live-dot"></span>
+              <span>AI Analytics Active</span>
+              <span class="chip-divider"></span>
+              <span class="chip-count" id="active-campaigns-count">2 active campaigns</span>
+            </div>
+            <div class="campaign-selector">
+              <i class="ti ti-speakerphone"></i>
+              <select id="campaign-select" onchange="onCampaignSelect(this.value)">
+                <option value="">All Campaigns</option>
+              </select>
+            </div>
+            <h1 class="hero-title" id="greeting-text">Good morning, <span class="hero-name">Raunak</span></h1>
+            <p class="hero-sub" id="hero-subtitle">Your hiring intelligence is live. <strong id="hero-candidates">0</strong> candidates flowing through the pipeline with a <strong id="hero-score">0</strong> mean score.</p>
+            <div class="hero-actions">
+              <button class="btn-primary" onclick="event.preventDefault(); navigate('create', this)"><i class="ti ti-sparkles"></i> Create Campaign</button>
+              <button class="btn-secondary"><i class="ti ti-file-analytics"></i> View Report</button>
+            </div>
+          </div>
+          <div class="hero-visual">
+            <div class="hero-chart-bg">
+              <svg class="hero-chart-svg" viewBox="0 0 400 120" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="hero-chart-grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="rgba(37,99,235,0.2)"/>
+                    <stop offset="100%" stop-color="rgba(37,99,235,0)"/>
+                  </linearGradient>
+                  <linearGradient id="hero-chart-line" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#2563eb"/>
+                    <stop offset="100%" stop-color="#06b6d4"/>
+                  </linearGradient>
+                </defs>
+                <path d="M0 100 Q40 85 80 90 T160 70 T240 55 T320 40 T400 30 L400 120 L0 120Z" fill="url(#hero-chart-grad)"/>
+                <path d="M0 100 Q40 85 80 90 T160 70 T240 55 T320 40 T400 30" stroke="url(#hero-chart-line)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="400" cy="30" r="3" fill="#2563eb"/>
+              </svg>
+              <div class="hero-chart-label">
+                <span class="chart-label-value" id="pipeline-growth">+0%</span>
+                <span class="chart-label-text">pipeline growth</span>
+              </div>
+            </div>
+            <div class="hero-metrics">
+              <div class="hero-metric">
+                <span class="hero-metric-icon" style="background:rgba(37,99,235,0.1);color:var(--blue);"><i class="ti ti-users"></i></span>
+                <div class="hero-metric-info">
+                  <span class="hero-metric-value" id="dash-total-candidates" data-target="0">0</span>
+                  <span class="hero-metric-label">Total Candidates</span>
+                </div>
+                <span class="hero-metric-change up" id="dash-candidates-change">+0%</span>
+              </div>
+              <div class="hero-metric">
+                <span class="hero-metric-icon" style="background:rgba(6,182,212,0.1);color:var(--cyan);"><i class="ti ti-chart-line"></i></span>
+                <div class="hero-metric-info">
+                  <span class="hero-metric-value" id="dash-avg-score" data-target="0">0</span>
+                  <span class="hero-metric-label">Avg Score</span>
+                </div>
+                <span class="hero-metric-change up" id="dash-score-change">+0</span>
+              </div>
+              <div class="hero-metric">
+                <span class="hero-metric-icon" style="background:rgba(59,130,246,0.1);color:var(--blue);"><i class="ti ti-clock"></i></span>
+                <div class="hero-metric-info">
+                  <span class="hero-metric-value" id="dash-time-to-hire" data-target="0" data-suffix="d">0d</span>
+                  <span class="hero-metric-label">Time to Hire</span>
+                </div>
+                <span class="hero-metric-change down" id="dash-ttc-change">-0d</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPI Grid -->
+        <div class="section-header">
+          <div class="section-title-group">
+            <h2 class="section-title">Key Metrics</h2>
+            <span class="section-badge">Live</span>
+          </div>
+          <button class="btn-ghost-sm"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card" style="--accent-h:248;--accent-s:65%;--accent-l:60%;">
+            <div class="kpi-top">
+              <div class="kpi-icon-wrap" style="background:rgba(37,99,235,0.1);color:var(--blue);">
+                <i class="ti ti-users"></i>
+              </div>
+              <span class="kpi-change-badge up" id="kpi-active-change">+0%</span>
+            </div>
+            <div class="kpi-value" id="kpi-active-candidates" data-target="0">0</div>
+            <div class="kpi-label">Active Candidates</div>
+            <div class="kpi-trend">
+              <div class="kpi-trend-bar" id="kpi-trend-1">
+                <span style="height:60%"></span><span style="height:80%"></span><span style="height:45%"></span>
+                <span style="height:90%"></span><span style="height:70%"></span><span style="height:100%"></span>
+                <span style="height:85%"></span><span style="height:95%"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--accent-h:263;--accent-s:70%;--accent-l:58%;">
+            <div class="kpi-top">
+              <div class="kpi-icon-wrap" style="background:rgba(6,182,212,0.1);color:var(--cyan);">
+                <i class="ti ti-star"></i>
+              </div>
+              <span class="kpi-change-badge up" id="kpi-score-change-val">+0</span>
+            </div>
+            <div class="kpi-value" id="kpi-avg-score" data-target="0">0</div>
+            <div class="kpi-label">Average Score</div>
+            <div class="kpi-trend">
+              <div class="kpi-trend-bar" id="kpi-trend-2">
+                <span style="height:50%"></span><span style="height:65%"></span><span style="height:55%"></span>
+                <span style="height:75%"></span><span style="height:70%"></span><span style="height:85%"></span>
+                <span style="height:90%"></span><span style="height:80%"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--accent-h:160;--accent-s:84%;--accent-l:39%;">
+            <div class="kpi-top">
+              <div class="kpi-icon-wrap" style="background:rgba(16,185,129,0.1);color:var(--emerald);">
+                <i class="ti ti-user-check"></i>
+              </div>
+              <span class="kpi-change-badge up" id="kpi-hired-change">+0</span>
+            </div>
+            <div class="kpi-value" id="kpi-hired" data-target="0">0</div>
+            <div class="kpi-label">Hired This Quarter</div>
+            <div class="kpi-trend">
+              <div class="kpi-trend-bar" id="kpi-trend-3">
+                <span style="height:20%"></span><span style="height:30%"></span><span style="height:25%"></span>
+                <span style="height:40%"></span><span style="height:35%"></span><span style="height:55%"></span>
+                <span style="height:50%"></span><span style="height:65%"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--accent-h:217;--accent-s:91%;--accent-l:60%;">
+            <div class="kpi-top">
+              <div class="kpi-icon-wrap" style="background:rgba(59,130,246,0.1);color:var(--blue);">
+                <i class="ti ti-gauge"></i>
+              </div>
+              <span class="kpi-change-badge" id="kpi-quality-label" style="color:var(--text3);background:var(--surface3);">Index</span>
+            </div>
+            <div class="kpi-value" id="kpi-decision-quality" data-target="0">0</div>
+            <div class="kpi-label">Decision Quality</div>
+            <div class="kpi-trend">
+              <div class="kpi-trend-bar" id="kpi-trend-4">
+                <span style="height:55%"></span><span style="height:60%"></span><span style="height:65%"></span>
+                <span style="height:70%"></span><span style="height:75%"></span><span style="height:80%"></span>
+                <span style="height:85%"></span><span style="height:82%"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analytics & Pipeline -->
+        <div class="analytics-grid">
+          <!-- Stage Distribution -->
+          <div class="analytics-card wide-card">
+            <div class="card-header">
+              <div class="card-header-left">
+                <i class="ti ti-git-branch" style="color:var(--blue);"></i>
+                <span>Pipeline Overview</span>
+              </div>
+              <span class="live-pill"><span class="live-dot"></span> Live</span>
+            </div>
+            <div class="pipeline-visual">
+              <div class="pipeline-flow" id="pipeline-flow">
+                <div class="pipeline-node">
+                  <div class="pipeline-node-dot" style="background:var(--blue);"></div>
+                  <div class="pipeline-node-content">
+                    <div class="pipeline-node-label">
+                      <span>Screening</span>
+                      <span class="pipeline-node-count" id="pipe-screening">0</span>
+                    </div>
+                    <div class="pipeline-node-bar"><div class="pipeline-node-fill" id="pipe-screening-bar" style="width:0%;background:linear-gradient(90deg,var(--blue),var(--blue-light));"></div></div>
+                  </div>
+                </div>
+                <div class="pipeline-node">
+                  <div class="pipeline-node-dot" style="background:var(--cyan);"></div>
+                  <div class="pipeline-node-content">
+                    <div class="pipeline-node-label">
+                      <span>Round 1</span>
+                      <span class="pipeline-node-count" id="pipe-round1">0</span>
+                    </div>
+                    <div class="pipeline-node-bar"><div class="pipeline-node-fill" id="pipe-round1-bar" style="width:0%;background:linear-gradient(90deg,var(--cyan),var(--cyan-light));"></div></div>
+                  </div>
+                </div>
+                <div class="pipeline-node">
+                  <div class="pipeline-node-dot" style="background:var(--blue);"></div>
+                  <div class="pipeline-node-content">
+                    <div class="pipeline-node-label">
+                      <span>Round 2</span>
+                      <span class="pipeline-node-count" id="pipe-round2">0</span>
+                    </div>
+                    <div class="pipeline-node-bar"><div class="pipeline-node-fill" id="pipe-round2-bar" style="width:0%;background:linear-gradient(90deg,var(--blue),var(--blue-light));"></div></div>
+                  </div>
+                </div>
+                <div class="pipeline-node">
+                  <div class="pipeline-node-dot" style="background:var(--sky);"></div>
+                  <div class="pipeline-node-content">
+                    <div class="pipeline-node-label">
+                      <span>Round 3</span>
+                      <span class="pipeline-node-count" id="pipe-round3">0</span>
+                    </div>
+                    <div class="pipeline-node-bar"><div class="pipeline-node-fill" id="pipe-round3-bar" style="width:0%;background:linear-gradient(90deg,var(--sky),#38bdf8);"></div></div>
+                  </div>
+                </div>
+                <div class="pipeline-node">
+                  <div class="pipeline-node-dot" style="background:var(--emerald);"></div>
+                  <div class="pipeline-node-content">
+                    <div class="pipeline-node-label">
+                      <span>Hired</span>
+                      <span class="pipeline-node-count" id="pipe-hired">0</span>
+                    </div>
+                    <div class="pipeline-node-bar"><div class="pipeline-node-fill" id="pipe-hired-bar" style="width:0%;background:linear-gradient(90deg,var(--emerald),var(--emerald-light));"></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Conversion Rate -->
+          <div class="analytics-card">
+            <div class="card-header">
+              <div class="card-header-left">
+                <i class="ti ti-percentage" style="color:var(--cyan);"></i>
+                <span>Conversion Rate</span>
+              </div>
+            </div>
+            <div class="conversion-visual">
+              <div class="conversion-ring">
+                <svg width="120" height="120" viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="48" fill="none" stroke="var(--surface3)" stroke-width="8"/>
+                  <circle cx="60" cy="60" r="48" fill="none" stroke="url(#conv-grad)" stroke-width="8" id="conv-ring" stroke-dasharray="0 301" stroke-dashoffset="0" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+                  <defs><linearGradient id="conv-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#06b6d4"/></linearGradient></defs>
+                  <text x="60" y="52" text-anchor="middle" fill="var(--text)" font-size="24" font-weight="700" font-family="Inter" id="conv-pct">0</text>
+                  <text x="60" y="70" text-anchor="middle" fill="var(--text3)" font-size="10" font-weight="500" font-family="Inter">percent</text>
+                </svg>
+              </div>
+              <div class="conversion-stats" id="conv-stats">
+                <div class="conv-stat"><span class="conv-stat-dot" style="background:var(--blue);"></span><span>Screening → Round 1</span><span class="conv-stat-value" id="conv-stage-1">0%</span></div>
+                <div class="conv-stat"><span class="conv-stat-dot" style="background:var(--cyan);"></span><span>Round 1 → Round 2</span><span class="conv-stat-value" id="conv-stage-2">0%</span></div>
+                <div class="conv-stat"><span class="conv-stat-dot" style="background:var(--blue);"></span><span>Round 2 → Round 3</span><span class="conv-stat-value" id="conv-stage-3">0%</span></div>
+                <div class="conv-stat"><span class="conv-stat-dot" style="background:var(--emerald);"></span><span>Round 3 → Hired</span><span class="conv-stat-value" id="conv-stage-4">0%</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- City Performance -->
+          <div class="analytics-card">
+            <div class="card-header">
+              <div class="card-header-left">
+                <i class="ti ti-map-pin" style="color:var(--emerald);"></i>
+                <span>City Distribution</span>
+              </div>
+            </div>
+            <div class="city-visual">
+              <div class="city-list" id="city-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Section -->
+        <div class="bottom-grid">
+          <!-- AI Insights -->
+          <div class="widget-card">
+            <div class="card-header">
+              <div class="card-header-left">
+                <i class="ti ti-brain" style="color:var(--cyan);"></i>
+                <span>AI Intelligence</span>
+              </div>
+              <span class="widget-badge"><span class="live-dot"></span> Updated now</span>
+            </div>
+            <div class="ai-feed">
+              <div class="ai-item">
+                <div class="ai-item-icon" style="background:rgba(37,99,235,0.1);color:var(--blue);">
+                  <i class="ti ti-trending-up"></i>
+                </div>
+                <div class="ai-item-content">
+                  <div class="ai-item-title">Conversion spike detected</div>
+                  <div class="ai-item-desc">HR Round to Manager Interview up 23% this week</div>
+                  <div class="ai-item-action">Recommendation: Increase Manager bandwidth</div>
+                </div>
+              </div>
+              <div class="ai-item">
+                <div class="ai-item-icon" style="background:rgba(6,182,212,0.1);color:var(--cyan);">
+                  <i class="ti ti-star"></i>
+                </div>
+                <div class="ai-item-content">
+                  <div class="ai-item-title">Top performer identified</div>
+                  <div class="ai-item-desc">Anika Patel has 92% score accuracy this quarter</div>
+                  <div class="ai-item-action">Insight: Best interviewer rating</div>
+                </div>
+              </div>
+              <div class="ai-item">
+                <div class="ai-item-icon" style="background:rgba(239,68,68,0.1);color:var(--red);">
+                  <i class="ti ti-alert-triangle"></i>
+                </div>
+                <div class="ai-item-content">
+                  <div class="ai-item-title">Pipeline bottleneck</div>
+                  <div class="ai-item-desc">Tech Interview has 4 candidates waiting — avg 8 days</div>
+                  <div class="ai-item-action">Action: Schedule tech panel this week</div>
+                </div>
+              </div>
+              <div class="ai-item">
+                <div class="ai-item-icon" style="background:rgba(16,185,129,0.1);color:var(--emerald);">
+                  <i class="ti ti-users"></i>
+                </div>
+                <div class="ai-item-content">
+                  <div class="ai-item-title">Referral program performing</div>
+                  <div class="ai-item-desc">Referrals have the highest conversion rate at 34%</div>
+                  <div class="ai-item-action">Insight: Boost referral incentives</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent Activity -->
+          <div class="widget-card">
+            <div class="card-header">
+              <div class="card-header-left">
+                <i class="ti ti-bolt" style="color:var(--blue);"></i>
+                <span>Recent Activity</span>
+              </div>
+              <button class="btn-icon-only" onclick="alert('View all')"><i class="ti ti-arrow-right"></i></button>
+            </div>
+            <div class="activity-feed">
+              <div class="activity-item">
+                <div class="activity-dot" style="background:var(--emerald);"></div>
+                <div class="activity-info">
+                  <div class="activity-text"><strong>Rahul Joshi</strong> moved to <strong>Manager Interview</strong></div>
+                  <div class="activity-time">12 min ago</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background:var(--blue);"></div>
+                <div class="activity-info">
+                  <div class="activity-text">New candidate <strong>Priya Sharma</strong> applied for <strong>Plant Head</strong></div>
+                  <div class="activity-time">1 hour ago</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background:var(--cyan);"></div>
+                <div class="activity-info">
+                  <div class="activity-text"><strong>AI Scores</strong> updated for 8 candidates in Screening</div>
+                  <div class="activity-time">2 hours ago</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background:var(--emerald);"></div>
+                <div class="activity-info">
+                  <div class="activity-text"><strong>Meera Srinivas</strong> completed HR Round for 3 candidates</div>
+                  <div class="activity-time">3 hours ago</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background:var(--blue);"></div>
+                <div class="activity-info">
+                  <div class="activity-text"><strong>Plant Head — Alco</strong> campaign paused</div>
+                  <div class="activity-time">5 hours ago</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recruiter Leaderboard -->
+          <div class="widget-card">
+            <div class="card-header">
+              <div class="card-header-left">
+                <i class="ti ti-medal" style="color:var(--blue);"></i>
+                <span>Recruiter Leaderboard</span>
+              </div>
+              <span class="live-pill"><span class="live-dot"></span> Live</span>
+            </div>
+            <div class="leaderboard">
+              <div class="lb-row">
+                <span class="lb-rank gold">1</span>
+                <div class="lb-avatar" style="background:linear-gradient(135deg,var(--blue),var(--cyan));">AP</div>
+                <div class="lb-info">
+                  <div class="lb-name">Anika Patel</div>
+                  <div class="lb-role">Senior HR Manager</div>
+                </div>
+                <div class="lb-score">
+                  <span class="lb-score-value">92</span>
+                  <span class="lb-score-label">pts</span>
+                </div>
+              </div>
+              <div class="lb-row">
+                <span class="lb-rank silver">2</span>
+                <div class="lb-avatar" style="background:linear-gradient(135deg,var(--blue),var(--blue-light));">RJ</div>
+                <div class="lb-info">
+                  <div class="lb-name">Rahul Joshi</div>
+                  <div class="lb-role">Talent Acquisition Lead</div>
+                </div>
+                <div class="lb-score">
+                  <span class="lb-score-value">87</span>
+                  <span class="lb-score-label">pts</span>
+                </div>
+              </div>
+              <div class="lb-row">
+                <span class="lb-rank bronze">3</span>
+                <div class="lb-avatar" style="background:linear-gradient(135deg,var(--emerald),var(--emerald-light));">MS</div>
+                <div class="lb-info">
+                  <div class="lb-name">Meera Srinivas</div>
+                  <div class="lb-role">Recruitment Specialist</div>
+                </div>
+                <div class="lb-score">
+                  <span class="lb-score-value">81</span>
+                  <span class="lb-score-label">pts</span>
+                </div>
+              </div>
+              <div class="lb-row">
+                <span class="lb-rank" style="color:var(--text3);">4</span>
+                <div class="lb-avatar" style="background:linear-gradient(135deg,var(--sky),#38bdf8);">KV</div>
+                <div class="lb-info">
+                  <div class="lb-name">Karan Verma</div>
+                  <div class="lb-role">HR Coordinator</div>
+                </div>
+                <div class="lb-score">
+                  <span class="lb-score-value">76</span>
+                  <span class="lb-score-label">pts</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upcoming Interviews -->
+          <div class="widget-card">
+            <div class="card-header">
+              <div class="card-header-left">
+                <i class="ti ti-calendar-event" style="color:var(--blue);"></i>
+                <span>Upcoming Interviews</span>
+              </div>
+              <button class="btn-ghost-sm">View All</button>
+            </div>
+            <div class="timeline">
+              <div class="timeline-item">
+                <div class="timeline-time">10:00 AM</div>
+                <div class="timeline-dot" style="background:var(--blue);"></div>
+                <div class="timeline-content">
+                  <div class="timeline-title">Technical Screening</div>
+                  <div class="timeline-name">Priya Sharma — Plant Head</div>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-time">11:30 AM</div>
+                <div class="timeline-dot" style="background:var(--cyan);"></div>
+                <div class="timeline-content">
+                  <div class="timeline-title">HR Round</div>
+                  <div class="timeline-name">Vikram Patel — Operations</div>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-time">2:00 PM</div>
+                <div class="timeline-dot" style="background:var(--blue);"></div>
+                <div class="timeline-content">
+                  <div class="timeline-title">Manager Interview</div>
+                  <div class="timeline-name">Ananya Reddy — Marketing Lead</div>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-time">4:00 PM</div>
+                <div class="timeline-dot" style="background:var(--emerald);"></div>
+                <div class="timeline-content">
+                  <div class="timeline-title">Final Round</div>
+                  <div class="timeline-name">Rohan Desai — Tech Lead</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /dashboard -->
+
+      <!-- ═══ CAMPAIGNS PAGE ═══ -->
+      <div class="page" id="page-campaigns">
+        <div class="page-header">
+          <div class="page-header-left">
+            <h2 class="page-heading">Hiring Campaigns</h2>
+            <p class="page-sub">Manage and track all your active and past hiring initiatives</p>
+          </div>
+          <button class="btn-primary" onclick="navigate('create', document.querySelector('[data-page=create]'))">
+            <i class="ti ti-plus"></i> New Campaign
+          </button>
+        </div>
+
+        <div class="section-label-row">
+          <span class="section-label"><i class="ti ti-bolt"></i> Active Campaigns</span>
+          <button class="btn-ghost-sm" onclick="loadCampaigns()"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+
+        <div class="campaigns-grid">
+        </div>
+
+        <div class="section-label-row" style="margin-top:36px;">
+          <span class="section-label"><i class="ti ti-apps"></i> Platform Capabilities</span>
+        </div>
+
+        <div class="capabilities-grid">
+          <div class="cap-card">
+            <div class="cap-icon" style="background:rgba(37,99,235,0.1);color:var(--blue);"><i class="ti ti-upload"></i></div>
+            <div class="cap-title">Bulk Resume Upload</div>
+            <div class="cap-desc">Upload multiple resumes in ZIP format for automated parsing</div>
+          </div>
+          <div class="cap-card">
+            <div class="cap-icon" style="background:rgba(6,182,212,0.1);color:var(--cyan);"><i class="ti ti-brain"></i></div>
+            <div class="cap-title">AI-Powered Analysis</div>
+            <div class="cap-desc">Intelligent analysis of candidate strengths, gaps, and role fit</div>
+          </div>
+          <div class="cap-card">
+            <div class="cap-icon" style="background:rgba(59,130,246,0.1);color:var(--blue);"><i class="ti ti-chart-bar"></i></div>
+            <div class="cap-title">Smart Scoring System</div>
+            <div class="cap-desc">Automated candidate scoring based on qualifications</div>
+          </div>
+          <div class="cap-card">
+            <div class="cap-icon" style="background:rgba(16,185,129,0.1);color:var(--emerald);"><i class="ti ti-repeat"></i></div>
+            <div class="cap-title">Multi-Round Tracking</div>
+            <div class="cap-desc">Track candidates through multiple interview rounds</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ OFFER LETTER PAGE ═══ -->
+      <div class="page" id="page-offer-letter">
+        <style>
+          .ol-page-wrap { display: flex; gap: 24px; align-items: flex-start; }
+          .ol-form-col { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px; }
+          .ol-form-card { background: var(--surface-solid); border: 1px solid var(--border-color); border-radius: var(--radius-xl); padding: 20px; }
+          .ol-form-card h3 { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+          .ol-form-card h3 i { color: var(--blue); }
+          .ol-field { margin-bottom: 12px; }
+          .ol-field:last-child { margin-bottom: 0; }
+          .ol-field label { display: block; font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+          .ol-field input, .ol-field select { width: 100%; padding: 8px 12px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface3); border: 1px solid var(--border-color); border-radius: 8px; outline: none; transition: all .2s; }
+          .ol-field input:focus, .ol-field select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-glass); }
+          .ol-toolbar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+          .ol-toolbar-row .btn-secondary { background: var(--surface3); color: var(--text2); border: 1px solid var(--border-color); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-family: inherit; font-weight: 600; padding: 8px 16px; border-radius: 10px; font-size: 12px; transition: all .2s; }
+          .ol-toolbar-row .btn-secondary:hover { background: var(--surface2); color: var(--text); }
+          .ol-preview-wrap { flex: 1; min-width: 0; display: flex; justify-content: center; align-items: flex-start; height: calc(100vh - 180px); position: sticky; top: 0; }
+          .ol-preview-inner { transform-origin: top center; }
+          @media (max-width: 1100px) { .ol-page-wrap { flex-direction: column; } .ol-form-col { width: 100%; } }
+        </style>
+
+        <div class="page-header">
+          <div class="page-header-left">
+            <h2 class="page-heading">Offer Letter Generator</h2>
+            <p class="page-sub">Generate and customize internship appointment letters</p>
+          </div>
+          <div class="ol-toolbar-row">
+            <button class="btn-secondary" onclick="resetOfferLetter()"><i class="ti ti-refresh"></i> Reset</button>
+            <button class="btn-primary" onclick="printOfferLetter()"><i class="ti ti-printer"></i> Print / PDF</button>
+          </div>
+        </div>
+
+        <div class="ol-page-wrap">
+          <div class="ol-form-col">
+            <div class="ol-form-card">
+              <h3><i class="ti ti-user"></i> Candidate Details</h3>
+              <div class="ol-field">
+                <label>Candidate Name</label>
+                <input type="text" id="ol-name" value="Mithul" oninput="updateOfferLetter()">
+              </div>
+              <div class="ol-field">
+                <label>Role / Position</label>
+                <input type="text" id="ol-role" value="AI Automations Intern" oninput="updateOfferLetter()">
+              </div>
+              <div class="ol-field">
+                <label>Company</label>
+                <input type="text" id="ol-company" value="ScalePods" oninput="updateOfferLetter()">
+              </div>
+              <div class="ol-field">
+                <label>Stipend (INR)</label>
+                <input type="text" id="ol-stipend" value="5,000" oninput="updateOfferLetter()">
+              </div>
+              <div class="ol-field">
+                <label>Date</label>
+                <input type="date" id="ol-date" oninput="updateOfferLetter()">
+              </div>
+              <div class="ol-field">
+                <label>Letter Type</label>
+                <select id="ol-type" onchange="updateOfferLetter()">
+                  <option value="internship">Internship Appointment</option>
+                  <option value="fulltime">Full-Time Offer</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="ol-preview-wrap">
+            <div class="ol-preview-inner" id="ol-preview-inner"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ CREATE CAMPAIGN PAGE ═══ -->
+      <div class="page" id="page-create">
+
+        <div class="create-head">
+          <div class="create-head-badge">New Campaign</div>
+          <h2 class="create-head-title">Create a Hiring Campaign</h2>
+          <p class="create-head-sub">Configure AI-powered evaluation, set schedules, and define interview flows</p>
+          <div class="create-steps"></div>
+        </div>
+
+        <div class="create-wrapper">
+          <div class="create-form-main">
+
+            <div class="create-section">
+              <div class="create-section-head">
+                <i class="ti ti-file-description" style="color:var(--blue);font-size:20px;"></i>
+                <div>
+                  <div class="create-section-title">Basic Information</div>
+                  <div class="create-section-sub">General details about your campaign</div>
+                </div>
+              </div>
+              <div class="create-field">
+                <label class="create-label">Campaign Name <span class="required">*</span></label>
+                <input type="text" id="campaign-name" placeholder="e.g., Q4 Tech Hiring Campaign" class="create-input">
+              </div>
+              <div class="create-field">
+                <label class="create-label">Description</label>
+                <textarea rows="2" id="campaign-desc" placeholder="Brief description of the campaign" class="create-input"></textarea>
+                <span class="create-hint">Displayed on the campaign card</span>
+              </div>
+              <div class="create-field">
+                <label class="create-label">Job Description <span class="required">*</span></label>
+                <textarea rows="5" id="campaign-jd" placeholder="Paste the full job description here..." class="create-input"></textarea>
+              </div>
+            </div>
+
+            <div class="create-section">
+              <div class="create-section-head">
+                <i class="ti ti-calendar" style="color:var(--blue);font-size:20px;"></i>
+                <div>
+                  <div class="create-section-title">Schedule &amp; Location</div>
+                  <div class="create-section-sub">Campaign timeline and logistics</div>
+                </div>
+              </div>
+              <div class="create-row-2">
+                <div class="create-field">
+                  <label class="create-label">Start Date <span class="required">*</span></label>
+                  <div class="create-date-wrap">
+                    <div class="create-date-trigger">
+                      <i class="ti ti-calendar"></i>
+                      <span class="create-date-value placeholder" id="campaign-start-text">Select start date</span>
+                      <i class="ti ti-chevron-down create-date-chevron"></i>
+                    </div>
+                    <input type="date" id="campaign-start" onchange="updateDateDisplay(this)">
+                  </div>
+                </div>
+                <div class="create-field">
+                  <label class="create-label">End Date <span class="required">*</span></label>
+                  <div class="create-date-wrap">
+                    <div class="create-date-trigger">
+                      <i class="ti ti-calendar"></i>
+                      <span class="create-date-value placeholder" id="campaign-end-text">Select end date</span>
+                      <i class="ti ti-chevron-down create-date-chevron"></i>
+                    </div>
+                    <input type="date" id="campaign-end" onchange="updateDateDisplay(this)">
+                  </div>
+                </div>
+              </div>
+              <div class="create-field">
+                <label class="create-label">Location <span class="required">*</span></label>
+                <input type="text" id="campaign-location" placeholder="e.g., Remote / Bangalore Office" class="create-input">
+              </div>
+              <div class="create-field">
+                <label class="create-label">Salary Range (LPA)</label>
+                <div class="create-salary">
+                  <input type="number" id="campaign-salary-min" placeholder="Min" class="create-input">
+                  <span class="create-salary-sep">–</span>
+                  <input type="number" id="campaign-salary-max" placeholder="Max" class="create-input">
+                </div>
+              </div>
+              <div class="create-field">
+                <label class="create-label">Expected Joining Date</label>
+                <div class="create-date-wrap">
+                  <div class="create-date-trigger">
+                    <i class="ti ti-calendar"></i>
+                    <span class="create-date-value placeholder" id="campaign-joining-text">Select joining date</span>
+                    <i class="ti ti-chevron-down create-date-chevron"></i>
+                  </div>
+                  <input type="date" id="campaign-joining" onchange="updateDateDisplay(this)">
+                </div>
+              </div>
+            </div>
+
+            <div class="create-section">
+              <div class="create-section-head">
+                <i class="ti ti-users" style="color:var(--blue);font-size:20px;"></i>
+                <div>
+                  <div class="create-section-title">Interview Rounds</div>
+                  <div class="create-section-sub">Define interview stages and point of contact</div>
+                </div>
+              </div>
+              <div class="create-field">
+                <label class="create-label">Number of Rounds <span class="required">*</span></label>
+                <input type="number" id="campaign-rounds" min="1" max="3" value="1" class="create-input" style="max-width:100px;text-align:center;" onchange="generateRounds()" onwheel="spinRounds(event)">
+              </div>
+              <div id="rounds-container"></div>
+            </div>
+
+          </div>
+
+          <div class="create-form-side">
+
+            <div class="create-summary">
+              <div class="create-summary-head">
+                <i class="ti ti-eye" style="font-size:18px;"></i>
+                <span style="flex:1;">Campaign Preview</span>
+                <button class="btn-ghost" onclick="clearCampaignDraft()" style="font-size:11px;padding:4px 10px;border-radius:50px;" title="Clear all fields"><i class="ti ti-trash"></i> Clear</button>
+              </div>
+              <div class="create-summary-body">
+                <div class="create-summary-item">
+                  <div class="create-summary-label">Campaign</div>
+                  <div class="create-summary-value" id="preview-name">Q4 Tech Hiring</div>
+                </div>
+                <div class="create-summary-item">
+                  <div class="create-summary-label">Duration</div>
+                  <div class="create-summary-value" id="preview-duration">Not set</div>
+                </div>
+                <div class="create-summary-item">
+                  <div class="create-summary-label">Location</div>
+                  <div class="create-summary-value" id="preview-location">Not set</div>
+                </div>
+                <div class="create-summary-item">
+                  <div class="create-summary-label">Rounds</div>
+                  <div class="create-summary-value" id="preview-rounds">1</div>
+                </div>
+                <div class="create-summary-item">
+                  <div class="create-summary-label">Status</div>
+                  <div class="create-summary-value"><span class="create-status-draft">Draft</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="create-section create-section-sm">
+              <div class="create-section-head">
+                <i class="ti ti-scale" style="color:var(--blue);font-size:18px;"></i>
+                <div>
+                  <div class="create-section-title">Evaluation Weights</div>
+                  <div class="create-section-sub">AI scoring importance — scroll to adjust, must sum to 100</div>
+                </div>
+              </div>
+              <div class="create-weights">
+                <div class="create-weight">
+                  <div class="create-weight-bar" id="wbar-skills" style="height:25%;"></div>
+                  <div class="create-weight-label">Skills</div>
+                  <input type="number" id="w-skills" value="25" min="0" max="100" class="create-weight-input" onwheel="spinWeight(event, 'skills')" onchange="validateWeights()">
+                </div>
+                <div class="create-weight">
+                  <div class="create-weight-bar" id="wbar-experience" style="height:25%;"></div>
+                  <div class="create-weight-label">Experience</div>
+                  <input type="number" id="w-experience" value="25" min="0" max="100" class="create-weight-input" onwheel="spinWeight(event, 'experience')" onchange="validateWeights()">
+                </div>
+                <div class="create-weight">
+                  <div class="create-weight-bar" id="wbar-education" style="height:25%;"></div>
+                  <div class="create-weight-label">Education</div>
+                  <input type="number" id="w-education" value="25" min="0" max="100" class="create-weight-input" onwheel="spinWeight(event, 'education')" onchange="validateWeights()">
+                </div>
+                <div class="create-weight">
+                  <div class="create-weight-bar" id="wbar-jd" style="height:25%;"></div>
+                  <div class="create-weight-label">JD Alignment</div>
+                  <input type="number" id="w-jd" value="25" min="0" max="100" class="create-weight-input" onwheel="spinWeight(event, 'jd')" onchange="validateWeights()">
+                </div>
+              </div>
+              <div id="weight-status" class="weight-status"></div>
+            </div>
+
+            <div class="create-toggle-card">
+              <div class="create-toggle-info">
+                <div class="create-toggle-title">Active Campaign</div>
+                <div class="create-toggle-desc">Immediately accept candidates</div>
+              </div>
+              <div class="toggle on" id="active-toggle" onclick="this.classList.toggle('on')"></div>
+            </div>
+
+            <div class="create-toggle-card">
+              <div class="create-toggle-info">
+                <div class="create-toggle-title">Quick Hire</div>
+                <div class="create-toggle-desc">Includes Sunday as well</div>
+              </div>
+              <div class="toggle" id="quick-hire-toggle" onclick="this.classList.toggle('on')"></div>
+            </div>
+
+            <button class="create-submit" onclick="submitCampaign()">
+              <i class="ti ti-rocket"></i> Launch Campaign
+            </button>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ INTERVIEWS PAGE ═══ -->
+      <div class="page" id="page-meetings">
+        <div class="page-header">
+          <div class="page-header-left">
+            <h2 class="page-heading">Interview Center</h2>
+            <p class="page-sub">Synchronize your team, manage sessions, and track momentum</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div class="mf-toggle">
+              <button class="mf-btn" id="mf-all-btn" onclick="if(!window._meetingsShowAll)window.toggleShowAll()">All</button>
+              <button class="mf-btn mf-active" id="mf-mine-btn" onclick="if(window._meetingsShowAll)window.toggleShowAll()">Mine</button>
+            </div>
+            <div class="chip-btn" onclick="alert('All Campaigns')"><i class="ti ti-speakerphone"></i> All Campaigns</div>
+          </div>
+        </div>
+
+        <div class="mini-stats">
+          <div class="mini-stat">
+            <span class="mini-stat-icon" style="background:rgba(37,99,235,0.1);color:var(--blue);"><i class="ti ti-calendar-stats"></i></span>
+            <div class="mini-stat-info">
+              <div class="mini-stat-value">0</div>
+              <div class="mini-stat-label">Today's Sessions</div>
+            </div>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-stat-icon" style="background:rgba(6,182,212,0.1);color:var(--cyan);"><i class="ti ti-users"></i></span>
+            <div class="mini-stat-info">
+              <div class="mini-stat-value">39</div>
+              <div class="mini-stat-label">Active Candidates</div>
+            </div>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-stat-icon" style="background:rgba(59,130,246,0.1);color:var(--blue);"><i class="ti ti-calendar-check"></i></span>
+            <div class="mini-stat-info">
+              <div class="mini-stat-value">4</div>
+              <div class="mini-stat-label">Scheduled</div>
+            </div>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-stat-icon" style="background:rgba(16,185,129,0.1);color:var(--emerald);"><i class="ti ti-clock"></i></span>
+            <div class="mini-stat-info">
+              <div class="mini-stat-value" style="color:var(--text3);">—</div>
+              <div class="mini-stat-label">Next Session</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="meetings-main">
+          <div class="calendar-card">
+            <div class="calendar-nav">
+              <div class="calendar-nav-title" id="cal-title">May 2026</div>
+              <div class="calendar-nav-btns">
+                <button class="btn-icon-only" onclick="shiftMonth(-1)"><i class="ti ti-chevron-left"></i></button>
+                <button class="btn-icon-only" onclick="shiftMonth(1)"><i class="ti ti-chevron-right"></i></button>
+              </div>
+            </div>
+            <div class="calendar-grid" id="calendar-grid"></div>
+            <div class="round-indicators">
+              <span class="round-pill hr">Round 1</span>
+              <span class="round-pill tech">Round 2</span>
+              <span class="round-pill manager">Round 3</span>
+            </div>
+          </div>
+
+          <div class="day-detail-card" id="day-detail">
+            <div class="day-detail-heading" id="detail-date">May 23, 2026</div>
+            <div class="day-detail-sub" id="detail-count">0 interviews scheduled</div>
+            <div class="empty-state" id="detail-empty">
+              <i class="ti ti-calendar-off"></i>
+              <div class="empty-state-title">No Engagements Today</div>
+              <div class="empty-state-desc">Select a date or schedule a new interview session</div>
+            </div>
+            <div id="detail-list" style="display:none;max-height:260px;overflow-y:auto;"></div>
+          </div>
+        </div>
+
+        <div class="live-track-card">
+          <div class="live-track-header">
+            <div class="live-track-title">
+              <span class="live-dot" style="background:var(--red);width:7px;height:7px;animation:pulse-dot 1.5s infinite;"></span>
+              Live Daily Track
+            </div>
+            <div class="filter-tabs">
+              <button class="filter-tab active" onclick="setFilter(this,'all')">All</button>
+              <button class="filter-tab" onclick="setFilter(this,'hr')">Round 1</button>
+              <button class="filter-tab" onclick="setFilter(this,'tech')">Round 2</button>
+              <button class="filter-tab" onclick="setFilter(this,'manager')">Round 3</button>
+            </div>
+          </div>
+          <div class="empty-state" style="padding:28px 20px;">
+            <i class="ti ti-users" style="font-size:28px;"></i>
+            <div class="empty-state-title">No Active Sessions</div>
+            <div class="empty-state-desc">Live interview sessions will appear here as they start</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-campaign-detail">
+  <style>
+    .detail-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-bottom: 32px; }
+    .detail-weights-row { display: flex; flex-direction: column; gap: 6px; }
+    .detail-weight-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: var(--surface3); border-radius: var(--radius-xs); border: 1px solid var(--border-color); }
+    .weight-label { font-size: 11px; font-weight: 600; color: var(--text3); }
+    .detail-weight-value { font-size: 14px; font-weight: 700; color: var(--blue); }
+    .detail-analytics-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 28px; }
+    .detail-page-actions { display: flex; align-items: center; gap: 8px; }
+    .detail-field { margin-bottom: 18px; }
+    .detail-field:last-child { margin-bottom: 0; }
+    .detail-label { display: block; font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+    .detail-value { font-size: 14px; color: var(--text); line-height: 1.6; }
+    .detail-perf-list { display: flex; flex-direction: column; gap: 6px; }
+    .detail-perf-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+    .detail-perf-name { font-size: 12px; color: var(--text2); flex: 1; }
+    .detail-perf-score { font-size: 13px; font-weight: 700; color: var(--text); }
+    .detail-perf-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .detail-perf-dot.success { background: var(--emerald); }
+    .detail-perf-dot.warning { background: var(--amber); }
+    .detail-perf-city-name { font-size: 12px; color: var(--text2); flex: 1; display: flex; align-items: center; }
+    .detail-perf-city-score { font-size: 13px; font-weight: 700; color: var(--text); }
+    .detail-analytics-grid .analytics-card { padding: 16px 18px; }
+    .detail-analytics-grid .card-header { margin-bottom: 12px; }
+    .detail-analytics-grid .card-header i { font-size: 15px; }
+    .detail-analytics-grid .card-header span { font-size: 12px; }
+    .detail-drop-zone { border: 2px dashed var(--border-color); border-radius: var(--radius-xl); padding: 48px 32px; text-align: center; background: var(--surface2); transition: all .3s ease; cursor: pointer; }
+    .detail-drop-zone:hover { border-color: var(--blue); background: var(--blue-glass); }
+    .detail-drop-zone.drag-over { border-color: var(--blue); background: var(--blue-glass); }
+    .detail-drop-icon { font-size: 42px; color: var(--text3); margin-bottom: 12px; }
+    .detail-drop-text { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .detail-drop-hint { font-size: 12px; color: var(--text3); margin-bottom: 20px; }
+    .detail-drop-actions { display: flex; justify-content: center; gap: 10px; }
+    .detail-tags-row { text-align: left; }
+    .detail-tags-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 8px; }
+    .detail-tags-input-wrap { display: flex; align-items: center; gap: 8px; background: var(--surface3); border: 1px solid var(--border-color); border-radius: 10px; padding: 8px 12px; transition: all .2s ease; }
+    .detail-tags-input-wrap:focus-within { border-color: var(--blue); box-shadow: 0 0 0 4px var(--blue-glass); background: var(--surface-solid); }
+    .detail-tags-input-wrap i { color: var(--text3); font-size: 14px; flex-shrink: 0; }
+    .detail-tags-input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-size: 13px; font-family: inherit; }
+    .detail-tags-input::placeholder { color: var(--text3); }
+    .detail-tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .detail-tag-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--blue-glass); color: var(--blue); border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .detail-tag-chip button { background: none; border: none; color: inherit; cursor: pointer; padding: 0; display: inline-flex; font-size: 12px; line-height: 1; opacity: .7; }
+    .detail-tag-chip button:hover { opacity: 1; }
+    .detail-search-bar { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 320px; padding: 8px 14px; background: var(--surface3); border: 1px solid var(--border-color); border-radius: 50px; color: var(--text); font-size: 13px; font-family: inherit; outline: none; transition: all .25s ease; }
+    .detail-search-bar:focus { border-color: var(--blue); box-shadow: 0 0 0 4px var(--blue-glass); background: var(--surface-solid); }
+    .detail-search-bar::placeholder { color: var(--text3); }
+    .detail-table-wrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+    .detail-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+    .detail-table thead { position: sticky; top: 0; z-index: 5; }
+    .detail-table th { text-align: left; padding: 14px 16px 14px 0; font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; border-bottom: 2px solid var(--separator); white-space: nowrap; background: var(--surface-solid); }
+    .detail-table th:first-child { padding-left: 4px; }
+    .detail-table td { padding: 14px 16px 14px 0; color: var(--text2); vertical-align: middle; position: relative; }
+    .detail-table td:first-child { padding-left: 4px; }
+    .detail-table tbody tr { cursor: pointer; transition: all .15s ease; border-radius: var(--radius-sm); }
+    .detail-table tbody tr:hover { background: var(--blue-glass); }
+    .detail-table tbody tr:active { background: rgba(37,99,235,0.15); transform: scale(0.995); }
+    .detail-table tbody tr + tr td { border-top: 1px solid var(--separator); }
+    .detail-badge-passed { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 12px; border-radius: 20px; color: var(--emerald); background: var(--emerald-glass); }
+    .detail-badge-pending { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 12px; border-radius: 20px; color: var(--amber); background: var(--amber-glass); }
+    .detail-badge-rejected { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 12px; border-radius: 20px; color: var(--red); background: var(--red-glass); }
+    .detail-badge-selected { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 12px; border-radius: 20px; color: var(--blue); background: var(--blue-glass); }
+    .detail-pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--separator); }
+    .detail-page-btn { width: 34px; height: 34px; border: 1px solid transparent; background: transparent; color: var(--text3); border-radius: var(--radius-xs); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; transition: all .2s ease; }
+    .detail-page-btn:hover { background: var(--blue-glass); color: var(--blue); border-color: var(--blue-glass); }
+    .detail-page-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .detail-page-btns { display: flex; align-items: center; gap: 2px; }
+    .detail-select { padding: 8px 32px 8px 14px; font-size: 12px; font-family: inherit; color: var(--text); background: var(--surface3); border: 1px solid var(--border-color); border-radius: 8px; outline: none; cursor: pointer; transition: all .2s ease; -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+    .detail-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-glass); background: var(--surface-solid); }
+    .detail-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .detail-toolbar-filter { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .candidate-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .cand-card { background: var(--surface-solid); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; cursor: pointer; transition: all .2s ease; position: relative; overflow: hidden; }
+    .cand-card:hover { border-color: var(--blue); box-shadow: 0 4px 20px rgba(37,99,235,0.1); transform: translateY(-1px); }
+    .cand-card:active { transform: scale(0.995); }
+    .cand-card-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .cand-card-info { flex: 1; min-width: 0; }
+    .cand-card-name { font-weight: 600; color: var(--text); font-size: 14px; line-height: 1.3; }
+    .cand-card-sub { font-size: 11px; color: var(--text3); line-height: 1.4; }
+    .cand-card-user-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+    .cand-user-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; font-weight: 600; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+    .cand-card-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .cand-card-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .cand-card-chip { font-size: 10px; color: var(--text3); background: var(--surface3); padding: 2px 8px; border-radius: 4px; line-height: 1.4; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+    .cand-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .cand-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--separator); }
+    .cand-avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .score-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 38px; padding: 3px 12px; border-radius: 20px; font-size: 13px; font-weight: 700; letter-spacing: -0.02em; }
+    .score-high { background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.08)); color: var(--emerald); border: 1px solid rgba(16,185,129,0.2); }
+    .score-mid { background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.08)); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
+    .score-low { background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.06)); color: var(--red); border: 1px solid rgba(239,68,68,0.15); }
+    .fit-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: .03em; }
+    .fit-high { background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.06)); color: var(--emerald); }
+    .fit-medium { background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.06)); color: var(--amber); }
+    .fit-low { background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.06)); color: var(--red); }
+    .cand-stage { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 12px; border-radius: 20px; background: var(--surface3); color: var(--text2); border: 1px solid var(--border-color); }
+    .detail-view-toggle { display: flex; align-items: center; gap: 2px; padding: 3px; background: var(--surface3); border: 1px solid var(--border-color); border-radius: 10px; flex-shrink: 0; }
+    .view-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 28px; border: none; background: transparent; color: var(--text3); border-radius: 7px; cursor: pointer; font-size: 16px; transition: all .25s ease; font-family: inherit; }
+    .view-btn:hover { color: var(--text2); }
+    .view-btn.active { background: var(--surface-solid); color: var(--blue); box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .candidate-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-bottom: 16px; transition: all .4s cubic-bezier(.22,1,.36,1); min-height: 100px; }
+    .candidate-grid.list-view { display: flex; flex-direction: column; gap: 6px; }
+
+    .candidate-grid.list-view .cand-card { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 10px; transition: all .3s cubic-bezier(.22,1,.36,1); }
+
+    .candidate-grid.list-view .cand-card:hover { transform: translateX(3px); }
+
+    .candidate-grid.list-view .cand-card:active { transform: scale(0.998); }
+
+    .candidate-grid.list-view .cand-card-top { margin-bottom: 0; flex-shrink: 0; gap: 10px; }
+
+    .candidate-grid.list-view .cand-card-info { min-width: 180px; max-width: 280px; }
+
+    .candidate-grid.list-view .cand-card-name { font-size: 13px; }
+
+    .candidate-grid.list-view .cand-card-sub { font-size: 10px; }
+
+    .candidate-grid.list-view .cand-card-badges { margin-bottom: 0; flex-shrink: 0; }
+
+    .candidate-grid.list-view .cand-card-chips { flex: 1; min-width: 0; padding-top: 0 !important; justify-content: center; }
+
+    .candidate-grid.list-view .cand-card-tags { margin-top: 0; flex-shrink: 0; }
+
+    .candidate-grid.list-view .card-decision { border-top: none !important; margin-top: 0 !important; padding: 0 !important; flex-shrink: 0; }
+
+    .cand-card.cand-card-rejected { background: rgba(239,68,68,0.08) !important; border-color: rgba(239,68,68,0.2) !important; }
+    @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .candidate-grid .cand-card { animation: fadeSlideIn 0.35s cubic-bezier(.22,1,.36,1) forwards; }
+    .candidate-grid .cand-card:nth-child(1) { animation-delay: 0s; }
+    .candidate-grid .cand-card:nth-child(2) { animation-delay: 0.03s; }
+    .candidate-grid .cand-card:nth-child(3) { animation-delay: 0.06s; }
+    .candidate-grid .cand-card:nth-child(4) { animation-delay: 0.09s; }
+    .candidate-grid .cand-card:nth-child(5) { animation-delay: 0.12s; }
+    .candidate-grid .cand-card:nth-child(6) { animation-delay: 0.15s; }
+    .candidate-grid .cand-card:nth-child(7) { animation-delay: 0.18s; }
+    .candidate-grid .cand-card:nth-child(8) { animation-delay: 0.21s; }
+    .status-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: 6px; white-space: nowrap; letter-spacing: -0.01em; }
+    .status-tag-scheduled { background: rgba(37,99,235,0.1); color: var(--blue); }
+    .status-tag-pending { background: rgba(245,158,11,0.1); color: var(--amber); }
+    .status-tag-rejected { background: rgba(239,68,68,0.08); color: var(--red); }
+    .status-tag-selected { background: rgba(16,185,129,0.1); color: var(--emerald); }
+    .status-tag-awaiting { background: rgba(107,114,128,0.1); color: var(--text3); }
+
+    /* Drawer */
+    .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 999; opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+    .drawer-overlay.open { opacity: 1; pointer-events: auto; }
+    .cand-drawer { position: fixed; top: 0; right: 0; width: 600px; max-width: 94vw; height: 100vh; background: var(--surface-solid); border-left: 1px solid var(--border-color); z-index: 1000; transform: translateX(100%); transition: transform .45s cubic-bezier(.16,1,.3,1); display: flex; flex-direction: column; box-shadow: -16px 0 80px rgba(0,0,0,0.15); }
+    .cand-drawer.open { transform: translateX(0); }
+    .drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 24px; border-bottom: 1px solid var(--separator); flex-shrink: 0; background: var(--surface-solid); }
+    .drawer-body { flex: 1; overflow-y: auto; padding: 24px 24px 32px; scroll-behavior: smooth; }
+    .drawer-body::-webkit-scrollbar { width: 4px; }
+    .drawer-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+    .drawer-close { width: 32px; height: 32px; border: none; background: var(--surface3); color: var(--text3); border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: all .2s ease; }
+    .drawer-close:hover { background: rgba(239,68,68,0.1); color: var(--red); transform: rotate(90deg); }
+    .drawer-section { margin-bottom: 28px; }
+    .drawer-section:last-child { margin-bottom: 0; }
+    .drawer-section-title { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .drawer-section-title i { font-size: 14px; }
+    .dt-row { display: flex; align-items: flex-start; padding: 8px 0; gap: 12px; border-bottom: 1px solid var(--separator); }
+    .dt-row:last-child { border-bottom: none; }
+    .dt-label { font-size: 11px; font-weight: 600; color: var(--text3); min-width: 80px; flex-shrink: 0; padding-top: 1px; }
+    .dt-value { font-size: 13px; color: var(--text); flex: 1; line-height: 1.5; }
+    .chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 14px; border-radius: 20px; font-size: 11px; font-weight: 500; background: var(--surface3); color: var(--text2); border: 1px solid var(--border-color); }
+
+    /* Timeline */
+    .timeline-item { position: relative; padding: 0 0 20px 28px; }
+    .timeline-item:last-child { padding-bottom: 0; }
+    .timeline-item::before { content: ''; position: absolute; left: 11px; top: 18px; bottom: 0; width: 2px; background: var(--separator); }
+    .timeline-item:last-child::before { display: none; }
+    .timeline-dot { position: absolute; left: 4px; top: 4px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-color); background: var(--surface-solid); display: flex; align-items: center; justify-content: center; font-size: 7px; z-index: 1; }
+    .timeline-dot.passed { border-color: var(--emerald); background: rgba(16,185,129,0.12); color: var(--emerald); }
+    .timeline-dot.pending { border-color: var(--amber); background: rgba(245,158,11,0.1); color: var(--amber); }
+    .timeline-dot.rejected { border-color: var(--red); background: rgba(239,68,68,0.1); color: var(--red); }
+    .timeline-content { background: var(--surface3); border-radius: var(--radius-sm); padding: 14px 16px; border: 1px solid var(--border-color); }
+    .timeline-round-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .timeline-round-name { font-size: 13px; font-weight: 600; color: var(--text); }
+    .timeline-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text2); padding: 3px 0; }
+    .timeline-row i { width: 14px; color: var(--text3); flex-shrink: 0; font-size: 12px; }
+
+    /* Journey Timeline */
+    .journey-timeline { display: flex; flex-direction: column; gap: 0; }
+    .journey-step { display: flex; gap: 14px; position: relative; padding-bottom: 24px; }
+    .journey-step:last-child { padding-bottom: 0; }
+    .journey-connector { display: flex; flex-direction: column; align-items: center; width: 28px; flex-shrink: 0; position: relative; }
+    .journey-line { width: 2px; flex: 1; min-height: 24px; background: var(--separator); margin: 2px 0; }
+    .journey-line-done { background: var(--emerald); }
+    .journey-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; z-index: 1; }
+    .journey-dot-done { background: var(--emerald); color: #fff; box-shadow: 0 0 0 4px rgba(16,185,129,0.15); }
+    .journey-dot-current { background: var(--blue); color: #fff; box-shadow: 0 0 0 4px rgba(37,99,235,0.15); animation: journeyPulse 2s ease-in-out infinite; }
+    .journey-dot-upcoming { background: var(--surface3); border: 2px solid var(--border-color); }
+    .journey-dot-inner { width: 10px; height: 10px; border-radius: 50%; background: #fff; }
+    .journey-dot-ring { width: 10px; height: 10px; border-radius: 50%; background: var(--text3); opacity: 0.3; }
+    @keyframes journeyPulse { 0%,100% { box-shadow: 0 0 0 4px rgba(37,99,235,0.15); } 50% { box-shadow: 0 0 0 8px rgba(37,99,235,0.08); } }
+    .journey-content { flex: 1; min-width: 0; background: var(--surface3); border-radius: 10px; padding: 14px 16px; border: 1px solid var(--border-color); }
+    .journey-current .journey-content { border-color: var(--blue); background: rgba(37,99,235,0.03); box-shadow: 0 0 0 1px rgba(37,99,235,0.08); }
+    .journey-label { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .journey-status { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+    .journey-current .journey-status { color: var(--blue); }
+    .journey-subs { display: flex; flex-direction: column; gap: 4px; }
+    .journey-sub { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; color: var(--text2); }
+    .journey-sub-muted { opacity: 0.45; }
+    .journey-sub i { color: var(--text3); }
+
+    /* Communication tracker */
+    .comm-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--separator); font-size: 12px; }
+    .comm-item:last-child { border-bottom: none; }
+    .comm-icon { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+    .comm-icon.sent { background: rgba(16,185,129,0.1); color: var(--emerald); }
+    .comm-icon.pending { background: rgba(245,158,11,0.1); color: var(--amber); }
+    .comm-icon.scheduled { background: rgba(37,99,235,0.1); color: var(--blue); }
+
+    /* Skeleton */
+    .skeleton-row { display: flex; align-items: center; gap: 14px; padding: 16px 4px; border-bottom: 1px solid var(--separator); }
+    .skeleton-row:last-child { border-bottom: none; }
+    .skeleton-box { background: linear-gradient(90deg, var(--surface3) 25%, var(--surface2) 50%, var(--surface3) 75%); background-size: 200% 100%; border-radius: 6px; animation: shimmer 1.8s infinite; }
+    .skeleton-avatar { width: 34px; height: 34px; border-radius: 50%; }
+    .skeleton-line { height: 12px; border-radius: 4px; }
+    .skeleton-line-sm { height: 10px; border-radius: 4px; width: 60px; }
+    .skeleton-badge { height: 22px; border-radius: 11px; width: 50px; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    .detail-card-sm { background: var(--surface3); border-radius: var(--radius-sm); padding: 18px; border: 1px solid var(--border-color); }
+    .contact-btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .contact-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 8px; font-size: 12px; font-weight: 500; text-decoration: none; transition: all .2s ease; border: 1px solid var(--border-color); background: var(--surface-solid); color: var(--text2); cursor: pointer; }
+    .contact-btn:hover { background: var(--blue-glass); color: var(--blue); border-color: transparent; transform: translateY(-1px); }
+    .contact-btn.email:hover { background: rgba(37,99,235,0.08); color: var(--blue); }
+    .contact-btn.whatsapp:hover { background: rgba(16,185,129,0.08); color: var(--emerald); }
+    .contact-btn.call:hover { background: rgba(6,182,212,0.08); color: var(--cyan); }
+    .contact-btn.resume:hover { background: rgba(245,158,11,0.08); color: var(--amber); }
+
+    @media (max-width: 1200px) {
+      .detail-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .detail-analytics-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 900px) {
+      .detail-analytics-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      .detail-analytics-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      .detail-kpi-grid { grid-template-columns: 1fr; }
+      .detail-weights-row { grid-template-columns: 1fr; }
+    }
+  </style>
+
+  <div class="page-header">
+    <div>
+      <h1 class="page-heading" id="detail-name">Campaign Name</h1>
+      <p class="page-sub" id="detail-dept"><i class="ti ti-building" style="margin-right:4px;"></i> Loading...</p>
+    </div>
+    <div class="detail-page-actions">
+      <button class="btn-ghost-sm" onclick="loadCampaignDetail()"><i class="ti ti-refresh"></i> Refresh</button>
+      <button class="btn-outline"><i class="ti ti-pencil"></i> Edit Campaign</button>
+      <button class="btn-ghost-sm" style="color:var(--red);" onclick="event.preventDefault(); navigate('campaigns')"><i class="ti ti-trash"></i> Back to Campaigns</button>
+    </div>
+  </div>
+
+  <div class="detail-kpi-grid">
+    <div class="kpi-card" style="--accent-h:221;--accent-s:83%;--accent-l:53%;">
+      <div class="kpi-top">
+        <div class="kpi-icon-wrap" style="background:rgba(37,99,235,0.1);color:var(--blue);"><i class="ti ti-users"></i></div>
+        <span class="kpi-change-badge up" id="kpi-candidates-change">+0</span>
+      </div>
+      <div class="kpi-value" id="kpi-candidates">—</div>
+      <div class="kpi-label">Total Candidates</div>
+      <div class="kpi-trend"><div class="kpi-trend-bar"><span style="height:60%;"></span><span style="height:85%;"></span><span style="height:45%;"></span><span style="height:90%;"></span><span style="height:70%;"></span><span style="height:100%;"></span></div></div>
+    </div>
+    <div class="kpi-card" style="--accent-h:174;--accent-s:62%;--accent-l:43%;">
+      <div class="kpi-top">
+        <div class="kpi-icon-wrap" style="background:rgba(16,185,129,0.1);color:var(--emerald);"><i class="ti ti-chart-line"></i></div>
+        <span class="kpi-change-badge up" id="kpi-score-change">+0</span>
+      </div>
+      <div class="kpi-value" id="kpi-score">—</div>
+      <div class="kpi-label">Average Score</div>
+      <div class="kpi-trend"><div class="kpi-trend-bar"><span style="height:50%;"></span><span style="height:70%;"></span><span style="height:65%;"></span><span style="height:80%;"></span><span style="height:75%;"></span><span style="height:95%;"></span></div></div>
+    </div>
+    <div class="kpi-card" style="--accent-h:199;--accent-s:89%;--accent-l:48%;">
+      <div class="kpi-top">
+        <div class="kpi-icon-wrap" style="background:rgba(6,182,212,0.1);color:var(--cyan);"><i class="ti ti-percentage"></i></div>
+        <span class="kpi-change-badge up" id="kpi-passrate-change">+0%</span>
+      </div>
+      <div class="kpi-value" id="kpi-passrate">—</div>
+      <div class="kpi-label">Pass Rate</div>
+      <div class="kpi-trend"><div class="kpi-trend-bar"><span style="height:55%;"></span><span style="height:65%;"></span><span style="height:75%;"></span><span style="height:60%;"></span><span style="height:80%;"></span><span style="height:70%;"></span></div></div>
+    </div>
+    <div class="kpi-card" style="--accent-h:37;--accent-s:92%;--accent-l:50%;">
+      <div class="kpi-top">
+        <div class="kpi-icon-wrap" style="background:rgba(245,158,11,0.1);color:var(--amber);"><i class="ti ti-clock-hour-4"></i></div>
+        <span class="kpi-change-badge down" id="kpi-pending-change">+0</span>
+      </div>
+      <div class="kpi-value" id="kpi-pending">—</div>
+      <div class="kpi-label">Pending Candidates</div>
+      <div class="kpi-trend"><div class="kpi-trend-bar"><span style="height:40%;"></span><span style="height:55%;"></span><span style="height:70%;"></span><span style="height:45%;"></span><span style="height:60%;"></span><span style="height:85%;"></span></div></div>
+    </div>
+  </div>
+
+  <div class="analytics-card" style="margin-bottom:14px;">
+    <div class="card-header" style="cursor:pointer;" onclick="var c=this.nextElementSibling;var i=this.querySelector('.chevron');var d=c.style.display;c.style.display=d==='none'?'':'none';i.style.transform=d==='none'?'rotate(0deg)':'rotate(-90deg)';">
+      <div class="card-header-left"><i class="ti ti-file-description"></i><span>Campaign Details</span></div>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <i class="ti ti-chevron-down chevron" style="font-size:16px;color:var(--text3);transition:transform .2s;transform:rotate(-90deg);"></i>
+        <button class="btn-icon-only" title="Edit"><i class="ti ti-pencil"></i></button>
+        <button class="btn-icon-only" title="Refresh" onclick="event.stopPropagation();loadCampaignDetail()"><i class="ti ti-refresh"></i></button>
+      </div>
+    </div>
+    <div style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;padding-top:16px;">
+        <div class="detail-field"><div class="detail-label">Description</div><div class="detail-value" id="detail-desc">—</div></div>
+        <div class="detail-field"><div class="detail-label">Job Description</div><div class="detail-value" id="detail-jd">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="detail-analytics-grid" style="margin-bottom:18px;">
+    <div class="analytics-card">
+      <div class="card-header"><div class="card-header-left"><i class="ti ti-route"></i><span>Interview Rounds</span></div></div>
+      <div class="detail-perf-list" id="detail-rounds-list"></div>
+    </div>
+    <div class="analytics-card">
+      <div class="card-header"><div class="card-header-left"><i class="ti ti-pie-chart"></i><span>Candidate Status</span></div></div>
+      <div class="detail-perf-list" id="detail-status-list"></div>
+    </div>
+    <div class="analytics-card">
+      <div class="card-header">
+        <div class="card-header-left"><i class="ti ti-scale"></i><span>Weights</span></div>
+      </div>
+      <div class="detail-weights-row">
+        <div class="detail-weight-item"><span class="weight-label">Skills</span><span class="detail-weight-value" id="weight-skills">—</span></div>
+        <div class="detail-weight-item"><span class="weight-label">Experience</span><span class="detail-weight-value" id="weight-experience">—</span></div>
+        <div class="detail-weight-item"><span class="weight-label">Education</span><span class="detail-weight-value" id="weight-education">—</span></div>
+        <div class="detail-weight-item"><span class="weight-label">Alignment</span><span class="detail-weight-value" id="weight-jd">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="analytics-card" style="margin-bottom:18px;">
+    <div class="card-header">
+      <div class="card-header-left"><i class="ti ti-upload"></i><span>Upload Candidate Resumes</span></div>
+    </div>
+    <div class="detail-drop-zone" id="drop-zone">
+      <div class="detail-drop-icon"><i class="ti ti-cloud-upload"></i></div>
+      <div class="detail-drop-text">Drag &amp; Drop files here</div>
+      <div class="detail-drop-hint" id="drop-hint">Supports PDF, Word (DOCX — auto-converted to PDF), and image files (PNG, JPG, GIF, WEBP)</div>
+      <div class="detail-drop-actions">
+        <button class="btn-primary" id="upload-files-btn" type="button"><i class="ti ti-file"></i> Upload Files</button>
+        <button class="btn-secondary" id="upload-folder-btn" type="button" style="margin-left:8px;"><i class="ti ti-folder"></i> Upload Folder</button>
+      </div>
+      <div id="uploaded-files" style="margin-top:12px;display:none;"></div>
+      <div id="submit-section" style="margin-top:12px;display:none;">
+        <div class="detail-tags-row">
+          <div class="detail-tags-label"><i class="ti ti-tag"></i><span>Tags</span></div>
+          <div class="detail-tags-input-wrap">
+            <i class="ti ti-tag"></i>
+            <input type="text" class="detail-tags-input" id="tag-input" placeholder="Type a tag and press Enter (e.g. Senior, Remote, Python)" />
+          </div>
+          <div class="detail-tag-chips" id="tag-chips"></div>
+        </div>
+        <div style="margin-top:12px;">
+          <button class="btn-primary" id="submit-resumes-btn" type="button"><i class="ti ti-send"></i> Submit Resumes</button>
+          <div id="submit-feedback" style="font-size:12px;font-weight:500;margin-top:6px;display:none;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="analytics-card" style="margin-bottom:0;">
+    <div class="card-header">
+      <div class="card-header-left"><i class="ti ti-list-details"></i><span>Candidate List</span></div>
+    </div>
+    <div class="detail-toolbar">
+      <input type="text" class="detail-search-bar" id="candidate-search" placeholder="Search candidates..." oninput="filterCandidates()"/>
+      <div class="detail-view-toggle" id="view-toggle">
+        <button class="view-btn active" data-view="grid" onclick="toggleCandidateView('grid')" title="Card view"><i class="ti ti-grid-dots"></i></button>
+        <button class="view-btn" data-view="list" onclick="toggleCandidateView('list')" title="List view"><i class="ti ti-list"></i></button>
+      </div>
+      <div class="detail-toolbar-filter">
+        <select class="detail-select" id="cand-filter-role" onchange="filterCandidates()"><option value="">All Roles</option></select>
+        <select class="detail-select" id="cand-filter-fit" onchange="filterCandidates()"><option value="">All Fit</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option></select>
+        <select class="detail-select" id="candidate-filter" onchange="filterCandidates()"><option value="">All Statuses</option><option value="Interview Scheduled">Interview Scheduled</option><option value="Selected">Selected</option><option value="Pending">Pending</option><option value="Awaiting Feedback">Awaiting Feedback</option><option value="Rejected">Rejected</option></select>
+        <select class="detail-select" id="cand-filter-recruiter" onchange="filterCandidates()"><option value="">All Recruiters</option></select>
+        <select class="detail-select" id="cand-filter-tag" onchange="filterCandidates()"><option value="">All Tags</option></select>
+        <select class="detail-select" id="candidate-sort" onchange="filterCandidates()"><option value="">Sort: Newest</option><option value="score">Score</option><option value="name">Name</option></select>
+      </div>
+    </div>
+    <div id="candidate-grid" class="candidate-grid"></div>
+    <div class="detail-pagination" id="table-pagination">
+      <span style="font-size:12px;color:var(--text3);" id="pagination-info">No candidates</span>
+      <div class="detail-page-btns" id="pagination-btns"></div>
+    </div>
+  </div>
+
+  <!-- Drawer Overlay -->
+  <div class="drawer-overlay" id="drawer-overlay" onclick="closeCandidateDrawer()"></div>
+
+  <!-- Candidate Detail Drawer -->
+  <div class="cand-drawer" id="cand-drawer">
+    <div class="drawer-header">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="cand-avatar" id="drawer-avatar" style="width:40px;height:40px;font-size:15px;box-shadow:0 3px 10px rgba(0,0,0,0.12);"></div>
+        <div>
+          <div style="font-size:16px;font-weight:700;color:var(--text);letter-spacing:-0.01em;" id="drawer-name"></div>
+          <div style="font-size:12px;color:var(--text3);margin-top:1px;" id="drawer-sub"></div>
+        </div>
+      </div>
+      <button class="drawer-close" onclick="closeCandidateDrawer()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </div>
+
+  </div><!-- /page-campaign-detail -->
+
+      <!-- ═══ KANBAN PAGE (Under Development) ═══ -->
+      <div class="page" id="page-kanban">
+        <div class="section-header">
+          <div class="section-title-group">
+            <h2 class="section-title">Kanban Pipeline</h2>
+            <span class="section-badge" style="background:var(--amber-glass);color:var(--amber);">Under Development</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 32px;text-align:center;">
+          <i class="ti ti-tool" style="font-size:48px;color:var(--text3);margin-bottom:16px;"></i>
+          <h3 style="color:var(--text2);margin-bottom:8px;">Coming Soon</h3>
+          <p style="color:var(--text3);max-width:400px;">The Kanban board is currently under development. You'll be able to manage your hiring pipeline visually here.</p>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main-area -->
+</div><!-- /app-layout -->
+
+<!-- Reschedule Modal (outside page containers so it's always visible) -->
+<div class="drawer-overlay" id="reschedule-overlay" onclick="closeRescheduleModal()"></div>
+<div class="reschedule-modal" id="reschedule-modal" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1001;width:840px;max-width:94vw;display:none;overflow:hidden;border:1px solid rgba(255,255,255,0.15);border-radius:24px;background:rgba(255,255,255,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 24px 64px rgba(0,0,0,0.10),0 0 0 1px rgba(0,0,0,0.02);">
+  <div id="reschedule-root"></div>
+</div>
+
+<!-- Decision Confirmation Modal -->
+<div class="drawer-overlay" id="decision-confirm-overlay" onclick="closeDecisionConfirm()"></div>
+<div class="decision-modal" id="decision-confirm-modal">
+  <div class="decision-modal-icon" id="decision-confirm-icon"><i class="ti ti-judge"></i></div>
+  <div class="decision-modal-title" id="decision-confirm-title">Confirm decision?</div>
+  <div class="decision-modal-desc" id="decision-confirm-desc">Are you sure?</div>
+  <div class="decision-modal-actions">
+    <button class="btn-ghost" onclick="closeDecisionConfirm()">Cancel</button>
+    <button class="btn-primary" id="decision-confirm-btn" onclick="confirmDecision()">Confirm</button>
+  </div>
+</div>
+
+<!-- Delete Campaign Confirmation Modal -->
+<div class="drawer-overlay" id="delete-overlay" onclick="closeDeleteModal()"></div>
+<div class="delete-modal" id="delete-modal">
+  <div class="delete-modal-icon"><i class="ti ti-trash"></i></div>
+  <div class="delete-modal-title" id="delete-modal-title">Delete campaign?</div>
+  <div class="delete-modal-desc">This action cannot be undone.</div>
+  <div class="delete-modal-actions">
+    <button class="btn-ghost" onclick="closeDeleteModal()">Cancel</button>
+    <button class="btn-danger" id="delete-confirm-btn" disabled>Wait 3s</button>
+  </div>
+</div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script type="module" src="/src/react-main.tsx"></script>
+  <script type="module" src="/src/main.js"></script>
+  <script type="module" src="/src/search-integration.tsx"></script>
+  <script type="module" src="/src/reschedule-integration.tsx"></script>
+</body>
+</html>

@@ -198,20 +198,21 @@ async function pollForScore(
   while (Date.now() < deadline) {
     const { data } = await supabase.from("candidates").select("id").eq("email", e).maybeSingle();
     if (data?.id) {
-      const { data: rows } = await supabase
-        .from("decision_ledger")
-        .select("stage,score,rationale")
+      const { data: rows } = await (supabase.from("decision_ledger") as any)
+        .select("stage,score,rationale,created_at")
         .eq("candidate_id", data.id)
-        .eq("stage", "resume")
-        .order("decided_at", { ascending: false })
-        .limit(1);
-      const latest = rows?.[0];
-      if (latest) {
-        onProgress(latest.score == null ? null : latest.score, latest.rationale ?? "");
+        .order("created_at", { ascending: false });
+
+      const latest = (((rows ?? []) as any[]) as { stage: string; score: number | null; rationale: string | null }[]).find(
+        (r) => r.stage.toLowerCase().includes("resume") || r.stage.toLowerCase().includes("screen"),
+      ) || rows?.[0];
+
+      if (latest && latest.score != null) {
+        onProgress(latest.score, latest.rationale ?? "");
         return;
       }
     }
-    await new Promise((r) => setTimeout(r, 5000));
+    await new Promise((r) => setTimeout(r, 4000));
   }
   onProgress(null, "Timed out");
 }

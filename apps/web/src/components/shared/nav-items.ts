@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { FolderKanban, LayoutDashboard, Megaphone, Settings, Zap } from "lucide-react";
+import { FolderKanban, LayoutDashboard, Settings, Zap } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -12,8 +12,7 @@ export interface NavItem {
 export const RECRUITER_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/campaigns", label: "Campaigns", icon: FolderKanban },
-  { href: "/campaigns/new", label: "New campaign", icon: Megaphone },
-  { href: "/billing", label: "Usage & billing", icon: Zap },
+  { href: "/billing", label: "Usage & Billing", icon: Zap },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

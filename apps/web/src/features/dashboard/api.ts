@@ -83,22 +83,44 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
 }
 
 export async function fetchUpcomingInterviews(): Promise<UpcomingInterview[]> {
+  const now = new Date().toISOString();
   const { data } = await supabaseBrowser()
     .from("round_instances")
-    .select("id,candidate_id,round_type,scheduled_at,status")
-    .gte("scheduled_at", new Date().toISOString())
-    .order("scheduled_at", { ascending: true })
+    .select("id,candidate_id,round_type,scheduled_at,status,created_at")
+    .or(`scheduled_at.gte.${now},status.in.(scheduled,in_progress,pending)`)
+    .order("created_at", { ascending: false })
     .limit(5);
-  return (data ?? []) as UpcomingInterview[];
+
+  return (((data ?? []) as any[]) ?? []).map((r) => ({
+    id: r.id,
+    candidate_id: r.candidate_id,
+    round_type: r.round_type,
+    scheduled_at: r.scheduled_at ?? r.created_at,
+    status: r.status,
+  }));
 }
 
 export async function fetchLedger(limit = 200): Promise<LedgerEntry[]> {
-  const { data } = await supabaseBrowser()
+  const { data, error } = await supabaseBrowser()
     .from("decision_ledger")
-    .select("id,candidate_id,stage,score,source,override_of,decided_at")
-    .order("decided_at", { ascending: false })
+    .select("id,candidate_id,stage,score,round_instance_id,rationale,created_at")
+    .order("created_at", { ascending: false })
     .limit(limit);
-  return (data ?? []) as LedgerEntry[];
+
+  if (error) {
+    console.error("fetchLedger error:", error);
+    return [];
+  }
+
+  return ((data ?? []) as any[]).map((r) => ({
+    id: r.id,
+    candidate_id: r.candidate_id,
+    stage: r.stage === "round_undefined" ? "Round 1 interview" : r.stage,
+    score: r.score != null ? Number(r.score) : null,
+    source: "workflow",
+    override_of: null,
+    decided_at: r.created_at,
+  }));
 }
 
 export async function fetchCandidateNames(ids: string[]): Promise<Record<string, string>> {

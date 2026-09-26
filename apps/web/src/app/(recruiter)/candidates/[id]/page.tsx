@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDateTime } from "@scalepods/core";
-import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, FileText, Redo2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, FileText, Redo2, Video } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -27,26 +27,35 @@ import { useAccount } from "@/features/account/hooks";
 import type { LedgerView } from "@/features/candidates/api";
 import { useCandidateProfile } from "@/features/candidates/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 
 function roundNumberFromStage(stage: string): number | null {
   const m = /^round_(\d+)$/.exec(stage);
-  return m ? Number(m[1]) : null;
+  if (m) return Number(m[1]);
+  if (stage === "round_undefined" || stage.includes("round") || stage.includes("interview")) return 1;
+  return null;
 }
 
 const STAGE_LABELS: Record<string, string> = {
   resume: "Resume screening",
+  "resume screening": "Resume screening",
   voice_screen: "Voice screening",
+  round_undefined: "Round 1 interview",
 };
 
 function stageLabel(stage: string): string {
+  if (stage === "round_undefined") return "Round 1 interview";
   const n = roundNumberFromStage(stage);
   if (n) return `Round ${n} score`;
+  if (stage.toLowerCase().includes("resume")) return "Resume screening";
+  if (stage.toLowerCase().includes("voice")) return "Voice screening";
   return STAGE_LABELS[stage] ?? stage;
 }
 
 export default function CandidateProfilePage() {
   const { id } = useParams<{ id: string }>();
+  const queryClient = useQueryClient();
   const { account } = useAccount();
   const tier = account?.tier ?? "free";
 
@@ -83,8 +92,6 @@ export default function CandidateProfilePage() {
         stage: targetRow?.stage ?? "override",
         score: Math.max(0, Math.min(100, overrideScore)),
         rationale: `MANUAL OVERRIDE: ${overrideReason}`,
-        source: "manual",
-        override_of: overrideTarget || undefined,
       });
       if (insErr) throw insErr;
       await supabase.from("audit_log").insert({
@@ -96,6 +103,7 @@ export default function CandidateProfilePage() {
         resource_id: overrideTarget || undefined,
         details: { new_score: overrideScore, reason: overrideReason },
       });
+      queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
       setOverrideReason("");
     } catch (err) {
       showErrorToast(err);
@@ -347,6 +355,30 @@ function ScorecardSummary({ row }: { row: LedgerView }) {
         <p className="mt-2 text-xs text-muted-foreground">
           <span className="font-medium">Recommendation:</span> {sc.recommendation}
         </p>
+      )}
+      {row.recordingSignedUrl && (
+        <div className="mt-3 rounded-lg border border-border/50 bg-background/60 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Video className="h-3.5 w-3.5 text-primary" /> Interview Recording
+            </span>
+            <a
+              href={row.recordingSignedUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              Open video <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+          <video
+            src={row.recordingSignedUrl}
+            controls
+            playsInline
+            preload="metadata"
+            className="w-full max-h-72 rounded-md bg-black"
+          />
+        </div>
       )}
       {row.recordingExpired ? (
         <p className="mt-2 text-xs text-warning">

@@ -170,11 +170,20 @@ export async function scoreInterview(body: {
   account_id: string;
   session_id: string;
   candidate_id: string;
+  round_number?: number;
+  campaign_id?: string;
+  number_of_rounds?: number;
+  cutoff_score?: number | null;
 }): Promise<void> {
   const res = await fetch(`${n8nBase()}/webhook/score-interview`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      round_number: 1,
+      number_of_rounds: 1,
+      cutoff_score: 70,
+      ...body,
+    }),
   });
   if (!res.ok) throw new Error("Evaluation step failed.");
 }

@@ -8,11 +8,8 @@ export default function CandidateLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 border-b border-border/60 bg-glass/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-2xl items-center gap-2 px-4 py-3">
-          <Logo />
-          <span className="text-sm font-semibold tracking-[-0.022em] text-foreground">
-            ScalePods
-          </span>
+        <div className="mx-auto flex max-w-2xl items-center px-4 py-3">
+          <Logo variant="full" size="sm" />
         </div>
       </header>
       <main className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-12">{children}</main>

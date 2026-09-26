@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/n8n-proxy/:path*",
+      "destination": "/api/proxy?n8nPath=/:path*"
+    },
+    {
+      "source": "/reset-password(.*)",
+      "destination": "/reset-password/index.html"
+    },
+    {
+      "source": "/((?!api|reset-password|assets|favicon.ico).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "github": {
+    "silent": true
+  }
+}
+

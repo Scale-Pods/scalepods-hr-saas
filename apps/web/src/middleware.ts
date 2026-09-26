@@ -33,17 +33,31 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const { pathname } = request.nextUrl;
-  if (!user && isProtectedPath(pathname)) {
-    const redirect = request.nextUrl.clone();
-    redirect.pathname = "/auth";
-    redirect.search = "";
-    redirect.searchParams.set("next", pathname);
-    return NextResponse.redirect(redirect);
+  const isProtected = isProtectedPath(pathname);
+
+  // Only verify user session with remote Supabase for protected paths
+  if (isProtected) {
+    const hasAuthCookie = request.cookies.getAll().some((c) => c.name.startsWith("sb-"));
+    if (!hasAuthCookie) {
+      const redirect = request.nextUrl.clone();
+      redirect.pathname = "/auth";
+      redirect.search = "";
+      redirect.searchParams.set("next", pathname);
+      return NextResponse.redirect(redirect);
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      const redirect = request.nextUrl.clone();
+      redirect.pathname = "/auth";
+      redirect.search = "";
+      redirect.searchParams.set("next", pathname);
+      return NextResponse.redirect(redirect);
+    }
   }
 
   return response;

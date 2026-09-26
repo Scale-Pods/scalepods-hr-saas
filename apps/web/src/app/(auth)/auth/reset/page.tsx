@@ -33,14 +33,15 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <Card className="glass-panel w-full max-w-sm rounded-[28px] p-0">
-      <CardContent className="p-8">
-        <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">
-          Reset your password
-        </h1>
-        <p className="mt-1.5 text-sm text-label-secondary">
-          Enter the email you signed up with and we&apos;ll send a reset link.
-        </p>
+    <div className="flex min-h-screen items-center justify-center bg-[#060913] p-4 text-white">
+      <Card className="w-full max-w-sm rounded-[28px] border border-white/10 bg-[#090d16] p-0 shadow-2xl">
+        <CardContent className="p-8">
+          <h1 className="text-2xl font-bold tracking-tight text-white">
+            Reset your password
+          </h1>
+          <p className="mt-1.5 text-sm text-slate-400">
+            Enter the email you signed up with and we&apos;ll send a reset link.
+          </p>
 
         {sent ? (
           <div className="mt-6 space-y-3">
@@ -82,5 +83,6 @@ export default function ResetPasswordPage() {
         </p>
       </CardContent>
     </Card>
+  </div>
   );
 }

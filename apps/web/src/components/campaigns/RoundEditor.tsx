@@ -1,4 +1,5 @@
 import { type RoundType, type TeamMemberRow, type Tier, tierAtLeast } from "@scalepods/core";
+import { Bot, FileText, Info, Sliders, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -34,10 +35,25 @@ export function makeRound(): RoundDraft {
   return { ...DEFAULT_ROUND, id: `round-${draftSequence}` };
 }
 
-export const ROUND_TYPE_OPTIONS: { value: RoundType; label: string }[] = [
-  { value: "ai_interview", label: "Live AI interview" },
-  { value: "human_interview", label: "Live human interview" },
-  { value: "assignment", label: "Assignment" },
+export const ROUND_TYPE_OPTIONS: { value: RoundType; label: string; desc: string; icon: React.ReactNode }[] = [
+  {
+    value: "ai_interview",
+    label: "Live AI Interview",
+    desc: "Autonomous conversational AI assesses technical competencies and core fit 24/7.",
+    icon: <Bot className="h-4 w-4 text-cyan-500" />,
+  },
+  {
+    value: "human_interview",
+    label: "Live Human Interview",
+    desc: "Scheduled video panel or recruiter conversation with automated calendar sync.",
+    icon: <UserCheck className="h-4 w-4 text-blue-500" />,
+  },
+  {
+    value: "assignment",
+    label: "Practical Assignment",
+    desc: "Take-home challenge or project brief with deadline tracking and automated reminder cadence.",
+    icon: <FileText className="h-4 w-4 text-purple-500" />,
+  },
 ];
 
 function clamp(n: number): number {
@@ -60,73 +76,108 @@ export function RoundEditor({
 }) {
   const growthPlus = tierAtLeast(tier as Tier, "growth");
   const live = round.round_type === "ai_interview" || round.round_type === "human_interview";
+  const activeOption = ROUND_TYPE_OPTIONS.find((o) => o.value === round.round_type);
 
   return (
-    <div className="glass-surface p-4">
-      <p className="mb-3 text-base font-semibold tracking-[-0.022em] text-foreground">
-        Round {index + 1}
-      </p>
-      <div className="grid gap-4 sm:grid-cols-2">
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-xs space-y-4">
+      {/* Round Header */}
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+            {index + 1}
+          </span>
+          <h4 className="text-base font-semibold text-foreground">
+            Round {index + 1}: {activeOption?.label || "Interview Stage"}
+          </h4>
+        </div>
+        <span className="rounded-full bg-accent/80 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
+          Passing Cutoff: {round.cutoff_score}/100
+        </span>
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        {/* Round Type Selector */}
         <div>
           <label
             htmlFor={`rt-${index}`}
-            className="mb-1 block text-xs font-medium text-muted-foreground"
+            className="mb-1.5 block text-xs font-semibold text-foreground"
           >
-            Round type
+            Interview Format & Evaluation Method
           </label>
           <select
             id={`rt-${index}`}
             value={round.round_type}
             onChange={(e) => onChange({ round_type: e.target.value as RoundType })}
             className={cn(
-              "flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-xs transition-colors",
-              "focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-              "disabled:cursor-not-allowed disabled:opacity-50",
+              "flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors",
+              "focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+              "dark:bg-card dark:text-foreground",
             )}
           >
             {ROUND_TYPE_OPTIONS.map((opt) => {
               const locked = opt.value === "assignment" && !growthPlus;
               return (
-                <option key={opt.value} value={opt.value} disabled={locked}>
-                  {opt.label}
-                  {locked ? " · Available on Growth+" : ""}
+                <option key={opt.value} value={opt.value} disabled={locked} className="bg-card text-foreground dark:bg-gray-900">
+                  {opt.label} {locked ? "— (Upgrade to Growth tier)" : ""}
                 </option>
               );
             })}
           </select>
+          <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+            {activeOption?.desc}
+          </p>
         </div>
+
+        {/* Passing Score Slider */}
         <div>
-          <label
-            htmlFor={`cut-${index}`}
-            className="mb-1 flex items-center justify-between text-xs font-medium text-muted-foreground"
-          >
-            <span>Cutoff score</span>
-            <span className="text-muted-foreground">{round.cutoff_score}</span>
-          </label>
-          <Slider
-            value={[round.cutoff_score]}
-            onValueChange={(v) => onChange({ cutoff_score: v[0] ?? 70 })}
-            min={0}
-            max={100}
-            aria-label={`Round ${index + 1} cutoff`}
-          />
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={round.cutoff_score}
-            onChange={(e) => onChange({ cutoff_score: clamp(Number(e.target.value)) })}
-            className="mt-1 w-24 rounded-md border border-input bg-card px-2 py-1 text-xs"
-            aria-label={`Round ${index + 1} cutoff numeric`}
-          />
+          <div className="mb-1.5 flex items-center justify-between">
+            <label
+              htmlFor={`cut-${index}`}
+              className="text-xs font-semibold text-foreground flex items-center gap-1.5"
+            >
+              <Sliders className="h-3.5 w-3.5 text-primary" />
+              Minimum Passing Score
+            </label>
+            <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-bold text-foreground">
+              {round.cutoff_score} / 100
+            </span>
+          </div>
+
+          <div className="pt-2 pb-1">
+            <Slider
+              value={[round.cutoff_score]}
+              onValueChange={(v) => onChange({ cutoff_score: v[0] ?? 70 })}
+              min={0}
+              max={100}
+              step={1}
+              aria-label={`Round ${index + 1} cutoff`}
+            />
+          </div>
+
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-[11px] text-muted-foreground">
+              Candidates meeting or exceeding this threshold advance.
+            </p>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={round.cutoff_score}
+              onChange={(e) => onChange({ cutoff_score: clamp(Number(e.target.value)) })}
+              className="w-16 rounded-lg border border-border bg-card px-2 py-1 text-right text-xs font-semibold text-foreground focus:outline-hidden focus:border-primary"
+              aria-label={`Round ${index + 1} cutoff numeric`}
+            />
+          </div>
         </div>
+
+        {/* Human Interviewer Field */}
         {round.round_type === "human_interview" ? (
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 rounded-xl bg-accent/40 p-4 border border-primary/20 space-y-2">
             <label
               htmlFor={`int-${index}`}
-              className="mb-1 block text-xs font-medium text-muted-foreground"
+              className="block text-xs font-semibold text-foreground"
             >
-              Interviewer email
+              Assigned Lead Interviewer Email *
             </label>
             {teamMembers.length > 0 ? (
               <select
@@ -134,111 +185,112 @@ export function RoundEditor({
                 value={round.interviewer_email}
                 onChange={(e) => onChange({ interviewer_email: e.target.value })}
                 className={cn(
-                  "flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-xs transition-colors",
-                  "focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                  "flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors",
+                  "focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+                  "dark:bg-card dark:text-foreground",
                 )}
               >
-                <option value="">Select a teammate…</option>
+                <option value="" className="bg-card text-foreground dark:bg-gray-900">Select an interviewer from your team…</option>
                 {teamMembers.map((m) => (
-                  <option key={m.id} value={m.email}>
-                    {m.name} · {m.email}
+                  <option key={m.id} value={m.email} className="bg-card text-foreground dark:bg-gray-900">
+                    {m.name} ({m.email})
                   </option>
                 ))}
               </select>
             ) : (
               <Input
                 id={`int-${index}`}
-                placeholder="interviewer@company.com"
+                placeholder="e.g., alex.lead@company.com"
                 value={round.interviewer_email}
                 onChange={(e) => onChange({ interviewer_email: e.target.value })}
+                className="bg-card"
               />
             )}
-            {teamMembers.length === 0 ? (
-              <p className="mt-1 text-xs text-muted-foreground">
-                No teammates yet — add them in{" "}
-                <Link href="/settings" className="font-medium text-primary hover:underline">
-                  Settings
-                </Link>
-                , or type an email directly.
-              </p>
-            ) : null}
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Info className="h-3.5 w-3.5 shrink-0 text-primary" />
+              Calendar invites and video interview links will be scheduled against this interviewer.
+            </p>
           </div>
         ) : null}
+
+        {/* Daily Time Window for Live Interviews */}
         {live ? (
-          <div className="grid grid-cols-2 gap-3 sm:col-span-2">
+          <div className="sm:col-span-2 grid grid-cols-2 gap-4 rounded-xl border border-border p-4 bg-muted/30">
             <div>
               <label
                 htmlFor={`ts-${index}`}
-                className="mb-1 block text-xs font-medium text-muted-foreground"
+                className="mb-1.5 block text-xs font-semibold text-foreground"
               >
-                Daily start
+                Daily Window: Available From
               </label>
               <Input
                 id={`ts-${index}`}
                 type="time"
                 value={round.daily_start_time}
                 onChange={(e) => onChange({ daily_start_time: e.target.value })}
+                className="bg-card"
               />
+              <span className="mt-1 block text-[11px] text-muted-foreground">Earliest daily interview slot</span>
             </div>
             <div>
               <label
                 htmlFor={`te-${index}`}
-                className="mb-1 block text-xs font-medium text-muted-foreground"
+                className="mb-1.5 block text-xs font-semibold text-foreground"
               >
-                Daily end
+                Daily Window: Available Until
               </label>
               <Input
                 id={`te-${index}`}
                 type="time"
                 value={round.daily_end_time}
                 onChange={(e) => onChange({ daily_end_time: e.target.value })}
+                className="bg-card"
               />
+              <span className="mt-1 block text-[11px] text-muted-foreground">Latest daily interview slot</span>
             </div>
           </div>
         ) : null}
+
+        {/* Assignment Brief Field */}
         {round.round_type === "assignment" ? (
-          <div className="space-y-3 sm:col-span-2">
+          <div className="sm:col-span-2 space-y-3 rounded-xl border border-border p-4 bg-muted/30">
             <div>
               <label
                 htmlFor={`brief-${index}`}
-                className="mb-1 block text-xs font-medium text-muted-foreground"
+                className="mb-1.5 block text-xs font-semibold text-foreground"
               >
-                Assignment brief
+                Assignment Prompt & Submission Guidelines *
               </label>
               <Textarea
                 id={`brief-${index}`}
+                rows={5}
+                placeholder="Explain the practical problem or project challenge. Detail deliverables required (e.g. GitHub link, Figma file, slide deck) and scoring expectations..."
                 value={round.brief_text}
                 onChange={(e) => onChange({ brief_text: e.target.value })}
-                rows={5}
-                placeholder="Describe the take-home task, what success looks like, and how the work is submitted…"
+                className="bg-card"
               />
             </div>
             <div>
               <label
-                htmlFor={`deadline-${index}`}
-                className="mb-1 block text-xs font-medium text-muted-foreground"
+                htmlFor={`dh-${index}`}
+                className="mb-1.5 block text-xs font-semibold text-foreground"
               >
-                Submission deadline (hours from invite)
+                Submission Deadline (Hours)
               </label>
               <Input
-                id={`deadline-${index}`}
+                id={`dh-${index}`}
                 type="number"
-                min={1}
-                max={168}
+                min={12}
+                max={336}
                 value={round.assignment_deadline_hours}
                 onChange={(e) =>
-                  onChange({
-                    assignment_deadline_hours: Math.max(
-                      1,
-                      Math.min(168, Number(e.target.value) || 72),
-                    ),
-                  })
+                  onChange({ assignment_deadline_hours: Number(e.target.value) || 72 })
                 }
+                className="w-36 bg-card"
               />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Sent in the create-campaign payload; the backend currently uses a placeholder brief
-                server-side.
-              </p>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Candidates must submit their completed work within this time window (e.g. 72 hours = 3 days).
+              </span>
             </div>
           </div>
         ) : null}
