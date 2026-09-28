@@ -24,6 +24,21 @@ export function upgradeTarget(_reason?: string): string {
 
 export function describeError(err: unknown): { title: string; message: string } {
   if (err instanceof TierLimitError) return tierLimitToastContent(err);
-  if (err instanceof Error) return { title: "Something went wrong", message: err.message };
+  if (err instanceof Error) {
+    const detail = (err as { detail?: string }).detail;
+    const message = detail && detail !== err.message ? `${err.message}: ${detail}` : err.message;
+    return { title: "Something went wrong", message };
+  }
+  if (typeof err === "string" && err.trim().length > 0) {
+    return { title: "Notice", message: err };
+  }
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "message" in err &&
+    typeof (err as { message: unknown }).message === "string"
+  ) {
+    return { title: "Something went wrong", message: (err as { message: string }).message };
+  }
   return { title: "Something went wrong", message: "An unexpected error occurred." };
 }

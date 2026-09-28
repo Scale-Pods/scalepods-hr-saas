@@ -137,27 +137,41 @@ export default function CampaignDetailPage() {
     );
 
     if (eligibleCandidates.length === 0) {
-      showErrorToast("No candidates meet this criteria to advance.");
+      showToast("No candidates meet this criteria to advance.", { kind: "info" });
       return;
     }
 
     setIsBulkSending(true);
     try {
       let successCount = 0;
+      let lastError: unknown = null;
       for (const c of eligibleCandidates) {
-        await callWorkflow("round-advance", {
-          body: {
-            account_id: account.id,
-            campaign_id: campaign.id,
-            candidate_id: c.candidate_id,
-            round_number: 1, // Advance to round 1
-          },
-          accessToken: session.access_token,
-        });
-        successCount++;
+        try {
+          await callWorkflow("round-advance", {
+            body: {
+              account_id: account.id,
+              campaign_id: campaign.id,
+              candidate_id: c.candidate_id,
+              round_number: 1, // Advance to round 1
+            },
+            accessToken: session.access_token,
+          });
+          successCount++;
+        } catch (itemErr) {
+          lastError = itemErr;
+          console.error(`Failed to advance candidate ${c.candidate_id}:`, itemErr);
+        }
       }
-      showErrorToast(`Successfully dispatched invites for ${successCount} candidates.`);
-      queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+
+      if (successCount > 0) {
+        showToast(
+          `Successfully dispatched invites for ${successCount} candidate${successCount === 1 ? "" : "s"}.`,
+          { kind: "success" },
+        );
+        queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+      } else if (lastError) {
+        showErrorToast(lastError);
+      }
     } catch (err) {
       showErrorToast(err);
     } finally {
