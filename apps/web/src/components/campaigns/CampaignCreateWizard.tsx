@@ -103,11 +103,23 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     const merged = new Map<string, CadenceRenderRow>();
     for (const t of types) {
       for (const row of cadenceForTier(tier, t)) {
+        const activeChannels = row.channels.filter((c) => {
+          if (c === "whatsapp" && !whatsappOn) return false;
+          if (c === "voice_call" && !voiceOn) return false;
+          return true;
+        });
+        const isEnabled = row.enabled && activeChannels.length > 0;
+
         const existing = merged.get(row.stage.key);
-        if (!existing) merged.set(row.stage.key, row);
-        else {
-          existing.channels = Array.from(new Set([...existing.channels, ...row.channels]));
-          existing.enabled = existing.enabled || row.enabled;
+        if (!existing) {
+          merged.set(row.stage.key, {
+            stage: row.stage,
+            channels: activeChannels,
+            enabled: isEnabled,
+          });
+        } else {
+          existing.channels = Array.from(new Set([...existing.channels, ...activeChannels]));
+          existing.enabled = (existing.enabled || isEnabled) && existing.channels.length > 0;
         }
       }
     }
@@ -116,7 +128,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         CADENCE_STAGES.findIndex((s) => s.key === a.stage.key) -
         CADENCE_STAGES.findIndex((s) => s.key === b.stage.key),
     );
-  }, [rounds, numberOfRounds, tier]);
+  }, [rounds, numberOfRounds, tier, whatsappOn, voiceOn]);
 
   const validateBasics = (): string | null => {
     if (!name.trim()) return "Please enter a descriptive campaign name.";
@@ -148,6 +160,14 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       number_of_rounds: numberOfRounds,
       start_date: startDate || undefined,
       end_date: endDate || undefined,
+      cadence_config: {
+        stages: Object.fromEntries(
+          previewRows.map((r) => [
+            r.stage.key,
+            { enabled: r.enabled, channels: r.channels },
+          ]),
+        ),
+      },
       voice_call_config: voiceOn ? dialnexaConfig : undefined,
       rounds: rounds.slice(0, numberOfRounds).map((r, i) => ({
         round_number: i + 1,
