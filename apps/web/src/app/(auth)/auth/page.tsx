@@ -14,7 +14,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { showToast } from "@/components/shared/TierLimitToast";
 import { useSession } from "@/features/auth/hooks";
@@ -61,12 +61,17 @@ export default function AuthPage() {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (session) {
+      router.replace("/dashboard");
+    }
+  }, [session, router]);
+
   if (isPending) {
     return <LoadingScreen message="Establishing secure connection..." />;
   }
 
   if (session) {
-    router.replace("/dashboard");
     return <LoadingScreen message="Redirecting to dashboard..." />;
   }
 
