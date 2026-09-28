@@ -13,8 +13,8 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { showToast } from "@/components/shared/TierLimitToast";
 import { useSession } from "@/features/auth/hooks";
@@ -51,8 +51,10 @@ const stats = [
   { label: "Offer acceptance rate", value: "94%" },
 ];
 
-export default function AuthPage() {
+function AuthInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const hasNext = Boolean(searchParams.get("next"));
   const { data: session, isPending } = useSession();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -62,16 +64,18 @@ export default function AuthPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (session) {
+    // If bounced here with ?next=..., the server indicated this request is unauthenticated.
+    // Never auto-redirect to avoid infinite loop.
+    if (session && !hasNext) {
       router.replace("/dashboard");
     }
-  }, [session, router]);
+  }, [session, router, hasNext]);
 
   if (isPending) {
     return <LoadingScreen message="Establishing secure connection..." />;
   }
 
-  if (session) {
+  if (session && !hasNext) {
     return <LoadingScreen message="Redirecting to dashboard..." />;
   }
 
@@ -92,7 +96,8 @@ export default function AuthPage() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.push("/dashboard");
+        const target = searchParams.get("next") || "/dashboard";
+        router.push(target);
       }
     } catch (err) {
       const msg =
@@ -369,5 +374,13 @@ export default function AuthPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<LoadingScreen message="Establishing secure connection..." />}>
+      <AuthInner />
+    </Suspense>
   );
 }

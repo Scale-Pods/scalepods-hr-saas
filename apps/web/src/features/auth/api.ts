@@ -8,9 +8,17 @@ export interface Credentials {
 }
 
 export async function getSession(): Promise<Session | null> {
-  const { data, error } = await supabaseBrowser().auth.getSession();
-  if (error) throw error;
-  return data.session;
+  const supabase = supabaseBrowser();
+  const { data: sessionData, error } = await supabase.auth.getSession();
+  if (error || !sessionData.session) return null;
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    await supabase.auth.signOut().catch(() => {});
+    return null;
+  }
+
+  return sessionData.session;
 }
 
 export async function signInWithPassword({
