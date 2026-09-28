@@ -174,6 +174,7 @@ export async function scoreInterview(body: {
   campaign_id?: string;
   number_of_rounds?: number;
   cutoff_score?: number | null;
+  recording_url?: string | null;
 }): Promise<void> {
   const res = await fetch(`${n8nBase()}/webhook/score-interview`, {
     method: "POST",

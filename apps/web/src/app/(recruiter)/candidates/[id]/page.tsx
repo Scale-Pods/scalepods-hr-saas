@@ -8,12 +8,19 @@ import {
   ChevronUp,
   ExternalLink,
   FileText,
+  Headphones,
+  Loader2,
+  MessageSquare,
+  MessageSquareText,
+  PhoneCall,
   Redo2,
+  Sparkles,
+  User,
   Video,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -74,6 +81,35 @@ export default function CandidateProfilePage() {
   const resumeUrl = data?.resumeUrl;
   const timeline = data?.timeline ?? [];
   const outreach = data?.outreach ?? [];
+  const interviewRecordings = data?.interviewRecordings ?? [];
+  const interviewTranscripts = data?.interviewTranscripts ?? [];
+  const voiceScreenTranscripts = data?.voiceScreenTranscripts ?? [];
+
+  const [dialnexaCalls, setDialnexaCalls] = useState<
+    Array<{
+      id: string;
+      duration: number;
+      status: string;
+      called_time: string | null;
+      end_reason: string | null;
+      sentiment: string | null;
+      call_successful: string | null;
+      recording_url: string | null;
+    }>
+  >([]);
+  const [loadingCalls, setLoadingCalls] = useState(false);
+
+  useEffect(() => {
+    if (!candidate?.phone) return;
+    setLoadingCalls(true);
+    fetch(`/api/voice-screen/call-status?phone=${encodeURIComponent(candidate.phone)}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.calls) setDialnexaCalls(json.calls);
+      })
+      .catch((err) => console.warn("Failed to load call status:", err))
+      .finally(() => setLoadingCalls(false));
+  }, [candidate?.phone]);
 
   const [overrideTarget, setOverrideTarget] = useState("");
   const [overrideScore, setOverrideScore] = useState(0);
@@ -187,6 +223,18 @@ export default function CandidateProfilePage() {
       >
         <Timeline rows={timeline} />
       </SectionCard>
+
+      <InterviewMediaAndTranscriptSection
+        recordings={interviewRecordings}
+        transcripts={interviewTranscripts}
+      />
+
+      <VoiceScreenCallSection
+        calls={dialnexaCalls}
+        loadingCalls={loadingCalls}
+        transcripts={voiceScreenTranscripts}
+        phone={candidate.phone}
+      />
 
       <SectionCard title="Manual override">
         <form onSubmit={handleOverride} className="grid gap-3 sm:grid-cols-4">
@@ -386,7 +434,9 @@ function ScorecardSummary({ row }: { row: LedgerView }) {
             playsInline
             preload="metadata"
             className="w-full max-h-72 rounded-md bg-black"
-          />
+          >
+            <track kind="captions" />
+          </video>
         </div>
       )}
       {row.recordingExpired ? (
@@ -476,5 +526,357 @@ function OutreachTable({
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+function InterviewMediaAndTranscriptSection({
+  recordings,
+  transcripts,
+}: {
+  recordings: Array<{
+    sessionId: string;
+    status: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    recordingSignedUrl: string | null;
+  }>;
+  transcripts: Array<{
+    id: string;
+    question_text: string;
+    question_type?: string;
+    interviewer_text?: string | null;
+    answer_text: string;
+    answered_at: string;
+    ai_note?: Record<string, unknown> | null;
+  }>;
+}) {
+  const [activeTab, setActiveTab] = useState<"recording" | "transcript">(
+    recordings.some((r) => r.recordingSignedUrl) ? "recording" : "transcript",
+  );
+
+  const hasRecordings = recordings.some((r) => !!r.recordingSignedUrl);
+  const hasTranscripts = transcripts.length > 0;
+
+  if (!hasRecordings && !hasTranscripts && recordings.length === 0) {
+    return (
+      <SectionCard
+        title="AI Interview Session & Recording"
+        subtitle="Video recording and speech-to-text transcript"
+      >
+        <EmptyState
+          title="No interview recording or transcript yet"
+          hint="Once the candidate connects to the AI interview room and completes questions, the video recording and dialogue transcript will appear here."
+          className="py-4"
+        />
+      </SectionCard>
+    );
+  }
+
+  return (
+    <SectionCard
+      title="AI Interview Recording & Transcript"
+      subtitle="Full video recording and turn-by-turn question/response transcript"
+      action={
+        <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/30 p-1">
+          <Button
+            size="sm"
+            variant={activeTab === "recording" ? "secondary" : "ghost"}
+            className="h-7 px-2.5 text-xs gap-1.5"
+            onClick={() => setActiveTab("recording")}
+          >
+            <Video className="h-3.5 w-3.5 text-primary" />
+            Recording {hasRecordings ? "Available" : ""}
+          </Button>
+          <Button
+            size="sm"
+            variant={activeTab === "transcript" ? "secondary" : "ghost"}
+            className="h-7 px-2.5 text-xs gap-1.5"
+            onClick={() => setActiveTab("transcript")}
+          >
+            <MessageSquareText className="h-3.5 w-3.5 text-emerald-500" />
+            Transcript ({transcripts.length})
+          </Button>
+        </div>
+      }
+    >
+      {activeTab === "recording" ? (
+        <div className="space-y-4">
+          {hasRecordings ? (
+            recordings
+              .filter((r) => !!r.recordingSignedUrl)
+              .map((rec) => (
+                <div
+                  key={rec.sessionId}
+                  className="rounded-xl border border-border/70 bg-card p-4 space-y-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Video className="h-4 w-4 text-primary" />
+                        AI Interview Video Recording
+                      </span>
+                      <Badge variant="outline" className="text-[11px] capitalize">
+                        {rec.status}
+                      </Badge>
+                      {rec.completedAt && (
+                        <span className="text-xs text-muted-foreground">
+                          · {formatDateTime(rec.completedAt)}
+                        </span>
+                      )}
+                    </div>
+                    {rec.recordingSignedUrl && (
+                      <a
+                        href={rec.recordingSignedUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      >
+                        Open video in tab <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+
+                  <video
+                    src={rec.recordingSignedUrl || undefined}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="w-full max-h-80 rounded-lg bg-black shadow-inner border border-border/40"
+                  >
+                    <track kind="captions" />
+                  </video>
+                </div>
+              ))
+          ) : (
+            <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-6 text-center">
+              <Video className="mx-auto h-8 w-8 text-muted-foreground/60 mb-2" />
+              <p className="text-sm font-medium text-foreground">Interview Video Not Available</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                {recordings.length > 0
+                  ? `Interview session is currently ${recordings[0].status}. If the candidate has just submitted, the video is being uploaded to secure storage.`
+                  : "No recording was uploaded for this candidate's session."}
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {transcripts.length === 0 ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              No interview transcript recorded yet for this candidate.
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
+              {transcripts.map((turn, idx) => (
+                <div
+                  key={turn.id || idx}
+                  className="rounded-xl border border-border/60 bg-card p-3.5 space-y-2.5 transition-colors hover:border-border"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-primary flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      Question {idx + 1}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {turn.question_type && (
+                        <Badge variant="outline" className="text-[10px] capitalize">
+                          {turn.question_type}
+                        </Badge>
+                      )}
+                      <span className="text-[11px] text-muted-foreground">
+                        {formatDateTime(turn.answered_at)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Interviewer Question */}
+                  <div className="rounded-lg bg-muted/40 p-2.5 text-xs text-foreground leading-relaxed border border-border/30">
+                    <p className="font-medium text-muted-foreground text-[11px] mb-1">
+                      AI Interviewer:
+                    </p>
+                    <p>{turn.question_text || turn.interviewer_text}</p>
+                  </div>
+
+                  {/* Candidate Answer */}
+                  <div className="rounded-lg bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/20 p-2.5 text-xs text-foreground leading-relaxed">
+                    <p className="font-medium text-emerald-600 dark:text-emerald-400 text-[11px] mb-1 flex items-center gap-1">
+                      <User className="h-3 w-3" /> Candidate Response:
+                    </p>
+                    <p className="italic">
+                      {turn.answer_text
+                        ? `"${turn.answer_text}"`
+                        : "(No spoken answer recorded / candidate timed out)"}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+function VoiceScreenCallSection({
+  calls,
+  loadingCalls,
+  transcripts,
+  phone,
+}: {
+  calls: Array<{
+    id: string;
+    duration: number;
+    status: string;
+    called_time: string | null;
+    end_reason: string | null;
+    sentiment: string | null;
+    call_successful: string | null;
+    recording_url: string | null;
+  }>;
+  loadingCalls: boolean;
+  transcripts: Array<{
+    id: string;
+    score: number | null;
+    rationale: string | null;
+    transcript: string;
+    decided_at: string;
+  }>;
+  phone?: string | null;
+}) {
+  const hasCalls = calls.length > 0;
+  const hasTranscripts = transcripts.length > 0;
+
+  if (!hasCalls && !hasTranscripts && !loadingCalls) {
+    return null;
+  }
+
+  return (
+    <SectionCard
+      title="AI Voice Screening Calls & Transcripts"
+      subtitle={`Automated telephone screening history and transcripts ${phone ? `for ${phone}` : ""}`}
+    >
+      <div className="space-y-4">
+        {/* DialNexa Call Recordings & Status */}
+        {loadingCalls ? (
+          <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Loading live call recordings from DialNexa…
+          </div>
+        ) : hasCalls ? (
+          <div className="space-y-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <PhoneCall className="h-3.5 w-3.5 text-emerald-600" />
+              Telephony Call Recordings ({calls.length})
+            </span>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {calls.map((c) => (
+                <div
+                  key={c.id}
+                  className="rounded-xl border border-border/70 bg-card p-3.5 space-y-2.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <Badge
+                      variant="secondary"
+                      className={cn(
+                        "text-[11px] capitalize",
+                        c.status === "completed"
+                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                          : "bg-warning/15 text-warning",
+                      )}
+                    >
+                      {c.status}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {Math.floor(c.duration / 60)}m {c.duration % 60}s
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-muted-foreground flex items-center justify-between">
+                    <span>{c.called_time ? formatDateTime(c.called_time) : "Recent"}</span>
+                    {c.sentiment && (
+                      <Badge variant="outline" className="text-[10px]">
+                        Sentiment: {c.sentiment}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {c.recording_url ? (
+                    <div className="space-y-1 pt-1">
+                      <span className="text-[11px] font-medium text-foreground flex items-center gap-1">
+                        <Headphones className="h-3 w-3 text-cyan-500" /> Call Recording
+                      </span>
+                      <audio controls src={c.recording_url} className="w-full h-8">
+                        <track kind="captions" />
+                      </audio>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground/80 italic pt-1">
+                      {c.duration > 0
+                        ? "Audio recording archived or processing"
+                        : "Call was not connected (user busy / missed)"}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Voice Screening Transcript */}
+        {hasTranscripts && (
+          <div className="space-y-3 pt-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <MessageSquare className="h-3.5 w-3.5 text-primary" />
+              Voice Screening Dialogue Transcripts
+            </span>
+            <div className="space-y-3">
+              {transcripts.map((t) => (
+                <div
+                  key={t.id}
+                  className="rounded-xl border border-border/70 bg-card p-4 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-foreground">
+                        AI Phone Screen Assessment
+                      </span>
+                      {t.score != null && (
+                        <Badge className="bg-primary/15 text-primary font-bold">
+                          Score: {t.score}/100
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDateTime(t.decided_at)}
+                    </span>
+                  </div>
+
+                  {t.rationale && (
+                    <div className="rounded-lg bg-muted/30 border border-border/40 p-2.5 text-xs text-foreground">
+                      <span className="font-semibold text-muted-foreground block mb-0.5">
+                        Evaluation Rationale:
+                      </span>
+                      {t.rationale}
+                    </div>
+                  )}
+
+                  {t.transcript && (
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Full Call Transcript
+                      </span>
+                      <div className="rounded-lg border border-border/50 bg-muted/20 p-3 font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap max-h-60 overflow-y-auto">
+                        {t.transcript}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </SectionCard>
   );
 }

@@ -114,8 +114,9 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
   return (
     <div className="relative flex min-h-screen bg-background overflow-x-hidden">
       {/* Ambient background mesh glow */}
-      <div className="pointer-events-none fixed -top-40 right-[-10%] z-0 h-[600px] w-[600px] rounded-full bg-blue-500/[0.04] blur-[120px] dark:bg-blue-600/[0.07]" />
-      <div className="pointer-events-none fixed top-[45%] left-[-10%] z-0 h-[500px] w-[500px] rounded-full bg-cyan-500/[0.03] blur-[100px] dark:bg-cyan-600/[0.05]" />
+      <div className="pointer-events-none fixed -top-32 right-[-8%] z-0 h-[650px] w-[650px] rounded-full bg-gradient-to-br from-blue-500/18 via-indigo-400/12 to-transparent blur-[130px] dark:from-blue-600/[0.09] dark:via-blue-500/[0.05] dark:to-transparent" />
+      <div className="pointer-events-none fixed top-[35%] left-[-10%] z-0 h-[550px] w-[550px] rounded-full bg-gradient-to-tr from-cyan-400/18 via-sky-300/12 to-transparent blur-[120px] dark:from-cyan-600/[0.07] dark:via-cyan-500/[0.04] dark:to-transparent" />
+      <div className="pointer-events-none fixed -bottom-28 right-[18%] z-0 h-[500px] w-[500px] rounded-full bg-gradient-to-tl from-purple-400/14 via-blue-400/10 to-transparent blur-[140px] dark:from-purple-600/[0.06] dark:via-transparent dark:to-transparent" />
 
       {/* Desktop sidebar — floating capsule */}
       <aside

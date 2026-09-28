@@ -1,6 +1,5 @@
 import type React from "react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { getEnv } from "@/env";
 import { fetchSessionContext, scoreInterview } from "@/features/candidate/api";
 import { useMediaRecorder } from "../hooks/useMediaRecorder";
 import type {
@@ -51,7 +50,7 @@ interface InterviewContextType {
   markInterviewStarted: () => Promise<void>;
   startRecording: (
     sessionId: string,
-    streams: { camera: MediaStream; screen?: MediaStream | null; audio?: MediaStream },
+    streams: { camera: MediaStream; screen?: MediaStream | null; audio?: MediaStream | null },
   ) => Promise<void>;
   completeInterview: () => Promise<void>;
 }
@@ -69,14 +68,14 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const [currentTurn, setCurrentTurn] = useState<InterviewerTurn | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [currentQuestionId, setCurrentQuestionId] = useState("");
-  const [scorecard, setScorecard] = useState<Scorecard | null>(null);
+  const [scorecard, _setScorecard] = useState<Scorecard | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [isGeneratingTurn, setIsGeneratingTurn] = useState(false);
   const [isAnalyzingAnswer, setIsAnalyzingAnswer] = useState(false);
   const [liveAssessmentNotes, setLiveAssessmentNotes] = useState<LiveAssessmentNote[]>([]);
   const [authenticitySignals, setAuthenticitySignals] = useState<AuthenticitySignal[]>([]);
-  const [blueprint, setBlueprint] = useState<InterviewBlueprint | null>(null);
+  const [blueprint, _setBlueprint] = useState<InterviewBlueprint | null>(null);
   const [resumeText, setResumeText] = useState("");
   const [jdText, setJdText] = useState("");
 
@@ -127,7 +126,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const ctx = await fetchSessionContext(id);
-      if (!ctx || !ctx.session) {
+      if (!ctx?.session) {
         setLoadError("Interview session not found. The link may be expired or invalid.");
         setLoading(false);
         return;
@@ -147,7 +146,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           email: ctx.candidate?.email || "",
         },
         campaign_name: ctx.campaign?.name,
-        jd_text: (ctx.campaign as any)?.jd_text || "",
+        jd_text: ((ctx.campaign as Record<string, unknown> | null)?.jd_text as string) || "",
         resume_text: `Candidate: ${candidateName}, Email: ${ctx.candidate?.email || ""}`,
       };
 
@@ -194,7 +193,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         : null,
     );
 
-    const introText = `${OPENING_ACKNOWLEDGMENT} ${INTRO_QUESTION_TEXT}`;
+    const _introText = `${OPENING_ACKNOWLEDGMENT} ${INTRO_QUESTION_TEXT}`;
     setCurrentTurn({
       interviewer_text: OPENING_ACKNOWLEDGMENT,
       question_text: INTRO_QUESTION_TEXT,
@@ -205,7 +204,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   }, [session]);
 
   const submitAnswer = useCallback(
-    async (questionId: string, answerText: string, audioUrl?: string) => {
+    async (questionId: string, answerText: string, _audioUrl?: string) => {
       if (!session) return;
 
       answeredQuestionIdsRef.current.add(questionId);
@@ -359,7 +358,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const startRecording = useCallback(
     async (
       sid: string,
-      streams: { camera: MediaStream; screen?: MediaStream | null; audio?: MediaStream },
+      streams: { camera: MediaStream; screen?: MediaStream | null; audio?: MediaStream | null },
     ) => {
       await recorder.start(sid, streams, session?.account_id);
     },
@@ -369,7 +368,8 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const completeInterview = useCallback(async () => {
     if (!session) return;
 
-    await recorderStopRef.current();
+    const recResult = await recorderStopRef.current();
+    const recordingUrl = recResult?.filePath ?? null;
     setMediaStreams(null, null, null);
 
     setSession((prev) =>
@@ -378,6 +378,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             ...prev,
             status: "completed",
             completed_at: new Date().toISOString(),
+            recording_url: recordingUrl || prev.recording_url,
           }
         : null,
     );
@@ -391,6 +392,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         campaign_id: sessionMetadataRef.current.campaign_id || "",
         number_of_rounds: sessionMetadataRef.current.number_of_rounds ?? 1,
         cutoff_score: sessionMetadataRef.current.cutoff_score ?? 70,
+        recording_url: recordingUrl,
       });
     } catch (err) {
       console.warn("Scoring webhook note:", err);
@@ -399,9 +401,15 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     return () => {
-      avStream?.getTracks().forEach((track) => track.stop());
-      audioStream?.getTracks().forEach((track) => track.stop());
-      screenStream?.getTracks().forEach((track) => track.stop());
+      avStream?.getTracks().forEach((track) => {
+        track.stop();
+      });
+      audioStream?.getTracks().forEach((track) => {
+        track.stop();
+      });
+      screenStream?.getTracks().forEach((track) => {
+        track.stop();
+      });
     };
   }, [avStream, audioStream, screenStream]);
 

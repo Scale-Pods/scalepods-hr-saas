@@ -8,7 +8,16 @@ import {
   type RoundType,
 } from "@scalepods/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Clock, Mic, PhoneCall, Settings2, Sparkles, Volume2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock,
+  Loader2,
+  Mic,
+  PhoneCall,
+  Settings2,
+  Sparkles,
+  Volume2,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -86,12 +95,102 @@ export default function CampaignDetailPage() {
   const [voiceConfigDraft, setVoiceConfigDraft] =
     useState<DialnexaVoiceConfig>(effectiveVoiceConfig);
   const [isSavingVoiceConfig, setIsSavingVoiceConfig] = useState(false);
+  const [callingCandidateId, setCallingCandidateId] = useState<string | null>(null);
+  const [isCallingAll, setIsCallingAll] = useState(false);
 
   useEffect(() => {
     if (!isEditingVoiceConfig) {
       setVoiceConfigDraft(effectiveVoiceConfig);
     }
   }, [effectiveVoiceConfig, isEditingVoiceConfig]);
+
+  const handleTriggerVoiceCall = async (cand: (typeof candidates)[number]) => {
+    if (!cand.phone) {
+      showToast(`${cand.name || "Candidate"} does not have a phone number on file.`, {
+        kind: "info",
+      });
+      return;
+    }
+    setCallingCandidateId(cand.candidate_id);
+    try {
+      const res = await fetch("/api/voice-screen", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          account_id: account?.id,
+          candidate_id: cand.candidate_id,
+          candidate_phone: cand.phone,
+          candidate_name: cand.name,
+          role_title: campaign?.name,
+          voice_call_config: effectiveVoiceConfig,
+          round_instance_id: cand.round_instance_id || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || data.message || "Failed to trigger voice call");
+      }
+      showToast(`AI voice screening call initiated for ${cand.name || cand.phone}!`, {
+        kind: "success",
+      });
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setCallingCandidateId(null);
+    }
+  };
+
+  const handleTriggerVoiceCallAll = async () => {
+    const candidatesWithPhone = candidates.filter((c) => !!c.phone);
+    if (candidatesWithPhone.length === 0) {
+      showToast("No candidates with phone numbers found in this campaign.", { kind: "info" });
+      return;
+    }
+
+    setIsCallingAll(true);
+    let success = 0;
+    try {
+      for (const cand of candidatesWithPhone) {
+        try {
+          const res = await fetch("/api/voice-screen", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+            },
+            body: JSON.stringify({
+              account_id: account?.id,
+              candidate_id: cand.candidate_id,
+              candidate_phone: cand.phone,
+              candidate_name: cand.name,
+              role_title: campaign?.name,
+              voice_call_config: effectiveVoiceConfig,
+              round_instance_id: cand.round_instance_id || undefined,
+            }),
+          });
+          if (res.ok) success++;
+        } catch (callErr) {
+          console.warn(`Failed to call ${cand.candidate_id}:`, callErr);
+        }
+      }
+
+      if (success > 0) {
+        showToast(
+          `AI voice screening call initiated for ${success} candidate${success === 1 ? "" : "s"}!`,
+          { kind: "success" },
+        );
+      } else {
+        showToast("Could not initiate calls. Please check DialNexa settings.", { kind: "info" });
+      }
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setIsCallingAll(false);
+    }
+  };
 
   if (isPending) {
     return (
@@ -129,12 +228,15 @@ export default function CampaignDetailPage() {
     if (!account?.id || !session?.access_token || !campaign) return;
 
     // Find candidates who scored at least the cutoff in resume screening
-    const eligibleCandidates = candidates.filter(
-      (c) =>
-        (c.latest_score ?? 0) >= bulkCutoff &&
-        (!c.decision || c.decision === "pending") &&
-        (c.current_stage === "resume screening" || c.current_stage === "resume"),
-    );
+    const eligibleCandidates = candidates.filter((c) => {
+      const stage = (c.current_stage || "").toLowerCase();
+      const isScreeningStage =
+        !c.current_stage || stage.includes("resume") || stage.includes("screen") || stage === "—";
+      const isPendingDecision = !c.decision || c.decision.toLowerCase() === "pending";
+      const hasQualifyingScore = (c.latest_score ?? 0) >= bulkCutoff;
+
+      return hasQualifyingScore && isPendingDecision && isScreeningStage;
+    });
 
     if (eligibleCandidates.length === 0) {
       showToast("No candidates meet this criteria to advance.", { kind: "info" });
@@ -144,6 +246,7 @@ export default function CampaignDetailPage() {
     setIsBulkSending(true);
     try {
       let successCount = 0;
+      let voiceCount = 0;
       let lastError: unknown = null;
       for (const c of eligibleCandidates) {
         try {
@@ -157,6 +260,33 @@ export default function CampaignDetailPage() {
             accessToken: session.access_token,
           });
           successCount++;
+
+          // Also trigger voice screening call if voice is enabled and candidate has phone
+          const cadence = campaign.cadence_config as { voice_screen?: boolean } | null;
+          const isVoiceEnabled = cadence?.voice_screen !== false;
+          if (isVoiceEnabled && c.phone) {
+            try {
+              const vRes = await fetch("/api/voice-screen", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({
+                  account_id: account.id,
+                  candidate_id: c.candidate_id,
+                  candidate_phone: c.phone,
+                  candidate_name: c.name,
+                  role_title: campaign.name,
+                  voice_call_config: effectiveVoiceConfig,
+                  round_instance_id: c.round_instance_id || undefined,
+                }),
+              });
+              if (vRes.ok) voiceCount++;
+            } catch (vErr) {
+              console.warn(`Voice call trigger failed for candidate ${c.candidate_id}:`, vErr);
+            }
+          }
         } catch (itemErr) {
           lastError = itemErr;
           console.error(`Failed to advance candidate ${c.candidate_id}:`, itemErr);
@@ -165,7 +295,11 @@ export default function CampaignDetailPage() {
 
       if (successCount > 0) {
         showToast(
-          `Successfully dispatched invites for ${successCount} candidate${successCount === 1 ? "" : "s"}.`,
+          `Successfully dispatched invites for ${successCount} candidate${successCount === 1 ? "" : "s"}${
+            voiceCount > 0
+              ? ` and placed ${voiceCount} AI voice call${voiceCount === 1 ? "" : "s"}`
+              : ""
+          }.`,
           { kind: "success" },
         );
         queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
@@ -298,18 +432,34 @@ export default function CampaignDetailPage() {
         subtitle="Configure the conversational AI voice agent dispatched by n8n for candidate phone screening"
         action={
           !isEditingVoiceConfig ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 text-xs font-semibold"
-              onClick={() => {
-                setVoiceConfigDraft(effectiveVoiceConfig);
-                setIsEditingVoiceConfig(true);
-              }}
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-              Configure Voice Agent
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs font-semibold border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
+                disabled={isCallingAll || candidates.filter((c) => !!c.phone).length === 0}
+                onClick={handleTriggerVoiceCallAll}
+              >
+                {isCallingAll ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <PhoneCall className="h-3.5 w-3.5" />
+                )}
+                {isCallingAll ? "Calling Candidates..." : "Call Candidates"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs font-semibold"
+                onClick={() => {
+                  setVoiceConfigDraft(effectiveVoiceConfig);
+                  setIsEditingVoiceConfig(true);
+                }}
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                Configure Voice Agent
+              </Button>
+            </div>
           ) : (
             <div className="flex items-center gap-2">
               <Button
@@ -430,7 +580,7 @@ export default function CampaignDetailPage() {
                 <TableHead>Stage</TableHead>
                 <TableHead className="text-right">Latest score</TableHead>
                 <TableHead>Decision</TableHead>
-                <TableHead />
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -452,6 +602,7 @@ export default function CampaignDetailPage() {
                   <TableCell>
                     <p className="font-medium text-foreground">{c.name || "Unnamed"}</p>
                     <p className="text-xs text-muted-foreground">{c.email}</p>
+                    {c.phone && <p className="text-[11px] text-muted-foreground/80">{c.phone}</p>}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{c.current_stage ?? "—"}</TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
@@ -461,13 +612,36 @@ export default function CampaignDetailPage() {
                     <DecisionBadge decision={c.decision} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Link
-                      href={`/candidates/${c.candidate_id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-xs font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100"
-                    >
-                      Open →
-                    </Link>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs gap-1 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
+                        title={
+                          c.phone
+                            ? `Call ${c.name || "candidate"} via DialNexa`
+                            : "No phone number available"
+                        }
+                        disabled={!c.phone || callingCandidateId === c.candidate_id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTriggerVoiceCall(c);
+                        }}
+                      >
+                        {callingCandidateId === c.candidate_id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <PhoneCall className="h-3 w-3" />
+                        )}
+                        <span>{callingCandidateId === c.candidate_id ? "Calling..." : "Call"}</span>
+                      </Button>
+                      <Link
+                        href={`/candidates/${c.candidate_id}`}
+                        className="text-xs font-semibold text-primary opacity-80 hover:opacity-100"
+                      >
+                        Open →
+                      </Link>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

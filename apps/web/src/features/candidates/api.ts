@@ -18,12 +18,41 @@ export interface LedgerView extends DecisionLedgerRow {
   recordingSignedUrl?: string | null;
 }
 
+export interface InterviewTranscriptItem {
+  id: string;
+  question_text: string;
+  question_type?: string;
+  interviewer_text?: string | null;
+  answer_text: string;
+  answered_at: string;
+  ai_note?: Record<string, unknown> | null;
+}
+
+export interface InterviewRecordingItem {
+  sessionId: string;
+  status: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  recordingSignedUrl: string | null;
+}
+
+export interface VoiceScreenTranscriptItem {
+  id: string;
+  score: number | null;
+  rationale: string | null;
+  transcript: string;
+  decided_at: string;
+}
+
 export interface CandidateProfile {
   candidate: CandidatesRow;
   campaignName: string | null;
   resumeUrl: string | null;
   timeline: LedgerView[];
   outreach: OutreachLogRow[];
+  interviewRecordings: InterviewRecordingItem[];
+  interviewTranscripts: InterviewTranscriptItem[];
+  voiceScreenTranscripts: VoiceScreenTranscriptItem[];
 }
 
 function roundNumberFromStage(stage: string): number | null {
@@ -169,11 +198,113 @@ export async function fetchCandidateProfile(id: string, tier: string): Promise<C
     resumeUrl = data?.signedUrl ?? (cand as any).resume_url;
   }
 
+  // 1. Fetch all interview recordings for this candidate
+  const interviewRecordings: InterviewRecordingItem[] = await Promise.all(
+    sessionRows.map(async (s) => {
+      let resolvedPath = s.recording_url;
+      if (!resolvedPath && s.account_id && s.id) {
+        try {
+          const { data: files } = await supabase.storage
+            .from("recordings")
+            .list(`${s.account_id}/${s.id}`, { limit: 1 });
+          if (files && files.length > 0 && files[0]?.name) {
+            resolvedPath = `${s.account_id}/${s.id}/${files[0].name}`;
+            void supabase
+              .from("interview_sessions")
+              .update({ recording_url: resolvedPath })
+              .eq("id", s.id);
+          }
+        } catch {}
+      }
+
+      let recordingSignedUrl: string | null = null;
+      if (resolvedPath) {
+        try {
+          const { data: signed } = await supabase.storage
+            .from("recordings")
+            .createSignedUrl(resolvedPath, 3600);
+          recordingSignedUrl = signed?.signedUrl ?? null;
+        } catch (storageErr) {
+          console.warn("Could not generate signed URL for recording:", storageErr);
+        }
+      }
+      return {
+        sessionId: s.id,
+        status: s.status,
+        startedAt: s.started_at ?? null,
+        completedAt: s.completed_at ?? null,
+        recordingSignedUrl,
+      };
+    }),
+  );
+
+  // 2. Fetch full AI interview Q&A dialogue transcript
+  let interviewTranscripts: InterviewTranscriptItem[] = [];
+  const targetSessionIds = sessionRows.map((s) => s.id);
+  const targetRoundIds = roundRows.map((r) => r.id);
+
+  if (targetRoundIds.length > 0 || targetSessionIds.length > 0) {
+    try {
+      let query = (supabase as any)
+        .from("interview_answers")
+        .select("id,session_id,round_instance_id,question_id,answer_text,answered_at,ai_live_note");
+
+      if (targetRoundIds.length > 0) {
+        query = query.in("round_instance_id", targetRoundIds);
+      } else {
+        query = query.in("session_id", targetSessionIds);
+      }
+
+      const { data: answersData } = await query.order("answered_at", { ascending: true });
+
+      if (answersData && answersData.length > 0) {
+        interviewTranscripts = answersData.map((ans: any) => {
+          const liveNote = ans.ai_live_note || {};
+          return {
+            id: ans.id,
+            question_text:
+              liveNote.question_text || liveNote.interviewer_text || "Interview Question",
+            question_type: liveNote.question_type || "General",
+            interviewer_text: liveNote.interviewer_text || null,
+            answer_text:
+              ans.answer_text ||
+              (liveNote.turn_type === "question" ? "Candidate listened to question" : ""),
+            answered_at: ans.answered_at,
+            ai_note: liveNote,
+          };
+        });
+      }
+    } catch (ansErr) {
+      console.warn("Could not load interview answers:", ansErr);
+    }
+  }
+
+  // 3. Extract voice screening call transcripts from decision_ledger
+  const voiceScreenTranscripts: VoiceScreenTranscriptItem[] = (
+    (ledger.data ?? []) as Record<string, unknown>[]
+  )
+    .filter(
+      (row) =>
+        row.stage === "voice_screen" ||
+        (typeof row.stage === "string" && row.stage.toLowerCase().includes("voice")) ||
+        (typeof row.raw_text === "string" && row.raw_text.length > 10),
+    )
+    .map((row) => ({
+      id: String(row.id ?? ""),
+      score: row.score != null ? Number(row.score) : null,
+      rationale: (row.rationale as string) ?? null,
+      transcript: (row.raw_text as string) ?? "",
+      decided_at: String(row.created_at ?? ""),
+    }));
+
   return {
     candidate: cand as CandidatesRow,
     campaignName,
     resumeUrl,
     timeline: view,
     outreach: (logs.data ?? []) as OutreachLogRow[],
+    interviewRecordings,
+    interviewTranscripts,
+    voiceScreenTranscripts,
   };
 }

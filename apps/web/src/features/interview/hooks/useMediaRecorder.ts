@@ -1,5 +1,4 @@
 import { useCallback, useRef, useState } from "react";
-import { anonClient } from "@/lib/supabase/anon";
 import {
   createCompositeStream,
   getAudioStream,
@@ -36,7 +35,11 @@ export function useMediaRecorder() {
   const start = useCallback(
     async (
       sessionId: string,
-      existingStreams?: { camera?: MediaStream; screen?: MediaStream | null; audio?: MediaStream },
+      existingStreams?: {
+        camera?: MediaStream;
+        screen?: MediaStream | null;
+        audio?: MediaStream | null;
+      },
       accountId?: string,
     ) => {
       try {
@@ -46,9 +49,25 @@ export function useMediaRecorder() {
         setState((prev) => ({ ...prev, status: "recording", error: null }));
 
         const cameraStream = existingStreams?.camera || (await getCameraStream());
-        const screenStream =
-          existingStreams?.screen !== undefined ? existingStreams.screen : await getScreenStream();
-        const audioStream = existingStreams?.audio || (await getAudioStream());
+        let screenStream: MediaStream | null = null;
+        if (existingStreams) {
+          screenStream = existingStreams.screen ?? null;
+        } else {
+          try {
+            screenStream = await getScreenStream();
+          } catch {
+            screenStream = null;
+          }
+        }
+
+        let audioStream: MediaStream | null = existingStreams?.audio ?? null;
+        if (!audioStream) {
+          try {
+            audioStream = await getAudioStream();
+          } catch {
+            audioStream = null;
+          }
+        }
 
         let mixedStream: MediaStream;
         let cleanup: (() => void) | null = null;
@@ -66,6 +85,7 @@ export function useMediaRecorder() {
           mixedStream = new MediaStream([
             ...cameraStream.getVideoTracks(),
             ...screenStream.getVideoTracks(),
+            ...(cameraStream.getAudioTracks() || []),
           ]);
         } else if (audioStream) {
           mixedStream = new MediaStream([
@@ -73,7 +93,10 @@ export function useMediaRecorder() {
             ...audioStream.getAudioTracks(),
           ]);
         } else {
-          mixedStream = new MediaStream([...cameraStream.getVideoTracks()]);
+          mixedStream = new MediaStream([
+            ...cameraStream.getVideoTracks(),
+            ...cameraStream.getAudioTracks(),
+          ]);
         }
 
         compositeCleanupRef.current = cleanup;
@@ -102,7 +125,7 @@ export function useMediaRecorder() {
           setState((prev) => ({ ...prev, error: "Recording error" }));
         };
 
-        recorder.start(10000); // 10s chunk slices
+        recorder.start(5000); // 5s chunk slices for frequent flushing
         startTimeRef.current = Date.now();
 
         if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
@@ -121,30 +144,39 @@ export function useMediaRecorder() {
     [],
   );
 
-  const stop = useCallback(async (): Promise<Blob | null> => {
+  const stop = useCallback(async (): Promise<{ blob: Blob | null; filePath: string | null }> => {
     if (durationIntervalRef.current) {
       clearInterval(durationIntervalRef.current);
       durationIntervalRef.current = null;
-    }
-
-    if (compositeCleanupRef.current) {
-      try {
-        compositeCleanupRef.current();
-      } catch {}
-      compositeCleanupRef.current = null;
     }
 
     return new Promise((resolve) => {
       const rec = mediaRecorderRef.current;
       if (!rec || rec.state === "inactive") {
         setState((prev) => ({ ...prev, status: "stopped" }));
-        resolve(null);
+        if (compositeCleanupRef.current) {
+          try {
+            compositeCleanupRef.current();
+          } catch {}
+          compositeCleanupRef.current = null;
+        }
+        resolve({ blob: null, filePath: null });
         return;
       }
 
       rec.onstop = async () => {
         setState((prev) => ({ ...prev, status: "stopped" }));
+
+        // Clean up composite stream now that recorder has officially finalized
+        if (compositeCleanupRef.current) {
+          try {
+            compositeCleanupRef.current();
+          } catch {}
+          compositeCleanupRef.current = null;
+        }
+
         const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || "video/webm" });
+        let uploadedFilePath: string | null = null;
 
         // Upload interview video to Supabase Storage via server endpoint
         if (sessionIdRef.current && blob.size > 0) {
@@ -163,6 +195,7 @@ export function useMediaRecorder() {
 
             if (res.ok) {
               const resData = await res.json();
+              uploadedFilePath = resData.filePath ?? null;
               console.log("[useMediaRecorder] Recording stored in Supabase:", resData.filePath);
               setState((prev) => ({ ...prev, recordingId: resData.filePath }));
             } else {
@@ -172,15 +205,25 @@ export function useMediaRecorder() {
           } catch (uploadErr) {
             console.warn("[useMediaRecorder] Storage upload skipped/failed:", uploadErr);
           }
+        } else {
+          console.warn("[useMediaRecorder] No recording blob to upload. Blob size:", blob.size);
         }
 
-        resolve(blob);
+        resolve({ blob, filePath: uploadedFilePath });
       };
 
       try {
+        if (rec.state === "recording") {
+          try {
+            rec.requestData();
+          } catch (reqErr) {
+            console.warn("[useMediaRecorder] requestData warning:", reqErr);
+          }
+        }
         rec.stop();
-      } catch {
-        resolve(null);
+      } catch (stopErr) {
+        console.warn("[useMediaRecorder] stop error:", stopErr);
+        resolve({ blob: null, filePath: null });
       }
     });
   }, []);

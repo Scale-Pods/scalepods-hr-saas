@@ -49,6 +49,7 @@ export interface ViewCandidate {
   current_stage: string | null;
   latest_score: number | null;
   decision: string | null;
+  round_instance_id?: string | null;
 }
 
 export interface CampaignDetail {
@@ -92,23 +93,59 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
 
   const candIds = Array.from(new Set(roundInstances.map((ri) => ri.candidate_id)));
 
-  let candidates: ViewCandidate[] = [];
-  if (candIds.length > 0) {
-    const [candsRes, dlRes] = await Promise.all([
-      supabase.from("candidates").select("id,name,email,phone").in("id", candIds),
-      supabase
-        .from("decision_ledger")
-        .select("id,candidate_id,stage,score,created_at")
-        .in("candidate_id", candIds)
-        .order("created_at", { ascending: false }),
-    ]);
+  // Also query storage for candidate resumes uploaded to this specific campaign
+  const campaignRow = (c.data as CampaignsRow) ?? null;
+  let storageEmails: string[] = [];
+  if (campaignRow?.account_id) {
+    try {
+      const { data: storageFiles } = await supabase.storage
+        .from("resumes")
+        .list(`${campaignRow.account_id}/${id}`);
+      if (storageFiles && storageFiles.length > 0) {
+        storageEmails = storageFiles
+          .map((f) => f.name.toLowerCase().trim())
+          .filter((name) => name.includes("@"));
+      }
+    } catch {
+      // Storage listing optional fallback
+    }
+  }
 
+  let candidates: ViewCandidate[] = [];
+  if (candIds.length > 0 || storageEmails.length > 0) {
+    let candsQuery = supabase.from("candidates").select("id,name,email,phone");
+    if (candIds.length > 0 && storageEmails.length > 0) {
+      candsQuery = candsQuery.or(
+        `id.in.(${candIds.join(",")}),email.in.(${storageEmails.join(",")})`,
+      );
+    } else if (candIds.length > 0) {
+      candsQuery = candsQuery.in("id", candIds);
+    } else {
+      candsQuery = candsQuery.in("email", storageEmails);
+    }
+
+    if (campaignRow?.account_id) {
+      candsQuery = candsQuery.eq("account_id", campaignRow.account_id);
+    }
+
+    const candsRes = await candsQuery;
     const candsList = (candsRes.data ?? []) as {
       id: string;
       name: string | null;
       email: string;
       phone: string | null;
     }[];
+
+    const allCandIds = candsList.map((cand) => cand.id);
+    const dlRes =
+      allCandIds.length > 0
+        ? await supabase
+            .from("decision_ledger")
+            .select("id,candidate_id,stage,score,created_at")
+            .in("candidate_id", allCandIds)
+            .order("created_at", { ascending: false })
+        : { data: [] };
+
     const dlList = (dlRes.data ?? []) as unknown as {
       id: string;
       candidate_id: string;
@@ -123,7 +160,7 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
 
       let stage = candDl?.stage;
       if (!stage || stage === "round_undefined") {
-        stage = candRi ? `Round ${candRi.round_number}` : "Screening";
+        stage = candRi ? `Round ${candRi.round_number}` : "Resume screening";
       } else if (stage.toLowerCase().includes("resume")) {
         stage = "Resume screening";
       } else if (stage.startsWith("round_")) {
@@ -138,6 +175,7 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         current_stage: stage,
         latest_score: candDl?.score != null ? Number(candDl.score) : null,
         decision: candRi?.status ?? null,
+        round_instance_id: candRi?.id ?? null,
       };
     });
   }

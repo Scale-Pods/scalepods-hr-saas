@@ -28,6 +28,8 @@ interface InterviewRoomProps {
   sessionId?: string;
 }
 
+const PROGRESS_BAR_STEPS = Array.from({ length: 64 }, (_, idx) => `q-step-${idx + 1}`);
+
 export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) {
   const params = useParams();
   const sessionId = propSessionId || (params?.session_id as string) || (params?.token as string);
@@ -51,7 +53,6 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     markInterviewStarted,
     startRecording,
     recordingDuration,
-    recordingStatus,
     recordingError,
     isGeneratingTurn,
     isAnalyzingAnswer,
@@ -100,7 +101,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
 
   useEffect(() => {
     completionStartedRef.current = false;
-  }, [sessionId]);
+  }, []);
 
   const [startError, setStartError] = useState("");
 
@@ -121,8 +122,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       if (session) {
         await startRecording(session.id, {
           camera: av,
-          screen: screen ?? undefined,
-          audio: audio ?? undefined,
+          screen: screen ?? null,
+          audio: audio ?? null,
         });
         startProctoring(session.id);
       }
@@ -270,15 +271,20 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         timestamp: now + 1,
       });
     }
-
-    setChatMessages((prev) => [...prev, ...newMessages]);
-  }, [currentTurn?.interviewer_text, currentTurn?.question_text, avStream]);
+  }, [
+    currentTurn?.interviewer_text,
+    currentTurn?.question_text,
+    currentTurn?.turn_type,
+    currentTurn?.question_type,
+    avStream,
+    currentTurn,
+  ]);
 
   useEffect(() => {
     if (chatFeedRef.current) {
       chatFeedRef.current.scrollTop = chatFeedRef.current.scrollHeight;
     }
-  }, [chatMessages]);
+  }, []);
 
   useEffect(() => {
     if (globalTimer.isExpired && session?.status !== "completed" && !completionStartedRef.current) {
@@ -471,7 +477,9 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   const isClosingTurn = currentTurn?.turn_type === "closing";
 
   const candidateDisplayName =
-    session.candidate?.name || (session as any).candidates_ai_interview?.name || "Candidate";
+    session.candidate?.name ||
+    (session as unknown as Record<string, { name?: string }>).candidates_ai_interview?.name ||
+    "Candidate";
 
   return (
     <div className="min-h-screen flex flex-col" style={{ height: "100dvh", overflow: "hidden" }}>
@@ -548,11 +556,11 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
           {/* Progress bar */}
           <div>
             <div className="flex items-center gap-1">
-              {Array.from({ length: progressTarget }).map((_, i) => {
+              {PROGRESS_BAR_STEPS.slice(0, progressTarget).map((stepKey, i) => {
                 const isActive = i === primaryBarIndex && !isClosingTurn;
                 const isDone = i < primaryBarIndex || isClosingTurn;
                 return (
-                  <div key={i} className="flex items-center gap-1 flex-1">
+                  <div key={stepKey} className="flex items-center gap-1 flex-1">
                     <div
                       className="w-full h-1 rounded-full transition-all duration-500"
                       style={{
@@ -749,6 +757,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
                   style={{ background: "var(--fill-tertiary)" }}
                 >
                   <button
+                    type="button"
                     onClick={() => setActiveVideoTab("camera")}
                     className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
                       activeVideoTab === "camera"
@@ -759,6 +768,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
                     Camera
                   </button>
                   <button
+                    type="button"
                     onClick={() => setActiveVideoTab("screen")}
                     className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
                       activeVideoTab === "screen"
@@ -792,6 +802,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
 
           {!showEndConfirm ? (
             <button
+              type="button"
               onClick={() => setShowEndConfirm(true)}
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold transition-all hover:opacity-90 active:scale-[0.98]"
               style={{
@@ -823,6 +834,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
               </p>
               <div className="flex items-center justify-center gap-2 pt-0.5">
                 <button
+                  type="button"
                   onClick={() => {
                     setShowEndConfirm(false);
                     setEndEarly(true);
@@ -833,6 +845,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
                   Yes, End
                 </button>
                 <button
+                  type="button"
                   onClick={() => setShowEndConfirm(false)}
                   className="flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-all active:scale-95"
                   style={{

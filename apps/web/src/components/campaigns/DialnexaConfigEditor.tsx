@@ -15,7 +15,7 @@ import {
   Volume2,
   Wand2,
 } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,7 +24,6 @@ import {
   SelectItem,
   SelectSeparator,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -58,12 +57,12 @@ export function DialnexaConfigEditor({
 
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
-  const [activeNavTab, setActiveNavTab] = useState<"voice" | "prompt" | "greeting" | "all">(
-    "voice",
-  );
+  const [activeNavTab, setActiveNavTab] = useState<
+    "voice" | "prompt" | "greeting" | "duration" | "all"
+  >("voice");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const stopAudio = () => {
+  const stopAudio = useCallback(() => {
     if (audioRef.current) {
       try {
         audioRef.current.pause();
@@ -81,7 +80,7 @@ export function DialnexaConfigEditor({
       }
     }
     setPlayingVoiceId(null);
-  };
+  }, []);
 
   const playVoiceSample = (voiceId: string) => {
     if (playingVoiceId === voiceId) {
@@ -146,7 +145,7 @@ export function DialnexaConfigEditor({
     return () => {
       stopAudio();
     };
-  }, []);
+  }, [stopAudio]);
 
   const handleVoiceSelectChange = (newVal: string) => {
     setVoiceSelectValue(newVal);
@@ -170,7 +169,7 @@ export function DialnexaConfigEditor({
     let updatedPrompt = tmpl.prompt;
     let updatedFirstMessage = tmpl.first_message;
 
-    if (jobTitle && jobTitle.trim()) {
+    if (jobTitle?.trim()) {
       updatedPrompt = updatedPrompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
       updatedFirstMessage = updatedFirstMessage.replace(/\{\{job_title\}\}/g, jobTitle.trim());
     }
@@ -355,6 +354,30 @@ export function DialnexaConfigEditor({
 
           <button
             type="button"
+            onClick={() => setActiveNavTab("duration")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
+              activeNavTab === "duration"
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+            )}
+          >
+            <Clock className="h-3.5 w-3.5" />
+            <span>4. Call Duration</span>
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-0.2 text-[10px] font-mono",
+                activeNavTab === "duration"
+                  ? "bg-white/20 text-white"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              {Math.round((value.max_duration_seconds || 300) / 60)}m
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveNavTab("all")}
             className={cn(
               "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all cursor-pointer border border-transparent",
@@ -372,7 +395,7 @@ export function DialnexaConfigEditor({
         <span className="text-[11px] font-mono text-muted-foreground px-2">
           {activeNavTab === "all"
             ? "Overview mode"
-            : `Step ${activeNavTab === "voice" ? "1" : activeNavTab === "prompt" ? "2" : "3"} of 3`}
+            : `Step ${activeNavTab === "voice" ? "1" : activeNavTab === "prompt" ? "2" : activeNavTab === "greeting" ? "3" : "4"} of 4`}
         </span>
       </div>
 
@@ -852,6 +875,114 @@ export function DialnexaConfigEditor({
             >
               <ChevronLeft className="h-3.5 w-3.5" />
               <span>Back: System Prompt</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveNavTab("duration")}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs cursor-pointer"
+            >
+              <span>Next: Call Duration</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Section 4: Call Duration & Timing ── */}
+      <div
+        className={cn(
+          "space-y-4",
+          activeNavTab !== "duration" && activeNavTab !== "all" && "hidden",
+        )}
+      >
+        <div className="space-y-3 rounded-xl border border-border/80 bg-card/60 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-sky-500" />
+                Maximum Call Duration Limit
+              </span>
+              <Badge
+                variant="outline"
+                className="text-[10px] font-mono font-medium px-2 py-0.5 bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20"
+              >
+                {value.max_duration_seconds || 300}s (
+                {Math.round((value.max_duration_seconds || 300) / 60)} min)
+              </Badge>
+            </div>
+            <span className="text-[11px] text-muted-foreground font-mono">
+              Auto-terminates call after timeout
+            </span>
+          </div>
+
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            The AI telephony screening agent will gracefully conclude the conversation once this
+            time limit is reached, protecting your telephony balance and keeping phone screens
+            concise.
+          </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+            {[
+              { label: "2 mins", secs: 120, desc: "Quick Screen" },
+              { label: "3 mins", secs: 180, desc: "Standard Check" },
+              { label: "5 mins", secs: 300, desc: "In-Depth (Rec.)" },
+              { label: "7 mins", secs: 420, desc: "Extended Tech" },
+              { label: "10 mins", secs: 600, desc: "Comprehensive" },
+            ].map((preset) => {
+              const isSelected = (value.max_duration_seconds || 300) === preset.secs;
+              return (
+                <button
+                  type="button"
+                  key={preset.secs}
+                  onClick={() => onChange({ ...value, max_duration_seconds: preset.secs })}
+                  className={cn(
+                    "flex flex-col items-center justify-center p-2.5 rounded-lg border text-center transition-all cursor-pointer",
+                    isSelected
+                      ? "border-primary bg-primary/10 text-primary font-semibold shadow-xs ring-1 ring-primary/20"
+                      : "border-border/70 bg-card hover:bg-muted/70 text-foreground",
+                  )}
+                >
+                  <span className="text-xs">{preset.label}</span>
+                  <span className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                    {preset.desc}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="pt-2 flex items-center gap-3">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              Custom duration:
+            </span>
+            <Input
+              type="number"
+              min={30}
+              max={1800}
+              step={15}
+              value={value.max_duration_seconds || 300}
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10);
+                onChange({ ...value, max_duration_seconds: Number.isNaN(parsed) ? 300 : parsed });
+              }}
+              className="h-8 w-28 text-xs font-mono bg-background border-border/90"
+            />
+            <span className="text-xs text-muted-foreground">
+              seconds ({Math.round((value.max_duration_seconds || 300) / 60)} minutes)
+            </span>
+          </div>
+        </div>
+
+        {/* Section 4 Footer Navigation */}
+        {activeNavTab !== "all" && (
+          <div className="flex items-center justify-between pt-2 border-t border-border/60">
+            <button
+              type="button"
+              onClick={() => setActiveNavTab("greeting")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span>Back: Opening Greeting</span>
             </button>
             <button
               type="button"

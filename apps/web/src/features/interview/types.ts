@@ -40,6 +40,7 @@ export interface InterviewSession {
   campaign_name?: string;
   jd_text?: string;
   resume_text?: string;
+  recording_url?: string | null;
 }
 
 export type AnswerInsufficiencyReason = "lacks_depth" | "lacks_evidence" | "vague" | "irrelevant";
