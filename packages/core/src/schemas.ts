@@ -31,6 +31,17 @@ export const cadenceConfigSchema = z
   })
   .optional();
 
+export const dialnexaVoiceConfigSchema = z
+  .object({
+    prompt: z.string().min(1, "Prompt is required"),
+    voice: z.string().min(1, "Voice is required"),
+    model: z.string().optional(),
+    first_message: z.string().optional(),
+    language: z.string().optional(),
+    max_duration_seconds: z.number().int().min(30).max(1800).optional(),
+  })
+  .optional();
+
 export const campaignCreateSchema = z.object({
   action: z.literal("create"),
   account_id: z.string().uuid(),
@@ -39,6 +50,7 @@ export const campaignCreateSchema = z.object({
   number_of_rounds: z.number().int().min(1).max(6),
   rounds: z.array(campaignRoundSchema),
   cadence_config: cadenceConfigSchema,
+  voice_call_config: dialnexaVoiceConfigSchema,
 });
 
 export const campaignUpdateSchema = z.object({
@@ -48,6 +60,7 @@ export const campaignUpdateSchema = z.object({
   name: z.string().optional(),
   jd_text: z.string().optional(),
   status: z.enum(["on", "off"]).optional(),
+  voice_call_config: dialnexaVoiceConfigSchema,
 });
 
 // -------------------------------------------------------------- candidate intake

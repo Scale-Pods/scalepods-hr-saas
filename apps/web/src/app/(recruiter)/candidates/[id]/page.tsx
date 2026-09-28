@@ -1,6 +1,7 @@
 "use client";
 
 import { formatDateTime } from "@scalepods/core";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ChevronDown,
@@ -35,7 +36,6 @@ import { useAccount } from "@/features/account/hooks";
 import type { LedgerView } from "@/features/candidates/api";
 import { useCandidateProfile } from "@/features/candidates/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 
 function roundNumberFromStage(stage: string): number | null {

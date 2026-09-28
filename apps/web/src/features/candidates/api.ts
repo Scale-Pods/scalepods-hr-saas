@@ -114,7 +114,7 @@ export async function fetchCandidateProfile(id: string, tier: string): Promise<C
 
   const view: LedgerView[] = await Promise.all(
     ((ledger.data ?? []) as any[]).map(async (row) => {
-      let roundNumber = roundNumberFromStage(row.stage);
+      const roundNumber = roundNumberFromStage(row.stage);
       let forRound = roundNumber
         ? roundRows.find((r) => r.round_number === roundNumber)
         : undefined;

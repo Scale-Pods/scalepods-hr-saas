@@ -6,6 +6,15 @@ export type Tier = "free" | "basic" | "growth" | "enterprise";
 
 export type RoundType = "ai_interview" | "human_interview" | "assignment";
 
+export interface DialnexaVoiceConfig {
+  prompt: string;
+  voice: string;
+  model?: string;
+  first_message?: string;
+  language?: string;
+  max_duration_seconds?: number;
+}
+
 export type Tables = Database["public"]["Tables"];
 export type AccountsRow = Tables["accounts"]["Row"];
 export type CandidatesRow = Tables["candidates"]["Row"];

@@ -1,12 +1,12 @@
-import { useState, useRef, useCallback } from "react";
-import {
-  getMimeType,
-  getCameraStream,
-  getScreenStream,
-  getAudioStream,
-  createCompositeStream,
-} from "../utils/mediaHelpers";
+import { useCallback, useRef, useState } from "react";
 import { anonClient } from "@/lib/supabase/anon";
+import {
+  createCompositeStream,
+  getAudioStream,
+  getCameraStream,
+  getMimeType,
+  getScreenStream,
+} from "../utils/mediaHelpers";
 
 interface MediaRecorderState {
   status: "idle" | "recording" | "paused" | "stopped";

@@ -1,9 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from "react";
 import type React from "react";
-
+import { useCallback, useEffect, useRef, useState } from "react";
+import { DeepgramSTT } from "../utils/deepgram";
 import { getAudioStream } from "../utils/mediaHelpers";
 import { normalizeTechnicalSpeech } from "../utils/speechNormalizer";
-import { DeepgramSTT } from "../utils/deepgram";
 
 const SILENCE_TIMEOUT_MS = 7000;
 const COUNTDOWN_TENTHS = Math.floor(SILENCE_TIMEOUT_MS / 100);

@@ -1,4 +1,4 @@
-import { Brain, MessageSquare, Users, Lightbulb } from "lucide-react";
+import { Brain, Lightbulb, MessageSquare, Users } from "lucide-react";
 import type { InterviewQuestion } from "../types";
 
 interface QuestionDisplayProps {

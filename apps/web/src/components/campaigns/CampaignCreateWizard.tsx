@@ -5,28 +5,29 @@ import {
   type CadenceRenderRow,
   cadenceForTier,
   campaignCreateSchema,
+  DEFAULT_DIALNEXA_CONFIG,
+  type DialnexaVoiceConfig,
+  type Json,
   type RoundType,
   type TeamMemberRow,
   TIER_LIMITS,
 } from "@scalepods/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Calendar,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  FileText,
   Info,
   Layers,
   Sparkles,
   Upload,
-  Users,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { CadencePreview } from "@/components/campaigns/CadencePreview";
 import { ChannelToggle } from "@/components/campaigns/ChannelToggle";
+import { DialnexaConfigEditor } from "@/components/campaigns/DialnexaConfigEditor";
 import { DEFAULT_ROUND, type RoundDraft, RoundEditor } from "@/components/campaigns/RoundEditor";
 import { StepsBar } from "@/components/campaigns/StepsBar";
 import { showErrorToast } from "@/components/shared/TierLimitToast";
@@ -74,6 +75,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const [rounds, setRounds] = useState<RoundDraft[]>([DEFAULT_ROUND]);
   const [whatsappOn, setWhatsappOn] = useState(tierConfig.whatsapp);
   const [voiceOn, setVoiceOn] = useState(tierConfig.voiceScreening);
+  const [dialnexaConfig, setDialnexaConfig] = useState<DialnexaVoiceConfig>(() => ({
+    ...DEFAULT_DIALNEXA_CONFIG,
+  }));
 
   useEffect(() => {
     setRounds((prev) => syncRoundCount(prev, numberOfRounds));
@@ -144,6 +148,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       number_of_rounds: numberOfRounds,
       start_date: startDate || undefined,
       end_date: endDate || undefined,
+      voice_call_config: voiceOn ? dialnexaConfig : undefined,
       rounds: rounds.slice(0, numberOfRounds).map((r, i) => ({
         round_number: i + 1,
         round_type: r.round_type,
@@ -190,6 +195,13 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           .limit(1)
           .maybeSingle();
         createdId = data?.id ?? null;
+      }
+
+      if (createdId && voiceOn) {
+        await supabaseBrowser()
+          .from("campaigns")
+          .update({ voice_call_config: dialnexaConfig as unknown as Json })
+          .eq("id", createdId);
       }
 
       await queryClient.invalidateQueries({ queryKey: campaignsKey });
@@ -475,6 +487,16 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 }
                 onCheckedChange={setVoiceOn}
               />
+
+              {voiceOn && (
+                <div className="pt-2">
+                  <DialnexaConfigEditor
+                    value={dialnexaConfig}
+                    onChange={setDialnexaConfig}
+                    jobTitle={name}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="pt-4 border-t border-border space-y-2">

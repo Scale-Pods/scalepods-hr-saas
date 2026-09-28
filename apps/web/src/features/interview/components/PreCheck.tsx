@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
 import {
+  AlertTriangle,
   CheckCircle,
-  XCircle,
   Loader,
+  Monitor,
   RefreshCw,
   Shield,
-  Monitor,
-  AlertTriangle,
+  XCircle,
 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import type { InterviewSession } from "../types";
 import { OPTIMAL_AUDIO_CONSTRAINTS } from "../utils/mediaHelpers";
 

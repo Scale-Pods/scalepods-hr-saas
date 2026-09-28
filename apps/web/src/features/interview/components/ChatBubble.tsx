@@ -1,5 +1,5 @@
+import { Brain, CheckCircle, Lightbulb, MessageSquare, Users } from "lucide-react";
 import React from "react";
-import { CheckCircle, Brain, MessageSquare, Users, Lightbulb } from "lucide-react";
 
 /* ─── Types ────────────────────────────────────────────────────────────── */
 

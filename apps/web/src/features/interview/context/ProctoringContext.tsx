@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
-import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from "../types";
+import type React from "react";
+import { createContext, useCallback, useContext, useState } from "react";
 import { useProctoring } from "../hooks/useProctoring";
+import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from "../types";
 
 interface ProctoringContextType {
   violations: ProctoringEvent[];

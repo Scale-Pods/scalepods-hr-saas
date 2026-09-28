@@ -1,25 +1,25 @@
 "use client";
 
-import { useEffect, useCallback, useRef, useState } from "react";
+import { AlertCircle, CheckCircle, Clock, Loader2, Monitor, PhoneOff, Upload } from "lucide-react";
 import { useParams } from "next/navigation";
-import { AlertCircle, CheckCircle, Clock, Monitor, Upload, Loader2, PhoneOff } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useInterviewContext } from "../context/InterviewContext";
 import { useProctoringContext } from "../context/ProctoringContext";
-import { LoadingSpinner } from "./LoadingSpinner";
+import { useInterviewTimer } from "../hooks/useInterviewTimer";
 import { getMediaDevicesStream, getScreenStream } from "../utils/mediaHelpers";
 import { useTTSEngine } from "../utils/tts";
-import { useInterviewTimer } from "../hooks/useInterviewTimer";
-import { AnswerRecorder } from "./AnswerRecorder";
 import type { AnswerRecorderState } from "./AnswerRecorder";
+import { AnswerRecorder } from "./AnswerRecorder";
+import type { ChatMessage } from "./ChatBubble";
+import { ChatBubble, TypingBubble } from "./ChatBubble";
+import { ChatInputBar } from "./ChatInputBar";
 import { Completion } from "./Completion";
+import { LoadingSpinner } from "./LoadingSpinner";
 import { PreCheck } from "./PreCheck";
-import { VideoFeed } from "./VideoFeed";
 import { ProctoringOverlay } from "./ProctoringOverlay";
 import { RecruiterPersona } from "./RecruiterPersona";
-import { ChatBubble, TypingBubble } from "./ChatBubble";
-import type { ChatMessage } from "./ChatBubble";
-import { ChatInputBar } from "./ChatInputBar";
+import { VideoFeed } from "./VideoFeed";
 
 const INTERVIEW_TIME_MINUTES = 25;
 const DEFAULT_TARGET_QUESTIONS = 11;

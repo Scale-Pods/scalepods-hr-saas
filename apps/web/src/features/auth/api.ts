@@ -34,8 +34,10 @@ export async function signOut(): Promise<void> {
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : getEnv().NEXT_PUBLIC_FRONTEND_URL;
   const { error } = await supabaseBrowser().auth.resetPasswordForEmail(email, {
-    redirectTo: `${getEnv().NEXT_PUBLIC_FRONTEND_URL}/auth/reset`,
+    redirectTo: `${origin}/auth/verify?type=recovery`,
   });
   if (error) throw error;
 }

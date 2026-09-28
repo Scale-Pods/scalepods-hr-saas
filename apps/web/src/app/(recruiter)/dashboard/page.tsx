@@ -24,8 +24,8 @@ import {
   Sparkles,
   Star,
   TrendingUp,
-  Users,
   UserCheck,
+  Users,
   Zap,
 } from "lucide-react";
 import Link from "next/link";

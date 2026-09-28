@@ -38,8 +38,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAccount } from "@/features/account/hooks";
-import { useCampaigns } from "@/features/campaigns/hooks";
 import { updateCampaignStatus } from "@/features/campaigns/api";
+import { useCampaigns } from "@/features/campaigns/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 

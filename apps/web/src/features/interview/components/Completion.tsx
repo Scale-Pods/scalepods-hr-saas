@@ -1,5 +1,5 @@
+import { ArrowRight, CheckCircle, Clock, FileText, Mail, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { CheckCircle, Sparkles, Clock, Mail, FileText, ArrowRight } from "lucide-react";
 
 const ESTIMATED_MINUTES = 5;
 

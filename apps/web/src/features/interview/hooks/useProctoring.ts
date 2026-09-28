@@ -1,8 +1,8 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { insertProctoringEvent } from "@/features/candidate/api";
+import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from "../types";
 import { detectFaces, disposeFaceDetector } from "../utils/mediapipeFaceDetector";
 import { detectBehavior, disposeLandmarker } from "../utils/mediapipeLandmarker";
-import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from "../types";
-import { insertProctoringEvent } from "@/features/candidate/api";
 
 interface ProctoringState {
   violations: ProctoringEvent[];

@@ -63,6 +63,7 @@ export type Database = {
         Row: {
           id: string;
           cadence_config: Json | null;
+          voice_call_config: Json | null;
           account_id: string;
           name: string;
           jd_text: string | null;
@@ -73,6 +74,7 @@ export type Database = {
         Insert: {
           id?: string;
           cadence_config?: Json | null;
+          voice_call_config?: Json | null;
           account_id: string;
           name: string;
           jd_text?: string | null;
@@ -518,7 +520,7 @@ export type Database = {
           p_event_type: string;
           p_detail: string;
         };
-        Returns: void;
+        Returns: undefined;
       };
       insert_assignment_submission: {
         Args: {

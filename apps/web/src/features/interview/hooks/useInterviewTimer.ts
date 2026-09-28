@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function useInterviewTimer(durationMinutes: number) {
   const [remaining, setRemaining] = useState(durationMinutes * 60);

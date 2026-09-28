@@ -1,7 +1,7 @@
 "use client";
 
 import { limitLabel, TIER_LIMITS, type Tier, type TierLimits, tierAtLeast } from "@scalepods/core";
-import { ExternalLink, Zap, CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, Zap } from "lucide-react";
 import { useState } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";

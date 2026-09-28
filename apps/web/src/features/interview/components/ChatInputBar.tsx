@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Mic, MicOff, Send, Brain, Loader2 } from "lucide-react";
+import { Brain, Loader2, Mic, MicOff, Send } from "lucide-react";
+import React, { useEffect, useState } from "react";
 import type { AnswerRecorderState } from "./AnswerRecorder";
 
 interface ChatInputBarProps {

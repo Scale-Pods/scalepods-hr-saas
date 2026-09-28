@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from "react";
-import { AlertTriangle, Eye, Monitor, Mic, X, Shield, Info, AlertCircle } from "lucide-react";
-import type { ProctoringEvent, ProctoringSeverity } from "../types";
+import { AlertCircle, AlertTriangle, Eye, Info, Mic, Monitor, Shield, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import type { ProctoringEvent, ProctoringSeverity } from "../types";
 
 interface ProctoringOverlayProps {
   violations: ProctoringEvent[];

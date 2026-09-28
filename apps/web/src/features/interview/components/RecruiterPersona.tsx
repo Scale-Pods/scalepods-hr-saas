@@ -1,5 +1,5 @@
+import { AlertTriangle, Brain, CheckCircle, Mic, Search } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Brain, Mic, Search, CheckCircle, AlertTriangle } from "lucide-react";
 import type { LiveAssessmentNote } from "../types";
 
 interface RecruiterPersonaProps {

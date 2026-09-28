@@ -1,7 +1,7 @@
 "use client";
 
-import { CampaignCreateWizard } from "@/components/campaigns/CampaignCreateWizard";
 import { useRouter } from "next/navigation";
+import { CampaignCreateWizard } from "@/components/campaigns/CampaignCreateWizard";
 
 export default function CampaignNewPage() {
   const router = useRouter();

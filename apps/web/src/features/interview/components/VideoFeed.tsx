@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
 import { CameraOff } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 interface VideoFeedProps {
   stream: MediaStream | null;
