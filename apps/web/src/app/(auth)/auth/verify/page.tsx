@@ -190,9 +190,14 @@ function VerifyInner() {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
 
-      showToast("Password updated successfully! Welcome back.", { kind: "success" });
+      // Revoke the temporary recovery session so the user must authenticate explicitly
+      await supabase.auth.signOut();
+
+      showToast("Password updated successfully! Please sign in with your new password.", {
+        kind: "success",
+      });
       setStatus("done");
-      router.replace("/dashboard");
+      router.replace("/auth");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to update password.";
       setFormError(msg);
@@ -348,7 +353,7 @@ function VerifyInner() {
           <CheckCircle2 className="h-6 w-6" />
         </div>
         <h2 className="text-lg font-bold text-white">Success!</h2>
-        <p className="text-xs text-slate-400">Redirecting to your dashboard…</p>
+        <p className="text-xs text-slate-400">Redirecting to sign in…</p>
       </CardContent>
     </Card>
   );
