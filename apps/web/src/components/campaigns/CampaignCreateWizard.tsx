@@ -2,8 +2,10 @@
 
 import {
   CADENCE_STAGES,
+  type CadenceChannel,
   type CadenceRenderRow,
   cadenceForTier,
+  cadenceTierEditability,
   campaignCreateSchema,
   DEFAULT_DIALNEXA_CONFIG,
   type DialnexaVoiceConfig,
@@ -78,6 +80,10 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const [dialnexaConfig, setDialnexaConfig] = useState<DialnexaVoiceConfig>(() => ({
     ...DEFAULT_DIALNEXA_CONFIG,
   }));
+  const [customCadence, setCustomCadence] = useState<
+    Record<string, { enabled?: boolean; channels?: CadenceChannel[] }>
+  >({});
+  const [userAddedStages, setUserAddedStages] = useState<CadenceRenderRow[]>([]);
 
   useEffect(() => {
     setRounds((prev) => syncRoundCount(prev, numberOfRounds));
@@ -123,30 +129,103 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         }
       }
     }
-    return Array.from(merged.values()).sort(
-      (a, b) =>
-        CADENCE_STAGES.findIndex((s) => s.key === a.stage.key) -
-        CADENCE_STAGES.findIndex((s) => s.key === b.stage.key),
-    );
-  }, [rounds, numberOfRounds, tier, whatsappOn, voiceOn]);
+
+    for (const r of userAddedStages) {
+      merged.set(r.stage.key, r);
+    }
+
+    const finalRows = Array.from(merged.values()).sort((a, b) => {
+      const idxA = CADENCE_STAGES.findIndex((s) => s.key === a.stage.key);
+      const idxB = CADENCE_STAGES.findIndex((s) => s.key === b.stage.key);
+      if (idxA === -1 && idxB === -1) return 0;
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+    });
+
+    return finalRows.map((r) => {
+      const custom = customCadence[r.stage.key];
+      if (!custom) return r;
+      return {
+        ...r,
+        enabled: custom.enabled ?? r.enabled,
+        channels: custom.channels ?? r.channels,
+      };
+    });
+  }, [rounds, numberOfRounds, tier, whatsappOn, voiceOn, customCadence, userAddedStages]);
+
+  const handleToggleStage = (stageKey: string, enabled: boolean) => {
+    setCustomCadence((prev) => ({
+      ...prev,
+      [stageKey]: { ...prev[stageKey], enabled },
+    }));
+  };
+
+  const handleToggleChannel = (stageKey: string, channel: CadenceChannel, enabled: boolean) => {
+    const currentRow = previewRows.find((r) => r.stage.key === stageKey);
+    if (!currentRow) return;
+
+    setCustomCadence((prev) => {
+      let newChannels = [...currentRow.channels];
+      if (enabled) {
+        if (!newChannels.includes(channel)) newChannels.push(channel);
+      } else {
+        newChannels = newChannels.filter((c) => c !== channel);
+      }
+      return {
+        ...prev,
+        [stageKey]: { ...prev[stageKey], channels: newChannels },
+      };
+    });
+  };
+
+  const handleAddCustomStage = (dayLabel: string, label: string) => {
+    const key = `custom_${Date.now()}`;
+    const newStage: CadenceRenderRow = {
+      stage: {
+        key,
+        label,
+        dayLabel,
+        description: "Custom campaign touchpoint.",
+        channels: ["email", "whatsapp", "voice_call"],
+        appliesTo: [],
+      },
+      channels: [
+        "email",
+        ...(whatsappOn ? ["whatsapp" as CadenceChannel] : []),
+        ...(voiceOn ? ["voice_call" as CadenceChannel] : []),
+      ],
+      enabled: true,
+    };
+    setUserAddedStages((prev) => [...prev, newStage]);
+  };
 
   const validateBasics = (): string | null => {
     if (!name.trim()) return "Please enter a descriptive campaign name.";
     if (!jdText.trim()) return "Please paste the job description to enable AI candidate screening.";
+    if (!startDate) return "Please specify a target start date.";
+    if (!endDate) return "Please specify a target end date.";
     if (endDate && startDate && endDate < startDate)
       return "Target completion date must be scheduled after the start date.";
     return null;
   };
 
   const validateRounds = (): string | null => {
+    let aiCount = 0;
     for (let i = 0; i < numberOfRounds; i++) {
       const r = rounds[i];
+      if (r.round_type === "ai_interview") {
+        aiCount++;
+      }
       if (r.round_type === "human_interview" && !r.interviewer_email.trim()) {
         return `Round ${i + 1} (Live Human Interview): Please provide the interviewer's email address.`;
       }
       if (r.round_type === "assignment" && !r.brief_text.trim()) {
         return `Round ${i + 1} (Practical Assignment): Please provide the prompt and submission instructions.`;
       }
+    }
+    if (aiCount > 1) {
+      return "You can only have one AI Interview round per campaign. Human interviews and assignments can be used multiple times.";
     }
     return null;
   };
@@ -162,10 +241,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       end_date: endDate || undefined,
       cadence_config: {
         stages: Object.fromEntries(
-          previewRows.map((r) => [
-            r.stage.key,
-            { enabled: r.enabled, channels: r.channels },
-          ]),
+          previewRows.map((r) => [r.stage.key, { enabled: r.enabled, channels: r.channels }]),
         ),
       },
       voice_call_config: voiceOn ? dialnexaConfig : undefined,
@@ -527,11 +603,19 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 </h4>
               </div>
               <p className="text-xs text-muted-foreground">
-                Here is the sequence of touchpoints and notifications candidates will receive based
-                on your active channels and plan tier:
+                This communication sequence repeats <strong>for each round</strong>. When a
+                candidate passes the AI interview, they are automatically advanced to the next
+                round, and this cadence restarts from Day 0 to invite them to the human interview or
+                assignment.
               </p>
               <div className="mt-3">
-                <CadencePreview rows={previewRows} />
+                <CadencePreview
+                  rows={previewRows}
+                  editable={cadenceTierEditability(tier).stages}
+                  onToggleStage={handleToggleStage}
+                  onToggleChannel={handleToggleChannel}
+                  onAddCustomStage={handleAddCustomStage}
+                />
               </div>
             </div>
           </div>
