@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-export const DEFAULT_DIALNEXA_API_KEY =
+const DEFAULT_DIALNEXA_API_KEY =
   "rb0665oacdbt33:7f1d56728f43ab2e3274e928785d840e08457909852df246ae2cae0a8e2350c0";
 
 export interface DialogueTurn {
