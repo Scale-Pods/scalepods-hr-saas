@@ -86,7 +86,13 @@ function AuthInner() {
     try {
       const supabase = supabaseBrowser();
       if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
         if (error) throw error;
         if (data.session) {
           router.push("/dashboard");
@@ -116,7 +122,10 @@ function AuthInner() {
     const supabase = supabaseBrowser();
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { queryParams: { access_type: "offline", prompt: "consent" } },
+      options: {
+        queryParams: { access_type: "offline", prompt: "consent" },
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
   };
 

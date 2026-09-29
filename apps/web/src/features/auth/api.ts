@@ -31,7 +31,15 @@ export async function signInWithPassword({
 }
 
 export async function signUp({ email, password }: Credentials) {
-  const { data, error } = await supabaseBrowser().auth.signUp({ email, password });
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : getEnv().NEXT_PUBLIC_FRONTEND_URL;
+  const { data, error } = await supabaseBrowser().auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: `${origin}/auth/callback`,
+    },
+  });
   if (error) throw error;
   return data;
 }
@@ -45,7 +53,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
   const origin =
     typeof window !== "undefined" ? window.location.origin : getEnv().NEXT_PUBLIC_FRONTEND_URL;
   const { error } = await supabaseBrowser().auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/verify?type=recovery`,
+    redirectTo: `${origin}/auth/callback?type=recovery`,
   });
   if (error) throw error;
 }
