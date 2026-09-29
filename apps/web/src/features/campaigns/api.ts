@@ -199,7 +199,7 @@ export async function updateCampaignStatus(
       action: "update",
       account_id: accountId,
       campaign_id: campaignId,
-      status: currentStatus === "on" ? "off" : "on",
+      status: currentStatus === "on" ? "paused" : "on",
     },
     accessToken,
   });
