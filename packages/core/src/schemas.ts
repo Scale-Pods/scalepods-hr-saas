@@ -26,6 +26,8 @@ export const cadenceConfigSchema = z
         channels: z.array(cadenceChannelSchema).optional(),
         hoursBefore: z.number().int().min(0).max(168).optional(),
         sendHour: z.number().int().min(0).max(23).optional(),
+        label: z.string().optional(),
+        dayLabel: z.string().optional(),
       }),
     ),
   })

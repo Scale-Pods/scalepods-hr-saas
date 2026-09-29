@@ -102,11 +102,7 @@ export function ResumeUploader({
         files={files}
         onFiles={(next) => {
           const added = next.filter((n) => !files.some((p) => p.file.name === n.file.name));
-          const merged = [
-            ...added,
-            ...files.filter((p) => !next.some((n) => n.file.name === p.file.name)),
-          ];
-          setFiles(merged);
+          setFiles(next);
           for (const a of added) void extractContact(a.file);
         }}
         onRemove={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}

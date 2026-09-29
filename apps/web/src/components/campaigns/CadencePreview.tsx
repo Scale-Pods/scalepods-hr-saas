@@ -25,6 +25,8 @@ export interface CadencePreviewProps {
   editable?: boolean;
   onToggleStage?: (stageKey: string, enabled: boolean) => void;
   onToggleChannel?: (stageKey: string, channel: CadenceChannel, enabled: boolean) => void;
+  onChangeDayLabel?: (stageKey: string, newDayLabel: string) => void;
+  onChangeLabel?: (stageKey: string, newLabel: string) => void;
   onAddCustomStage?: (dayLabel: string, label: string) => void;
 }
 
@@ -33,6 +35,8 @@ export function CadencePreview({
   editable,
   onToggleStage,
   onToggleChannel,
+  onChangeDayLabel,
+  onChangeLabel,
   onAddCustomStage,
 }: CadencePreviewProps) {
   const [newDay, setNewDay] = useState("");
@@ -61,7 +65,15 @@ export function CadencePreview({
                 )}
               >
                 <TableCell className="whitespace-nowrap text-xs font-mono font-medium text-muted-foreground">
-                  {stage.dayLabel}
+                  {editable ? (
+                    <Input
+                      value={stage.dayLabel}
+                      onChange={(e) => onChangeDayLabel?.(stage.key, e.target.value)}
+                      className="h-7 w-24 text-xs font-mono px-2 bg-transparent border-transparent hover:border-input focus:border-input transition-colors"
+                    />
+                  ) : (
+                    stage.dayLabel
+                  )}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2.5">
@@ -81,14 +93,25 @@ export function CadencePreview({
                       />
                     )}
                     <div>
-                      <p
-                        className={cn(
-                          "text-xs font-semibold",
-                          enabled ? "text-foreground" : "text-muted-foreground",
-                        )}
-                      >
-                        {stage.label}
-                      </p>
+                      {editable ? (
+                        <Input
+                          value={stage.label}
+                          onChange={(e) => onChangeLabel?.(stage.key, e.target.value)}
+                          className={cn(
+                            "h-7 text-xs px-2 mb-1 bg-transparent border-transparent hover:border-input focus:border-input transition-colors max-w-[240px]",
+                            enabled ? "text-foreground" : "text-muted-foreground",
+                          )}
+                        />
+                      ) : (
+                        <p
+                          className={cn(
+                            "text-xs font-semibold",
+                            enabled ? "text-foreground" : "text-muted-foreground",
+                          )}
+                        >
+                          {stage.label}
+                        </p>
+                      )}
                       <p className="text-[11px] text-muted-foreground leading-snug">
                         {stage.description}
                       </p>

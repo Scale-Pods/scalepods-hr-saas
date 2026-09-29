@@ -81,7 +81,10 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     ...DEFAULT_DIALNEXA_CONFIG,
   }));
   const [customCadence, setCustomCadence] = useState<
-    Record<string, { enabled?: boolean; channels?: CadenceChannel[] }>
+    Record<
+      string,
+      { enabled?: boolean; channels?: CadenceChannel[]; label?: string; dayLabel?: string }
+    >
   >({});
   const [userAddedStages, setUserAddedStages] = useState<CadenceRenderRow[]>([]);
 
@@ -148,6 +151,11 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       if (!custom) return r;
       return {
         ...r,
+        stage: {
+          ...r.stage,
+          label: custom.label ?? r.stage.label,
+          dayLabel: custom.dayLabel ?? r.stage.dayLabel,
+        },
         enabled: custom.enabled ?? r.enabled,
         channels: custom.channels ?? r.channels,
       };
@@ -177,6 +185,20 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         [stageKey]: { ...prev[stageKey], channels: newChannels },
       };
     });
+  };
+
+  const handleChangeDayLabel = (stageKey: string, newDayLabel: string) => {
+    setCustomCadence((prev) => ({
+      ...prev,
+      [stageKey]: { ...prev[stageKey], dayLabel: newDayLabel },
+    }));
+  };
+
+  const handleChangeLabel = (stageKey: string, newLabel: string) => {
+    setCustomCadence((prev) => ({
+      ...prev,
+      [stageKey]: { ...prev[stageKey], label: newLabel },
+    }));
   };
 
   const handleAddCustomStage = (dayLabel: string, label: string) => {
@@ -241,7 +263,15 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       end_date: endDate || undefined,
       cadence_config: {
         stages: Object.fromEntries(
-          previewRows.map((r) => [r.stage.key, { enabled: r.enabled, channels: r.channels }]),
+          previewRows.map((r) => [
+            r.stage.key,
+            {
+              enabled: r.enabled,
+              channels: r.channels,
+              label: r.stage.label,
+              dayLabel: r.stage.dayLabel,
+            },
+          ]),
         ),
       },
       voice_call_config: voiceOn ? dialnexaConfig : undefined,
@@ -614,6 +644,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   editable={cadenceTierEditability(tier).stages}
                   onToggleStage={handleToggleStage}
                   onToggleChannel={handleToggleChannel}
+                  onChangeDayLabel={handleChangeDayLabel}
+                  onChangeLabel={handleChangeLabel}
                   onAddCustomStage={handleAddCustomStage}
                 />
               </div>
