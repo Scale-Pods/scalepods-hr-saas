@@ -95,6 +95,8 @@ export default function CandidateProfilePage() {
       sentiment: string | null;
       call_successful: string | null;
       recording_url: string | null;
+      transcript?: string | null;
+      turns?: Array<{ speaker: "agent" | "candidate"; text: string; start: number; end: number }>;
     }>
   >([]);
   const [loadingCalls, setLoadingCalls] = useState(false);
@@ -733,6 +735,8 @@ function VoiceScreenCallSection({
     sentiment: string | null;
     call_successful: string | null;
     recording_url: string | null;
+    transcript?: string | null;
+    turns?: Array<{ speaker: "agent" | "candidate"; text: string; start: number; end: number }>;
   }>;
   loadingCalls: boolean;
   transcripts: Array<{
@@ -761,7 +765,7 @@ function VoiceScreenCallSection({
         {loadingCalls ? (
           <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            Loading live call recordings from DialNexa…
+            Loading live call recordings & transcripts from DialNexa…
           </div>
         ) : hasCalls ? (
           <div className="space-y-3">
@@ -769,11 +773,11 @@ function VoiceScreenCallSection({
               <PhoneCall className="h-3.5 w-3.5 text-emerald-600" />
               Telephony Call Recordings ({calls.length})
             </span>
-            <div className="grid gap-2.5 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               {calls.map((c) => (
                 <div
                   key={c.id}
-                  className="rounded-xl border border-border/70 bg-card p-3.5 space-y-2.5"
+                  className="rounded-xl border border-border/70 bg-card p-4 space-y-3 shadow-2xs"
                 >
                   <div className="flex items-center justify-between">
                     <Badge
@@ -787,7 +791,7 @@ function VoiceScreenCallSection({
                     >
                       {c.status}
                     </Badge>
-                    <span className="text-xs text-muted-foreground tabular-nums">
+                    <span className="text-xs text-muted-foreground tabular-nums font-mono">
                       {Math.floor(c.duration / 60)}m {c.duration % 60}s
                     </span>
                   </div>
@@ -802,11 +806,26 @@ function VoiceScreenCallSection({
                   </div>
 
                   {c.recording_url ? (
-                    <div className="space-y-1 pt-1">
-                      <span className="text-[11px] font-medium text-foreground flex items-center gap-1">
-                        <Headphones className="h-3 w-3 text-cyan-500" /> Call Recording
-                      </span>
-                      <audio controls src={c.recording_url} className="w-full h-8">
+                    <div className="space-y-1.5 pt-1 border-t border-border/50">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-medium text-foreground flex items-center gap-1">
+                          <Headphones className="h-3 w-3 text-cyan-500" /> Audio Recording
+                        </span>
+                        <a
+                          href={c.recording_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          download
+                          className="text-primary hover:underline flex items-center gap-1 text-[11px]"
+                        >
+                          Download MP3 <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                      <audio
+                        controls
+                        src={c.recording_url}
+                        className="w-full h-8 rounded-md bg-muted/40"
+                      >
                         <track kind="captions" />
                       </audio>
                     </div>
@@ -817,6 +836,51 @@ function VoiceScreenCallSection({
                         : "Call was not connected (user busy / missed)"}
                     </p>
                   )}
+
+                  {/* Turn-by-Turn Dialogue Transcript */}
+                  {c.turns && c.turns.length > 0 ? (
+                    <div className="space-y-1.5 pt-2 border-t border-border/50">
+                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                        <MessageSquareText className="h-3 w-3 text-primary" /> Dialogue Transcript (
+                        {c.turns.length} turns)
+                      </span>
+                      <div className="space-y-2 max-h-64 overflow-y-auto rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                        {c.turns.map((turn) => (
+                          <div
+                            key={`candidate-turn-${turn.speaker}-${turn.start}-${turn.end}`}
+                            className={cn(
+                              "flex flex-col text-xs space-y-0.5",
+                              turn.speaker === "candidate" ? "items-end" : "items-start",
+                            )}
+                          >
+                            <span className="text-[10px] text-muted-foreground px-1 font-medium">
+                              {turn.speaker === "candidate" ? "Candidate" : "AI Recruiter"} ·{" "}
+                              {turn.start.toFixed(1)}s
+                            </span>
+                            <div
+                              className={cn(
+                                "rounded-xl px-3 py-1.5 max-w-[85%] text-xs leading-relaxed shadow-2xs",
+                                turn.speaker === "candidate"
+                                  ? "bg-primary text-primary-foreground rounded-br-xs"
+                                  : "bg-card border border-border/80 text-foreground rounded-bl-xs",
+                              )}
+                            >
+                              {turn.text}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : c.transcript ? (
+                    <div className="space-y-1.5 pt-2 border-t border-border/50">
+                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                        <FileText className="h-3 w-3 text-primary" /> Transcript
+                      </span>
+                      <div className="rounded-lg border border-border/50 bg-muted/20 p-2.5 font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
+                        {c.transcript}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

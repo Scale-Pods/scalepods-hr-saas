@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { syncDialnexaAgentConfig } from "@/lib/dialnexa";
 
 export async function POST(req: Request) {
   try {
@@ -21,20 +22,25 @@ export async function POST(req: Request) {
     let roundInstanceId = body.round_instance_id;
     let voiceCallConfig = body.voice_call_config;
     let roleTitle = body.role_title;
+    let accountId = body.account_id;
+    let planTier = body.plan_tier || body.tier;
 
-    if ((!roundInstanceId || !voiceCallConfig) && body.candidate_id) {
+    if (body.candidate_id && (!roundInstanceId || !voiceCallConfig || !accountId)) {
       try {
         const { supabaseServer } = await import("@/lib/supabase/server");
         const supabase = await supabaseServer();
         const { data: ri } = await supabase
           .from("round_instances")
-          .select("id, campaigns(id, name, voice_call_config)")
+          .select("id, account_id, campaigns(id, name, voice_call_config)")
           .eq("candidate_id", body.candidate_id)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
         if (ri?.id) {
           roundInstanceId = roundInstanceId || ri.id;
+        }
+        if (ri?.account_id) {
+          accountId = accountId || ri.account_id;
         }
         if (ri?.campaigns) {
           const camp = Array.isArray(ri.campaigns)
@@ -52,6 +58,46 @@ export async function POST(req: Request) {
       }
     }
 
+    const isUuid = (val: unknown): val is string =>
+      typeof val === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
+    if (accountId && isUuid(accountId) && !planTier) {
+      try {
+        const { supabaseServer } = await import("@/lib/supabase/server");
+        const supabase = await supabaseServer();
+        const { data: acc } = await supabase
+          .from("accounts")
+          .select("tier")
+          .eq("id", accountId)
+          .maybeSingle();
+        if (acc?.tier) {
+          planTier = acc.tier;
+        }
+      } catch (accErr) {
+        console.warn("Could not resolve account tier from Supabase:", accErr);
+      }
+    }
+
+    const isEnterprise = String(planTier || "").toLowerCase() === "enterprise";
+
+    if (voiceCallConfig) {
+      await syncDialnexaAgentConfig({
+        agent_id: voiceCallConfig.agent_id,
+        prompt: voiceCallConfig.prompt,
+        first_message: voiceCallConfig.first_message,
+        response_eagerness: voiceCallConfig.response_eagerness,
+        responsiveness: voiceCallConfig.responsiveness,
+        interruption_sensitivity: voiceCallConfig.interruption_sensitivity,
+        max_duration_seconds: voiceCallConfig.max_duration_seconds,
+        end_call_on_silence_sec: voiceCallConfig.end_call_on_silence_sec,
+        ambient_noise: voiceCallConfig.ambient_noise,
+        candidate_name: body.candidate_name,
+        role_title: roleTitle,
+        company_name: body.company_name || "ScalePods",
+      });
+    }
+
     const authHeader = req.headers.get("authorization");
     const n8nRes = await fetch(`${n8nBase}/webhook/voice-screen`, {
       method: "POST",
@@ -62,9 +108,13 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         ...body,
         candidate_phone: phone,
-        round_instance_id: roundInstanceId || null,
+        round_instance_id: isUuid(roundInstanceId) ? roundInstanceId : null,
+        account_id: isUuid(accountId) ? accountId : "00000000-0000-0000-0000-000000000000",
         voice_call_config: voiceCallConfig || undefined,
         role_title: roleTitle || undefined,
+        plan_tier: planTier || undefined,
+        tier: planTier || undefined,
+        is_enterprise: isEnterprise,
       }),
     });
 
@@ -77,9 +127,20 @@ export async function POST(req: Request) {
     }
 
     if (!n8nRes.ok) {
+      const errorMsg =
+        typeof data.message === "string" && data.message
+          ? data.message
+          : typeof data.error === "string" && data.error
+            ? data.error
+            : typeof data.error === "object" &&
+                data.error !== null &&
+                typeof (data.error as Record<string, unknown>).message === "string"
+              ? String((data.error as Record<string, unknown>).message)
+              : "n8n workflow error";
+
       return NextResponse.json(
         {
-          error: (data.message as string) || (data.error as string) || "n8n workflow error",
+          error: errorMsg,
           detail: data,
         },
         { status: n8nRes.status },

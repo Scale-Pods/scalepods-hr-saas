@@ -173,11 +173,214 @@ Guidelines:
   },
 ];
 
+export interface DialnexaTranscriberOption {
+  id: string;
+  label: string;
+  provider: "Deepgram" | "Soniox" | "Sarvam" | "Whisper";
+  description: string;
+  badge: string;
+  supportsEagerness: boolean;
+}
+
+export const DIALNEXA_TRANSCRIBERS: DialnexaTranscriberOption[] = [
+  {
+    id: "trs_deepgram_nova_2",
+    label: "Deepgram Nova 2 / Nova 3",
+    provider: "Deepgram",
+    description: "Industry leading speech recognition with sub-300ms transcription latency.",
+    badge: "Ultra Low Latency",
+    supportsEagerness: false,
+  },
+  {
+    id: "trs_soniox",
+    label: "Soniox Multilingual",
+    provider: "Soniox",
+    description:
+      "Exceptional accuracy for bilingual English/Hinglish conversations and dynamic turn-taking.",
+    badge: "Eagerness Optimized",
+    supportsEagerness: true,
+  },
+  {
+    id: "trs_sarvam",
+    label: "Sarvam AI Indian English & Vernacular",
+    provider: "Sarvam",
+    description:
+      "Tuned specifically for Indian accents, multilingual code-switching, and regional phonetics.",
+    badge: "Regional Dialects",
+    supportsEagerness: true,
+  },
+  {
+    id: "trs_whisper",
+    label: "OpenAI Whisper Large v3",
+    provider: "Whisper",
+    description: "High lexical accuracy for technical vocabulary and heavy industry jargon.",
+    badge: "High Accuracy",
+    supportsEagerness: false,
+  },
+];
+
+export const DEFAULT_DIALNEXA_FUNCTIONS = [
+  {
+    id: "func_end_call",
+    type: "end_call" as const,
+    display_name: "End Call When Concluded",
+    description:
+      "Judges the conversation flow and ends the call once the screening objective is met or the candidate asks to disconnect.",
+    enabled: true,
+    config: {},
+  },
+  {
+    id: "func_call_transfer",
+    type: "call_transfer" as const,
+    display_name: "Warm Transfer to Human Recruiter",
+    description:
+      "Transfers the candidate directly to a senior recruiter or hiring coordinator if they require immediate human assistance.",
+    enabled: false,
+    config: {
+      transfer_phone_number: "+912264233051",
+      transfer_message: "Please hold while I connect you with our talent acquisition team.",
+    },
+  },
+  {
+    id: "func_calendar_check",
+    type: "check_calendar_availability" as const,
+    display_name: "Check Interview Calendar Slots",
+    description:
+      "Queries open calendar availability for scheduling Round 2 technical interviews in real-time.",
+    enabled: true,
+    config: {},
+  },
+  {
+    id: "func_calendar_book",
+    type: "book_calendar" as const,
+    display_name: "Book Next Round Interview",
+    description:
+      "Locks in an agreed date/time slot directly into the hiring team's calendar before hanging up.",
+    enabled: false,
+    config: {},
+  },
+  {
+    id: "func_custom_webhook",
+    type: "custom" as const,
+    display_name: "Post Screening Signal to ATS",
+    description:
+      "Dispatches intermediate candidate signals and verified compensation/notice data to a webhook.",
+    enabled: false,
+    config: {
+      endpoint_url: "https://api.scalepods.internal/v1/recruiter/signals",
+    },
+  },
+];
+
+export const DEFAULT_POST_CALL_ANALYSIS = [
+  {
+    id: "pca_recommendation",
+    field_name: "overall_recommendation",
+    field_type: "SELECTOR" as const,
+    field_description: "Overall candidate screening outcome recommendation",
+    additional_fields: ["Strong Hire", "Proceed to Next Round", "Needs Review", "Reject"],
+    display_order: 0,
+  },
+  {
+    id: "pca_tech_score",
+    field_name: "technical_qualification_score",
+    field_type: "NUMBER" as const,
+    field_description:
+      "Rating of candidate's relevant tech domain experience from 1 (low) to 10 (exceptional)",
+    display_order: 1,
+  },
+  {
+    id: "pca_communication",
+    field_name: "communication_skills_score",
+    field_type: "NUMBER" as const,
+    field_description: "Assessment of fluency, clarity, and professionalism from 1 to 10",
+    display_order: 2,
+  },
+  {
+    id: "pca_notice_period",
+    field_name: "notice_period_days",
+    field_type: "NUMBER" as const,
+    field_description: "Stated notice period in calendar days (0 if immediate joiner)",
+    display_order: 3,
+  },
+  {
+    id: "pca_compensation",
+    field_name: "compensation_expectation",
+    field_type: "TEXT" as const,
+    field_description: "Current CTC and expected compensation stated by the candidate",
+    display_order: 4,
+  },
+  {
+    id: "pca_interest",
+    field_name: "candidate_interest_level",
+    field_type: "SELECTOR" as const,
+    field_description: "Candidate's enthusiasm and alignment with the role",
+    additional_fields: ["High", "Medium", "Low", "Not Interested"],
+    display_order: 5,
+  },
+  {
+    id: "pca_strengths",
+    field_name: "key_strengths_summary",
+    field_type: "TEXT" as const,
+    field_description:
+      "Bullet points highlighting top skills, domain accomplishments, and role fit",
+    display_order: 6,
+  },
+];
+
+export const DEFAULT_BOOSTED_KEYWORDS =
+  "ScalePods, TypeScript, React, Next.js, Node.js, Python, PostgreSQL, Supabase, AWS, Docker, Kubernetes, microservices, REST API, GraphQL, CI/CD, Agile, notice period, CTC, compensation";
+
 export const DEFAULT_DIALNEXA_CONFIG: DialnexaVoiceConfig = {
+  agent_id: "agent_Lg812J59k27OXl",
   model: "gpt-4o-mini",
   voice: "rachel",
   first_message: DIALNEXA_TEMPLATES[0].first_message,
   prompt: DIALNEXA_TEMPLATES[0].prompt,
   language: "en-US",
   max_duration_seconds: 300,
+
+  // Turn-Taking & Latency (Eagerness & Responsiveness)
+  response_eagerness: 0.7, // 0 (patient) to 1 (eager)
+  responsiveness: 0.8,
+  interruption_sensitivity: 0.5,
+  backchanneling: true,
+  backchannel_frequency: 0.5,
+  backchannel_keywords: "I understand, got it, sure, go ahead, makes sense",
+  end_call_on_silence_sec: 20,
+  reminder_message_interval: 10,
+
+  // Acoustic & Voice Polish
+  ambient_noise: true,
+  denoising_mode: "remove_noise",
+  denoise_strength: 1,
+  voice_speed: 1.0,
+  voice_pitch: 0,
+  voice_temperature: 1.0,
+  voice_volume: 0,
+  llm_temperature: 0.4,
+
+  // STT Transcribers & Accelerators
+  transcriber_id: "trs_deepgram_nova_2",
+  fallback_stt_enabled: true,
+  stt_fallback_transcriber_id: "trs_soniox",
+  boosted_keywords: DEFAULT_BOOSTED_KEYWORDS,
+  boost_dynamic_variables: true,
+  predictive_preprocessing_enabled: true,
+  prompt_caching_enabled: false,
+  fallback_llm_enabled: true,
+  llm_fallback_delay_ms: 200,
+  llm_fallback_model: "gpt-4o-mini",
+
+  // Voicemail Handling
+  voicemail_detection: true,
+  hangup_on_voicemail: false,
+  voicemail_message:
+    "Hi, this is the talent team at ScalePods following up on your application. We will reach back out via email to schedule a convenient time.",
+
+  // Agent Functions
+  agent_functions: DEFAULT_DIALNEXA_FUNCTIONS,
+
+  // Post-Call Extraction Scorecard
+  post_call_analysis: DEFAULT_POST_CALL_ANALYSIS,
 };

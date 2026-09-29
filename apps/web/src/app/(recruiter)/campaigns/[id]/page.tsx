@@ -11,12 +11,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Clock,
+  Flame,
   Loader2,
   Mic,
   PhoneCall,
   Settings2,
   Sparkles,
   Volume2,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -121,6 +123,9 @@ export default function CampaignDetailPage() {
         },
         body: JSON.stringify({
           account_id: account?.id,
+          plan_tier: account?.tier,
+          tier: account?.tier,
+          is_enterprise: account?.tier === "enterprise",
           candidate_id: cand.candidate_id,
           candidate_phone: cand.phone,
           candidate_name: cand.name,
@@ -163,6 +168,9 @@ export default function CampaignDetailPage() {
             },
             body: JSON.stringify({
               account_id: account?.id,
+              plan_tier: account?.tier,
+              tier: account?.tier,
+              is_enterprise: account?.tier === "enterprise",
               candidate_id: cand.candidate_id,
               candidate_phone: cand.phone,
               candidate_name: cand.name,
@@ -274,6 +282,9 @@ export default function CampaignDetailPage() {
                 },
                 body: JSON.stringify({
                   account_id: account.id,
+                  plan_tier: account.tier,
+                  tier: account.tier,
+                  is_enterprise: account.tier === "enterprise",
                   candidate_id: c.candidate_id,
                   candidate_phone: c.phone,
                   candidate_name: c.name,
@@ -526,6 +537,26 @@ export default function CampaignDetailPage() {
                     Voice:{" "}
                     {DIALNEXA_VOICES.find((v) => v.id === effectiveVoiceConfig.voice)?.label ||
                       effectiveVoiceConfig.voice}
+                  </span>
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="gap-1.5 py-1 px-2.5 text-xs font-medium text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/5"
+                >
+                  <Flame className="h-3 w-3 text-amber-500" />
+                  <span>
+                    Eagerness: {Math.round((effectiveVoiceConfig.response_eagerness ?? 0.7) * 100)}%
+                  </span>
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="gap-1.5 py-1 px-2.5 text-xs font-medium text-purple-600 dark:text-purple-400 border-purple-500/30 bg-purple-500/5"
+                >
+                  <Zap className="h-3 w-3 text-purple-500" />
+                  <span>
+                    {(effectiveVoiceConfig.agent_functions?.filter((f) => f.enabled) ?? [])
+                      .length || 3}{" "}
+                    Tools Active
                   </span>
                 </Badge>
                 <Badge

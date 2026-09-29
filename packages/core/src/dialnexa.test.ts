@@ -3,7 +3,6 @@ import {
   campaignCreateSchema,
   DEFAULT_DIALNEXA_CONFIG,
   DIALNEXA_MODELS,
-  DIALNEXA_TEMPLATES,
   DIALNEXA_VOICES,
   dialnexaVoiceConfigSchema,
 } from "./index";
@@ -77,5 +76,52 @@ describe("DialNexa voice configurations & schema", () => {
       expect(voice.sampleText).toBeDefined();
       expect(voice.sampleText?.length).toBeGreaterThan(10);
     }
+  });
+
+  it("validates transcribers and eagerness support", () => {
+    expect(DEFAULT_DIALNEXA_CONFIG.response_eagerness).toBe(0.7);
+    expect(DEFAULT_DIALNEXA_CONFIG.transcriber_id).toBe("trs_deepgram_nova_2");
+    expect(DEFAULT_DIALNEXA_CONFIG.agent_functions?.length).toBeGreaterThanOrEqual(3);
+    expect(DEFAULT_DIALNEXA_CONFIG.post_call_analysis?.length).toBeGreaterThanOrEqual(5);
+
+    // Eagerness must be between 0 and 1
+    const invalidEagerness = {
+      ...DEFAULT_DIALNEXA_CONFIG,
+      response_eagerness: 1.5,
+    };
+    expect(dialnexaVoiceConfigSchema.safeParse(invalidEagerness).success).toBe(false);
+  });
+
+  it("validates agent functions and post-call analysis schema", () => {
+    const validWithFunctions = {
+      voice: "rachel",
+      prompt: "Screen candidates for software role",
+      response_eagerness: 0.9,
+      agent_functions: [
+        {
+          type: "end_call",
+          display_name: "End Call When Concluded",
+          description: "Ends call when complete",
+          enabled: true,
+        },
+        {
+          type: "call_transfer",
+          display_name: "Warm Transfer",
+          description: "Transfers to recruiter",
+          enabled: true,
+          config: { transfer_phone_number: "+919876543210" },
+        },
+      ],
+      post_call_analysis: [
+        {
+          field_name: "recommendation",
+          field_type: "SELECTOR",
+          field_description: "Hire recommendation",
+          additional_fields: ["Strong Hire", "Reject"],
+        },
+      ],
+    };
+    const parsed = dialnexaVoiceConfigSchema.safeParse(validWithFunctions);
+    expect(parsed.success).toBe(true);
   });
 });

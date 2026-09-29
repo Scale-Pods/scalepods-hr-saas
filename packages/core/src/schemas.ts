@@ -31,6 +31,31 @@ export const cadenceConfigSchema = z
   })
   .optional();
 
+export const dialnexaFunctionSchema = z.object({
+  id: z.string().optional(),
+  type: z.enum([
+    "end_call",
+    "call_transfer",
+    "check_calendar_availability",
+    "book_calendar",
+    "custom",
+    "integration",
+  ]),
+  display_name: z.string().min(1),
+  description: z.string().min(1),
+  enabled: z.boolean().optional(),
+  config: z.record(z.unknown()).optional(),
+});
+
+export const dialnexaPostCallFieldSchema = z.object({
+  id: z.string().optional(),
+  field_name: z.string().min(1),
+  field_type: z.enum(["TEXT", "SELECTOR", "BOOLEAN", "NUMBER", "DATETIME"]),
+  field_description: z.string().optional(),
+  additional_fields: z.union([z.array(z.string()), z.record(z.unknown())]).nullish(),
+  display_order: z.number().int().optional(),
+});
+
 export const dialnexaVoiceConfigSchema = z
   .object({
     prompt: z.string().min(1, "Prompt is required"),
@@ -38,7 +63,51 @@ export const dialnexaVoiceConfigSchema = z
     model: z.string().optional(),
     first_message: z.string().optional(),
     language: z.string().optional(),
-    max_duration_seconds: z.number().int().min(30).max(1800).optional(),
+    max_duration_seconds: z.number().int().min(30).max(5400).optional(),
+    agent_id: z.string().optional(),
+
+    // Turn-Taking & Latency (Eagerness)
+    response_eagerness: z.number().min(0).max(1).optional(),
+    responsiveness: z.number().min(0).max(1).optional(),
+    interruption_sensitivity: z.number().min(0).max(1).optional(),
+    backchanneling: z.boolean().optional(),
+    backchannel_frequency: z.number().min(0).max(1).optional(),
+    backchannel_keywords: z.string().optional(),
+    end_call_on_silence_sec: z.number().min(10).max(60).optional(),
+    reminder_message_interval: z.number().min(0).max(30).optional(),
+
+    // Acoustic & Voice Polish
+    ambient_noise: z.boolean().optional(),
+    denoising_mode: z.enum(["remove_noise", "remove_noise_and_speech"]).optional(),
+    denoise_strength: z.number().min(0).max(4).optional(),
+    voice_speed: z.number().min(0.25).max(4.0).optional(),
+    voice_pitch: z.number().min(-20).max(20).optional(),
+    voice_temperature: z.number().min(0).max(2).optional(),
+    voice_volume: z.number().min(-10).max(10).optional(),
+    llm_temperature: z.number().min(0).max(2).optional(),
+
+    // STT Transcribers & Accelerators
+    transcriber_id: z.string().optional(),
+    fallback_stt_enabled: z.boolean().optional(),
+    stt_fallback_transcriber_id: z.string().optional(),
+    boosted_keywords: z.string().optional(),
+    boost_dynamic_variables: z.boolean().optional(),
+    predictive_preprocessing_enabled: z.boolean().optional(),
+    prompt_caching_enabled: z.boolean().optional(),
+    fallback_llm_enabled: z.boolean().optional(),
+    llm_fallback_delay_ms: z.number().min(0).optional(),
+    llm_fallback_model: z.string().optional(),
+
+    // Voicemail Handling
+    voicemail_detection: z.boolean().optional(),
+    hangup_on_voicemail: z.boolean().optional(),
+    voicemail_message: z.string().optional(),
+
+    // Functions & Tools
+    agent_functions: z.array(dialnexaFunctionSchema).optional(),
+
+    // Post-Call Extraction Scorecard
+    post_call_analysis: z.array(dialnexaPostCallFieldSchema).optional(),
   })
   .optional();
 
