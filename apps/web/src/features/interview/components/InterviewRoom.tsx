@@ -271,6 +271,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         timestamp: now + 1,
       });
     }
+
+    setChatMessages((prev) => [...prev, ...newMessages]);
   }, [
     currentTurn?.interviewer_text,
     currentTurn?.question_text,
@@ -280,11 +282,12 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     currentTurn,
   ]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever chatMessages updates
   useEffect(() => {
     if (chatFeedRef.current) {
       chatFeedRef.current.scrollTop = chatFeedRef.current.scrollHeight;
     }
-  }, []);
+  }, [chatMessages]);
 
   useEffect(() => {
     if (globalTimer.isExpired && session?.status !== "completed" && !completionStartedRef.current) {

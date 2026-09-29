@@ -68,6 +68,27 @@ export async function bookSlot(payload: {
 }
 
 export async function fetchSessionContext(sessionId: string): Promise<SessionContext> {
+  try {
+    const res = await fetch(`/api/interview/session?sessionId=${sessionId}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.session && json.round_instance && json.candidate && json.campaign) {
+        return sessionContextSchema.parse({
+          session: json.session,
+          round_instance: json.round_instance,
+          candidate: json.candidate,
+          campaign: json.campaign,
+          round: json.round || {
+            round_number: 1,
+            round_type: "ai_interview",
+            cutoff_score: 70,
+          },
+          account: json.account || { id: "shared", tier: "enterprise" },
+        });
+      }
+    }
+  } catch {}
+
   const { data, error } = await anonClient().rpc("get_session_context", {
     p_session_id: sessionId,
     p_token: "",
@@ -81,6 +102,20 @@ export async function insertProctoringEvent(
   eventType: string,
   detail: string,
 ): Promise<void> {
+  try {
+    const res = await fetch("/api/interview/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "proctoring_event",
+        sessionId,
+        eventType,
+        detail,
+      }),
+    });
+    if (res.ok) return;
+  } catch {}
+
   await anonClient().rpc("insert_proctoring_event", {
     p_session_id: sessionId,
     p_token: "",

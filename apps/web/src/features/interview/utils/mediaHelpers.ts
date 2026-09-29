@@ -116,7 +116,9 @@ export async function getScreenStream(timeoutMs = 15000): Promise<MediaStream | 
 
 export function stopStream(stream?: MediaStream | null): void {
   if (!stream) return;
-  stream.getTracks().forEach((t) => t.stop());
+  stream.getTracks().forEach((t) => {
+    t.stop();
+  });
 }
 
 export interface CompositeStreamOptions {
@@ -147,13 +149,23 @@ export function createCompositeStream(
   screenVideo.srcObject = screenStream;
   screenVideo.muted = true;
   screenVideo.playsInline = true;
-  void screenVideo.play().catch(() => {});
+  try {
+    const p = screenVideo.play();
+    if (p && typeof p.catch === "function") {
+      p.catch(() => {});
+    }
+  } catch {}
 
   const cameraVideo = document.createElement("video");
   cameraVideo.srcObject = cameraStream;
   cameraVideo.muted = true;
   cameraVideo.playsInline = true;
-  void cameraVideo.play().catch(() => {});
+  try {
+    const p = cameraVideo.play();
+    if (p && typeof p.catch === "function") {
+      p.catch(() => {});
+    }
+  } catch {}
 
   let animationFrameId: number;
   let isRunning = true;
@@ -185,7 +197,8 @@ export function createCompositeStream(
 
   animationFrameId = requestAnimationFrame(draw);
 
-  const canvasStream = canvas.captureStream(frameRate);
+  const canvasStream =
+    typeof canvas.captureStream === "function" ? canvas.captureStream(frameRate) : cameraStream;
   const audioTracks = audioStream.getAudioTracks();
   const mixedStream = new MediaStream([
     ...canvasStream.getVideoTracks(),

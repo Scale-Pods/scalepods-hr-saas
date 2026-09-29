@@ -8,10 +8,31 @@ interface TTSEngine {
   getVoices: () => SpeechSynthesisVoice[];
 }
 
+function prepareTextForTTS(text: string): string {
+  if (!text) return "";
+  let cleaned = text;
+  const acronyms: Array<[RegExp, string]> = [
+    [/\bn8n\b/gi, "N-8-N"],
+    [/\bgrpc\b/gi, "g-R-P-C"],
+    [/\bfastapi\b/gi, "Fast API"],
+    [/\bpostgresql\b/gi, "Postgres-Q-L"],
+    [/\bpostgres\b/gi, "Postgres"],
+    [/\bci\/cd\b/gi, "C-I C-D"],
+    [/\bui\/ux\b/gi, "U-I U-X"],
+    [/\bgraphql\b/gi, "Graph Q L"],
+    [/\b([a-z])8([a-z])\b/gi, "$1 8 $2"],
+  ];
+  for (const [pattern, replacement] of acronyms) {
+    cleaned = cleaned.replace(pattern, replacement);
+  }
+  return cleaned;
+}
+
 export function useTTSEngine(): TTSEngine {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const isSpeakingRef = useRef(false);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -41,6 +62,13 @@ export function useTTSEngine(): TTSEngine {
       clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = null;
     }
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch {}
+      currentAudioRef.current = null;
+    }
     activeUtteranceRef.current = null;
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       try {
@@ -52,7 +80,11 @@ export function useTTSEngine(): TTSEngine {
 
   const speakWithWebSpeech = useCallback(
     (text: string, onend?: () => void) => {
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      if (
+        typeof window === "undefined" ||
+        !("speechSynthesis" in window) ||
+        typeof SpeechSynthesisUtterance === "undefined"
+      ) {
         console.warn("SpeechSynthesis not available in this browser");
         if (onend) onend();
         return;
@@ -60,7 +92,6 @@ export function useTTSEngine(): TTSEngine {
 
       cancel();
 
-      // Ensure speech synthesis is not paused (Chrome on Windows bug)
       try {
         window.speechSynthesis.resume();
       } catch {}
@@ -73,7 +104,7 @@ export function useTTSEngine(): TTSEngine {
 
       const currentVoices = voicesRef.current;
       if (currentVoices.length > 0) {
-        const preferredVoice = currentVoices.find((v) => {
+        const maleVoice = currentVoices.find((v) => {
           const name = v.name.toLowerCase();
           return (
             (name.includes("male") ||
@@ -90,7 +121,7 @@ export function useTTSEngine(): TTSEngine {
         const fallbackEnglish = currentVoices.find(
           (v) => v.lang.includes("en") || v.lang.includes("EN"),
         );
-        utterance.voice = preferredVoice || fallbackEnglish || currentVoices[0] || null;
+        utterance.voice = maleVoice || fallbackEnglish || currentVoices[0] || null;
       }
 
       let finished = false;
@@ -121,8 +152,6 @@ export function useTTSEngine(): TTSEngine {
         finish();
       };
 
-      // Safety timeout: calculate based on word count (~250 words per min = ~240ms/word + 2.5s buffer)
-      // This guarantees onend is triggered even if the browser speech engine gets stuck or drops onend!
       const words = text.split(/\s+/).length;
       const expectedDurationMs = Math.max(3500, Math.min(30000, words * 380 + 2500));
       safetyTimerRef.current = setTimeout(() => {
@@ -142,28 +171,86 @@ export function useTTSEngine(): TTSEngine {
     [cancel],
   );
 
+  const speakWithDeepgram = useCallback(
+    async (text: string, apiKey: string, onend?: () => void) => {
+      try {
+        cancel();
+        isSpeakingRef.current = true;
+
+        const model = "aura-arcas-en";
+        const speed = 1.1;
+        const preparedText = prepareTextForTTS(text);
+
+        const response = await fetch(`https://api.deepgram.com/v1/speak?model=${model}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: preparedText }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Deepgram TTS request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        audio.playbackRate = speed;
+        currentAudioRef.current = audio;
+
+        audio.onended = () => {
+          isSpeakingRef.current = false;
+          currentAudioRef.current = null;
+          URL.revokeObjectURL(audioUrl);
+          if (onend) onend();
+        };
+
+        audio.onerror = (e) => {
+          console.warn("Deepgram Audio playback error:", e);
+          isSpeakingRef.current = false;
+          currentAudioRef.current = null;
+          URL.revokeObjectURL(audioUrl);
+          if (onend) onend();
+        };
+
+        await audio.play();
+      } catch (err) {
+        console.warn("Deepgram TTS failed, falling back to Web Speech API:", err);
+        currentAudioRef.current = null;
+        speakWithWebSpeech(text, onend);
+      }
+    },
+    [cancel, speakWithWebSpeech],
+  );
+
   const speak = useCallback(
     (text: string, onend?: () => void) => {
-      if (!text || !text.trim()) {
+      if (!text?.trim()) {
         if (onend) onend();
         return;
       }
-      speakWithWebSpeech(text, onend);
+      const apiKey = process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY;
+      if (apiKey && apiKey.trim().length > 0 && !apiKey.includes("your-deepgram-api-key")) {
+        speakWithDeepgram(text, apiKey, onend);
+      } else {
+        speakWithWebSpeech(text, onend);
+      }
     },
-    [speakWithWebSpeech],
+    [speakWithDeepgram, speakWithWebSpeech],
   );
 
   const isSpeaking = useCallback(() => isSpeakingRef.current, []);
 
-  const setVoiceSettings = useCallback((_rate: number, _pitch: number) => {}, []);
+  const setVoiceSettings = useCallback(
+    (_rate: number, _pitch: number) => {
+      cancel();
+    },
+    [cancel],
+  );
 
   const getVoices = useCallback(() => voices, [voices]);
 
-  return {
-    speak,
-    cancel,
-    isSpeaking,
-    setVoiceSettings,
-    getVoices,
-  };
+  return { speak, cancel, isSpeaking, setVoiceSettings, getVoices };
 }

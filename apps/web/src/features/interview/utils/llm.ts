@@ -362,16 +362,89 @@ const STAGE_QUESTIONS: Array<{ q: string; type: QuestionResponse["question_type"
   { q: "Where do you see yourself growing technically over the next year?", type: "cultural" },
 ];
 
+function normalizeQuestion(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+export function isSimilarQuestion(a: string, b: string): boolean {
+  const normalizedA = normalizeQuestion(a);
+  const normalizedB = normalizeQuestion(b);
+  if (!normalizedA || !normalizedB) return false;
+  if (normalizedA === normalizedB) return true;
+  if (normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA)) return true;
+
+  const importantWordsA = normalizedA.split(" ").filter((word) => word.length > 3);
+  const importantWordsB = new Set(normalizedB.split(" ").filter((word) => word.length > 3));
+  if (importantWordsA.length === 0 || importantWordsB.size === 0) return false;
+
+  const overlap = importantWordsA.filter((word) => importantWordsB.has(word)).length;
+  return overlap / Math.min(importantWordsA.length, importantWordsB.size) >= 0.65;
+}
+
+export function hasSimilarQuestionBeenAsked(
+  question: string,
+  existingQuestions: string[],
+): boolean {
+  return existingQuestions.some((item) => isSimilarQuestion(item, question));
+}
+
 export function getDynamicCandidateQuestion(
   totalQuestions: number,
   existingQuestions: string[],
+  analysis?: CandidateAnalysis | null,
   planItem?: InterviewPlanItem | null,
+  reason = "Dynamic candidate question",
 ): QuestionResponse {
-  if (planItem?.objective) {
+  if (planItem?.objective && !hasSimilarQuestionBeenAsked(planItem.objective, existingQuestions)) {
     return {
       question_text: `To explore ${planItem.objective.toLowerCase()}, could you describe your practical approach and the trade-offs involved?`,
       question_type: planItem.question_type || "technical",
       follow_up_reason: "plan_item",
+    };
+  }
+
+  // Inspect tools from candidate analysis
+  const tools = analysis?.extractedTools || [];
+  const unaskedTool = tools.find(
+    (t) => t.name && !hasSimilarQuestionBeenAsked(t.name, existingQuestions),
+  );
+  if (unaskedTool) {
+    const text = unaskedTool.mentioned_in_resume
+      ? `Your background highlights experience with ${unaskedTool.name}. Could you detail how you applied ${unaskedTool.name} in your projects and the outcomes achieved?`
+      : `This position utilizes ${unaskedTool.name}. How familiar are you with ${unaskedTool.name}, and how would you apply your technical knowledge to adopt it?`;
+    return {
+      question_text: text,
+      question_type: "technical",
+      follow_up_reason: reason,
+    };
+  }
+
+  // Inspect candidate skills
+  const skills = analysis?.skills || [];
+  const unaskedSkill = skills.find(
+    (s) => s.skill && !hasSimilarQuestionBeenAsked(s.skill, existingQuestions),
+  );
+  if (unaskedSkill) {
+    return {
+      question_text: `How have you applied ${unaskedSkill.skill} in your past roles, and what key trade-offs or decisions did you handle?`,
+      question_type: "technical",
+      follow_up_reason: reason,
+    };
+  }
+
+  // Inspect stage questions that have not been asked yet
+  const unaskedStageQ = STAGE_QUESTIONS.find(
+    (sq) => !hasSimilarQuestionBeenAsked(sq.q, existingQuestions),
+  );
+  if (unaskedStageQ) {
+    return {
+      question_text: unaskedStageQ.q,
+      question_type: unaskedStageQ.type,
+      follow_up_reason: reason,
     };
   }
 
@@ -407,6 +480,12 @@ export async function generateInterviewerTurn(
   accountId?: string,
   candidateId?: string,
 ): Promise<InterviewerTurn> {
+  const allSessionQuestions = [
+    ...history.map((h) => h.question),
+    ...pendingQuestions,
+    ...(targetQuestion ? [targetQuestion] : []),
+  ];
+
   if (totalQuestions >= maxPrimaryQuestions && pendingQuestions.length === 0 && !targetQuestion) {
     return {
       interviewer_text:
@@ -422,6 +501,7 @@ export async function generateInterviewerTurn(
     !targetQuestion &&
     lastAssessmentNote?.follow_up_prompted &&
     lastAssessmentNote?.follow_up_question &&
+    !hasSimilarQuestionBeenAsked(lastAssessmentNote.follow_up_question, allSessionQuestions) &&
     followUpCount < maxFollowUps;
 
   if (shouldFollowUp && lastAssessmentNote?.follow_up_question) {
@@ -495,6 +575,27 @@ export async function generateInterviewerTurn(
         throw new Error("Backend returned empty question text");
       }
 
+      if (!targetQuestion && hasSimilarQuestionBeenAsked(questionText, allSessionQuestions)) {
+        console.warn(
+          "[generateInterviewerTurn] Duplicate question detected, choosing unique next question",
+        );
+        const fallback = getDynamicCandidateQuestion(
+          totalQuestions,
+          allSessionQuestions,
+          analysis,
+          planItem,
+          "repeated question prevented",
+        );
+        return {
+          interviewer_text:
+            interviewerText || "Thank you for explaining that. Let's move on to the next topic.",
+          question_text: fallback.question_text,
+          turn_type: "question",
+          question_type: fallback.question_type,
+          should_continue: true,
+        };
+      }
+
       return {
         interviewer_text: interviewerText,
         question_text: questionText,
@@ -508,7 +609,13 @@ export async function generateInterviewerTurn(
   }
 
   // Robust fallback
-  if (targetQuestion) {
+  if (
+    targetQuestion &&
+    !hasSimilarQuestionBeenAsked(
+      targetQuestion,
+      history.map((h) => h.question),
+    )
+  ) {
     return {
       interviewer_text: candidateRequestedClarification
         ? "No problem at all! Let's continue."
@@ -520,7 +627,12 @@ export async function generateInterviewerTurn(
     };
   }
 
-  const fallbackQ = getDynamicCandidateQuestion(totalQuestions, [], planItem);
+  const fallbackQ = getDynamicCandidateQuestion(
+    totalQuestions,
+    allSessionQuestions,
+    analysis,
+    planItem,
+  );
   return {
     interviewer_text: "Thank you for walking me through that. Let's move on to the next topic.",
     question_text: fallbackQ.question_text,
@@ -528,4 +640,58 @@ export async function generateInterviewerTurn(
     question_type: fallbackQ.question_type,
     should_continue: true,
   };
+}
+
+export async function analyzeCandidateFit(
+  resumeText: string,
+  jdText: string,
+): Promise<CandidateAnalysis> {
+  try {
+    const response = await fetch(`${n8nBase()}/webhook/interview-engine`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "analyze-fit", resumeText, jdText }),
+    });
+    if (!response.ok) throw new Error(`n8n analyze-fit failed: ${response.status}`);
+    const parsed = (await response.json()) as Record<string, unknown>;
+    const rawSkills = Array.isArray(parsed.skills) ? parsed.skills : [];
+    const skills = rawSkills.map((s: Record<string, unknown>) => ({
+      skill: String(s.skill || ""),
+      source: String(s.source || "jd_required") as SkillAssessment["source"],
+      status: String(s.status || "match").toLowerCase() as SkillAssessment["status"],
+      evidence: String(s.evidence || ""),
+      priority: Number(s.priority) || 5,
+    }));
+    return {
+      skills,
+      projectMappings: Array.isArray(parsed.projectMappings) ? parsed.projectMappings : [],
+      summary: (parsed.summary as string) || "",
+    };
+  } catch (err) {
+    console.warn("[analyzeCandidateFit] n8n call failed, returning fallback:", err);
+    return { skills: [], projectMappings: [], summary: "Skill analysis unavailable." };
+  }
+}
+
+export async function extractJdToolsAndTech(resumeText: string, jdText: string): Promise<JdTool[]> {
+  try {
+    const response = await fetch(`${n8nBase()}/webhook/interview-engine`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "extract-tools", resumeText, jdText }),
+    });
+    if (!response.ok) throw new Error(`n8n extract-tools failed: ${response.status}`);
+    const parsed = (await response.json()) as Record<string, unknown>;
+    if (!Array.isArray(parsed.tools)) return [];
+    return parsed.tools.map((t: Record<string, unknown>) => ({
+      name: String(t.name || ""),
+      category: String(t.category || "General"),
+      importance: String(t.importance || "nice_to_have") as JdTool["importance"],
+      mentioned_in_resume: Boolean(t.mentioned_in_resume),
+      resume_context: t.resume_context ? String(t.resume_context) : null,
+    }));
+  } catch (err) {
+    console.warn("[extractJdToolsAndTech] n8n call failed, returning empty list:", err);
+    return [];
+  }
 }
