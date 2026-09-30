@@ -8,6 +8,8 @@ export async function GET(request: NextRequest) {
   const token_hash = requestUrl.searchParams.get("token_hash");
   const type = requestUrl.searchParams.get("type");
   const next = requestUrl.searchParams.get("next") || "/dashboard";
+  const urlError = requestUrl.searchParams.get("error");
+  const urlErrorDescription = requestUrl.searchParams.get("error_description");
 
   let redirectUrl = new URL(next, requestUrl.origin);
 
@@ -35,14 +37,27 @@ export async function GET(request: NextRequest) {
     },
   );
 
+  // If Supabase redirected with an error, handle it directly
+  if (urlError) {
+    return NextResponse.redirect(
+      new URL(
+        `/auth/verify?error=${encodeURIComponent(urlError)}&error_description=${encodeURIComponent(
+          urlErrorDescription || "Authentication failed",
+        )}`,
+        requestUrl.origin,
+      ),
+    );
+  }
+
+  let errorMessage = "Authentication link is invalid or has expired.";
+
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
       return response;
     }
-  }
-
-  if (token_hash && type) {
+    errorMessage = error.message;
+  } else if (token_hash && type) {
     const { error } = await supabase.auth.verifyOtp({
       token_hash,
       type: type as "recovery" | "email" | "signup",
@@ -50,13 +65,12 @@ export async function GET(request: NextRequest) {
     if (!error) {
       return response;
     }
+    errorMessage = error.message;
   }
 
   return NextResponse.redirect(
     new URL(
-      `/auth/verify?error=access_denied&error_description=${encodeURIComponent(
-        "Authentication link is invalid or has expired.",
-      )}`,
+      `/auth/verify?error=access_denied&error_description=${encodeURIComponent(errorMessage)}`,
       requestUrl.origin,
     ),
   );
