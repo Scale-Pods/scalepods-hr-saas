@@ -31,7 +31,7 @@ export function parseResumeText(text: string): ParsedContact {
   const phone = phoneMatches?.find((p) => {
     if (p.match(/\b\d{2}[./-]\d{2}[./-]\d{4}\b/)) return false;
     const digits = p.replace(/\D/g, "");
-    return digits.length >= 10 && digits.length <= 15;
+    return digits.length >= 7 && digits.length <= 15;
   });
 
   let name = guessName(text);

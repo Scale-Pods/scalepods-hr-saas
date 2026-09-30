@@ -182,9 +182,9 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       if (data.resumeText) setResumeText(data.resumeText);
       if (data.scorecard) setScorecard(data.scorecard);
 
-      const existingQuestions: InterviewQuestion[] = Array.isArray(data.questions)
-        ? data.questions
-        : [];
+      const existingQuestions: InterviewQuestion[] = (
+        Array.isArray(data.questions) ? data.questions : []
+      ).filter((q: any) => q && q.question_type !== "blueprint_meta");
       const existingAnswers: Array<{
         question_id: string;
         answer_text?: string;
@@ -291,15 +291,13 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
     const firstQ = questions[0];
     const initialQuestionText = firstQ?.question_text || INTRO_QUESTION_TEXT;
-    const greetingQuestionText =
-      initialQuestionText.toLowerCase().includes("hello") ||
-      initialQuestionText.toLowerCase().includes("welcome")
-        ? initialQuestionText
-        : `${OPENING_ACKNOWLEDGMENT} ${initialQuestionText}`;
+    if (firstQ?.id) {
+      setCurrentQuestionId(firstQ.id);
+    }
 
     setCurrentTurn({
       interviewer_text: OPENING_ACKNOWLEDGMENT,
-      question_text: greetingQuestionText,
+      question_text: initialQuestionText,
       turn_type: "question",
       question_type: firstQ?.question_type || "cultural",
       should_continue: true,
@@ -314,17 +312,20 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       localAnswersMapRef.current.set(questionId, answerText);
 
       // Persist raw answer immediately to database
-      fetch("/api/interview/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "submit_answer",
-          sessionId: session.id,
-          questionId,
-          answerText,
-          audioUrl,
-        }),
-      }).catch((err) => console.warn("Failed to persist answer to DB:", err));
+      try {
+        await fetch("/api/interview/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "submit_answer",
+            sessionId: session.id,
+            questionId,
+            answerText,
+          }),
+        });
+      } catch (err) {
+        console.warn("Failed to persist answer to DB:", err);
+      }
 
       const currentQuestion = questions.find((q) => q.id === questionId);
       if (!currentQuestion || !answerText) return;
@@ -573,15 +574,19 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
     );
 
     // Call complete API to finalize session record and trigger scoring pipeline
-    fetch("/api/interview/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "complete",
-        sessionId: session.id,
-        recordingUrl,
-      }),
-    }).catch((err) => console.warn("Failed to finalize session on server:", err));
+    try {
+      await fetch("/api/interview/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "complete",
+          sessionId: session.id,
+          recordingUrl,
+        }),
+      });
+    } catch (err) {
+      console.warn("Failed to finalize session on server:", err);
+    }
   }, [session, setMediaStreams]);
 
   useEffect(() => {

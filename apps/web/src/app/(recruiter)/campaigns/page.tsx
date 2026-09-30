@@ -16,6 +16,7 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   Upload,
   Users,
   Zap,
@@ -25,10 +26,22 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { CampaignCreateWizard } from "@/components/campaigns/CampaignCreateWizard";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -38,7 +51,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAccount } from "@/features/account/hooks";
-import { updateCampaignStatus } from "@/features/campaigns/api";
+import {
+  type CampaignListItem,
+  deleteCampaign,
+  updateCampaignStatus,
+} from "@/features/campaigns/api";
 import { useCampaigns } from "@/features/campaigns/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -51,13 +68,18 @@ function CampaignsContent() {
   const [activeTab, setActiveTab] = useState<"list" | "new">(initialTab);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
-  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [campaignToDelete, setCampaignToDelete] = useState<CampaignListItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: campaigns, isPending, refetch, isRefetching } = useCampaigns();
   const { account } = useAccount();
 
   const rows = campaigns ?? [];
+
+  const activeCount = rows.filter((c) => c.status === "on").length;
+  const pausedCount = rows.filter((c) => c.status !== "on").length;
 
   const filtered = useMemo(() => {
     return rows.filter((c) => {
@@ -75,26 +97,45 @@ function CampaignsContent() {
     });
   }, [rows, searchQuery, statusFilter]);
 
-  const activeCount = useMemo(() => rows.filter((c) => c.status === "on").length, [rows]);
-
   const handleToggleStatus = async (
-    e: React.MouseEvent,
+    e: React.MouseEvent | undefined,
     campaignId: string,
     currentStatus: string,
   ) => {
-    e.stopPropagation();
-    if (!account?.id) return;
+    e?.stopPropagation();
+    const newStatus = currentStatus === "on" ? "paused" : "on";
     setTogglingId(campaignId);
     try {
       const token = supabaseBrowser()
         ? (await supabaseBrowser().auth.getSession()).data.session?.access_token
         : undefined;
-      await updateCampaignStatus(campaignId, currentStatus, account.id, token);
+      await updateCampaignStatus(campaignId, newStatus, account?.id, token);
+      showToast(`Campaign ${newStatus === "on" ? "activated" : "deactivated"}`, {
+        kind: "success",
+      });
       await refetch();
     } catch (err) {
-      console.error("Failed to toggle campaign status", err);
+      showErrorToast(err);
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const handleDeleteCampaign = async () => {
+    if (!campaignToDelete) return;
+    setIsDeleting(true);
+    try {
+      const token = supabaseBrowser()
+        ? (await supabaseBrowser().auth.getSession()).data.session?.access_token
+        : undefined;
+      await deleteCampaign(campaignToDelete.id, account?.id, token);
+      showToast("Campaign deleted successfully", { kind: "success" });
+      setCampaignToDelete(null);
+      await refetch();
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -193,21 +234,25 @@ function CampaignsContent() {
                 />
               </div>
 
-              {/* Status Filter */}
+              {/* Status filter pills */}
               <div className="flex items-center rounded-full bg-accent/60 p-0.5 text-xs">
-                {(["all", "active", "paused"] as const).map((filter) => (
+                {(["all", "active", "paused"] as const).map((sf) => (
                   <button
-                    key={filter}
+                    key={sf}
                     type="button"
-                    onClick={() => setStatusFilter(filter)}
+                    onClick={() => setStatusFilter(sf)}
                     className={cn(
-                      "rounded-full px-3 py-1 capitalize transition-all",
-                      statusFilter === filter
-                        ? "bg-card font-semibold text-foreground shadow-xs"
+                      "rounded-full px-3 py-1 font-medium capitalize transition-all",
+                      statusFilter === sf
+                        ? "bg-card text-foreground shadow-xs"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    {filter}
+                    {sf === "all"
+                      ? `All (${rows.length})`
+                      : sf === "active"
+                        ? `Active (${activeCount})`
+                        : `Paused (${pausedCount})`}
                   </button>
                 ))}
               </div>
@@ -244,15 +289,15 @@ function CampaignsContent() {
             </div>
           </div>
 
-          {/* Active Campaigns status badge banner */}
+          {/* Campaigns status summary banner */}
           <div className="flex items-center justify-between border-y border-border/70 py-2.5">
             <div className="flex items-center gap-2">
-              <span className="flex h-2 w-2 rounded-full bg-success animate-pulse" />
+              <span className="flex h-2 w-2 rounded-full bg-success" />
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Active Campaigns
+                Campaigns
               </span>
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-foreground">
-                {activeCount} active · {rows.length} total
+                {activeCount} active · {pausedCount} paused · {rows.length} total
               </span>
             </div>
           </div>
@@ -272,9 +317,11 @@ function CampaignsContent() {
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<FolderKanban className="h-6 w-6" aria-hidden />}
-              title={searchQuery ? "No matching campaigns" : "No campaigns yet"}
+              title={
+                searchQuery || statusFilter !== "all" ? "No matching campaigns" : "No campaigns yet"
+              }
               hint={
-                searchQuery
+                searchQuery || statusFilter !== "all"
                   ? "Try changing your search term or status filter."
                   : "Create your first campaign to start screening candidates with AI workflows."
               }
@@ -302,13 +349,13 @@ function CampaignsContent() {
                       style={{
                         background: isActive
                           ? "linear-gradient(90deg, #10b981, #34d399)"
-                          : "linear-gradient(90deg, #3b82f6, #06b6d4)",
+                          : "linear-gradient(90deg, #64748b, #94a3b8)",
                       }}
                     />
 
                     <div className="campaign-body">
-                      {/* Status header with toggle */}
-                      <div className="campaign-status">
+                      {/* Status header with status indicator on left and active/deactive switch on top right */}
+                      <div className="campaign-status flex items-center justify-between">
                         <span
                           className={cn(
                             "status-pill",
@@ -322,25 +369,14 @@ function CampaignsContent() {
                           {isActive ? "Active" : "Paused"}
                         </span>
 
-                        {/* Interactive status toggle */}
-                        <button
-                          type="button"
-                          onClick={(e) => handleToggleStatus(e, c.id, c.status)}
-                          disabled={togglingId === c.id}
-                          title={isActive ? "Pause campaign" : "Activate campaign"}
-                          className={cn(
-                            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden",
-                            isActive ? "bg-success" : "bg-muted",
-                            togglingId === c.id && "opacity-50",
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out",
-                              isActive ? "translate-x-4" : "translate-x-0",
-                            )}
+                        <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+                          <Switch
+                            checked={isActive}
+                            onCheckedChange={() => handleToggleStatus(undefined, c.id, c.status)}
+                            disabled={togglingId === c.id}
+                            aria-label={`Toggle active state for ${c.name}`}
                           />
-                        </button>
+                        </div>
                       </div>
 
                       {/* Campaign Name */}
@@ -371,17 +407,29 @@ function CampaignsContent() {
                       </div>
 
                       {/* Campaign actions */}
-                      <div className="campaign-actions">
+                      <div className="campaign-actions flex items-center gap-2">
                         <Button
                           variant="outline"
                           size="sm"
                           asChild
-                          className="w-full justify-center gap-1.5 rounded-xl text-xs font-semibold"
+                          className="flex-1 justify-center gap-1.5 rounded-xl text-xs font-semibold"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <Link href={`/campaigns/${c.id}`}>
                             <span>View Pipeline & Analytics</span>
                           </Link>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 px-2.5 rounded-xl text-xs font-semibold border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
+                          title="Delete campaign"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCampaignToDelete(c);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
@@ -417,15 +465,26 @@ function CampaignsContent() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          className={cn(
-                            c.status === "on"
-                              ? "bg-success/15 text-success"
-                              : "bg-fill-tertiary text-muted-foreground",
-                          )}
+                        <div
+                          className="flex items-center gap-2"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          {c.status === "on" ? "Active" : "Paused"}
-                        </Badge>
+                          <Badge
+                            className={cn(
+                              c.status === "on"
+                                ? "bg-success/15 text-success"
+                                : "bg-fill-tertiary text-muted-foreground",
+                            )}
+                          >
+                            {c.status === "on" ? "Active" : "Paused"}
+                          </Badge>
+                          <Switch
+                            checked={c.status === "on"}
+                            onCheckedChange={() => handleToggleStatus(undefined, c.id, c.status)}
+                            disabled={togglingId === c.id}
+                            aria-label={`Toggle active state for ${c.name}`}
+                          />
+                        </div>
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-muted-foreground">
                         {c.number_of_rounds}
@@ -437,15 +496,28 @@ function CampaignsContent() {
                         {formatDateTime(c.created_at)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          asChild
-                          className="h-8 rounded-lg text-xs"
+                        <div
+                          className="flex items-center justify-end gap-1.5"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <Link href={`/campaigns/${c.id}`}>Open</Link>
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            asChild
+                            className="h-8 rounded-lg text-xs"
+                          >
+                            <Link href={`/campaigns/${c.id}`}>Open</Link>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                            title="Delete campaign"
+                            onClick={() => setCampaignToDelete(c)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -519,6 +591,32 @@ function CampaignsContent() {
           </div>
         </>
       )}
+
+      <AlertDialog
+        open={Boolean(campaignToDelete)}
+        onOpenChange={(open) => !open && setCampaignToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &ldquo;{campaignToDelete?.name}&rdquo;? This action
+              cannot be undone. All candidates, interview rounds, and evaluation scorecards for this
+              campaign will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeleting}
+              onClick={handleDeleteCampaign}
+            >
+              {isDeleting ? "Deleting..." : "Delete Campaign"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

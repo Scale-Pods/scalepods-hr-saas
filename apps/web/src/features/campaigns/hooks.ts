@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchCampaignDetail, fetchCampaigns, updateCampaignStatus } from "./api";
+import { deleteCampaign, fetchCampaignDetail, fetchCampaigns, updateCampaignStatus } from "./api";
 
 export const campaignsKey = ["campaigns", "list"] as const;
 
@@ -24,6 +24,25 @@ export function useCampaignDetail(id: string | undefined) {
   });
 }
 
+export function useDeleteCampaign() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      accountId,
+      accessToken,
+    }: {
+      campaignId: string;
+      accountId?: string;
+      accessToken?: string;
+    }) => deleteCampaign(campaignId, accountId, accessToken),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.removeQueries({ queryKey: ["campaigns", "detail", campaignId] });
+      queryClient.invalidateQueries({ queryKey: campaignsKey });
+    },
+  });
+}
+
 export function useToggleCampaignStatus(
   campaignId: string,
   currentStatus: string,
@@ -31,12 +50,34 @@ export function useToggleCampaignStatus(
   accessToken: string | undefined,
 ) {
   const queryClient = useQueryClient();
+  const nextStatus = currentStatus === "on" ? "paused" : "on";
   return useMutation({
     mutationFn: () => {
       if (!accountId) throw new Error("Account not loaded");
-      return updateCampaignStatus(campaignId, currentStatus, accountId, accessToken);
+      return updateCampaignStatus(campaignId, nextStatus, accountId, accessToken);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
+      queryClient.invalidateQueries({ queryKey: campaignsKey });
+    },
+  });
+}
+
+export function useUpdateCampaignStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      newStatus,
+      accountId,
+      accessToken,
+    }: {
+      campaignId: string;
+      newStatus: "on" | "paused" | "off";
+      accountId?: string;
+      accessToken?: string;
+    }) => updateCampaignStatus(campaignId, newStatus, accountId, accessToken),
+    onSuccess: (_, { campaignId }) => {
       queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
       queryClient.invalidateQueries({ queryKey: campaignsKey });
     },

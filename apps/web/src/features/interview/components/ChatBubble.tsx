@@ -107,7 +107,7 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
       <div className="chat-bubble-row alex bubble-alex">
         <AvatarRing speaking={isSpeaking} />
 
-        <div style={{ maxWidth: "72%" }}>
+        <div style={{ maxWidth: "85%" }}>
           {/* Meta row */}
           <div className="bubble-meta">
             <span className="bubble-label-alex">Alex</span>
@@ -168,7 +168,7 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
                   <SpeakingBars />
                 </div>
               )}
-              <p style={{ margin: 0, whiteSpace: "pre-wrap", fontStyle: "italic" }}>
+              <p style={{ margin: 0, whiteSpace: "pre-wrap", fontStyle: "italic", color: "#fef3c7", fontSize: "0.9375rem", lineHeight: 1.55 }}>
                 {message.text}
               </p>
             </div>
@@ -176,7 +176,7 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
             <div
               className="bubble-body"
               style={{
-                borderLeft: isSpeaking ? "2px solid var(--purple)" : "2px solid transparent",
+                borderLeft: isSpeaking ? "2px solid var(--purple)" : "2px solid rgba(255,255,255,0.15)",
                 transition: "border-color 0.3s ease",
               }}
             >
@@ -202,7 +202,9 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
                   <SpeakingBars />
                 </div>
               )}
-              <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{message.text}</p>
+              <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "#ffffff", fontSize: "1rem", lineHeight: 1.6, fontWeight: 500 }}>
+                {message.text}
+              </p>
             </div>
           )}
         </div>
@@ -215,7 +217,7 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
     <div className="chat-bubble-row candidate bubble-candidate">
       <div
         style={{
-          maxWidth: "72%",
+          maxWidth: "85%",
           display: "flex",
           flexDirection: "column",
           alignItems: "flex-end",
@@ -228,7 +230,9 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
           <span className="bubble-label-candidate">You</span>
         </div>
         <div className="bubble-body">
-          <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{message.text}</p>
+          <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "#ffffff", fontSize: "0.95rem", lineHeight: 1.55 }}>
+            {message.text}
+          </p>
         </div>
       </div>
 

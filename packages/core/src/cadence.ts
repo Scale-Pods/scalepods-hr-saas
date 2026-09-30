@@ -133,6 +133,37 @@ export function voiceScreeningEnabledForTier(tier: Tier): boolean {
   return TIER_LIMITS[tier].voiceScreening;
 }
 
+/**
+ * Standard milestone day offsets.
+ * shortlist: Day 0
+ * reminder_day1: Day 1
+ * reminder_day3: Day 3
+ * reminder_day5: Day 5
+ */
+export const STAGE_DAY_OFFSETS: Record<string, number> = {
+  shortlist: 0,
+  reminder_day1: 1,
+  reminder_day3: 3,
+  reminder_day5: 5,
+};
+
+/**
+ * Filters cadence rows according to the total duration of the campaign in days.
+ * Stages with fixed day offsets strictly greater than or equal to the duration are excluded,
+ * preventing reminders (e.g. Day 3 or Day 5) from appearing when the campaign duration is only 2 days.
+ */
+export function filterCadenceByDuration(
+  rows: CadenceRenderRow[],
+  durationDays: number | null | undefined,
+): CadenceRenderRow[] {
+  if (durationDays == null || durationDays <= 0) return rows;
+  return rows.filter((r) => {
+    const offset = STAGE_DAY_OFFSETS[r.stage.key];
+    if (offset === undefined) return true;
+    return offset < durationDays;
+  });
+}
+
 export type CadenceStageKey = (typeof CADENCE_STAGES)[number]["key"];
 
 export interface CadenceConfigStage {

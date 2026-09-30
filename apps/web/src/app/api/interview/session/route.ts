@@ -126,19 +126,25 @@ export async function GET(request: NextRequest) {
       resumeText = `Candidate: ${candidate.name || "Candidate"}, Email: ${candidate.email || ""}`;
     }
 
-    // 8. Fetch Questions
+    // 8. Fetch Questions using valid columns (round_instance_id and question_number/created_at)
     const { data: questions } = await supabase
       .from("interview_questions")
       .select("*")
-      .eq("session_id", sessionId)
-      .order("order_index", { ascending: true });
+      .or(
+        session.round_instance_id
+          ? `round_instance_id.eq.${session.round_instance_id},session_id.eq.${sessionId}`
+          : `session_id.eq.${sessionId}`,
+      )
+      .order("question_number", { ascending: true });
 
-    // 9. Fetch Answers
-    const { data: answers } = await supabase
-      .from("interview_answers")
-      .select("*")
-      .eq("session_id", sessionId)
-      .order("answered_at", { ascending: true });
+    // 9. Fetch Answers using valid columns (round_instance_id)
+    const { data: answers } = session.round_instance_id
+      ? await supabase
+          .from("interview_answers")
+          .select("*")
+          .eq("round_instance_id", session.round_instance_id)
+          .order("answered_at", { ascending: true })
+      : { data: [] };
 
     // 10. Fetch Scorecard
     const { data: scorecard } = await supabase
@@ -210,6 +216,18 @@ export async function POST(request: NextRequest) {
 
     const supabase = getAdminSupabase();
 
+    // Resolve session row to obtain correct foreign keys
+    const { data: sessionRow, error: sessionErr } = await supabase
+      .from("interview_sessions")
+      .select("id, account_id, candidate_id, round_instance_id, recording_url")
+      .eq("id", sessionId)
+      .maybeSingle();
+
+    if (sessionErr || !sessionRow) {
+      console.warn("[api/interview/session POST] Session lookup error:", sessionErr);
+      return NextResponse.json({ error: "Session not found." }, { status: 404 });
+    }
+
     switch (action) {
       case "start": {
         const now = new Date().toISOString();
@@ -231,46 +249,83 @@ export async function POST(request: NextRequest) {
       }
 
       case "submit_answer": {
-        const { questionId, answerText, aiLiveNote, audioUrl } = body;
+        const { questionId, answerText, aiLiveNote } = body;
         if (!questionId) {
           return NextResponse.json({ error: "questionId is required" }, { status: 400 });
         }
 
-        const { data, error } = await supabase
-          .from("interview_answers")
-          .insert({
-            session_id: sessionId,
-            question_id: questionId,
-            answer_text: answerText || "",
-            ai_live_note: aiLiveNote || null,
-            audio_url: audioUrl || null,
-            answered_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
+        const nowIso = new Date().toISOString();
+        const roundInstanceId = sessionRow.round_instance_id;
 
-        if (error) {
-          console.warn("[api/interview/session POST submit_answer] Error:", error);
-          return NextResponse.json({ error: error.message }, { status: 500 });
+        // Check if an answer record already exists for this question & round instance
+        let updatedAnswer = null;
+        if (roundInstanceId) {
+          const { data: existingAnswers } = await supabase
+            .from("interview_answers")
+            .select("id, answer_text")
+            .eq("round_instance_id", roundInstanceId)
+            .eq("question_id", questionId)
+            .order("answered_at", { ascending: false })
+            .limit(1);
+
+          if (existingAnswers && existingAnswers.length > 0) {
+            const { data: updated, error: updateErr } = await supabase
+              .from("interview_answers")
+              .update({
+                answer_text: answerText || "",
+                answered_at: nowIso,
+                ...(aiLiveNote ? { ai_live_note: aiLiveNote } : {}),
+              })
+              .eq("id", existingAnswers[0].id)
+              .select()
+              .single();
+
+            if (!updateErr) updatedAnswer = updated;
+          }
         }
-        return NextResponse.json({ success: true, answer: data });
+
+        // If no existing record was updated, insert a new record
+        if (!updatedAnswer) {
+          const { data: inserted, error: insertErr } = await supabase
+            .from("interview_answers")
+            .insert({
+              account_id: sessionRow.account_id,
+              round_instance_id: sessionRow.round_instance_id,
+              question_id: questionId,
+              answer_text: answerText || "",
+              ai_live_note: aiLiveNote || null,
+              answered_at: nowIso,
+            })
+            .select()
+            .single();
+
+          if (insertErr) {
+            console.warn("[api/interview/session POST submit_answer] Error:", insertErr);
+            return NextResponse.json({ error: insertErr.message }, { status: 500 });
+          }
+          updatedAnswer = inserted;
+        }
+
+        return NextResponse.json({ success: true, answer: updatedAnswer });
       }
 
       case "insert_question": {
-        const { questionText, questionType, orderIndex, source, parentQuestionId } = body;
+        const { questionText, questionType, orderIndex } = body;
         if (!questionText) {
           return NextResponse.json({ error: "questionText is required" }, { status: 400 });
         }
 
+        const qNumber = typeof orderIndex === "number" ? orderIndex + 1 : 1;
         const { data, error } = await supabase
           .from("interview_questions")
           .insert({
+            account_id: sessionRow.account_id,
+            round_instance_id: sessionRow.round_instance_id,
             session_id: sessionId,
             question_text: questionText,
             question_type: questionType || "technical",
-            order_index: typeof orderIndex === "number" ? orderIndex : 0,
-            source: source || "llm_dynamic",
-            parent_question_id: parentQuestionId || null,
+            question_number: qNumber,
+            question_order: typeof orderIndex === "number" ? orderIndex : 0,
           })
           .select()
           .single();
@@ -294,35 +349,76 @@ export async function POST(request: NextRequest) {
           updateData.recording_url = recordingUrl;
         }
 
-        const { data: sessionRow, error: sessionErr } = await supabase
+        const { data: updatedSession, error: updateErr } = await supabase
           .from("interview_sessions")
           .update(updateData)
           .eq("id", sessionId)
           .select("id, account_id, candidate_id, round_instance_id, recording_url")
           .single();
 
-        if (sessionErr) {
-          console.warn("[api/interview/session POST complete] Session update error:", sessionErr);
-          return NextResponse.json({ error: sessionErr.message }, { status: 500 });
+        if (updateErr) {
+          console.warn("[api/interview/session POST complete] Session update error:", updateErr);
+          return NextResponse.json({ error: updateErr.message }, { status: 500 });
         }
 
-        // Trigger n8n scoring webhook asynchronously
-        const n8nBase = getN8nBase();
-        fetch(`${n8nBase}/webhook/score-interview`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_id: sessionId,
-            account_id: sessionRow.account_id,
-            candidate_id: sessionRow.candidate_id,
-            round_instance_id: sessionRow.round_instance_id,
-            recording_url: sessionRow.recording_url,
-          }),
-        }).catch((err) => {
-          console.warn("[api/interview/session] score-interview trigger note:", err);
-        });
+        // If recordingUrl provided, also link to scorecard
+        if (recordingUrl && sessionRow.round_instance_id) {
+          void supabase
+            .from("scorecards")
+            .update({ recording_path: recordingUrl })
+            .eq("round_instance_id", sessionRow.round_instance_id);
+        }
 
-        return NextResponse.json({ success: true, session: sessionRow });
+        // Trigger n8n scoring webhook and await response
+        const n8nBase = getN8nBase();
+        try {
+          await fetch(`${n8nBase}/webhook/score-interview`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({
+              session_id: sessionId,
+              account_id: sessionRow.account_id,
+              candidate_id: sessionRow.candidate_id,
+              round_instance_id: sessionRow.round_instance_id,
+              recording_url: updatedSession.recording_url || recordingUrl || null,
+              round_number: 1,
+              number_of_rounds: 1,
+              cutoff_score: 70,
+            }),
+          });
+        } catch (err) {
+          console.warn("[api/interview/session] score-interview trigger note:", err);
+        }
+
+        return NextResponse.json({ success: true, session: updatedSession });
+      }
+
+      case "score": {
+        const n8nBase = getN8nBase();
+        try {
+          const scoreRes = await fetch(`${n8nBase}/webhook/score-interview`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({
+              session_id: sessionId,
+              account_id: sessionRow.account_id,
+              candidate_id: sessionRow.candidate_id,
+              round_instance_id: sessionRow.round_instance_id,
+              recording_url: sessionRow.recording_url,
+              round_number: 1,
+              number_of_rounds: 1,
+              cutoff_score: 70,
+            }),
+          });
+          const result = await scoreRes.json().catch(() => ({}));
+          return NextResponse.json({ success: true, result });
+        } catch (n8nErr) {
+          console.warn("[api/interview/session POST score] Error:", n8nErr);
+          return NextResponse.json(
+            { error: (n8nErr as Error).message || "Scoring trigger failed" },
+            { status: 500 },
+          );
+        }
       }
 
       case "proctoring_event": {
@@ -332,10 +428,11 @@ export async function POST(request: NextRequest) {
         }
 
         const { error } = await supabase.from("proctoring_events").insert({
-          session_id: sessionId,
+          account_id: sessionRow.account_id,
+          round_instance_id: sessionRow.round_instance_id,
           event_type: eventType,
           severity: severity || "warning",
-          detail: detail || null,
+          details: { detail: detail || `${eventType} detected` },
           timestamp: new Date().toISOString(),
         });
 

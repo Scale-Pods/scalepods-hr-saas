@@ -15,6 +15,48 @@ function getAdminSupabase() {
 
 export async function POST(request: NextRequest) {
   try {
+    const contentType = request.headers.get("content-type") || "";
+
+    // 1. JSON-based upload confirmation (used after direct signed URL PUT)
+    if (contentType.includes("application/json")) {
+      const body = await request.json().catch(() => ({}));
+      const { action, sessionId, filePath } = body;
+
+      if (action === "confirm_upload" && sessionId && filePath) {
+        const supabaseAdmin = getAdminSupabase();
+        const nowIso = new Date().toISOString();
+
+        const { data: sessionRow } = await supabaseAdmin
+          .from("interview_sessions")
+          .update({
+            recording_url: filePath,
+            status: "completed",
+            completed_at: nowIso,
+          })
+          .eq("id", sessionId)
+          .select("id, account_id, round_instance_id")
+          .maybeSingle();
+
+        if (sessionRow?.round_instance_id) {
+          void supabaseAdmin
+            .from("scorecards")
+            .update({ recording_path: filePath })
+            .eq("round_instance_id", sessionRow.round_instance_id);
+        }
+
+        const { data: signedData } = await supabaseAdmin.storage
+          .from("recordings")
+          .createSignedUrl(filePath, 86400);
+
+        return NextResponse.json({
+          success: true,
+          filePath,
+          signedUrl: signedData?.signedUrl ?? null,
+        });
+      }
+    }
+
+    // 2. Fallback FormData multipart upload
     const formData = await request.formData();
     const sessionId = formData.get("sessionId") as string | null;
     const accountIdParam = formData.get("accountId") as string | null;
@@ -29,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     const supabaseAdmin = getAdminSupabase();
 
-    // 1. Resolve session to retrieve tenant account_id and round_instance_id
+    // Resolve session to retrieve tenant account_id and round_instance_id
     const { data: sessionRow, error: sessionErr } = await supabaseAdmin
       .from("interview_sessions")
       .select("id,account_id,round_instance_id,candidate_id")
@@ -43,7 +85,6 @@ export async function POST(request: NextRequest) {
     const accountId = sessionRow?.account_id || accountIdParam || "shared";
     const filePath = `${accountId}/${sessionId}/recording_${Date.now()}.webm`;
 
-    // 2. Convert file to buffer and upload to 'recordings' bucket
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
@@ -59,9 +100,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
     }
 
-    // 3. Update interview_sessions with the recording path and completion timestamp
+    // Update interview_sessions with recording path and completion
     const nowIso = new Date().toISOString();
-    const { error: updateSessionErr } = await supabaseAdmin
+    await supabaseAdmin
       .from("interview_sessions")
       .update({
         recording_url: filePath,
@@ -70,23 +111,13 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", sessionId);
 
-    if (updateSessionErr) {
-      console.warn("[recording API] interview_sessions update note:", updateSessionErr);
-    }
-
-    // 4. Update scorecards if a round_instance exists for this session
     if (sessionRow?.round_instance_id) {
-      const { error: updateScorecardErr } = await supabaseAdmin
+      await supabaseAdmin
         .from("scorecards")
         .update({ recording_path: filePath })
         .eq("round_instance_id", sessionRow.round_instance_id);
-
-      if (updateScorecardErr) {
-        console.warn("[recording API] scorecards update note:", updateScorecardErr);
-      }
     }
 
-    // 5. Generate signed URL for immediate playback/confirmation
     const { data: signedData } = await supabaseAdmin.storage
       .from("recordings")
       .createSignedUrl(filePath, 86400);
@@ -109,20 +140,73 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const action = searchParams.get("action");
     const sessionId = searchParams.get("sessionId");
     const pathParam = searchParams.get("path");
 
     const supabaseAdmin = getAdminSupabase();
+
+    // A. Generate signed upload URL for direct client-to-storage streaming
+    if (action === "get_upload_url" && sessionId) {
+      const { data: sessionRow } = await supabaseAdmin
+        .from("interview_sessions")
+        .select("id,account_id")
+        .eq("id", sessionId)
+        .maybeSingle();
+
+      const accountId = sessionRow?.account_id || "shared";
+      const filePath = `${accountId}/${sessionId}/recording_${Date.now()}.webm`;
+
+      const { data: signedUpload, error: uploadErr } = await supabaseAdmin.storage
+        .from("recordings")
+        .createSignedUploadUrl(filePath);
+
+      if (uploadErr || !signedUpload) {
+        console.warn("[recording API] createSignedUploadUrl error:", uploadErr);
+        return NextResponse.json(
+          { error: uploadErr?.message || "Failed to create signed upload URL" },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        filePath,
+        signedUrl: signedUpload.signedUrl,
+        token: signedUpload.token,
+      });
+    }
+
+    // B. Resolve playback signed URL
     let targetPath = pathParam;
+    let accountId = "shared";
 
     if (!targetPath && sessionId) {
       const { data: sessionRow } = await supabaseAdmin
         .from("interview_sessions")
-        .select("recording_url")
+        .select("recording_url, account_id")
         .eq("id", sessionId)
         .maybeSingle();
 
       targetPath = sessionRow?.recording_url ?? null;
+      accountId = sessionRow?.account_id ?? "shared";
+
+      // If recording_url is null in DB, scan storage folder for existing files
+      if (!targetPath) {
+        try {
+          const { data: files } = await supabaseAdmin.storage
+            .from("recordings")
+            .list(`${accountId}/${sessionId}`, { limit: 5 });
+
+          if (files && files.length > 0 && files[0]?.name) {
+            targetPath = `${accountId}/${sessionId}/${files[0].name}`;
+            void supabaseAdmin
+              .from("interview_sessions")
+              .update({ recording_url: targetPath })
+              .eq("id", sessionId);
+          }
+        } catch {}
+      }
     }
 
     if (!targetPath) {

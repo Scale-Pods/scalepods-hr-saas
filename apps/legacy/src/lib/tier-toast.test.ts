@@ -26,8 +26,8 @@ describe("tier limit toast messaging", () => {
     expect(tier.title).toBeTruthy();
     const generic = describeError(new Error("plain"));
     expect(generic.title).toBe("Something went wrong");
-    expect(generic.message).toBe("plain");
-    expect(describeError("nonsense").message).toContain("unexpected");
+    expect(describeError("plain string").message).toBe("plain string");
+    expect(describeError(null).message).toContain("unexpected");
     expect(describeError(new N8nError("n", { status: 500, path: "p" })).title).toBe("Something went wrong");
   });
 

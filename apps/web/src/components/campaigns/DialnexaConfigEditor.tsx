@@ -81,6 +81,12 @@ export function DialnexaConfigEditor({
   );
   const [customVoiceText, setCustomVoiceText] = useState<string>(isPresetVoice ? "" : value.voice);
 
+  useEffect(() => {
+    const isPreset = DIALNEXA_VOICES.some((v) => v.id === value.voice);
+    setVoiceSelectValue(isPreset ? value.voice : "custom");
+    setCustomVoiceText(isPreset ? "" : value.voice || "");
+  }, [value.voice]);
+
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [activeNavTab, setActiveNavTab] = useState<

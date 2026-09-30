@@ -3,23 +3,29 @@
 import { formatDateTime } from "@scalepods/core";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   ArrowLeft,
+  Award,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   ExternalLink,
   FileText,
   Headphones,
+  Bot,
+  Layers,
   Loader2,
   MessageSquare,
   MessageSquareText,
   PhoneCall,
   Redo2,
+  RotateCw,
   Sparkles,
   User,
   Video,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -40,7 +46,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccount } from "@/features/account/hooks";
-import type { LedgerView } from "@/features/candidates/api";
+import type { LedgerView, ScorecardRow } from "@/features/candidates/api";
 import { useCandidateProfile } from "@/features/candidates/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -71,19 +77,32 @@ function stageLabel(stage: string): string {
 
 export default function CandidateProfilePage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlCampaignId = searchParams.get("campaignId");
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(urlCampaignId);
+
+  useEffect(() => {
+    if (urlCampaignId) {
+      setSelectedCampaignId(urlCampaignId);
+    }
+  }, [urlCampaignId]);
+
   const queryClient = useQueryClient();
   const { account } = useAccount();
   const tier = account?.tier ?? "free";
 
-  const { data, isPending, isError } = useCandidateProfile(id, tier);
+  const { data, isPending, isError, refetch } = useCandidateProfile(id, tier, selectedCampaignId);
   const candidate = data?.candidate;
   const campaignName = data?.campaignName;
+  const candidateCampaigns = data?.candidateCampaigns ?? [];
   const resumeUrl = data?.resumeUrl;
   const timeline = data?.timeline ?? [];
   const outreach = data?.outreach ?? [];
   const interviewRecordings = data?.interviewRecordings ?? [];
   const interviewTranscripts = data?.interviewTranscripts ?? [];
   const voiceScreenTranscripts = data?.voiceScreenTranscripts ?? [];
+  const latestScorecard = data?.latestScorecard;
 
   const [dialnexaCalls, setDialnexaCalls] = useState<
     Array<{
@@ -204,6 +223,37 @@ export default function CandidateProfilePage() {
         }
       />
 
+      {candidateCampaigns.length > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-card/60 backdrop-blur-sm border border-border/80 rounded-xl shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="flex items-center justify-center p-1.5 rounded-lg bg-primary/10 text-primary">
+              <Layers className="h-4 w-4" />
+            </span>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+              <span className="text-xs font-semibold text-foreground">Campaign Application:</span>
+              <select
+                value={data?.selectedCampaignId || candidateCampaigns[0]?.id || ""}
+                onChange={(e) => {
+                  const newCampId = e.target.value;
+                  setSelectedCampaignId(newCampId);
+                  router.replace(`/candidates/${id}?campaignId=${newCampId}`);
+                }}
+                className="text-xs rounded-lg border border-border bg-background px-3 py-1.5 font-medium text-foreground cursor-pointer focus:outline-hidden focus:ring-1 focus:ring-primary"
+              >
+                {candidateCampaigns.map((camp) => (
+                  <option key={camp.id} value={camp.id}>
+                    {camp.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <span className="text-[11px] text-muted-foreground italic">
+            Displaying rounds, transcripts, and evaluation scorecards for this specific campaign only
+          </span>
+        </div>
+      )}
+
       {resumeUrl && (
         <SectionCard title="Resume">
           <a
@@ -229,6 +279,9 @@ export default function CandidateProfilePage() {
       <InterviewMediaAndTranscriptSection
         recordings={interviewRecordings}
         transcripts={interviewTranscripts}
+        scorecard={latestScorecard}
+        sessionId={interviewRecordings[0]?.sessionId}
+        onRefresh={() => refetch()}
       />
 
       <VoiceScreenCallSection
@@ -534,6 +587,9 @@ function OutreachTable({
 function InterviewMediaAndTranscriptSection({
   recordings,
   transcripts,
+  scorecard,
+  sessionId,
+  onRefresh,
 }: {
   recordings: Array<{
     sessionId: string;
@@ -551,23 +607,47 @@ function InterviewMediaAndTranscriptSection({
     answered_at: string;
     ai_note?: Record<string, unknown> | null;
   }>;
+  scorecard?: ScorecardRow | null;
+  sessionId?: string;
+  onRefresh?: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"recording" | "transcript">(
-    recordings.some((r) => r.recordingSignedUrl) ? "recording" : "transcript",
+  const [activeTab, setActiveTab] = useState<"scorecard" | "recording" | "transcript">(
+    scorecard ? "scorecard" : transcripts.length > 0 ? "transcript" : "recording",
   );
+  const [scoringBusy, setScoringBusy] = useState(false);
+
+  const handleTriggerScoring = async () => {
+    if (!sessionId) return;
+    setScoringBusy(true);
+    try {
+      const res = await fetch("/api/interview/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "score", sessionId }),
+      });
+      if (res.ok) {
+        onRefresh?.();
+      }
+    } catch (err) {
+      console.warn("Failed to trigger scoring:", err);
+    } finally {
+      setScoringBusy(false);
+    }
+  };
 
   const hasRecordings = recordings.some((r) => !!r.recordingSignedUrl);
   const hasTranscripts = transcripts.length > 0;
+  const hasScorecard = !!scorecard;
 
-  if (!hasRecordings && !hasTranscripts && recordings.length === 0) {
+  if (!hasRecordings && !hasTranscripts && recordings.length === 0 && !hasScorecard) {
     return (
       <SectionCard
         title="AI Interview Session & Recording"
-        subtitle="Video recording and speech-to-text transcript"
+        subtitle="Video recording, evaluation scorecard, and dialogue transcript"
       >
         <EmptyState
           title="No interview recording or transcript yet"
-          hint="Once the candidate connects to the AI interview room and completes questions, the video recording and dialogue transcript will appear here."
+          hint="Once the candidate connects to the AI interview room and completes questions, the video recording, scorecard, and dialogue transcript will appear here."
           className="py-4"
         />
       </SectionCard>
@@ -576,18 +656,18 @@ function InterviewMediaAndTranscriptSection({
 
   return (
     <SectionCard
-      title="AI Interview Recording & Transcript"
-      subtitle="Full video recording and turn-by-turn question/response transcript"
+      title="AI Interview Evaluation, Recording & Transcript"
+      subtitle="Comprehensive AI scoring breakdown, full session video, and turn-by-turn dialogue transcript"
       action={
         <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/30 p-1">
           <Button
             size="sm"
-            variant={activeTab === "recording" ? "secondary" : "ghost"}
+            variant={activeTab === "scorecard" ? "secondary" : "ghost"}
             className="h-7 px-2.5 text-xs gap-1.5"
-            onClick={() => setActiveTab("recording")}
+            onClick={() => setActiveTab("scorecard")}
           >
-            <Video className="h-3.5 w-3.5 text-primary" />
-            Recording {hasRecordings ? "Available" : ""}
+            <Award className="h-3.5 w-3.5 text-primary" />
+            Scorecard {scorecard?.overall_score != null ? `(${scorecard.overall_score}/100)` : ""}
           </Button>
           <Button
             size="sm"
@@ -598,10 +678,176 @@ function InterviewMediaAndTranscriptSection({
             <MessageSquareText className="h-3.5 w-3.5 text-emerald-500" />
             Transcript ({transcripts.length})
           </Button>
+          <Button
+            size="sm"
+            variant={activeTab === "recording" ? "secondary" : "ghost"}
+            className="h-7 px-2.5 text-xs gap-1.5"
+            onClick={() => setActiveTab("recording")}
+          >
+            <Video className="h-3.5 w-3.5 text-blue-500" />
+            Recording {hasRecordings ? "Available" : ""}
+          </Button>
         </div>
       }
     >
-      {activeTab === "recording" ? (
+      {activeTab === "scorecard" ? (
+        <div className="space-y-4">
+          {scorecard ? (
+            <div className="space-y-4">
+              {/* Scorecard Hero Banner */}
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/70 bg-card p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Award className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        Overall AI Evaluation Score
+                      </span>
+                      {scorecard.recommendation && (
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            "capitalize text-xs font-semibold px-2.5 py-0.5",
+                            scorecard.recommendation === "hire"
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                              : scorecard.recommendation === "advance"
+                              ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
+                              : scorecard.recommendation === "no_go"
+                              ? "bg-destructive/15 text-destructive border border-destructive/30"
+                              : "bg-warning/15 text-warning border border-warning/30",
+                          )}
+                        >
+                          {scorecard.recommendation.replace("_", " ")}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Evaluated on {formatDateTime(scorecard.evaluated_at)}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-3xl font-extrabold text-foreground tracking-tight">
+                    {scorecard.overall_score ?? "—"}
+                    <span className="text-sm font-normal text-muted-foreground">/100</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5 Competency Score Cards */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                {[
+                  { label: "Technical", score: scorecard.technical_score },
+                  { label: "Communication", score: scorecard.communication_score },
+                  { label: "Problem Solving", score: scorecard.problem_solving_score },
+                  { label: "Cultural Fit", score: scorecard.cultural_fit_score },
+                  { label: "Authenticity", score: scorecard.authenticity_score },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-xl border border-border/60 bg-muted/20 p-3 text-center space-y-1"
+                  >
+                    <span className="text-[11px] font-medium text-muted-foreground block truncate">
+                      {item.label}
+                    </span>
+                    <span className="text-lg font-bold text-foreground">
+                      {item.score != null ? `${item.score}` : "—"}
+                      <span className="text-xs font-normal text-muted-foreground">/100</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Strengths & Weaknesses */}
+              {((Array.isArray(scorecard.strengths) && scorecard.strengths.length > 0) ||
+                (Array.isArray(scorecard.weaknesses) && scorecard.weaknesses.length > 0)) && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {Array.isArray(scorecard.strengths) && scorecard.strengths.length > 0 && (
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3.5 space-y-2">
+                      <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                        <CheckCircle2 className="h-4 w-4" /> Demonstrated Strengths
+                      </span>
+                      <ul className="text-xs text-foreground space-y-1 list-disc list-inside">
+                        {(scorecard.strengths as any[]).map((s: any, i: number) => (
+                          <li key={i}>{String(s)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Array.isArray(scorecard.weaknesses) && scorecard.weaknesses.length > 0 && (
+                    <div className="rounded-xl border border-warning/20 bg-warning/5 p-3.5 space-y-2">
+                      <span className="text-xs font-semibold text-warning flex items-center gap-1.5">
+                        <AlertCircle className="h-4 w-4" /> Areas of Concern / Weaknesses
+                      </span>
+                      <ul className="text-xs text-foreground space-y-1 list-disc list-inside">
+                        {(scorecard.weaknesses as any[]).map((w: any, i: number) => (
+                          <li key={i}>{String(w)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Red Flags */}
+              {Array.isArray(scorecard.red_flags) && scorecard.red_flags.length > 0 && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3.5 space-y-2">
+                  <span className="text-xs font-semibold text-destructive flex items-center gap-1.5">
+                    <AlertCircle className="h-4 w-4" /> Critical Evaluation Flags
+                  </span>
+                  <ul className="text-xs text-destructive space-y-1 list-disc list-inside">
+                    {(scorecard.red_flags as any[]).map((flag: any, i: number) => (
+                      <li key={i}>{String(flag)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Evaluation Rationale */}
+              {scorecard.rationale && (
+                <div className="rounded-xl border border-border/70 bg-card p-4 space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" /> AI Evaluation Rationale
+                  </span>
+                  <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
+                    {scorecard.rationale}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-6 text-center space-y-3">
+              <Sparkles className="mx-auto h-8 w-8 text-primary/60" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Interview Completed — Scoring In Progress
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                  The candidate has finished their interview session. The AI scoring engine evaluates their responses across technical, communication, problem-solving, and authenticity signals.
+                </p>
+              </div>
+              {sessionId && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={scoringBusy}
+                  onClick={handleTriggerScoring}
+                  className="rounded-xl text-xs gap-1.5"
+                >
+                  {scoringBusy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RotateCw className="h-3.5 w-3.5 text-primary" />
+                  )}
+                  {scoringBusy ? "Running Evaluation..." : "Generate AI Scorecard Now"}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      ) : activeTab === "recording" ? (
         <div className="space-y-4">
           {hasRecordings ? (
             recordings
@@ -655,7 +901,7 @@ function InterviewMediaAndTranscriptSection({
               <p className="text-sm font-medium text-foreground">Interview Video Not Available</p>
               <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
                 {recordings.length > 0
-                  ? `Interview session is currently ${recordings[0].status}. If the candidate has just submitted, the video is being uploaded to secure storage.`
+                  ? `Interview session is currently ${recordings[0].status}. No video stream recording was captured (e.g. camera permission was not granted by candidate browser, or device lacked camera input).`
                   : "No recording was uploaded for this candidate's session."}
               </p>
             </div>
@@ -691,12 +937,26 @@ function InterviewMediaAndTranscriptSection({
                     </div>
                   </div>
 
+                  {/* Interviewer Acknowledgment (if present and distinct) */}
+                  {turn.interviewer_text &&
+                    turn.interviewer_text.trim() !== turn.question_text.trim() && (
+                      <div className="rounded-lg bg-muted/20 p-2.5 text-xs text-muted-foreground italic border border-border/20 flex items-start gap-2">
+                        <Bot className="h-3.5 w-3.5 mt-0.5 text-primary shrink-0 not-italic" />
+                        <div>
+                          <span className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground/80 block not-italic">
+                            Interviewer Acknowledgment
+                          </span>
+                          <span>"{turn.interviewer_text}"</span>
+                        </div>
+                      </div>
+                    )}
+
                   {/* Interviewer Question */}
                   <div className="rounded-lg bg-muted/40 p-2.5 text-xs text-foreground leading-relaxed border border-border/30">
-                    <p className="font-medium text-muted-foreground text-[11px] mb-1">
-                      AI Interviewer:
+                    <p className="font-semibold text-primary text-[11px] mb-1 flex items-center gap-1.5">
+                      <Sparkles className="h-3 w-3" /> Interview Question:
                     </p>
-                    <p>{turn.question_text || turn.interviewer_text}</p>
+                    <p className="font-medium text-foreground">{turn.question_text}</p>
                   </div>
 
                   {/* Candidate Answer */}
@@ -704,11 +964,13 @@ function InterviewMediaAndTranscriptSection({
                     <p className="font-medium text-emerald-600 dark:text-emerald-400 text-[11px] mb-1 flex items-center gap-1">
                       <User className="h-3 w-3" /> Candidate Response:
                     </p>
-                    <p className="italic">
-                      {turn.answer_text
-                        ? `"${turn.answer_text}"`
-                        : "(No spoken answer recorded / candidate timed out)"}
-                    </p>
+                    {turn.answer_text && turn.answer_text.trim() ? (
+                      <p className="italic">"{turn.answer_text}"</p>
+                    ) : (
+                      <p className="text-muted-foreground italic">
+                        (Candidate did not provide a verbal or typed response to this question)
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}

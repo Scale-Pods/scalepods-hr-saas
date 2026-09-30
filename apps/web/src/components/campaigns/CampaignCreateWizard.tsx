@@ -9,6 +9,7 @@ import {
   campaignCreateSchema,
   DEFAULT_DIALNEXA_CONFIG,
   type DialnexaVoiceConfig,
+  filterCadenceByDuration,
   type Json,
   type RoundType,
   type TeamMemberRow,
@@ -16,6 +17,7 @@ import {
 } from "@scalepods/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Calendar,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -107,11 +109,21 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const updateRound = (i: number, patch: Partial<RoundDraft>) =>
     setRounds((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
+  const durationDays = useMemo(() => {
+    if (!startDate || !endDate) return null;
+    const s = new Date(startDate).getTime();
+    const e = new Date(endDate).getTime();
+    if (isNaN(s) || isNaN(e) || e < s) return null;
+    const diffDays = Math.round((e - s) / (1000 * 60 * 60 * 24));
+    return Math.max(1, diffDays);
+  }, [startDate, endDate]);
+
   const previewRows: CadenceRenderRow[] = useMemo(() => {
     const types = new Set<RoundType>(rounds.slice(0, numberOfRounds).map((r) => r.round_type));
     const merged = new Map<string, CadenceRenderRow>();
     for (const t of types) {
-      for (const row of cadenceForTier(tier, t)) {
+      const tierRows = filterCadenceByDuration(cadenceForTier(tier, t), durationDays);
+      for (const row of tierRows) {
         const activeChannels = row.channels.filter((c) => {
           if (c === "whatsapp" && !whatsappOn) return false;
           if (c === "voice_call" && !voiceOn) return false;
@@ -160,7 +172,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         channels: custom.channels ?? r.channels,
       };
     });
-  }, [rounds, numberOfRounds, tier, whatsappOn, voiceOn, customCadence, userAddedStages]);
+  }, [rounds, numberOfRounds, tier, whatsappOn, voiceOn, customCadence, userAddedStages, durationDays]);
 
   const handleToggleStage = (stageKey: string, enabled: boolean) => {
     setCustomCadence((prev) => ({
@@ -314,20 +326,29 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       if (typeof res?.campaign_id === "string") createdId = res.campaign_id;
       if (typeof res?.id === "string") createdId = res.id;
       if (!createdId) {
-        const { data } = await supabaseBrowser()
+        let query = supabaseBrowser()
           .from("campaigns")
           .select("id")
           .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+        if (account?.id) {
+          query = query.eq("account_id", account.id);
+        }
+        const { data } = await query.maybeSingle();
         createdId = data?.id ?? null;
       }
 
-      if (createdId && voiceOn) {
-        await supabaseBrowser()
-          .from("campaigns")
-          .update({ voice_call_config: dialnexaConfig as unknown as Json })
-          .eq("id", createdId);
+      if (createdId) {
+        const updateFields: { voice_call_config?: Json; cadence_config?: Json } = {};
+        if (voiceOn) {
+          updateFields.voice_call_config = dialnexaConfig as unknown as Json;
+        }
+        if (payload.cadence_config) {
+          updateFields.cadence_config = payload.cadence_config as unknown as Json;
+        }
+        if (Object.keys(updateFields).length > 0) {
+          await supabaseBrowser().from("campaigns").update(updateFields).eq("id", createdId);
+        }
       }
 
       await queryClient.invalidateQueries({ queryKey: campaignsKey });
@@ -549,6 +570,19 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                     Decisions deadline
                   </span>
                 </div>
+                {durationDays !== null && (
+                  <div className="col-span-2 flex items-center gap-2 rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2 text-xs text-primary">
+                    <Calendar className="h-4 w-4 shrink-0" />
+                    <span>
+                      Campaign Duration: <strong>{durationDays} {durationDays === 1 ? "day" : "days"}</strong>
+                    </span>
+                    {durationDays <= 3 && (
+                      <span className="text-[11px] text-muted-foreground ml-auto hidden sm:inline">
+                        Communication cadence will automatically fit within {durationDays} {durationDays === 1 ? "day" : "days"}.
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -614,14 +648,28 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 onCheckedChange={setVoiceOn}
               />
 
-              {voiceOn && (
-                <div className="pt-2">
+              {voiceOn ? (
+                <div className="pt-2 space-y-3">
+                  <div className="flex items-center gap-2 rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2.5 text-xs text-primary font-medium">
+                    <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+                    <span>
+                      <strong>Voice Agent Configuration:</strong> Configure your AI voice screening
+                      agent below. This configuration is established during campaign creation, and
+                      can be edited after campaign launch with all your settings preserved.
+                    </span>
+                  </div>
                   <DialnexaConfigEditor
                     value={dialnexaConfig}
                     onChange={setDialnexaConfig}
                     jobTitle={name}
                   />
                 </div>
+              ) : (
+                tierConfig.voiceScreening && (
+                  <p className="text-[11px] text-muted-foreground italic px-1">
+                    Note: Voice agent configuration is only available while creating the campaign.
+                  </p>
+                )
               )}
             </div>
 
@@ -638,6 +686,24 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 round, and this cadence restarts from Day 0 to invite them to the human interview or
                 assignment.
               </p>
+              {durationDays !== null && (
+                <div className="flex items-center justify-between rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2.5 text-xs text-primary">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 shrink-0" />
+                    <span>
+                      Cadence automatically tailored to your <strong>{durationDays}-day</strong> campaign duration.
+                      {durationDays < 6 ? (
+                        <span className="text-muted-foreground ml-1">
+                          (Reminders past Day {durationDays - 1} have been excluded to fit your timeline)
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                  <span className="font-mono text-[11px] font-semibold bg-primary/20 px-2 py-0.5 rounded-md shrink-0">
+                    {durationDays} {durationDays === 1 ? "day window" : "days window"}
+                  </span>
+                </div>
+              )}
               <div className="mt-3">
                 <CadencePreview
                   rows={previewRows}

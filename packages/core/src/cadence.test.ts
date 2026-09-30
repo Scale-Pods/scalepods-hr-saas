@@ -132,3 +132,48 @@ describe("cadenceConfigPayload", () => {
     expect(payload.stages).toEqual({});
   });
 });
+
+describe("filterCadenceByDuration", () => {
+  it("filters out Day 3 and Day 5 reminders when duration is 2 days", async () => {
+    const { cadenceForTier, filterCadenceByDuration } = await import("./cadence");
+    const rows = cadenceForTier("basic", "ai_interview");
+    const filtered = filterCadenceByDuration(rows, 2);
+
+    const keys = filtered.map((r) => r.stage.key);
+    expect(keys).toContain("shortlist"); // Day 0
+    expect(keys).toContain("reminder_day1"); // Day 1
+    expect(keys).not.toContain("reminder_day3"); // Day 3 excluded
+    expect(keys).not.toContain("reminder_day5"); // Day 5 excluded
+  });
+
+  it("filters out Day 5 reminder when duration is 4 days", async () => {
+    const { cadenceForTier, filterCadenceByDuration } = await import("./cadence");
+    const rows = cadenceForTier("basic", "ai_interview");
+    const filtered = filterCadenceByDuration(rows, 4);
+
+    const keys = filtered.map((r) => r.stage.key);
+    expect(keys).toContain("shortlist");
+    expect(keys).toContain("reminder_day1");
+    expect(keys).toContain("reminder_day3");
+    expect(keys).not.toContain("reminder_day5");
+  });
+
+  it("keeps all default reminders when duration is 6 days or more", async () => {
+    const { cadenceForTier, filterCadenceByDuration } = await import("./cadence");
+    const rows = cadenceForTier("basic", "ai_interview");
+    const filtered = filterCadenceByDuration(rows, 7);
+
+    const keys = filtered.map((r) => r.stage.key);
+    expect(keys).toContain("shortlist");
+    expect(keys).toContain("reminder_day1");
+    expect(keys).toContain("reminder_day3");
+    expect(keys).toContain("reminder_day5");
+  });
+
+  it("returns original rows unchanged if duration is null or undefined", async () => {
+    const { cadenceForTier, filterCadenceByDuration } = await import("./cadence");
+    const rows = cadenceForTier("basic", "ai_interview");
+    expect(filterCadenceByDuration(rows, null)).toEqual(rows);
+    expect(filterCadenceByDuration(rows, undefined)).toEqual(rows);
+  });
+});

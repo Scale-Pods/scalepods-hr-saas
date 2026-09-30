@@ -190,17 +190,58 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
 
 export async function updateCampaignStatus(
   campaignId: string,
-  currentStatus: string,
-  accountId: string,
+  newStatus: string,
+  accountId?: string,
   accessToken?: string,
 ): Promise<void> {
-  await callWorkflow("campaigns", {
-    body: {
-      action: "update",
-      account_id: accountId,
-      campaign_id: campaignId,
-      status: currentStatus === "on" ? "paused" : "on",
+  const normalizedStatus =
+    newStatus === "off" || newStatus === "paused" || newStatus === "inactive" ? "paused" : "on";
+  const supabase = supabaseBrowser();
+  const { error } = await supabase
+    .from("campaigns")
+    .update({ status: normalizedStatus })
+    .eq("id", campaignId);
+  if (error) throw error;
+
+  if (accountId) {
+    try {
+      await callWorkflow("campaigns", {
+        body: {
+          action: "update",
+          account_id: accountId,
+          campaign_id: campaignId,
+          status: newStatus,
+        },
+        accessToken,
+      });
+    } catch (wfErr) {
+      console.warn("n8n campaign status update notification skipped or failed:", wfErr);
+    }
+  }
+}
+
+export async function deleteCampaign(
+  campaignId: string,
+  accountId?: string,
+  accessToken?: string,
+): Promise<void> {
+  const token =
+    accessToken ??
+    (supabaseBrowser()
+      ? (await supabaseBrowser().auth.getSession()).data.session?.access_token
+      : undefined);
+
+  const res = await fetch(`/api/campaigns/${campaignId}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    accessToken,
+    body: JSON.stringify({ accountId }),
   });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || data.message || `Failed to delete campaign (${res.status})`);
+  }
 }

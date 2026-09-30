@@ -87,7 +87,9 @@ export function CandidateProfilePage() {
         .from("scorecards")
         .select("*")
         .in("session_id", ids);
-      for (const sc of (cards ?? []) as ScorecardRow[]) scorecardBySession.set(sc.session_id, sc);
+      for (const sc of (cards ?? []) as ScorecardRow[]) {
+        if (sc.session_id) scorecardBySession.set(sc.session_id, sc);
+      }
     }
 
     const retentionDays = TIER_LIMITS[account?.tier ?? "free"].retentionDays;
@@ -101,7 +103,7 @@ export function CandidateProfilePage() {
         (roundNumber === 1 ? sessionRows[0] : undefined);
       const scorecard = session ? scorecardBySession.get(session.id) : undefined;
       let recordingExpired = false;
-      if (scorecard) {
+      if (scorecard && scorecard.evaluated_at) {
         const evaluated = new Date(scorecard.evaluated_at).getTime();
         recordingExpired = now - evaluated > retentionDays * 86_400_000;
       }

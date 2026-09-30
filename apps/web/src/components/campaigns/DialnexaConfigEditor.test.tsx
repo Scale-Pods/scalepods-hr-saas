@@ -292,4 +292,41 @@ describe("DialnexaConfigEditor", () => {
       await screen.findByText("Hi, I am excited to speak about the Cloud Engineer role."),
     ).toBeInTheDocument();
   });
+
+  it("displays and synchronizes all previous data when value prop updates", () => {
+    const onChange = vi.fn();
+    const customConfig = {
+      ...DEFAULT_DIALNEXA_CONFIG,
+      voice: "adam",
+      prompt: "Previous saved prompt instructions for candidate evaluation",
+      first_message: "Welcome candidate to the interview",
+      response_eagerness: 0.9,
+    };
+
+    const { rerender } = render(
+      <DialnexaConfigEditor
+        value={DEFAULT_DIALNEXA_CONFIG}
+        onChange={onChange}
+        jobTitle="Senior Architect"
+      />,
+    );
+
+    // Click All Sections to show all tabs
+    fireEvent.click(screen.getByText("All Sections"));
+
+    const promptTextarea = screen.getByPlaceholderText(
+      /Enter system prompt and conversation instructions/,
+    );
+    expect(promptTextarea).toHaveValue(DEFAULT_DIALNEXA_CONFIG.prompt);
+
+    // Re-render with previous data saved in campaign
+    rerender(
+      <DialnexaConfigEditor value={customConfig} onChange={onChange} jobTitle="Senior Architect" />,
+    );
+
+    expect(promptTextarea).toHaveValue(
+      "Previous saved prompt instructions for candidate evaluation",
+    );
+    expect(screen.getByDisplayValue("Welcome candidate to the interview")).toBeInTheDocument();
+  });
 });

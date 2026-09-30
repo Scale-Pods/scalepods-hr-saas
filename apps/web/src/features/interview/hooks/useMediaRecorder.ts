@@ -178,29 +178,71 @@ export function useMediaRecorder() {
         const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || "video/webm" });
         let uploadedFilePath: string | null = null;
 
-        // Upload interview video to Supabase Storage via server endpoint
+        // Upload interview video to Supabase Storage
         if (sessionIdRef.current && blob.size > 0) {
           try {
-            const formData = new FormData();
-            formData.append("sessionId", sessionIdRef.current);
-            formData.append("recording", blob, `interview_${sessionIdRef.current}.webm`);
-            if (accountIdRef.current) {
-              formData.append("accountId", accountIdRef.current);
+            // Attempt 1: Direct signed upload URL (bypasses server body limits)
+            let directUploadSuccess = false;
+            try {
+              const urlRes = await fetch(
+                `/api/interview/recording?action=get_upload_url&sessionId=${sessionIdRef.current}`,
+              );
+              if (urlRes.ok) {
+                const urlData = await urlRes.json();
+                if (urlData.signedUrl && urlData.filePath) {
+                  const putRes = await fetch(urlData.signedUrl, {
+                    method: "PUT",
+                    headers: {
+                      "Content-Type": blob.type || "video/webm",
+                    },
+                    body: blob,
+                  });
+
+                  if (putRes.ok) {
+                    uploadedFilePath = urlData.filePath;
+                    directUploadSuccess = true;
+                    // Notify server to link recording path to session and scorecard
+                    await fetch("/api/interview/recording", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        action: "confirm_upload",
+                        sessionId: sessionIdRef.current,
+                        filePath: urlData.filePath,
+                      }),
+                    }).catch(() => {});
+                    console.log("[useMediaRecorder] Recording stored via signed upload:", urlData.filePath);
+                    setState((prev) => ({ ...prev, recordingId: urlData.filePath }));
+                  }
+                }
+              }
+            } catch (signedErr) {
+              console.warn("[useMediaRecorder] Signed upload error, trying fallback:", signedErr);
             }
 
-            const res = await fetch("/api/interview/recording", {
-              method: "POST",
-              body: formData,
-            });
+            // Attempt 2: FormData POST fallback
+            if (!directUploadSuccess) {
+              const formData = new FormData();
+              formData.append("sessionId", sessionIdRef.current);
+              formData.append("recording", blob, `interview_${sessionIdRef.current}.webm`);
+              if (accountIdRef.current) {
+                formData.append("accountId", accountIdRef.current);
+              }
 
-            if (res.ok) {
-              const resData = await res.json();
-              uploadedFilePath = resData.filePath ?? null;
-              console.log("[useMediaRecorder] Recording stored in Supabase:", resData.filePath);
-              setState((prev) => ({ ...prev, recordingId: resData.filePath }));
-            } else {
-              const errData = await res.json().catch(() => ({}));
-              console.warn("[useMediaRecorder] Recording upload failed:", errData);
+              const res = await fetch("/api/interview/recording", {
+                method: "POST",
+                body: formData,
+              });
+
+              if (res.ok) {
+                const resData = await res.json();
+                uploadedFilePath = resData.filePath ?? null;
+                console.log("[useMediaRecorder] Recording stored in Supabase:", resData.filePath);
+                setState((prev) => ({ ...prev, recordingId: resData.filePath }));
+              } else {
+                const errData = await res.json().catch(() => ({}));
+                console.warn("[useMediaRecorder] Recording upload failed:", errData);
+              }
             }
           } catch (uploadErr) {
             console.warn("[useMediaRecorder] Storage upload skipped/failed:", uploadErr);

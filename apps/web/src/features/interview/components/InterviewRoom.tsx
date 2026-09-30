@@ -18,6 +18,7 @@ import { Completion } from "./Completion";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { PreCheck } from "./PreCheck";
 import { ProctoringOverlay } from "./ProctoringOverlay";
+import { QuestionDisplay } from "./QuestionDisplay";
 import { RecruiterPersona } from "./RecruiterPersona";
 import { VideoFeed } from "./VideoFeed";
 
@@ -467,7 +468,19 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     1,
   );
 
-  const currentQuestion = questions.find((q) => q.id === currentQuestionId);
+  const currentQuestion =
+    questions.find((q) => q.id === currentQuestionId) ||
+    questions[currentQuestionIndex] ||
+    (currentTurn?.question_text
+      ? {
+          id: currentQuestionId || "current-active-q",
+          session_id: session.id,
+          question_text: currentTurn.question_text,
+          question_type: (currentTurn.question_type as any) || "technical",
+          order_index: currentQuestionIndex,
+          source: currentTurn.turn_type === "follow_up" ? "llm_ts_followup" : "llm_ts_dynamic",
+        }
+      : null);
   const isCurrentFollowUp = currentQuestion?.source === "llm_ts_followup";
   const primaryQuestionsAnsweredOrActive = questions.filter(
     (q, idx) =>
@@ -603,6 +616,19 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       <div className="interview-chat-layout flex-1">
         {/* Chat column */}
         <div className="chat-column">
+          {/* Active Question Card pinned prominently at top of candidate view */}
+          {currentQuestion && !isClosingTurn && (
+            <div className="px-4 pt-3.5 pb-1 shrink-0 z-10">
+              <QuestionDisplay
+                question={currentQuestion}
+                questionNumber={primaryBarIndex + 1}
+                totalQuestions={progressTarget}
+                isAiSpeaking={isAiSpeaking}
+                speakingPhase={speakingPhase}
+              />
+            </div>
+          )}
+
           {/* Scrollable chat feed */}
           <div className="chat-feed" ref={chatFeedRef}>
             {chatMessages.length === 0 && (

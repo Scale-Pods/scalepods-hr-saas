@@ -13,7 +13,7 @@ vi.mock("next/link", () => ({
 describe("NavList", () => {
   it("renders every recruiter nav link", () => {
     render(<NavList pathname="/dashboard" />);
-    for (const label of ["Dashboard", "Campaigns", "New campaign", "Usage & billing", "Settings"]) {
+    for (const label of ["Dashboard", "Campaigns", "Usage & Billing", "Settings"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
   });

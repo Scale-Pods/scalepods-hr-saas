@@ -515,23 +515,72 @@ export async function generateInterviewerTurn(
     };
   }
 
+function getDynamicAcknowledgment(
+  index: number,
+  turnType?: string,
+  candidateRequestedClarification?: boolean,
+): string {
+  if (candidateRequestedClarification) {
+    return "No problem at all! Let me clarify that point for you.";
+  }
+  if (turnType === "follow_up") {
+    const followUpAcks = [
+      "Thanks for sharing that overview. Let's dig a bit deeper into that specific point.",
+      "Appreciate that explanation. I'd like to explore one detail a bit further.",
+      "That's a helpful starting point. Let's look closer at your reasoning there.",
+      "Got it. I'd like to touch on one specific aspect of that approach.",
+    ];
+    return followUpAcks[index % followUpAcks.length];
+  }
+  const standardAcks = [
+    "Thank you for walking me through your approach.",
+    "Got it, that gives good context on how you handled that.",
+    "Thanks for explaining that clearly. Let's move to our next topic.",
+    "Understood, that highlights your problem-solving process well.",
+    "Great, appreciate you sharing those details.",
+    "Thanks for breaking that down. Let's explore another area.",
+    "Understood, thank you. Let's build on that with the next question.",
+  ];
+  return standardAcks[index % standardAcks.length];
+}
+
+function isGreetingText(text: string): boolean {
+  if (!text) return true;
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("hello and welcome") ||
+    lower.includes("welcome to your interview") ||
+    lower.includes("great to meet you") ||
+    lower.includes("i'm alex") ||
+    lower.includes("i am alex") ||
+    lower.includes("guide you through") ||
+    lower.includes("guiding your interview") ||
+    lower.includes("thank you for joining") ||
+    lower.includes("to start off") ||
+    lower.includes("how are you doing today")
+  );
+}
+
   // Attempt backend n8n call
   try {
-    const lastAnswer = history[history.length - 1]?.answer || "";
-    const lastQ = history[history.length - 1]?.question || "";
+    const lastItem = history[history.length - 1];
+    const lastAnswer = lastItem?.answer || "";
+    const lastQ = lastItem?.question || "";
+    const lastQuestionId = lastItem?.id || "";
+
     const response = await fetch(`${n8nBase()}/webhook/interview-engine`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        session_id: sessionId,
+        question_id: lastQuestionId || null,
+        answer_text: lastAnswer,
+        response_transcript: lastAnswer,
         action: "generate-turn",
         account_id: accountId,
-        session_id: sessionId,
         candidate_id: candidateId,
         question: lastQ,
         answer: lastAnswer,
-        response_transcript: lastAnswer,
-        resumeText: resumeText || "",
-        jdText: jdText || "",
         history: history.map((h) => ({ question: h.question, answer: h.answer, type: h.type })),
         totalQuestions,
         analysis,
@@ -554,11 +603,13 @@ export async function generateInterviewerTurn(
     if (response.ok) {
       const parsed = await response.json();
       const questionText = parsed.question_text || parsed.prompt || targetQuestion || "";
+      const rawAck = (parsed.interviewer_text || "").trim();
+
+      // For any turn answering a question (turns > 0 or with history), never repeat opening greeting
       const interviewerText =
-        parsed.interviewer_text ||
-        (candidateRequestedClarification
-          ? "No problem at all! Let's continue."
-          : "Thank you for walking me through that.");
+        isGreetingText(rawAck) || !rawAck
+          ? getDynamicAcknowledgment(totalQuestions, parsed.turn_type, candidateRequestedClarification)
+          : rawAck;
 
       if (parsed.is_final_question || parsed.turn_type === "closing") {
         return {
@@ -587,8 +638,7 @@ export async function generateInterviewerTurn(
           "repeated question prevented",
         );
         return {
-          interviewer_text:
-            interviewerText || "Thank you for explaining that. Let's move on to the next topic.",
+          interviewer_text: interviewerText,
           question_text: fallback.question_text,
           turn_type: "question",
           question_type: fallback.question_type,
@@ -617,9 +667,11 @@ export async function generateInterviewerTurn(
     )
   ) {
     return {
-      interviewer_text: candidateRequestedClarification
-        ? "No problem at all! Let's continue."
-        : "Thanks for walking me through that.",
+      interviewer_text: getDynamicAcknowledgment(
+        totalQuestions,
+        "question",
+        candidateRequestedClarification,
+      ),
       question_text: targetQuestion,
       turn_type: "question",
       question_type: "technical",
@@ -634,7 +686,11 @@ export async function generateInterviewerTurn(
     planItem,
   );
   return {
-    interviewer_text: "Thank you for walking me through that. Let's move on to the next topic.",
+    interviewer_text: getDynamicAcknowledgment(
+      totalQuestions,
+      "question",
+      candidateRequestedClarification,
+    ),
     question_text: fallbackQ.question_text,
     turn_type: "question",
     question_type: fallbackQ.question_type,

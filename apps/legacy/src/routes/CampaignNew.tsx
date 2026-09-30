@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useTierLimits } from "../hooks/useTierLimits";
 import { browserClient } from "../lib/supabase";
 import { campaignCreateSchema } from "@scalepods/core";
-import { overageNotice, tierAtLeast, CADENCE_STAGES, cadenceForTier, type CadenceRenderRow, type RoundType, type TeamMemberRow } from "@scalepods/core";
+import { overageNotice, tierAtLeast, CADENCE_STAGES, cadenceForTier, filterCadenceByDuration, type CadenceRenderRow, type RoundType, type TeamMemberRow } from "@scalepods/core";
 import { extractTextFromFile } from "../lib/extract-text";
 import { callWebhook } from "../lib/n8n";
 import { showErrorToast } from "../hooks/useToast";
@@ -102,11 +102,21 @@ export function CampaignNewPage() {
     else showErrorToast(res.error);
   };
 
+  const durationDays = useMemo(() => {
+    if (!startDate || !endDate) return null;
+    const s = new Date(startDate).getTime();
+    const e = new Date(endDate).getTime();
+    if (isNaN(s) || isNaN(e) || e < s) return null;
+    const diffDays = Math.round((e - s) / (1000 * 60 * 60 * 24));
+    return Math.max(1, diffDays);
+  }, [startDate, endDate]);
+
   const previewRows: CadenceRenderRow[] = useMemo(() => {
     const types = new Set<RoundType>(rounds.slice(0, numberOfRounds).map((r) => r.round_type));
     const merged = new Map<string, CadenceRenderRow>();
     for (const t of types) {
-      for (const row of cadenceForTier(tier, t)) {
+      const tierRows = filterCadenceByDuration(cadenceForTier(tier, t), durationDays);
+      for (const row of tierRows) {
         const existing = merged.get(row.stage.key);
         if (!existing) merged.set(row.stage.key, row);
         else {
@@ -118,7 +128,7 @@ export function CampaignNewPage() {
     return Array.from(merged.values()).sort(
       (a, b) => CADENCE_STAGES.findIndex((s) => s.key === a.stage.key) - CADENCE_STAGES.findIndex((s) => s.key === b.stage.key)
     );
-  }, [rounds, numberOfRounds, tier]);
+  }, [rounds, numberOfRounds, tier, durationDays]);
 
   const validateBasics = () => {
     if (!name.trim()) return "Give the campaign a name.";

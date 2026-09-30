@@ -15,8 +15,10 @@ import {
   Loader2,
   Mic,
   PhoneCall,
+  PhoneOff,
   Settings2,
   Sparkles,
+  Trash2,
   Volume2,
   Zap,
 } from "lucide-react";
@@ -30,6 +32,16 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -46,7 +58,12 @@ import {
 } from "@/components/ui/table";
 import { useAccount } from "@/features/account/hooks";
 import { useSession } from "@/features/auth/hooks";
-import { useCampaignDetail, useToggleCampaignStatus } from "@/features/campaigns/hooks";
+import { deleteCampaign } from "@/features/campaigns/api";
+import {
+  campaignsKey,
+  useCampaignDetail,
+  useToggleCampaignStatus,
+} from "@/features/campaigns/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { callWorkflow } from "@/lib/webhooks";
@@ -63,6 +80,9 @@ export default function CampaignDetailPage() {
   const rounds = data?.rounds ?? [];
   const candidates = data?.candidates ?? [];
   const roundStatuses = data?.roundStatuses ?? {};
+
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const toggleStatus = useToggleCampaignStatus(
     id,
@@ -89,8 +109,28 @@ export default function CampaignDetailPage() {
   const [isBulkSending, setIsBulkSending] = useState(false);
 
   const savedVoiceConfig = campaign?.voice_call_config as unknown as DialnexaVoiceConfig | null;
+  const hasVoiceConfig = useMemo(() => {
+    if (!savedVoiceConfig) return false;
+    if (typeof savedVoiceConfig === "object") {
+      return Object.keys(savedVoiceConfig).length > 0;
+    }
+    return false;
+  }, [savedVoiceConfig]);
+
   const effectiveVoiceConfig: DialnexaVoiceConfig = useMemo(() => {
-    return savedVoiceConfig ?? DEFAULT_DIALNEXA_CONFIG;
+    if (!savedVoiceConfig) return DEFAULT_DIALNEXA_CONFIG;
+    return {
+      ...DEFAULT_DIALNEXA_CONFIG,
+      ...savedVoiceConfig,
+      agent_functions:
+        savedVoiceConfig.agent_functions && savedVoiceConfig.agent_functions.length > 0
+          ? savedVoiceConfig.agent_functions
+          : DEFAULT_DIALNEXA_CONFIG.agent_functions,
+      post_call_analysis:
+        savedVoiceConfig.post_call_analysis && savedVoiceConfig.post_call_analysis.length > 0
+          ? savedVoiceConfig.post_call_analysis
+          : DEFAULT_DIALNEXA_CONFIG.post_call_analysis,
+    };
   }, [savedVoiceConfig]);
 
   const [isEditingVoiceConfig, setIsEditingVoiceConfig] = useState(false);
@@ -149,6 +189,10 @@ export default function CampaignDetailPage() {
   };
 
   const handleTriggerVoiceCallAll = async () => {
+    if (!hasVoiceConfig) {
+      showToast("Voice screening is not enabled for this campaign.", { kind: "info" });
+      return;
+    }
     const candidatesWithPhone = candidates.filter((c) => !!c.phone);
     if (candidatesWithPhone.length === 0) {
       showToast("No candidates with phone numbers found in this campaign.", { kind: "info" });
@@ -227,8 +271,26 @@ export default function CampaignDetailPage() {
   const handleToggle = async () => {
     try {
       await toggleStatus.mutateAsync();
+      showToast(campaign?.status === "on" ? "Campaign deactivated" : "Campaign activated", {
+        kind: "success",
+      });
     } catch (err) {
       showErrorToast(err);
+    }
+  };
+
+  const handleDeleteCampaign = async () => {
+    if (!id) return;
+    setIsDeleting(true);
+    try {
+      await deleteCampaign(id, account?.id, session?.access_token);
+      showToast("Campaign deleted successfully", { kind: "success" });
+      await queryClient.invalidateQueries({ queryKey: campaignsKey });
+      router.push("/campaigns");
+    } catch (err) {
+      showErrorToast(err);
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
     }
   };
 
@@ -269,9 +331,8 @@ export default function CampaignDetailPage() {
           });
           successCount++;
 
-          // Also trigger voice screening call if voice is enabled and candidate has phone
-          const cadence = campaign.cadence_config as { voice_screen?: boolean } | null;
-          const isVoiceEnabled = cadence?.voice_screen !== false;
+          // Also trigger voice screening call if voice is configured and candidate has phone
+          const isVoiceEnabled = Boolean(hasVoiceConfig);
           if (isVoiceEnabled && c.phone) {
             try {
               const vRes = await fetch("/api/voice-screen", {
@@ -376,7 +437,7 @@ export default function CampaignDetailPage() {
         }
         actions={
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm font-medium text-foreground">
               {campaign.status === "on" ? "Active" : "Paused"}
             </span>
             <Switch
@@ -385,6 +446,16 @@ export default function CampaignDetailPage() {
               disabled={toggleStatus.isPending}
               aria-label="Campaign status"
             />
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs font-semibold border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive dark:text-red-400"
+              onClick={() => setIsDeleteDialogOpen(true)}
+              disabled={isDeleting}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete Campaign
+            </Button>
           </div>
         }
       />
@@ -438,163 +509,207 @@ export default function CampaignDetailPage() {
         </div>
       </SectionCard>
 
-      <SectionCard
-        title="DialNexa AI Voice Screening Call"
-        subtitle="Configure the conversational AI voice agent dispatched by n8n for candidate phone screening"
-        action={
-          !isEditingVoiceConfig ? (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs font-semibold border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
-                disabled={isCallingAll || candidates.filter((c) => !!c.phone).length === 0}
-                onClick={handleTriggerVoiceCallAll}
-              >
-                {isCallingAll ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <PhoneCall className="h-3.5 w-3.5" />
-                )}
-                {isCallingAll ? "Calling Candidates..." : "Call Candidates"}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs font-semibold"
-                onClick={() => {
-                  setVoiceConfigDraft(effectiveVoiceConfig);
-                  setIsEditingVoiceConfig(true);
-                }}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-                Configure Voice Agent
-              </Button>
+      {!hasVoiceConfig ? (
+        <SectionCard
+          title="DialNexa AI Voice Screening Call"
+          subtitle="Conversational AI voice screening was not enabled during campaign creation"
+        >
+          <div className="flex flex-col items-center justify-center py-8 text-center space-y-3 rounded-xl border border-dashed border-border/80 bg-muted/10 p-6">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <PhoneOff className="h-6 w-6" />
+            </div>
+            <div className="max-w-md space-y-1">
+              <h4 className="text-sm font-semibold text-foreground">Voice Agent Not Configured</h4>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Voice agent configuration is only available while creating the campaign. This
+                campaign was launched without AI phone screening enabled.
+              </p>
+            </div>
+            <Badge variant="outline" className="text-xs text-muted-foreground">
+              Configuration only available during campaign creation
+            </Badge>
+          </div>
+        </SectionCard>
+      ) : (
+        <SectionCard
+          title="DialNexa AI Voice Screening Call"
+          subtitle="Conversational AI voice agent configured during campaign creation"
+          action={
+            !isEditingVoiceConfig ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs font-semibold border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
+                  disabled={isCallingAll || candidates.filter((c) => !!c.phone).length === 0}
+                  onClick={handleTriggerVoiceCallAll}
+                >
+                  {isCallingAll ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <PhoneCall className="h-3.5 w-3.5" />
+                  )}
+                  {isCallingAll ? "Calling Candidates..." : "Call Candidates"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs font-semibold"
+                  onClick={() => {
+                    setVoiceConfigDraft(effectiveVoiceConfig);
+                    setIsEditingVoiceConfig(true);
+                  }}
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  Edit Configuration
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                  disabled={isSavingVoiceConfig}
+                  onClick={() => {
+                    setVoiceConfigDraft(effectiveVoiceConfig);
+                    setIsEditingVoiceConfig(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-1.5 text-xs font-semibold"
+                  disabled={isSavingVoiceConfig}
+                  onClick={handleSaveVoiceConfig}
+                >
+                  {isSavingVoiceConfig ? "Saving..." : "Save Configuration"}
+                </Button>
+              </div>
+            )
+          }
+        >
+          {isEditingVoiceConfig ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-primary">
+                <span className="font-medium">
+                  Editing Voice Agent Configuration — all previous settings loaded below. Make
+                  changes and click <strong>Save Configuration</strong> to apply updates.
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setVoiceConfigDraft(effectiveVoiceConfig);
+                    setIsEditingVoiceConfig(false);
+                  }}
+                >
+                  Cancel Edit
+                </Button>
+              </div>
+              <DialnexaConfigEditor
+                value={voiceConfigDraft}
+                onChange={setVoiceConfigDraft}
+                jobTitle={campaign.name}
+              />
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs"
-                disabled={isSavingVoiceConfig}
-                onClick={() => {
-                  setVoiceConfigDraft(effectiveVoiceConfig);
-                  setIsEditingVoiceConfig(false);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                className="gap-1.5 text-xs font-semibold"
-                disabled={isSavingVoiceConfig}
-                onClick={handleSaveVoiceConfig}
-              >
-                {isSavingVoiceConfig ? "Saving..." : "Save Configuration"}
-              </Button>
-            </div>
-          )
-        }
-      >
-        {isEditingVoiceConfig ? (
-          <DialnexaConfigEditor
-            value={voiceConfigDraft}
-            onChange={setVoiceConfigDraft}
-            jobTitle={campaign.name}
-          />
-        ) : (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/60 p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <PhoneCall className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-foreground">
-                      {savedVoiceConfig ? "Custom Agent Configured" : "Default Agent Active"}
-                    </span>
-                    <Badge
-                      variant="secondary"
-                      className="gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px]"
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Dispatched by n8n
-                    </Badge>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/60 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <PhoneCall className="h-5 w-5" />
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Candidates who qualify past resume review receive this automated telephone
-                    screen.
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        Custom Agent Configured
+                      </span>
+                      <Badge
+                        variant="secondary"
+                        className="gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px]"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Dispatched by n8n
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Candidates who qualify past resume review receive this automated telephone
+                      screen.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="gap-1.5 py-1 px-2.5 text-xs font-medium">
+                    <Volume2 className="h-3 w-3 text-cyan-500" />
+                    <span>
+                      Voice:{" "}
+                      {DIALNEXA_VOICES.find((v) => v.id === effectiveVoiceConfig.voice)?.label ||
+                        effectiveVoiceConfig.voice}
+                    </span>
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 py-1 px-2.5 text-xs font-medium text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/5"
+                  >
+                    <Flame className="h-3 w-3 text-amber-500" />
+                    <span>
+                      Eagerness:{" "}
+                      {Math.round((effectiveVoiceConfig.response_eagerness ?? 0.7) * 100)}%
+                    </span>
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 py-1 px-2.5 text-xs font-medium text-purple-600 dark:text-purple-400 border-purple-500/30 bg-purple-500/5"
+                  >
+                    <Zap className="h-3 w-3 text-purple-500" />
+                    <span>
+                      {(effectiveVoiceConfig.agent_functions?.filter((f) => f.enabled) ?? [])
+                        .length || 3}{" "}
+                      Tools Active
+                    </span>
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 py-1 px-2.5 text-xs font-medium text-muted-foreground"
+                  >
+                    <Clock className="h-3 w-3" />
+                    <span>
+                      {Math.round((effectiveVoiceConfig.max_duration_seconds || 300) / 60)} min
+                      limit
+                    </span>
+                  </Badge>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="gap-1.5 py-1 px-2.5 text-xs font-medium">
-                  <Volume2 className="h-3 w-3 text-cyan-500" />
-                  <span>
-                    Voice:{" "}
-                    {DIALNEXA_VOICES.find((v) => v.id === effectiveVoiceConfig.voice)?.label ||
-                      effectiveVoiceConfig.voice}
+              {effectiveVoiceConfig.first_message && (
+                <div className="space-y-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                    <Mic className="h-3.5 w-3.5 text-emerald-500" />
+                    Opening Greeting
                   </span>
-                </Badge>
-                <Badge
-                  variant="outline"
-                  className="gap-1.5 py-1 px-2.5 text-xs font-medium text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/5"
-                >
-                  <Flame className="h-3 w-3 text-amber-500" />
-                  <span>
-                    Eagerness: {Math.round((effectiveVoiceConfig.response_eagerness ?? 0.7) * 100)}%
-                  </span>
-                </Badge>
-                <Badge
-                  variant="outline"
-                  className="gap-1.5 py-1 px-2.5 text-xs font-medium text-purple-600 dark:text-purple-400 border-purple-500/30 bg-purple-500/5"
-                >
-                  <Zap className="h-3 w-3 text-purple-500" />
-                  <span>
-                    {(effectiveVoiceConfig.agent_functions?.filter((f) => f.enabled) ?? [])
-                      .length || 3}{" "}
-                    Tools Active
-                  </span>
-                </Badge>
-                <Badge
-                  variant="outline"
-                  className="gap-1.5 py-1 px-2.5 text-xs font-medium text-muted-foreground"
-                >
-                  <Clock className="h-3 w-3" />
-                  <span>
-                    {Math.round((effectiveVoiceConfig.max_duration_seconds || 300) / 60)} min limit
-                  </span>
-                </Badge>
-              </div>
-            </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-xs italic text-foreground">
+                    &ldquo;{effectiveVoiceConfig.first_message}&rdquo;
+                  </div>
+                </div>
+              )}
 
-            {effectiveVoiceConfig.first_message && (
               <div className="space-y-1.5">
                 <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                  <Mic className="h-3.5 w-3.5 text-emerald-500" />
-                  Opening Greeting
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                  Prompt & Telephony Instructions
                 </span>
-                <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-xs italic text-foreground">
-                  &ldquo;{effectiveVoiceConfig.first_message}&rdquo;
+                <div className="rounded-xl border border-border/60 bg-muted/20 p-3.5 font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
+                  {effectiveVoiceConfig.prompt}
                 </div>
               </div>
-            )}
-
-            <div className="space-y-1.5">
-              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                Prompt & Telephony Instructions
-              </span>
-              <div className="rounded-xl border border-border/60 bg-muted/20 p-3.5 font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
-                {effectiveVoiceConfig.prompt}
-              </div>
             </div>
-          </div>
-        )}
-      </SectionCard>
+          )}
+        </SectionCard>
+      )}
 
       <SectionCard title="Candidates" subtitle={`${candidates.length} in this campaign`}>
         {candidates.length === 0 ? (
@@ -621,11 +736,11 @@ export default function CampaignDetailPage() {
                   role="link"
                   tabIndex={0}
                   aria-label={`Open candidate ${c.name ?? c.email}`}
-                  onClick={() => router.push(`/candidates/${c.candidate_id}`)}
+                  onClick={() => router.push(`/candidates/${c.candidate_id}?campaignId=${id}`)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      router.push(`/candidates/${c.candidate_id}`);
+                      router.push(`/candidates/${c.candidate_id}?campaignId=${id}`);
                     }
                   }}
                   className="cursor-pointer group"
@@ -644,30 +759,34 @@ export default function CampaignDetailPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2 text-xs gap-1 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
-                        title={
-                          c.phone
-                            ? `Call ${c.name || "candidate"} via DialNexa`
-                            : "No phone number available"
-                        }
-                        disabled={!c.phone || callingCandidateId === c.candidate_id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleTriggerVoiceCall(c);
-                        }}
-                      >
-                        {callingCandidateId === c.candidate_id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <PhoneCall className="h-3 w-3" />
-                        )}
-                        <span>{callingCandidateId === c.candidate_id ? "Calling..." : "Call"}</span>
-                      </Button>
+                      {hasVoiceConfig && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs gap-1 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
+                          title={
+                            c.phone
+                              ? `Call ${c.name || "candidate"} via DialNexa`
+                              : "No phone number available"
+                          }
+                          disabled={!c.phone || callingCandidateId === c.candidate_id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTriggerVoiceCall(c);
+                          }}
+                        >
+                          {callingCandidateId === c.candidate_id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <PhoneCall className="h-3 w-3" />
+                          )}
+                          <span>
+                            {callingCandidateId === c.candidate_id ? "Calling..." : "Call"}
+                          </span>
+                        </Button>
+                      )}
                       <Link
-                        href={`/candidates/${c.candidate_id}`}
+                        href={`/candidates/${c.candidate_id}?campaignId=${id}`}
                         className="text-xs font-semibold text-primary opacity-80 hover:opacity-100"
                       >
                         Open →
@@ -680,6 +799,29 @@ export default function CampaignDetailPage() {
           </Table>
         )}
       </SectionCard>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &ldquo;{campaign.name}&rdquo;? This action cannot be
+              undone. All candidate applications, scores, and round configurations for this campaign
+              will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeleting}
+              onClick={handleDeleteCampaign}
+            >
+              {isDeleting ? "Deleting..." : "Delete Campaign"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
