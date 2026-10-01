@@ -60,7 +60,7 @@ export const PLANS: Record<Tier, Plan> = {
     scheduledRoundsPerMonth: 2,
     aiInterviewCreditsIncluded: 1,
     aiInterviewRollover: false,
-    aiVoiceScreeningCreditsIncluded: null,
+    aiVoiceScreeningCreditsIncluded: 0,
     concurrentAiSessions: 1,
     offerLettersPerMonth: 0,
     mediaRetentionDays: 7,

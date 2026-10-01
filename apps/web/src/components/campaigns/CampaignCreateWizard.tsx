@@ -174,7 +174,22 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     });
   }, [rounds, numberOfRounds, tier, whatsappOn, voiceOn, customCadence, userAddedStages, durationDays]);
 
+  const currentChangesCount = Object.keys(customCadence).length + userAddedStages.length;
+  const maxChanges = cadenceTierEditability(tier).maxChanges;
+
+  const checkMaxChanges = (stageKey?: string): boolean => {
+    if (stageKey && customCadence[stageKey]) return true; // Already changing this stage
+    if (maxChanges !== null && currentChangesCount >= maxChanges) {
+      showErrorToast(
+        `Your ${tierConfig.label} plan allows up to ${maxChanges} cadence changes. Please upgrade to customize further.`,
+      );
+      return false;
+    }
+    return true;
+  };
+
   const handleToggleStage = (stageKey: string, enabled: boolean) => {
+    if (!checkMaxChanges(stageKey)) return;
     setCustomCadence((prev) => ({
       ...prev,
       [stageKey]: { ...prev[stageKey], enabled },
@@ -182,6 +197,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   };
 
   const handleToggleChannel = (stageKey: string, channel: CadenceChannel, enabled: boolean) => {
+    if (!checkMaxChanges(stageKey)) return;
     const currentRow = previewRows.find((r) => r.stage.key === stageKey);
     if (!currentRow) return;
 
@@ -200,6 +216,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   };
 
   const handleChangeDayLabel = (stageKey: string, newDayLabel: string) => {
+    if (!checkMaxChanges(stageKey)) return;
     setCustomCadence((prev) => ({
       ...prev,
       [stageKey]: { ...prev[stageKey], dayLabel: newDayLabel },
@@ -207,6 +224,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   };
 
   const handleChangeLabel = (stageKey: string, newLabel: string) => {
+    if (!checkMaxChanges(stageKey)) return;
     setCustomCadence((prev) => ({
       ...prev,
       [stageKey]: { ...prev[stageKey], label: newLabel },
@@ -214,6 +232,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   };
 
   const handleAddCustomStage = (dayLabel: string, label: string) => {
+    if (!checkMaxChanges()) return;
     const key = `custom_${Date.now()}`;
     const newStage: CadenceRenderRow = {
       stage: {

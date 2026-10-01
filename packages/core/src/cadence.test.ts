@@ -37,11 +37,13 @@ describe("cadenceTierEditability", () => {
       stages: false,
       channels: false,
       timing: false,
+      maxChanges: 0,
     });
     expect(cadenceTierEditability("basic")).toEqual({
       stages: true,
       channels: true,
       timing: false,
+      maxChanges: 1,
     });
     expect(cadenceTierEditability("growth").timing).toBe(true);
     expect(cadenceTierEditability("enterprise").timing).toBe(true);

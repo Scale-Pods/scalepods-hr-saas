@@ -215,10 +215,12 @@ export function cadenceTierEditability(tier: Tier): {
   stages: boolean;
   channels: boolean;
   timing: boolean;
+  maxChanges: number;
 } {
-  if (tier === "free") return { stages: false, channels: false, timing: false };
-  if (tier === "basic") return { stages: true, channels: true, timing: false };
-  return { stages: true, channels: true, timing: true };
+  if (tier === "free") return { stages: false, channels: false, timing: false, maxChanges: 0 };
+  if (tier === "basic") return { stages: true, channels: true, timing: false, maxChanges: 1 };
+  if (tier === "growth") return { stages: true, channels: true, timing: true, maxChanges: 5 };
+  return { stages: true, channels: true, timing: true, maxChanges: Infinity };
 }
 
 function clampInt(n: number, min: number, max: number): number {
