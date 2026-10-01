@@ -88,7 +88,7 @@ function CampaignsContent() {
     if (activeCount < limit) return true;
     if (tierConfig.overageBehavior === "metered") {
       showToast(`Over your included ${limit} active campaigns - extra usage will be billed.`, {
-        kind: "warning",
+        kind: "info",
       });
       return true;
     }
@@ -105,13 +105,13 @@ function CampaignsContent() {
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initial check
   useEffect(() => {
     if (initialTab === "new" && !isPending && activeTab === "list") {
       if (checkCampaignLimit()) {
         setActiveTab("new");
       }
     }
-    // biome-ignore lint/correctness/useExhaustiveDependencies: initial check
   }, [initialTab, isPending]);
 
   const filtered = useMemo(() => {
