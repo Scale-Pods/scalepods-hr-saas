@@ -54,6 +54,30 @@ export function parseResumeText(text: string): ParsedContact {
 
 export async function parseResumeContact(file: File): Promise<ParsedContact> {
   const res = await extractTextFromFile(file);
+  if (!("error" in res) && res.text) {
+    const contact = parseResumeText(res.text);
+    if (contact.email) return contact;
+  }
+
+  // Fallback to server-side parser
+  if (typeof window !== "undefined") {
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const srvRes = await fetch("/api/parse-resume", { method: "POST", body: fd });
+      if (srvRes.ok) {
+        const data = await srvRes.json();
+        return {
+          email: data.email,
+          name: data.name || file.name.replace(/\.[^.]+$/, ""),
+          phone: data.phone,
+        };
+      }
+    } catch {
+      // ignore server fallback failure and fall through
+    }
+  }
+
   if ("error" in res) return { error: res.error };
   return parseResumeText(res.text);
 }

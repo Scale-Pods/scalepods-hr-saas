@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useInterviewContext } from "../context/InterviewContext";
 import { useProctoringContext } from "../context/ProctoringContext";
 import { useInterviewTimer } from "../hooks/useInterviewTimer";
+import type { InterviewQuestion } from "../types";
 import { getMediaDevicesStream, getScreenStream } from "../utils/mediaHelpers";
 import { useTTSEngine } from "../utils/tts";
 import type { AnswerRecorderState } from "./AnswerRecorder";

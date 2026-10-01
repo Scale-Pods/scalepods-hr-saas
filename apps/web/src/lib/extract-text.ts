@@ -46,10 +46,16 @@ export async function extractTextFromFile(file: File): Promise<ExtractResult> {
 
 async function extractPdf(file: File): Promise<ExtractResult> {
   const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/build/pdf.worker.min.mjs",
-    import.meta.url,
-  ).toString();
+  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+    try {
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+        "pdfjs-dist/build/pdf.worker.min.mjs",
+        import.meta.url,
+      ).toString();
+    } catch {
+      pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+    }
+  }
 
   const buffer = await file.arrayBuffer();
   const doc = await pdfjs.getDocument({ data: buffer }).promise;

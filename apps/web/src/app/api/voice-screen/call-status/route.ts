@@ -1,4 +1,6 @@
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { getEnv } from "@/env";
 
 const DEFAULT_DIALNEXA_API_KEY =
   "rb0665oacdbt33:7f1d56728f43ab2e3274e928785d840e08457909852df246ae2cae0a8e2350c0";
@@ -97,6 +99,9 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const callId = searchParams.get("call_id") || searchParams.get("id");
     const phone = searchParams.get("phone");
+    const accountId = searchParams.get("account_id");
+    const campaignId = searchParams.get("campaign_id");
+    const candidateId = searchParams.get("candidate_id");
     const apiKey = process.env.DIALNEXA_API_KEY || DEFAULT_DIALNEXA_API_KEY;
 
     if (!callId && !phone) {
@@ -146,9 +151,69 @@ export async function GET(req: Request) {
       }
     }
 
-    // 2. Fetch by phone number
+    // 2. Fetch by phone number with strict account & campaign scoping
     if (!phone) {
       return NextResponse.json({ calls: [] });
+    }
+
+    let allowedRoundInstanceIds: string[] | null = null;
+    let validOutreachTimes: number[] | null = null;
+
+    if (accountId || candidateId) {
+      try {
+        const env = getEnv();
+        const serviceKey =
+          process.env.SUPABASE_SERVICE_ROLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, serviceKey, {
+          auth: { persistSession: false },
+        });
+
+        if (candidateId && accountId) {
+          const { data: cand } = await supabase
+            .from("candidates")
+            .select("id, account_id")
+            .eq("id", candidateId)
+            .eq("account_id", accountId)
+            .maybeSingle();
+          if (!cand) {
+            return NextResponse.json({ calls: [] });
+          }
+        }
+
+        if (campaignId && candidateId) {
+          const { data: ris } = await supabase
+            .from("round_instances")
+            .select("id")
+            .eq("candidate_id", candidateId)
+            .eq("campaign_id", campaignId);
+          allowedRoundInstanceIds = (ris ?? []).map((r) => r.id);
+        }
+
+        let olQuery = supabase
+          .from("outreach_log")
+          .select("id, round_instance_id, sent_at")
+          .eq("channel", "voice_call");
+        if (accountId) olQuery = olQuery.eq("account_id", accountId);
+        if (candidateId) olQuery = olQuery.eq("candidate_id", candidateId);
+
+        const { data: ols } = await olQuery;
+        const matchingOls = (ols ?? []).filter((ol) => {
+          if (allowedRoundInstanceIds && allowedRoundInstanceIds.length > 0) {
+            return ol.round_instance_id && allowedRoundInstanceIds.includes(ol.round_instance_id);
+          }
+          return true;
+        });
+
+        if (matchingOls.length === 0 && (accountId || campaignId)) {
+          // If this campaign or account never initiated a voice call for this candidate,
+          // strictly return empty calls list (prevent leaking foreign calls)
+          return NextResponse.json({ calls: [] });
+        }
+
+        validOutreachTimes = matchingOls.map((ol) => new Date(ol.sent_at).getTime());
+      } catch (dbErr) {
+        console.warn("Could not query outreach logs for verification:", dbErr);
+      }
     }
 
     const cleanPhone = phone.replace(/[\s+-]/g, "");
@@ -170,7 +235,36 @@ export async function GET(req: Request) {
 
     const matching = allCalls.filter((c) => {
       const toNumber = String(c.to_number || "").replace(/[\s+-]/g, "");
-      return toNumber.includes(cleanPhone) || cleanPhone.includes(toNumber);
+      const matchesPhone = toNumber.includes(cleanPhone) || cleanPhone.includes(toNumber);
+      if (!matchesPhone) return false;
+
+      // Check metadata / notes if present
+      const meta = (c.metadata || c.notes || {}) as Record<string, unknown>;
+      if (accountId && meta.account_id && meta.account_id !== accountId) {
+        return false;
+      }
+      if (candidateId && meta.candidate_id && meta.candidate_id !== candidateId) {
+        return false;
+      }
+      if (
+        allowedRoundInstanceIds &&
+        allowedRoundInstanceIds.length > 0 &&
+        meta.round_instance_id &&
+        !allowedRoundInstanceIds.includes(String(meta.round_instance_id))
+      ) {
+        return false;
+      }
+
+      // Check timing against outreach_log to ensure call belongs to this candidate's outreach
+      if (validOutreachTimes && validOutreachTimes.length > 0) {
+        const callTime = new Date((c.called_time || c.initiated_time) as string).getTime();
+        const matchesWindow = validOutreachTimes.some(
+          (ot) => Math.abs(callTime - ot) < 45 * 60 * 1000,
+        );
+        if (!matchesWindow) return false;
+      }
+
+      return true;
     });
 
     // Populate individual call details (including recording_sas_url and transcript) for matching calls

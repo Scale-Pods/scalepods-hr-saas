@@ -78,7 +78,8 @@ export function QuestionDisplay({
     <div
       className="w-full rounded-2xl p-5 sm:p-6 transition-all duration-300 animate-fade-in shadow-2xl relative overflow-hidden"
       style={{
-        background: "linear-gradient(180deg, rgba(26, 31, 46, 0.98) 0%, rgba(18, 22, 33, 0.98) 100%)",
+        background:
+          "linear-gradient(180deg, rgba(26, 31, 46, 0.98) 0%, rgba(18, 22, 33, 0.98) 100%)",
         border: isQuestionSpeaking
           ? "1px solid rgba(168, 85, 247, 0.6)"
           : isAckSpeaking

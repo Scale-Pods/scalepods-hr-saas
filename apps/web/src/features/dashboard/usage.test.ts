@@ -22,7 +22,7 @@ describe("reconcileUsage", () => {
   it("uses the plan allowance and ignores n8n granted", () => {
     expect(reconcileUsage({ ai_interview: { used: 1, granted: 999 } }, "free")).toEqual({
       ai_interview: { used: 1, granted: 1 },
-      ai_voice_screening: { used: 0, granted: null },
+      ai_voice_screening: { used: 0, granted: 0 },
       scheduled_round: { used: 0, granted: 2 },
     });
   });

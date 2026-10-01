@@ -75,18 +75,24 @@ function roundNumberFromStage(stage: string): number | null {
 
 export async function fetchCandidateProfile(
   id: string,
-  tier: string,
+  tier: string = "free",
   targetCampaignId?: string | null,
+  accountId?: string | null,
 ): Promise<CandidateProfile> {
   const supabase = supabaseBrowser();
 
-  const { data: cand, error: candErr } = await supabase
-    .from("candidates")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  // 1. Fetch candidate and enforce account isolation
+  let candQuery = supabase.from("candidates").select("*").eq("id", id);
+  if (accountId) {
+    candQuery = candQuery.eq("account_id", accountId);
+  }
+  const { data: cand, error: candErr } = await candQuery.maybeSingle();
   if (candErr || !cand) throw new Error("Candidate not found");
+  if (accountId && cand.account_id !== accountId) {
+    throw new Error("Unauthorized access to candidate");
+  }
 
+  // 2. Fetch all candidate records strictly scoped to this account
   const [ledger, rounds, sessions, logs] = await Promise.all([
     supabase
       .from("decision_ledger")
@@ -94,33 +100,67 @@ export async function fetchCandidateProfile(
         "id,account_id,candidate_id,round_instance_id,stage,score,rationale,weight,created_at,raw_text",
       )
       .eq("candidate_id", id)
+      .eq("account_id", cand.account_id)
       .order("created_at", { ascending: true }),
-    supabase.from("round_instances").select("*").eq("candidate_id", id).order("round_number"),
+    supabase
+      .from("round_instances")
+      .select("*")
+      .eq("candidate_id", id)
+      .eq("account_id", cand.account_id)
+      .order("round_number"),
     supabase
       .from("interview_sessions")
       .select(
         "id,round_instance_id,candidate_id,status,expires_at,started_at,completed_at,created_at,recording_url,account_id",
       )
-      .eq("candidate_id", id),
+      .eq("candidate_id", id)
+      .eq("account_id", cand.account_id),
     supabase
       .from("outreach_log")
       .select("*")
       .eq("candidate_id", id)
+      .eq("account_id", cand.account_id)
       .order("sent_at", { ascending: true }),
   ]);
 
   const allRoundRows = (rounds.data ?? []) as RoundInstancesRow[];
   const allSessionRows = (sessions.data ?? []) as unknown as InterviewSessionRow[];
+  const allLedgerRows = (ledger.data ?? []) as DecisionLedgerRow[];
+  const allOutreachLogs = (logs.data ?? []) as OutreachLogRow[];
 
-  // 1. Resolve all campaigns this candidate is part of
-  const rawCampaignIds = Array.from(
-    new Set(allRoundRows.map((r) => r.campaign_id).filter(Boolean)),
+  // 3. Resolve all campaigns this candidate belongs to within this account
+  const campaignIdSet = new Set<string>(
+    allRoundRows.map((r) => r.campaign_id).filter(Boolean) as string[],
   );
+
+  if (targetCampaignId) {
+    campaignIdSet.add(targetCampaignId);
+  }
+
+  // Check storage for any other campaigns under this account where candidate's resume was uploaded
+  if (cand.account_id && cand.email) {
+    try {
+      const { data: campFolders } = await supabase.storage
+        .from(BUCKETS.resumes)
+        .list(cand.account_id, { limit: 100 });
+      for (const folder of campFolders ?? []) {
+        if (
+          folder.name &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(folder.name)
+        ) {
+          campaignIdSet.add(folder.name);
+        }
+      }
+    } catch {}
+  }
+
+  const rawCampaignIds = Array.from(campaignIdSet);
   let candidateCampaigns: CandidateCampaignItem[] = [];
   if (rawCampaignIds.length > 0) {
     const { data: camps } = await supabase
       .from("campaigns")
       .select("id,name")
+      .eq("account_id", cand.account_id)
       .in("id", rawCampaignIds);
     candidateCampaigns = ((camps ?? []) as { id: string; name: string }[]).map((c) => ({
       id: c.id,
@@ -128,7 +168,7 @@ export async function fetchCandidateProfile(
     }));
   }
 
-  // 2. Select active campaign (targetCampaignId if provided and valid, otherwise first available)
+  // 4. Select active campaign
   let activeCampaignId: string | null = null;
   if (targetCampaignId && candidateCampaigns.some((c) => c.id === targetCampaignId)) {
     activeCampaignId = targetCampaignId;
@@ -139,33 +179,28 @@ export async function fetchCandidateProfile(
   const activeCampaign = candidateCampaigns.find((c) => c.id === activeCampaignId);
   const campaignName = activeCampaign?.name ?? (candidateCampaigns[0]?.name || null);
 
-  // 3. Filter data strictly by active campaign if multiple campaigns exist
+  // 5. Filter rounds and sessions strictly to active campaign (NO cross-campaign leaking!)
   const roundRows = activeCampaignId
     ? allRoundRows.filter((r) => r.campaign_id === activeCampaignId)
-    : allRoundRows;
+    : [];
   const roundIds = roundRows.map((r) => r.id);
 
   const sessionRows =
     roundIds.length > 0
       ? allSessionRows.filter((s) => s.round_instance_id && roundIds.includes(s.round_instance_id))
-      : allSessionRows;
+      : [];
 
-  // 4. Fetch scorecards for active rounds and sessions
+  // 6. Fetch scorecards strictly for active campaign rounds and sessions
   const scorecardByRoundId = new Map<string, ScorecardRow>();
   const scorecardBySessionId = new Map<string, ScorecardRow>();
   if (roundIds.length > 0 || sessionRows.length > 0) {
     const filters = [
       roundIds.length > 0 ? `round_instance_id.in.(${roundIds.join(",")})` : null,
-      sessionRows.length > 0
-        ? `session_id.in.(${sessionRows.map((s) => s.id).join(",")})`
-        : null,
+      sessionRows.length > 0 ? `session_id.in.(${sessionRows.map((s) => s.id).join(",")})` : null,
     ].filter(Boolean);
 
     if (filters.length > 0) {
-      const { data: cards } = await supabase
-        .from("scorecards")
-        .select("*")
-        .or(filters.join(","));
+      const { data: cards } = await supabase.from("scorecards").select("*").or(filters.join(","));
 
       for (const raw of (cards ?? []) as any[]) {
         const criteria = raw.criteria || {};
@@ -193,20 +228,71 @@ export async function fetchCandidateProfile(
     }
   }
 
-  // 5. Build timeline (decision_ledger) scoped to this campaign's rounds
-  const allLedgerRows = (ledger.data ?? []) as DecisionLedgerRow[];
-  const ledgerRows =
-    roundIds.length > 0
-      ? allLedgerRows.filter(
-          (row) =>
-            (row.round_instance_id && roundIds.includes(row.round_instance_id)) ||
-            (!row.round_instance_id &&
-              row.account_id === cand.account_id &&
-              (row.stage === "resume" ||
-                row.stage === "voice_screen" ||
-                row.stage === "round_1")),
-        )
-      : allLedgerRows;
+  // 7. Filter timeline (decision_ledger) strictly to this campaign
+  const ledgerRows = allLedgerRows.filter((row) => {
+    // 7a. Explicit round instance linkage
+    if (row.round_instance_id) {
+      return roundIds.includes(row.round_instance_id);
+    }
+
+    // 7b. Resume screening stage (round_instance_id is null)
+    const isResume =
+      row.stage === "resume" ||
+      row.stage === "resume screening" ||
+      row.stage.toLowerCase().includes("resume") ||
+      row.stage.toLowerCase().includes("screen");
+
+    if (isResume) {
+      // If candidate has rounds across multiple campaigns, match resume screening to this campaign's round 1 by timestamp
+      if (candidateCampaigns.length > 1 && roundRows.length > 0) {
+        const r1 = roundRows.find((r) => r.round_number === 1) || roundRows[0];
+        const r1Time = new Date(r1.created_at).getTime();
+        const rowTime = new Date(row.created_at).getTime();
+
+        let closestCampId = activeCampaignId;
+        let minDiff = Math.abs(rowTime - r1Time);
+
+        for (const otherCamp of candidateCampaigns) {
+          if (otherCamp.id === activeCampaignId) continue;
+          const otherR1 =
+            allRoundRows.find((r) => r.campaign_id === otherCamp.id && r.round_number === 1) ||
+            allRoundRows.find((r) => r.campaign_id === otherCamp.id);
+          if (otherR1) {
+            const otherTime = new Date(otherR1.created_at).getTime();
+            const diff = Math.abs(rowTime - otherTime);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closestCampId = otherCamp.id;
+            }
+          }
+        }
+        return closestCampId === activeCampaignId;
+      }
+      return true;
+    }
+
+    // 7c. Round stage without round_instance_id (legacy rows)
+    if (roundRows.length > 0) {
+      const rowTime = new Date(row.created_at).getTime();
+      const matchingSession = sessionRows.find((s) => {
+        const sTime = new Date(s.completed_at || s.started_at || s.created_at).getTime();
+        return Math.abs(rowTime - sTime) < 15 * 60 * 1000;
+      });
+      if (matchingSession) return true;
+
+      // Ensure it doesn't belong to another campaign's session
+      const otherCampaignSessions = allSessionRows.filter(
+        (s) => s.round_instance_id && !roundIds.includes(s.round_instance_id),
+      );
+      const matchesOther = otherCampaignSessions.some((s) => {
+        const sTime = new Date(s.completed_at || s.started_at || s.created_at).getTime();
+        return Math.abs(rowTime - sTime) < 15 * 60 * 1000;
+      });
+      if (matchesOther) return false;
+    }
+
+    return false;
+  });
 
   const view: LedgerView[] = [];
   const limitDays = TIER_LIMITS[tier as keyof typeof TIER_LIMITS]?.retentionDays ?? 90;
@@ -265,13 +351,12 @@ export async function fetchCandidateProfile(
     });
   }
 
-  // Synthesize Round 1 entry if an interview was completed/scored but missing from ledger
+  // Synthesize Round 1 entry if an interview in THIS campaign was completed/scored but missing from ledger
   const firstSession = sessionRows[0];
   const firstRound = roundRows[0];
   const sc =
     (firstRound ? scorecardByRoundId.get(firstRound.id) : undefined) ??
-    (firstSession ? scorecardBySessionId.get(firstSession.id) : undefined) ??
-    Array.from(scorecardByRoundId.values())[0];
+    (firstSession ? scorecardBySessionId.get(firstSession.id) : undefined);
 
   if ((firstSession || sc) && !view.some((v) => roundNumberFromStage(v.stage) === 1)) {
     view.push({
@@ -295,15 +380,34 @@ export async function fetchCandidateProfile(
     });
   }
 
+  // 8. Resolve campaign-specific resume URL
   let resumeUrl: string | null = null;
-  if ((cand as any).resume_url) {
-    const { data } = await supabase.storage
-      .from(BUCKETS.resumes)
-      .createSignedUrl((cand as any).resume_url, 3600);
-    resumeUrl = data?.signedUrl ?? (cand as any).resume_url;
+  if (cand.account_id && activeCampaignId && cand.email) {
+    try {
+      const { data: files } = await supabase.storage
+        .from(BUCKETS.resumes)
+        .list(`${cand.account_id}/${activeCampaignId}/${cand.email}`, { limit: 1 });
+      if (files && files.length > 0 && files[0]?.name) {
+        const path = `${cand.account_id}/${activeCampaignId}/${cand.email}/${files[0].name}`;
+        const { data: signed } = await supabase.storage
+          .from(BUCKETS.resumes)
+          .createSignedUrl(path, 3600);
+        resumeUrl = signed?.signedUrl ?? null;
+      }
+    } catch {}
+  }
+  if (!resumeUrl && (cand as any).resume_url) {
+    try {
+      const { data } = await supabase.storage
+        .from(BUCKETS.resumes)
+        .createSignedUrl((cand as any).resume_url, 3600);
+      resumeUrl = data?.signedUrl ?? (cand as any).resume_url;
+    } catch {
+      resumeUrl = (cand as any).resume_url;
+    }
   }
 
-  // 6. Fetch interview recordings for this campaign
+  // 9. Fetch interview recordings strictly for this campaign's sessions
   const interviewRecordings: InterviewRecordingItem[] = await Promise.all(
     sessionRows.map(async (s) => {
       let resolvedPath =
@@ -346,24 +450,35 @@ export async function fetchCandidateProfile(
     }),
   );
 
-  // 7. Fetch accurate turn-by-turn Q&A transcripts
+  // 10. Fetch turn-by-turn Q&A transcripts strictly for this campaign's rounds & sessions
   let interviewTranscripts: InterviewTranscriptItem[] = [];
   const targetRoundIds = roundRows.map((r) => r.id);
+  const targetSessionIds = sessionRows.map((s) => s.id);
 
-  if (targetRoundIds.length > 0) {
+  if (targetRoundIds.length > 0 || targetSessionIds.length > 0) {
     try {
-      // Query real interview questions
+      const qFilters = [
+        targetRoundIds.length > 0 ? `round_instance_id.in.(${targetRoundIds.join(",")})` : null,
+        targetSessionIds.length > 0 ? `session_id.in.(${targetSessionIds.join(",")})` : null,
+      ].filter(Boolean);
+
       const { data: questionsData } = await (supabase as any)
         .from("interview_questions")
-        .select("id,round_instance_id,question_number,question_text,question_type,created_at")
-        .in("round_instance_id", targetRoundIds)
+        .select(
+          "id,round_instance_id,session_id,question_number,question_text,question_type,created_at",
+        )
+        .or(qFilters.join(","))
         .order("question_number", { ascending: true });
 
-      // Query candidate answers
+      const ansFilters = [
+        targetRoundIds.length > 0 ? `round_instance_id.in.(${targetRoundIds.join(",")})` : null,
+        targetSessionIds.length > 0 ? `session_id.in.(${targetSessionIds.join(",")})` : null,
+      ].filter(Boolean);
+
       const { data: answersData } = await (supabase as any)
         .from("interview_answers")
-        .select("id,round_instance_id,question_id,answer_text,answered_at,ai_live_note")
-        .in("round_instance_id", targetRoundIds)
+        .select("id,round_instance_id,session_id,question_id,answer_text,answered_at,ai_live_note")
+        .or(ansFilters.join(","))
         .order("answered_at", { ascending: true });
 
       const answersList = (answersData ?? []) as any[];
@@ -393,7 +508,6 @@ export async function fetchCandidateProfile(
       if (questionsList.length > 0) {
         questionsList.forEach((q) => {
           const ansList = answersByQuestionId.get(q.id) || [];
-          // Pick the answer with actual content if available, else latest
           const bestAnswer =
             ansList.find((a) => a.answer_text && a.answer_text.trim().length > 0) ||
             ansList[ansList.length - 1] ||
@@ -438,16 +552,25 @@ export async function fetchCandidateProfile(
     }
   }
 
-  // 8. Extract voice screening call transcripts from decision_ledger
-  const voiceScreenTranscripts: VoiceScreenTranscriptItem[] = (
-    (ledger.data ?? []) as Record<string, unknown>[]
-  )
-    .filter(
-      (row) =>
+  // 11. Extract voice screening call transcripts strictly for this campaign
+  const voiceScreenTranscripts: VoiceScreenTranscriptItem[] = allLedgerRows
+    .filter((row) => {
+      const isVoice =
         row.stage === "voice_screen" ||
-        (typeof row.stage === "string" && row.stage.toLowerCase().includes("voice")) ||
-        (typeof row.raw_text === "string" && row.raw_text.length > 10),
-    )
+        (typeof row.stage === "string" && row.stage.toLowerCase().includes("voice"));
+      if (!isVoice) return false;
+      if (row.account_id !== cand.account_id) return false;
+      if (row.round_instance_id) {
+        return roundIds.includes(row.round_instance_id);
+      }
+      if (roundRows.length > 0) {
+        const rowTime = new Date(row.created_at).getTime();
+        const r1 = roundRows[0];
+        const r1Time = new Date(r1.created_at).getTime();
+        return Math.abs(rowTime - r1Time) < 24 * 3600 * 1000;
+      }
+      return false;
+    })
     .map((row) => ({
       id: String(row.id ?? ""),
       score: row.score != null ? Number(row.score) : null,
@@ -456,7 +579,30 @@ export async function fetchCandidateProfile(
       decided_at: String(row.created_at ?? ""),
     }));
 
+  // 12. Outreach log strictly for this campaign
+  const outreach = allOutreachLogs.filter((log) => {
+    if (log.account_id !== cand.account_id) return false;
+    if (log.round_instance_id) {
+      return roundIds.includes(log.round_instance_id);
+    }
+    if (roundRows.length > 0) {
+      const logTime = new Date(log.sent_at).getTime();
+      return roundRows.some((r) => {
+        const rTime = new Date(r.created_at).getTime();
+        return Math.abs(logTime - rTime) < 48 * 3600 * 1000;
+      });
+    }
+    return false;
+  });
+
+  // 13. Latest scorecard for active campaign
   const latestScorecard =
+    (roundRows[roundRows.length - 1]
+      ? scorecardByRoundId.get(roundRows[roundRows.length - 1].id)
+      : undefined) ??
+    (sessionRows[sessionRows.length - 1]
+      ? scorecardBySessionId.get(sessionRows[sessionRows.length - 1].id)
+      : undefined) ??
     Array.from(scorecardByRoundId.values())[0] ??
     Array.from(scorecardBySessionId.values())[0] ??
     null;
@@ -468,7 +614,7 @@ export async function fetchCandidateProfile(
     candidateCampaigns,
     resumeUrl,
     timeline: view,
-    outreach: (logs.data ?? []) as OutreachLogRow[],
+    outreach,
     interviewRecordings,
     interviewTranscripts,
     voiceScreenTranscripts,

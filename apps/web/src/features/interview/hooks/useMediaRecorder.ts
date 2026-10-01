@@ -211,7 +211,10 @@ export function useMediaRecorder() {
                         filePath: urlData.filePath,
                       }),
                     }).catch(() => {});
-                    console.log("[useMediaRecorder] Recording stored via signed upload:", urlData.filePath);
+                    console.log(
+                      "[useMediaRecorder] Recording stored via signed upload:",
+                      urlData.filePath,
+                    );
                     setState((prev) => ({ ...prev, recordingId: urlData.filePath }));
                   }
                 }

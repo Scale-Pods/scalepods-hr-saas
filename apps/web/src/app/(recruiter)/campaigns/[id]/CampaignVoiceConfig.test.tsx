@@ -103,9 +103,7 @@ describe("CampaignDetailPage Voice Agent Configuration", () => {
     ).not.toBeInTheDocument();
   });
 
-  it(
-    "displays Custom Agent Configured with Edit Configuration option and previous data when voice was configured at creation",
-    () => {
+  it("displays Custom Agent Configured with Edit Configuration option and previous data when voice was configured at creation", () => {
     currentDetailData = {
       ...mockCampaignDetail,
       campaign: {

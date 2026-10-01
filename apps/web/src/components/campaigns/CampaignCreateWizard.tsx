@@ -172,7 +172,16 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         channels: custom.channels ?? r.channels,
       };
     });
-  }, [rounds, numberOfRounds, tier, whatsappOn, voiceOn, customCadence, userAddedStages, durationDays]);
+  }, [
+    rounds,
+    numberOfRounds,
+    tier,
+    whatsappOn,
+    voiceOn,
+    customCadence,
+    userAddedStages,
+    durationDays,
+  ]);
 
   const currentChangesCount = Object.keys(customCadence).length + userAddedStages.length;
   const maxChanges = cadenceTierEditability(tier).maxChanges;
@@ -593,11 +602,15 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   <div className="col-span-2 flex items-center gap-2 rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2 text-xs text-primary">
                     <Calendar className="h-4 w-4 shrink-0" />
                     <span>
-                      Campaign Duration: <strong>{durationDays} {durationDays === 1 ? "day" : "days"}</strong>
+                      Campaign Duration:{" "}
+                      <strong>
+                        {durationDays} {durationDays === 1 ? "day" : "days"}
+                      </strong>
                     </span>
                     {durationDays <= 3 && (
                       <span className="text-[11px] text-muted-foreground ml-auto hidden sm:inline">
-                        Communication cadence will automatically fit within {durationDays} {durationDays === 1 ? "day" : "days"}.
+                        Communication cadence will automatically fit within {durationDays}{" "}
+                        {durationDays === 1 ? "day" : "days"}.
                       </span>
                     )}
                   </div>
@@ -710,10 +723,12 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 shrink-0" />
                     <span>
-                      Cadence automatically tailored to your <strong>{durationDays}-day</strong> campaign duration.
+                      Cadence automatically tailored to your <strong>{durationDays}-day</strong>{" "}
+                      campaign duration.
                       {durationDays < 6 ? (
                         <span className="text-muted-foreground ml-1">
-                          (Reminders past Day {durationDays - 1} have been excluded to fit your timeline)
+                          (Reminders past Day {durationDays - 1} have been excluded to fit your
+                          timeline)
                         </span>
                       ) : null}
                     </span>

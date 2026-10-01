@@ -1,5 +1,4 @@
 import { Brain, CheckCircle, Lightbulb, MessageSquare, Users } from "lucide-react";
-import React from "react";
 
 /* ─── Types ────────────────────────────────────────────────────────────── */
 
@@ -168,7 +167,16 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
                   <SpeakingBars />
                 </div>
               )}
-              <p style={{ margin: 0, whiteSpace: "pre-wrap", fontStyle: "italic", color: "#fef3c7", fontSize: "0.9375rem", lineHeight: 1.55 }}>
+              <p
+                style={{
+                  margin: 0,
+                  whiteSpace: "pre-wrap",
+                  fontStyle: "italic",
+                  color: "#fef3c7",
+                  fontSize: "0.9375rem",
+                  lineHeight: 1.55,
+                }}
+              >
                 {message.text}
               </p>
             </div>
@@ -176,7 +184,9 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
             <div
               className="bubble-body"
               style={{
-                borderLeft: isSpeaking ? "2px solid var(--purple)" : "2px solid rgba(255,255,255,0.15)",
+                borderLeft: isSpeaking
+                  ? "2px solid var(--purple)"
+                  : "2px solid rgba(255,255,255,0.15)",
                 transition: "border-color 0.3s ease",
               }}
             >
@@ -202,7 +212,16 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
                   <SpeakingBars />
                 </div>
               )}
-              <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "#ffffff", fontSize: "1rem", lineHeight: 1.6, fontWeight: 500 }}>
+              <p
+                style={{
+                  margin: 0,
+                  whiteSpace: "pre-wrap",
+                  color: "#ffffff",
+                  fontSize: "1rem",
+                  lineHeight: 1.6,
+                  fontWeight: 500,
+                }}
+              >
                 {message.text}
               </p>
             </div>
@@ -230,7 +249,15 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
           <span className="bubble-label-candidate">You</span>
         </div>
         <div className="bubble-body">
-          <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "#ffffff", fontSize: "0.95rem", lineHeight: 1.55 }}>
+          <p
+            style={{
+              margin: 0,
+              whiteSpace: "pre-wrap",
+              color: "#ffffff",
+              fontSize: "0.95rem",
+              lineHeight: 1.55,
+            }}
+          >
             {message.text}
           </p>
         </div>

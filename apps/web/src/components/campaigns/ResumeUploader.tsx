@@ -4,7 +4,6 @@ import type { CampaignsRow } from "@scalepods/core";
 import { useState } from "react";
 import { showErrorToast } from "@/components/shared/TierLimitToast";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { parseResumeContact } from "@/lib/parse-resume";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -57,6 +56,22 @@ export function ResumeUploader({
       showErrorToast("This campaign has no JD yet — add one before screening resumes.");
       return;
     }
+    const missing = files.find((f) => !f.email?.trim());
+    if (missing) {
+      showErrorToast(
+        `File "${missing.file.name}" is missing a candidate email. Please enter an email before scoring.`,
+      );
+      return;
+    }
+    const emailList = files.map((f) => f.email?.trim().toLowerCase());
+    const uniqueEmails = new Set(emailList);
+    if (uniqueEmails.size !== emailList.length) {
+      showErrorToast(
+        "Multiple resumes share the same email address. Each candidate must have a unique email address.",
+      );
+      return;
+    }
+
     setUploading(true);
     const jdText = campaign.jd_text;
     try {

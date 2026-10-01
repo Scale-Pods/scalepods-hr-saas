@@ -515,51 +515,51 @@ export async function generateInterviewerTurn(
     };
   }
 
-function getDynamicAcknowledgment(
-  index: number,
-  turnType?: string,
-  candidateRequestedClarification?: boolean,
-): string {
-  if (candidateRequestedClarification) {
-    return "No problem at all! Let me clarify that point for you.";
-  }
-  if (turnType === "follow_up") {
-    const followUpAcks = [
-      "Thanks for sharing that overview. Let's dig a bit deeper into that specific point.",
-      "Appreciate that explanation. I'd like to explore one detail a bit further.",
-      "That's a helpful starting point. Let's look closer at your reasoning there.",
-      "Got it. I'd like to touch on one specific aspect of that approach.",
+  function getDynamicAcknowledgment(
+    index: number,
+    turnType?: string,
+    candidateRequestedClarification?: boolean,
+  ): string {
+    if (candidateRequestedClarification) {
+      return "No problem at all! Let me clarify that point for you.";
+    }
+    if (turnType === "follow_up") {
+      const followUpAcks = [
+        "Thanks for sharing that overview. Let's dig a bit deeper into that specific point.",
+        "Appreciate that explanation. I'd like to explore one detail a bit further.",
+        "That's a helpful starting point. Let's look closer at your reasoning there.",
+        "Got it. I'd like to touch on one specific aspect of that approach.",
+      ];
+      return followUpAcks[index % followUpAcks.length];
+    }
+    const standardAcks = [
+      "Thank you for walking me through your approach.",
+      "Got it, that gives good context on how you handled that.",
+      "Thanks for explaining that clearly. Let's move to our next topic.",
+      "Understood, that highlights your problem-solving process well.",
+      "Great, appreciate you sharing those details.",
+      "Thanks for breaking that down. Let's explore another area.",
+      "Understood, thank you. Let's build on that with the next question.",
     ];
-    return followUpAcks[index % followUpAcks.length];
+    return standardAcks[index % standardAcks.length];
   }
-  const standardAcks = [
-    "Thank you for walking me through your approach.",
-    "Got it, that gives good context on how you handled that.",
-    "Thanks for explaining that clearly. Let's move to our next topic.",
-    "Understood, that highlights your problem-solving process well.",
-    "Great, appreciate you sharing those details.",
-    "Thanks for breaking that down. Let's explore another area.",
-    "Understood, thank you. Let's build on that with the next question.",
-  ];
-  return standardAcks[index % standardAcks.length];
-}
 
-function isGreetingText(text: string): boolean {
-  if (!text) return true;
-  const lower = text.toLowerCase();
-  return (
-    lower.includes("hello and welcome") ||
-    lower.includes("welcome to your interview") ||
-    lower.includes("great to meet you") ||
-    lower.includes("i'm alex") ||
-    lower.includes("i am alex") ||
-    lower.includes("guide you through") ||
-    lower.includes("guiding your interview") ||
-    lower.includes("thank you for joining") ||
-    lower.includes("to start off") ||
-    lower.includes("how are you doing today")
-  );
-}
+  function isGreetingText(text: string): boolean {
+    if (!text) return true;
+    const lower = text.toLowerCase();
+    return (
+      lower.includes("hello and welcome") ||
+      lower.includes("welcome to your interview") ||
+      lower.includes("great to meet you") ||
+      lower.includes("i'm alex") ||
+      lower.includes("i am alex") ||
+      lower.includes("guide you through") ||
+      lower.includes("guiding your interview") ||
+      lower.includes("thank you for joining") ||
+      lower.includes("to start off") ||
+      lower.includes("how are you doing today")
+    );
+  }
 
   // Attempt backend n8n call
   try {
@@ -608,7 +608,11 @@ function isGreetingText(text: string): boolean {
       // For any turn answering a question (turns > 0 or with history), never repeat opening greeting
       const interviewerText =
         isGreetingText(rawAck) || !rawAck
-          ? getDynamicAcknowledgment(totalQuestions, parsed.turn_type, candidateRequestedClarification)
+          ? getDynamicAcknowledgment(
+              totalQuestions,
+              parsed.turn_type,
+              candidateRequestedClarification,
+            )
           : rawAck;
 
       if (parsed.is_final_question || parsed.turn_type === "closing") {

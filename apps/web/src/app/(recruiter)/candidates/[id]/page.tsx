@@ -6,13 +6,13 @@ import {
   AlertCircle,
   ArrowLeft,
   Award,
+  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   ExternalLink,
   FileText,
   Headphones,
-  Bot,
   Layers,
   Loader2,
   MessageSquare,
@@ -92,7 +92,12 @@ export default function CandidateProfilePage() {
   const { account } = useAccount();
   const tier = account?.tier ?? "free";
 
-  const { data, isPending, isError, refetch } = useCandidateProfile(id, tier, selectedCampaignId);
+  const { data, isPending, isError, refetch } = useCandidateProfile(
+    id,
+    tier,
+    selectedCampaignId,
+    account?.id,
+  );
   const candidate = data?.candidate;
   const campaignName = data?.campaignName;
   const candidateCampaigns = data?.candidateCampaigns ?? [];
@@ -123,14 +128,20 @@ export default function CandidateProfilePage() {
   useEffect(() => {
     if (!candidate?.phone) return;
     setLoadingCalls(true);
-    fetch(`/api/voice-screen/call-status?phone=${encodeURIComponent(candidate.phone)}`)
+    const params = new URLSearchParams();
+    params.set("phone", candidate.phone);
+    if (account?.id) params.set("account_id", account.id);
+    if (selectedCampaignId) params.set("campaign_id", selectedCampaignId);
+    if (id) params.set("candidate_id", id);
+
+    fetch(`/api/voice-screen/call-status?${params.toString()}`)
       .then((res) => res.json())
       .then((json) => {
         if (json.calls) setDialnexaCalls(json.calls);
       })
       .catch((err) => console.warn("Failed to load call status:", err))
       .finally(() => setLoadingCalls(false));
-  }, [candidate?.phone]);
+  }, [candidate?.phone, account?.id, selectedCampaignId, id]);
 
   const [overrideTarget, setOverrideTarget] = useState("");
   const [overrideScore, setOverrideScore] = useState(0);
@@ -249,7 +260,8 @@ export default function CandidateProfilePage() {
             </div>
           </div>
           <span className="text-[11px] text-muted-foreground italic">
-            Displaying rounds, transcripts, and evaluation scorecards for this specific campaign only
+            Displaying rounds, transcripts, and evaluation scorecards for this specific campaign
+            only
           </span>
         </div>
       )}
@@ -713,10 +725,10 @@ function InterviewMediaAndTranscriptSection({
                             scorecard.recommendation === "hire"
                               ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
                               : scorecard.recommendation === "advance"
-                              ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
-                              : scorecard.recommendation === "no_go"
-                              ? "bg-destructive/15 text-destructive border border-destructive/30"
-                              : "bg-warning/15 text-warning border border-warning/30",
+                                ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
+                                : scorecard.recommendation === "no_go"
+                                  ? "bg-destructive/15 text-destructive border border-destructive/30"
+                                  : "bg-warning/15 text-warning border border-warning/30",
                           )}
                         >
                           {scorecard.recommendation.replace("_", " ")}
@@ -770,8 +782,8 @@ function InterviewMediaAndTranscriptSection({
                         <CheckCircle2 className="h-4 w-4" /> Demonstrated Strengths
                       </span>
                       <ul className="text-xs text-foreground space-y-1 list-disc list-inside">
-                        {(scorecard.strengths as any[]).map((s: any, i: number) => (
-                          <li key={i}>{String(s)}</li>
+                        {(scorecard.strengths as any[]).map((s: any) => (
+                          <li key={String(s)}>{String(s)}</li>
                         ))}
                       </ul>
                     </div>
@@ -782,8 +794,8 @@ function InterviewMediaAndTranscriptSection({
                         <AlertCircle className="h-4 w-4" /> Areas of Concern / Weaknesses
                       </span>
                       <ul className="text-xs text-foreground space-y-1 list-disc list-inside">
-                        {(scorecard.weaknesses as any[]).map((w: any, i: number) => (
-                          <li key={i}>{String(w)}</li>
+                        {(scorecard.weaknesses as any[]).map((w: any) => (
+                          <li key={String(w)}>{String(w)}</li>
                         ))}
                       </ul>
                     </div>
@@ -798,8 +810,8 @@ function InterviewMediaAndTranscriptSection({
                     <AlertCircle className="h-4 w-4" /> Critical Evaluation Flags
                   </span>
                   <ul className="text-xs text-destructive space-y-1 list-disc list-inside">
-                    {(scorecard.red_flags as any[]).map((flag: any, i: number) => (
-                      <li key={i}>{String(flag)}</li>
+                    {(scorecard.red_flags as any[]).map((flag: any) => (
+                      <li key={String(flag)}>{String(flag)}</li>
                     ))}
                   </ul>
                 </div>
@@ -825,7 +837,9 @@ function InterviewMediaAndTranscriptSection({
                   Interview Completed — Scoring In Progress
                 </p>
                 <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                  The candidate has finished their interview session. The AI scoring engine evaluates their responses across technical, communication, problem-solving, and authenticity signals.
+                  The candidate has finished their interview session. The AI scoring engine
+                  evaluates their responses across technical, communication, problem-solving, and
+                  authenticity signals.
                 </p>
               </div>
               {sessionId && (
@@ -964,7 +978,7 @@ function InterviewMediaAndTranscriptSection({
                     <p className="font-medium text-emerald-600 dark:text-emerald-400 text-[11px] mb-1 flex items-center gap-1">
                       <User className="h-3 w-3" /> Candidate Response:
                     </p>
-                    {turn.answer_text && turn.answer_text.trim() ? (
+                    {turn.answer_text?.trim() ? (
                       <p className="italic">"{turn.answer_text}"</p>
                     ) : (
                       <p className="text-muted-foreground italic">

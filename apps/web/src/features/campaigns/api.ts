@@ -100,10 +100,16 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
     try {
       const { data: storageFiles } = await supabase.storage
         .from("resumes")
-        .list(`${campaignRow.account_id}/${id}`);
+        .list(`${campaignRow.account_id}/${id}`, { limit: 1000 });
       if (storageFiles && storageFiles.length > 0) {
         storageEmails = storageFiles
-          .map((f) => f.name.toLowerCase().trim())
+          .map((f) => {
+            try {
+              return decodeURIComponent(f.name).toLowerCase().trim();
+            } catch {
+              return f.name.toLowerCase().trim();
+            }
+          })
           .filter((name) => name.includes("@"));
       }
     } catch {
@@ -114,49 +120,76 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
   let candidates: ViewCandidate[] = [];
   if (candIds.length > 0 || storageEmails.length > 0) {
     let candsQuery = supabase.from("candidates").select("id,name,email,phone");
-    if (candIds.length > 0 && storageEmails.length > 0) {
-      candsQuery = candsQuery.or(
-        `id.in.(${candIds.join(",")}),email.in.(${storageEmails.join(",")})`,
-      );
-    } else if (candIds.length > 0) {
-      candsQuery = candsQuery.in("id", candIds);
-    } else {
-      candsQuery = candsQuery.in("email", storageEmails);
-    }
 
     if (campaignRow?.account_id) {
       candsQuery = candsQuery.eq("account_id", campaignRow.account_id);
     }
 
     const candsRes = await candsQuery;
-    const candsList = (candsRes.data ?? []) as {
+    const allAccountCands = (candsRes.data ?? []) as {
       id: string;
       name: string | null;
       email: string;
       phone: string | null;
     }[];
 
+    const storageSet = new Set(storageEmails);
+    const candIdSet = new Set(candIds);
+
+    const candsList = allAccountCands.filter((cand) => {
+      if (candIdSet.has(cand.id)) return true;
+      const em = cand.email?.toLowerCase().trim();
+      return em && storageSet.has(em);
+    });
+
     const allCandIds = candsList.map((cand) => cand.id);
-    const dlRes =
-      allCandIds.length > 0
-        ? await supabase
-            .from("decision_ledger")
-            .select("id,candidate_id,stage,score,created_at")
-            .in("candidate_id", allCandIds)
-            .order("created_at", { ascending: false })
-        : { data: [] };
+    let dlQuery = supabase
+      .from("decision_ledger")
+      .select("id,candidate_id,round_instance_id,stage,score,created_at")
+      .in("candidate_id", allCandIds)
+      .order("created_at", { ascending: false });
+
+    if (campaignRow?.account_id) {
+      dlQuery = dlQuery.eq("account_id", campaignRow.account_id);
+    }
+
+    const dlRes = allCandIds.length > 0 ? await dlQuery : { data: [] };
 
     const dlList = (dlRes.data ?? []) as unknown as {
       id: string;
       candidate_id: string;
+      round_instance_id: string | null;
       stage: string;
       score: number | null;
       created_at: string;
     }[];
 
+    const thisCampaignRiIds = new Set(roundInstances.map((ri) => ri.id));
+
     candidates = candsList.map((cand) => {
-      const candDl = dlList.find((d) => d.candidate_id === cand.id);
       const candRi = roundInstances.find((r) => r.candidate_id === cand.id);
+      const candDls = dlList.filter((d) => d.candidate_id === cand.id);
+
+      // 1. Direct round_instance match
+      let candDl = candRi ? candDls.find((d) => d.round_instance_id === candRi.id) : null;
+
+      // 2. Resume screening match (round_instance_id is null or belongs to this campaign)
+      if (!candDl) {
+        const resumeDls = candDls.filter(
+          (d) => !d.round_instance_id || thisCampaignRiIds.has(d.round_instance_id),
+        );
+        if (candRi && resumeDls.length > 0) {
+          const riTime = new Date(candRi.created_at).getTime();
+          // Pick the resume screening closest in time to this campaign's round instance
+          candDl = resumeDls.reduce((best, curr) => {
+            const bestDiff = Math.abs(new Date(best.created_at).getTime() - riTime);
+            const currDiff = Math.abs(new Date(curr.created_at).getTime() - riTime);
+            return currDiff < bestDiff ? curr : best;
+          }, resumeDls[0]);
+        } else {
+          candDl = resumeDls[0] || null;
+        }
+      }
 
       let stage = candDl?.stage;
       if (!stage || stage === "round_undefined") {
