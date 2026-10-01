@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { Suspense } from "react";
 import { CampaignCreateWizard } from "@/components/campaigns/CampaignCreateWizard";
 
-export default function CampaignNewPage() {
+function CampaignNewContent() {
   const router = useRouter();
 
   return (
@@ -14,5 +15,19 @@ export default function CampaignNewPage() {
         else router.push("/campaigns");
       }}
     />
+  );
+}
+
+export default function CampaignNewPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-64 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      }
+    >
+      <CampaignNewContent />
+    </Suspense>
   );
 }
