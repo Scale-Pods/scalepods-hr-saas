@@ -27,7 +27,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { ReportsNotice } from "@/components/dashboard/ReportsNotice";
 import { UsageBars } from "@/components/dashboard/UsageBars";
@@ -280,48 +280,12 @@ export default function DashboardPage() {
   const convCircumference = 2 * Math.PI * 48;
   const convDash = (avgConversionRate / 100) * convCircumference;
 
-  /* distribution tabs (campaigns vs locations) — real counts */
-  const [distTab, setDistTab] = useState<"campaigns" | "locations">("campaigns");
-
-  const campaignRows = useMemo(() => {
-    const dist = kpis.data?.campaignsDistribution ?? [];
-    if (!dist.length) {
-      return [
-        {
-          label: "General Candidate Pool",
-          count: kpis.data?.candidateCount ?? 0,
-          color: "#2563eb",
-        },
-      ];
-    }
-    const colors = ["#2563eb", "#06b6d4", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899"];
-    const totalAssigned = dist.reduce((acc, c) => acc + c.candidateCount, 0);
-    const totalCand = kpis.data?.candidateCount ?? 0;
-    const unassigned = Math.max(0, totalCand - totalAssigned);
-
-    const list = dist.map((c, i) => ({
-      label: c.name,
-      count: c.candidateCount,
-      color: colors[i % colors.length],
-    }));
-
-    if (unassigned > 0) {
-      list.push({
-        label: "General Talent Pool",
-        count: unassigned,
-        color: "#64748b",
-      });
-    }
-
-    return list;
-  }, [kpis.data?.campaignsDistribution, kpis.data?.candidateCount]);
-
+  /* real candidate location distribution */
   const locationRows = useMemo(() => {
     return kpis.data?.cityDistribution ?? [];
   }, [kpis.data?.cityDistribution]);
 
-  const currentDistRows = distTab === "campaigns" ? campaignRows : locationRows;
-  const distMax = Math.max(...currentDistRows.map((c) => c.count), 1);
+  const distMax = Math.max(...locationRows.map((c) => c.count), 1);
 
   /* dynamic AI intelligence feed from real pipeline data */
   const topCandidate = useMemo(() => {
@@ -734,49 +698,25 @@ export default function DashboardPage() {
           </div>
         </SectionCard>
 
-        {/* Distribution Card (Campaigns vs Locations) */}
+        {/* Candidate Location Distribution Card */}
         <SectionCard
           icon={<MapPin className="h-[17px] w-[17px]" />}
           iconColor="var(--emerald)"
-          title={distTab === "campaigns" ? "Campaign Distribution" : "Location Breakdown"}
+          title="Candidate Locations"
           badge={
-            <div className="flex items-center gap-1 rounded-lg bg-muted/60 p-0.5 text-[11px] font-medium">
-              <button
-                type="button"
-                className={cn(
-                  "rounded-md px-2 py-0.5 transition-all text-xs cursor-pointer",
-                  distTab === "campaigns"
-                    ? "bg-background text-foreground shadow-sm font-semibold"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setDistTab("campaigns")}
-              >
-                Campaigns
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  "rounded-md px-2 py-0.5 transition-all text-xs cursor-pointer",
-                  distTab === "locations"
-                    ? "bg-background text-foreground shadow-sm font-semibold"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setDistTab("locations")}
-              >
-                Locations
-              </button>
-            </div>
+            <span className="ref-widget-badge">
+              <LiveDot color="var(--emerald)" />
+              {locationRows.length} {locationRows.length === 1 ? "City" : "Cities"}
+            </span>
           }
         >
           <div className="flex flex-col gap-3">
-            {currentDistRows.length === 0 ? (
+            {locationRows.length === 0 ? (
               <div className="py-6 text-center text-xs text-muted-foreground">
-                {distTab === "campaigns"
-                  ? "No campaigns created yet."
-                  : "No candidate location data available."}
+                No candidate location data available.
               </div>
             ) : (
-              currentDistRows.map((item) => (
+              locationRows.map((item) => (
                 <div key={item.label} className="flex items-center gap-2.5">
                   <div
                     className="h-2 w-2 shrink-0 rounded-full"
