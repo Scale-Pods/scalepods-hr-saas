@@ -1,7 +1,7 @@
 "use client";
 
 import { type CalendarConnectionRow, type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
-import { Calendar, ExternalLink, Globe, Mail, MessageSquare, Phone } from "lucide-react";
+import { Calendar, ExternalLink, Mail, MessageSquare, Phone } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -316,8 +316,7 @@ function SettingsPageInner() {
           </Button>
         </form>
         <p className="mt-2 text-xs text-muted-foreground">
-          Added via <code className="rounded bg-muted px-1">POST /webhook/interviewers</code>{" "}
-          (workflow 10).
+          Teammates can be assigned as interviewers for live candidate rounds.
         </p>
       </SectionCard>
 
@@ -325,42 +324,64 @@ function SettingsPageInner() {
         title="Sending identity"
         subtitle={'Which "from" address / WhatsApp number candidate messages come from.'}
       >
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center gap-2 text-foreground">
-            <Mail className="h-4 w-4 text-muted-foreground" aria-hidden />
-            Email:{" "}
-            <span className="font-medium">
-              {t.customIdentity ? "your custom domain" : "platform-managed (noreply@scalepods.app)"}
-            </span>
+        <div className="space-y-2.5 text-sm">
+          <div className="flex items-center justify-between rounded-lg border border-border/40 bg-card/60 px-3 py-2">
+            <div className="flex items-center gap-2 text-foreground text-xs">
+              <Mail className="h-4 w-4 text-muted-foreground" aria-hidden />
+              <span>
+                Email:{" "}
+                <strong className="text-foreground">
+                  {t.customIdentity
+                    ? "Custom domain"
+                    : "ScalePods platform (noreply@scalepods.app)"}
+                </strong>
+              </span>
+            </div>
+            {!t.customIdentity && (
+              <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40">
+                Custom domain available on Growth & Enterprise
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-2 text-foreground">
-            <MessageSquare className="h-4 w-4 text-muted-foreground" aria-hidden />
-            WhatsApp:{" "}
-            <span className="font-medium">
-              {t.customIdentity
-                ? "your number"
-                : t.whatsapp
-                  ? "platform-managed number"
-                  : "not enabled"}
-            </span>
+
+          <div className="flex items-center justify-between rounded-lg border border-border/40 bg-card/60 px-3 py-2">
+            <div className="flex items-center gap-2 text-foreground text-xs">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" aria-hidden />
+              <span>
+                WhatsApp:{" "}
+                <strong className="text-foreground">
+                  {t.whatsapp
+                    ? t.customIdentity
+                      ? "Custom dedicated number"
+                      : "ScalePods managed line"
+                    : "Not enabled"}
+                </strong>
+              </span>
+            </div>
+            {!t.whatsapp && (
+              <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40">
+                Available on Basic, Growth & Enterprise
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-2 text-foreground">
-            <Phone className="h-4 w-4 text-muted-foreground" aria-hidden />
-            Voice line:{" "}
-            <span className="font-medium">
-              {t.voiceScreening ? "platform-managed number" : "not enabled"}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-foreground">
-            <Globe className="h-4 w-4 text-muted-foreground" aria-hidden />
-            From-domain sending is a Growth+ feature.
+
+          <div className="flex items-center justify-between rounded-lg border border-border/40 bg-card/60 px-3 py-2">
+            <div className="flex items-center gap-2 text-foreground text-xs">
+              <Phone className="h-4 w-4 text-muted-foreground" aria-hidden />
+              <span>
+                AI Voice line:{" "}
+                <strong className="text-foreground">
+                  {t.voiceScreening ? "ScalePods outbound telephony" : "Not enabled"}
+                </strong>
+              </span>
+            </div>
+            {!t.voiceScreening && (
+              <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40">
+                Available on Basic, Growth & Enterprise
+              </span>
+            )}
           </div>
         </div>
-        {!t.customIdentity && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Custom sending domain and WhatsApp number unlock on the Growth tier.
-          </p>
-        )}
       </SectionCard>
     </div>
   );

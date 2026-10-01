@@ -328,7 +328,7 @@ export function DialnexaConfigEditor({
       {
         id: "msg-init-sys",
         sender: "system",
-        text: `DialNexa Session Initialized · Transcriber: ${currentTranscriber} · Eagerness: ${currentEagerness} · Max Duration: ${Math.round((value.max_duration_seconds || 300) / 60)}m`,
+        text: `Voice Session Initialized · Transcriber: ${currentTranscriber} · Eagerness: ${currentEagerness} · Max Duration: ${Math.round((value.max_duration_seconds || 300) / 60)}m`,
         time: timeStr,
       },
       {
@@ -352,7 +352,7 @@ export function DialnexaConfigEditor({
     stopAudio();
     setSimActive(false);
 
-    // Mock automatic DialNexa post-call analysis extraction
+    // Mock automatic post-call analysis extraction
     setSimScorecard({
       overall_recommendation: "STRONG_YES",
       technical_qualification_score: 8.5,
@@ -366,7 +366,7 @@ export function DialnexaConfigEditor({
       {
         id: `msg-end-${Date.now()}`,
         sender: "system",
-        text: `Call Ended (Duration: 2m 14s) · DialNexa Post-Call Analysis Extracted Successfully.`,
+        text: `Call Ended (Duration: 2m 14s) · Post-Call Analysis Extracted Successfully.`,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       },
     ]);
@@ -537,7 +537,7 @@ export function DialnexaConfigEditor({
 
     setIsDispatchingCall(true);
     setCallError(null);
-    setPhoneCallStatus("Dispatching call via DialNexa telephony...");
+    setPhoneCallStatus("Dispatching outbound test call...");
 
     try {
       const res = await fetch("/api/voice-screen/test-call", {
@@ -573,7 +573,7 @@ export function DialnexaConfigEditor({
             : "dispatched";
         setPhoneCallId(callIdStr);
         setPhoneCallStatus(
-          `Dispatched via n8n backend workflow (Call ID: ${callIdStr}). Your phone will ring shortly!`,
+          `Test call dispatched (Call ID: ${callIdStr}). Your phone will ring shortly!`,
         );
 
         // Start automated polling for call telemetry, recording, and transcript
@@ -656,15 +656,9 @@ export function DialnexaConfigEditor({
               </Badge>
               <Badge
                 variant="outline"
-                className="text-[10px] font-mono text-purple-600 dark:text-purple-400 border-purple-500/30 bg-purple-500/5 font-semibold"
+                className="text-[10px] text-blue-600 dark:text-blue-400 border-blue-500/30 bg-blue-500/5 font-semibold"
               >
-                n8n Backend
-              </Badge>
-              <Badge
-                variant="outline"
-                className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 border-cyan-500/30 bg-cyan-500/5 font-semibold"
-              >
-                DialNexa API
+                Voice Screening Studio
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">

@@ -21,7 +21,7 @@ export function SourceEffectivenessTable({ reports }: { reports: Reports }) {
     return (
       <EmptyState
         title="No source breakdown yet"
-        hint="Per-channel delivery comes from GET /webhook/reports."
+        hint="Per-channel delivery rates will display once messages are dispatched to candidates."
       />
     );
   }

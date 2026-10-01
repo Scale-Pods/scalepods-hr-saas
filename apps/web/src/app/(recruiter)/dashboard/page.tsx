@@ -317,15 +317,8 @@ export default function DashboardPage() {
   }, [kpis.data?.campaignsDistribution, kpis.data?.candidateCount]);
 
   const locationRows = useMemo(() => {
-    const total = kpis.data?.candidateCount ?? 0;
-    return [
-      { label: "Mumbai (Western)", count: Math.min(total, 2), color: "#2563eb" },
-      { label: "Pune / Maharashtra", count: Math.min(Math.max(0, total - 2), 2), color: "#06b6d4" },
-      { label: "Bangalore / South", count: Math.min(Math.max(0, total - 4), 3), color: "#10b981" },
-      { label: "Delhi NCR", count: Math.min(Math.max(0, total - 7), 2), color: "#f59e0b" },
-      { label: "Remote / Pan-India", count: Math.max(0, total - 9), color: "#8b5cf6" },
-    ];
-  }, [kpis.data?.candidateCount]);
+    return kpis.data?.cityDistribution ?? [];
+  }, [kpis.data?.cityDistribution]);
 
   const currentDistRows = distTab === "campaigns" ? campaignRows : locationRows;
   const distMax = Math.max(...currentDistRows.map((c) => c.count), 1);
@@ -776,33 +769,44 @@ export default function DashboardPage() {
           }
         >
           <div className="flex flex-col gap-3">
-            {currentDistRows.map((item) => (
-              <div key={item.label} className="flex items-center gap-2.5">
-                <div className="h-2 w-2 shrink-0 rounded-full" style={{ background: item.color }} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between mb-1">
-                    <span
-                      className="text-xs text-muted-foreground truncate max-w-[200px]"
-                      title={item.label}
-                    >
-                      {item.label}
-                    </span>
-                  </div>
-                  <div className="h-[5px] rounded-full bg-fill-tertiary overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{
-                        width: `${Math.max(4, (item.count / distMax) * 100)}%`,
-                        background: item.color,
-                      }}
-                    />
-                  </div>
-                </div>
-                <span className="text-sm font-semibold text-foreground min-w-[24px] text-right">
-                  {item.count}
-                </span>
+            {currentDistRows.length === 0 ? (
+              <div className="py-6 text-center text-xs text-muted-foreground">
+                {distTab === "campaigns"
+                  ? "No campaigns created yet."
+                  : "No candidate location data available."}
               </div>
-            ))}
+            ) : (
+              currentDistRows.map((item) => (
+                <div key={item.label} className="flex items-center gap-2.5">
+                  <div
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: item.color }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between mb-1">
+                      <span
+                        className="text-xs text-muted-foreground truncate max-w-[200px]"
+                        title={item.label}
+                      >
+                        {item.label}
+                      </span>
+                    </div>
+                    <div className="h-[5px] rounded-full bg-fill-tertiary overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{
+                          width: `${Math.max(4, (item.count / distMax) * 100)}%`,
+                          background: item.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-sm font-semibold text-foreground min-w-[24px] text-right">
+                    {item.count}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </SectionCard>
       </div>

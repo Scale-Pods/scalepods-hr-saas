@@ -121,7 +121,7 @@ export async function POST(req: Request) {
       call_id: callId,
       to_phone_number: phone,
       agent_id: targetAgentId,
-      message: "Live test call dispatched via n8n backend workflow engine.",
+      message: "Outbound test call dispatched successfully.",
       detail: n8nData,
     });
   } catch (err) {

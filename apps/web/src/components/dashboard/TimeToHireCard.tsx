@@ -9,7 +9,7 @@ export function TimeToHireCard({ reports }: { reports: Reports }) {
     return (
       <EmptyState
         title="No time-to-hire data yet"
-        hint="Intake-to-offer lag comes from GET /webhook/reports."
+        hint="Intake-to-offer duration will appear as candidates progress through rounds."
       />
     );
   }

@@ -2,6 +2,12 @@ import { type Reports, reportsSchema } from "@scalepods/core";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { callWorkflow } from "@/lib/webhooks";
 
+export interface CityDistributionItem {
+  label: string;
+  count: number;
+  color: string;
+}
+
 export interface DashboardKpis {
   totalCampaigns: number;
   activeCampaigns: number;
@@ -11,6 +17,7 @@ export interface DashboardKpis {
   interviewsPriorWeek: number;
   pendingRoundsCount: number;
   campaignsDistribution: { id: string; name: string; candidateCount: number; status: string }[];
+  cityDistribution: CityDistributionItem[];
   pipelineStages: {
     screening: number;
     round1: number;
@@ -66,6 +73,100 @@ const KNOWN_RECRUITERS: Record<string, { name: string; role: string }> = {
   "adnan@scalepods.co": { name: "Adnan Shaikh", role: "Technical Recruiter" },
 };
 
+const CITY_RULES: { label: string; regex: RegExp }[] = [
+  { label: "Bengaluru", regex: /\b(bengaluru|bangalore|karnataka)\b/i },
+  { label: "Mumbai", regex: /\b(mumbai|bombay|navi mumbai|thane)\b/i },
+  { label: "Pune", regex: /\b(pune|pcmc)\b/i },
+  { label: "Hyderabad", regex: /\b(hyderabad|secunderabad|telangana)\b/i },
+  {
+    label: "Delhi NCR",
+    regex: /\b(delhi|new delhi|noida|gurugram|gurgaon|ghaziabad|faridabad)\b/i,
+  },
+  { label: "Chennai", regex: /\b(chennai|madras|tamil nadu)\b/i },
+  { label: "Kolkata", regex: /\b(kolkata|calcutta|west bengal)\b/i },
+  { label: "Ahmedabad", regex: /\b(ahmedabad|gandhinagar|gujarat|surat|vadodara)\b/i },
+  { label: "Nagpur", regex: /\b(nagpur)\b/i },
+  { label: "Indore", regex: /\b(indore|bhopal|madhya pradesh)\b/i },
+  { label: "Jaipur", regex: /\b(jaipur|rajasthan)\b/i },
+  { label: "Chandigarh", regex: /\b(chandigarh|mohali|panchkula|punjab|haryana)\b/i },
+  { label: "Kochi", regex: /\b(kochi|cochin|kerala|trivandrum)\b/i },
+  { label: "Srinagar / J&K", regex: /\b(srinagar|kashmir|jammu)\b/i },
+  { label: "Guwahati", regex: /\b(guwahati|assam)\b/i },
+  { label: "Lucknow", regex: /\b(lucknow|kanpur|uttar pradesh)\b/i },
+  { label: "Bhubaneswar", regex: /\b(bhubaneswar|cuttack|odisha)\b/i },
+  { label: "Patna", regex: /\b(patna|bihar)\b/i },
+  { label: "Dehradun", regex: /\b(dehradun|uttarakhand)\b/i },
+  { label: "San Francisco", regex: /\b(san francisco|bay area|california)\b/i },
+  { label: "New York", regex: /\b(new york|nyc)\b/i },
+  { label: "London", regex: /\b(london|united kingdom|uk)\b/i },
+];
+
+function detectCityFromPhone(phone?: string | null): string | null {
+  if (!phone) return null;
+  const cleaned = phone.replace(/\D/g, "");
+  const d10 = cleaned.length >= 10 ? cleaned.slice(-10) : cleaned;
+
+  if (
+    d10.startsWith("9100") ||
+    d10.startsWith("9502") ||
+    d10.startsWith("9949") ||
+    d10.startsWith("9849") ||
+    d10.startsWith("8466")
+  )
+    return "Hyderabad";
+  if (
+    d10.startsWith("9324") ||
+    d10.startsWith("9820") ||
+    d10.startsWith("9821") ||
+    d10.startsWith("9819") ||
+    d10.startsWith("8879")
+  )
+    return "Mumbai";
+  if (
+    d10.startsWith("8600") ||
+    d10.startsWith("7900") ||
+    d10.startsWith("9822") ||
+    d10.startsWith("9823") ||
+    d10.startsWith("9881")
+  )
+    return "Pune";
+  if (
+    d10.startsWith("9123") ||
+    d10.startsWith("8274") ||
+    d10.startsWith("9830") ||
+    d10.startsWith("9831")
+  )
+    return "Kolkata";
+  if (
+    d10.startsWith("6353") ||
+    d10.startsWith("8488") ||
+    d10.startsWith("9825") ||
+    d10.startsWith("9824")
+  )
+    return "Ahmedabad";
+  if (d10.startsWith("9425") || d10.startsWith("9340") || d10.startsWith("9826"))
+    return "Indore / MP";
+  if (d10.startsWith("7780") || d10.startsWith("9419")) return "Srinagar / J&K";
+  if (d10.startsWith("7629") || d10.startsWith("9435")) return "Guwahati";
+  if (d10.startsWith("9557") || d10.startsWith("9810") || d10.startsWith("9811"))
+    return "Delhi NCR";
+  return null;
+}
+
+const CITY_PALETTE = [
+  "#2563eb",
+  "#06b6d4",
+  "#10b981",
+  "#f59e0b",
+  "#8b5cf6",
+  "#ec4899",
+  "#14b8a6",
+  "#6366f1",
+  "#f97316",
+  "#84cc16",
+  "#64748b",
+];
+
 function startOfDay(d: Date): Date {
   const out = new Date(d);
   out.setHours(0, 0, 0, 0);
@@ -110,7 +211,7 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     supabase.from("candidates").select("id", { count: "exact", head: true }),
     supabase
       .from("candidates")
-      .select("created_at")
+      .select("id,name,phone,email,created_at")
       .order("created_at", { ascending: false })
       .limit(1000),
     supabase
@@ -135,7 +236,10 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
       .from("outreach_log")
       .select("id", { count: "exact", head: true })
       .eq("channel", "voice_call"),
-    supabase.from("decision_ledger").select("candidate_id,stage,score,created_at").limit(300),
+    supabase
+      .from("decision_ledger")
+      .select("candidate_id,stage,score,created_at,raw_text,rationale")
+      .limit(500),
   ]);
 
   const campaigns = (campsRes.data ?? []) as {
@@ -362,6 +466,64 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     Math.max(20, Math.min(100, Math.round((q / maxQual) * 100))),
   );
 
+  // 6. Real-time City Distribution from actual candidate resume text, rationale, and phone
+  const candidateRows = (candDatesRes.data ?? []) as {
+    id: string;
+    name?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    created_at?: string | null;
+  }[];
+
+  const textByCandidate = new Map<string, string>();
+  for (const l of ledger as {
+    candidate_id: string;
+    raw_text?: string | null;
+    rationale?: string | null;
+  }[]) {
+    if (l.candidate_id) {
+      const prev = textByCandidate.get(l.candidate_id) || "";
+      const add = `${l.raw_text || ""} ${l.rationale || ""}`.trim();
+      if (add) {
+        textByCandidate.set(l.candidate_id, `${prev} ${add}`);
+      }
+    }
+  }
+
+  const cityCounts = new Map<string, number>();
+  for (const c of candidateRows) {
+    let resolvedCity: string | null = null;
+    const text = textByCandidate.get(c.id);
+    if (text) {
+      for (const rule of CITY_RULES) {
+        if (rule.regex.test(text)) {
+          resolvedCity = rule.label;
+          break;
+        }
+      }
+    }
+    if (!resolvedCity && c.phone) {
+      resolvedCity = detectCityFromPhone(c.phone);
+    }
+    if (!resolvedCity) {
+      resolvedCity = "Remote / Unspecified";
+    }
+    cityCounts.set(resolvedCity, (cityCounts.get(resolvedCity) || 0) + 1);
+  }
+
+  const cityDistribution: CityDistributionItem[] = Array.from(cityCounts.entries())
+    .filter(([_, count]) => count > 0)
+    .sort((a, b) => {
+      if (a[0] === "Remote / Unspecified") return 1;
+      if (b[0] === "Remote / Unspecified") return -1;
+      return b[1] - a[1];
+    })
+    .map(([label, count], idx) => ({
+      label,
+      count,
+      color: CITY_PALETTE[idx % CITY_PALETTE.length],
+    }));
+
   return {
     totalCampaigns: campaigns.length,
     activeCampaigns,
@@ -373,6 +535,7 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     interviewsPriorWeek: prevCountRes.error ? 0 : (prevCountRes.count ?? 0),
     pendingRoundsCount,
     campaignsDistribution,
+    cityDistribution,
     pipelineStages: {
       screening: totalCandidateCount,
       round1: r1Candidates.size,

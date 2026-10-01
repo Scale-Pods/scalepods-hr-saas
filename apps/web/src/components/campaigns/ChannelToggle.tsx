@@ -1,7 +1,5 @@
 import { Lock } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 
 export interface ChannelToggleProps {
   label: string;
@@ -20,18 +18,27 @@ export function ChannelToggle({
   lockText,
   onCheckedChange,
 }: ChannelToggleProps) {
-  const locked = disabled && lockText;
-  const row = (
+  if (disabled && lockText) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-muted/20 px-3 py-1.5 text-xs transition-colors">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+            <Lock className="h-2.5 w-2.5" aria-hidden />
+          </div>
+          <span className="font-medium text-muted-foreground truncate">{label}</span>
+        </div>
+        <span className="shrink-0 rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40">
+          {lockText}
+        </span>
+      </div>
+    );
+  }
+
+  return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-separator bg-card px-3 py-2.5">
       <div className="min-w-0">
-        <p
-          className={cn("text-sm font-medium", locked ? "text-label-tertiary" : "text-foreground")}
-        >
-          {label}
-        </p>
-        <p className={cn("text-xs", locked ? "text-label-tertiary" : "text-muted-foreground")}>
-          {description}
-        </p>
+        <p className="text-sm font-medium text-foreground">{label}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
       <Switch
         checked={checked}
@@ -41,22 +48,4 @@ export function ChannelToggle({
       />
     </div>
   );
-
-  if (disabled && lockText) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div>{row}</div>
-        </TooltipTrigger>
-        <TooltipContent side="left">
-          <div className="flex items-center gap-1.5">
-            <Lock className="h-3 w-3" aria-hidden />
-            {lockText}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  return row;
 }

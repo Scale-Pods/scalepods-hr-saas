@@ -89,7 +89,7 @@ export default function CandidateProfilePage() {
   }, [urlCampaignId]);
 
   const queryClient = useQueryClient();
-  const { account } = useAccount();
+  const { account, accountLoading } = useAccount();
   const tier = account?.tier ?? "free";
 
   const { data, isPending, isError, refetch } = useCandidateProfile(
@@ -189,7 +189,7 @@ export default function CandidateProfilePage() {
     }
   };
 
-  if (isPending) {
+  if (isPending || (accountLoading && !data)) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-6 w-48" />
@@ -1041,7 +1041,7 @@ function VoiceScreenCallSection({
         {loadingCalls ? (
           <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            Loading live call recordings & transcripts from DialNexa…
+            Loading call recordings & transcripts…
           </div>
         ) : hasCalls ? (
           <div className="space-y-3">

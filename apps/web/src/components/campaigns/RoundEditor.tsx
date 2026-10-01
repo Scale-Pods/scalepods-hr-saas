@@ -1,6 +1,5 @@
 import { type RoundType, type TeamMemberRow, type Tier, tierAtLeast } from "@scalepods/core";
-import { Bot, FileText, Info, Sliders, UserCheck } from "lucide-react";
-import Link from "next/link";
+import { Bot, FileText, Info, Lock, Sliders, UserCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
@@ -136,6 +135,17 @@ export function RoundEditor({
           <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
             {activeOption?.desc}
           </p>
+          {!growthPlus && (
+            <div className="mt-2 flex items-center justify-between rounded-lg border border-border/50 bg-muted/20 px-2.5 py-1.5 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5 text-[11px]">
+                <Lock className="h-3 w-3 shrink-0" />
+                Practical Assignments
+              </span>
+              <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium border border-border/40">
+                Available in Growth & Enterprise
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Passing Score Slider */}

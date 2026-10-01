@@ -1,5 +1,5 @@
 import type { CadenceChannel, CadenceRenderRow } from "@scalepods/core";
-import { Check, MessageSquare, Phone, Plus, X } from "lucide-react";
+import { Check, Lock, MessageSquare, Phone, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -192,6 +192,17 @@ export function CadencePreview({
           )}
         </TableBody>
       </Table>
+      {!editable && (
+        <div className="flex items-center justify-between border-t border-border/40 bg-muted/20 px-3.5 py-2 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5 text-[11px]">
+            <Lock className="h-3 w-3 shrink-0" />
+            Custom communication stages and reminder timing
+          </span>
+          <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium border border-border/40">
+            Available on Growth & Enterprise
+          </span>
+        </div>
+      )}
     </div>
   );
 }

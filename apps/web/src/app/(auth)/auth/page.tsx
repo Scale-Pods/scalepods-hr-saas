@@ -1,18 +1,7 @@
 "use client";
 
 import { AuthError } from "@supabase/supabase-js";
-import {
-  BarChart3,
-  CheckCircle2,
-  Cpu,
-  Eye,
-  EyeOff,
-  Lock,
-  Mail,
-  TrendingUp,
-  Users,
-  Zap,
-} from "lucide-react";
+import { BarChart3, Cpu, Eye, EyeOff, Lock, Mail, Users, Zap } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -30,25 +19,19 @@ const features = [
   },
   {
     icon: <BarChart3 className="h-5 w-5" />,
-    title: "Real-time Analytics",
-    desc: "Track funnel conversion, time-to-hire, and pipeline health live.",
+    title: "Pipeline Analytics",
+    desc: "Track funnel conversion, stage progression, and pipeline health live.",
   },
   {
     icon: <Users className="h-5 w-5" />,
     title: "Multi-round Campaigns",
-    desc: "AI interviews, assignments & human rounds — all in one workflow.",
+    desc: "AI screening, technical evaluations & live rounds — unified in one workflow.",
   },
   {
     icon: <Zap className="h-5 w-5" />,
-    title: "n8n Automation",
-    desc: "Every step is backed by a powerful no-code automation engine.",
+    title: "Automated Workflows",
+    desc: "Customizable stage triggers and automated candidate status updates.",
   },
-];
-
-const stats = [
-  { label: "Candidates screened", value: "1.2M+" },
-  { label: "Avg. time saved / hire", value: "18 hrs" },
-  { label: "Offer acceptance rate", value: "94%" },
 ];
 
 function AuthInner() {
@@ -148,8 +131,10 @@ function AuthInner() {
 
           {/* Badge */}
           <div className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
-            <span className="text-xs font-semibold text-blue-400">Version 2.0 · Now live</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+            <span className="text-xs font-semibold text-blue-400">
+              Talent Intelligence Platform
+            </span>
           </div>
 
           {/* Headline */}
@@ -160,19 +145,9 @@ function AuthInner() {
             </span>
           </h1>
           <p className="mb-10 text-base leading-relaxed text-white/60">
-            The AI-powered recruitment platform that automates screening, scores candidates, and
-            closes talent 10× faster than traditional tools.
+            Automate candidate screening, evaluate competencies, and run structured hiring workflows
+            tailored to your open positions.
           </p>
-
-          {/* Stats row */}
-          <div className="mb-10 flex gap-6">
-            {stats.map((s) => (
-              <div key={s.label}>
-                <p className="text-2xl font-bold tracking-[-0.03em] text-white">{s.value}</p>
-                <p className="mt-0.5 text-xs text-white/40">{s.label}</p>
-              </div>
-            ))}
-          </div>
 
           {/* Feature list */}
           <div className="space-y-4">
@@ -187,21 +162,6 @@ function AuthInner() {
                 </div>
               </div>
             ))}
-          </div>
-
-          {/* Social proof */}
-          <div className="mt-12 flex items-center gap-3 border-t border-white/[0.08] pt-6">
-            <div className="flex -space-x-2">
-              {["SJ", "MK", "AR", "TC"].map((initials) => (
-                <div
-                  key={initials}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-gray-900 bg-gradient-to-br from-blue-500 to-cyan-500 text-[10px] font-bold text-white"
-                >
-                  {initials}
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-white/40">Trusted by hyper-growth teams globally</p>
           </div>
         </div>
       </div>
@@ -360,26 +320,6 @@ function AuthInner() {
               Free plan · No credit card required · Upgrade anytime
             </p>
           )}
-
-          {/* Trust signals */}
-          <div className="mt-8 flex items-center justify-center gap-4 border-t border-white/10 pt-6">
-            {[
-              {
-                icon: <CheckCircle2 className="h-3.5 w-3.5 text-blue-400" />,
-                label: "SOC 2 compliant",
-              },
-              { icon: <CheckCircle2 className="h-3.5 w-3.5 text-blue-400" />, label: "GDPR ready" },
-              {
-                icon: <CheckCircle2 className="h-3.5 w-3.5 text-blue-400" />,
-                label: "99.9% uptime",
-              },
-            ].map((t) => (
-              <div key={t.label} className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                {t.icon}
-                {t.label}
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>

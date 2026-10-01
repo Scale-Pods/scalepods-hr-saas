@@ -33,18 +33,23 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
   const isProtected = isProtectedPath(pathname);
 
   // Only verify user session with remote Supabase for protected paths
   if (isProtected) {
     const hasAuthCookie = request.cookies.getAll().some((c) => c.name.startsWith("sb-"));
+    const fullTarget = pathname + search;
     if (!hasAuthCookie) {
       const redirect = request.nextUrl.clone();
       redirect.pathname = "/auth";
       redirect.search = "";
-      redirect.searchParams.set("next", pathname);
-      return NextResponse.redirect(redirect);
+      redirect.searchParams.set("next", fullTarget);
+      const res = NextResponse.redirect(redirect);
+      for (const c of response.cookies.getAll()) {
+        res.cookies.set(c);
+      }
+      return res;
     }
 
     const {
@@ -55,8 +60,12 @@ export async function middleware(request: NextRequest) {
       const redirect = request.nextUrl.clone();
       redirect.pathname = "/auth";
       redirect.search = "";
-      redirect.searchParams.set("next", pathname);
-      return NextResponse.redirect(redirect);
+      redirect.searchParams.set("next", fullTarget);
+      const res = NextResponse.redirect(redirect);
+      for (const c of response.cookies.getAll()) {
+        res.cookies.set(c);
+      }
+      return res;
     }
   }
 

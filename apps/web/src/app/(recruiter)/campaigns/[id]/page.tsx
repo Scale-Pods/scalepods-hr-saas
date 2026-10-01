@@ -72,7 +72,7 @@ export default function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { account } = useAccount();
+  const { account, accountLoading } = useAccount();
   const { data: session } = useSession();
 
   const { data, isPending, isError } = useCampaignDetail(id);
@@ -244,7 +244,7 @@ export default function CampaignDetailPage() {
     }
   };
 
-  if (isPending) {
+  if (isPending || (accountLoading && !data)) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-6 w-48" />
@@ -471,7 +471,7 @@ export default function CampaignDetailPage() {
 
       <SectionCard
         title="Upload resumes"
-        subtitle="Each file goes through intake, text extraction, and LLM scoring against this JD (workflow 1)."
+        subtitle="Each file undergoes automated intake, text extraction, and AI scoring against this job description."
       >
         <ResumeUploader
           campaign={campaign}
@@ -632,7 +632,7 @@ export default function CampaignDetailPage() {
                         className="gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px]"
                       >
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Dispatched by n8n
+                        Active
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">

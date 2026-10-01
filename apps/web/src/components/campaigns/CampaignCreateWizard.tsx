@@ -27,7 +27,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { CadencePreview } from "@/components/campaigns/CadencePreview";
 import { ChannelToggle } from "@/components/campaigns/ChannelToggle";
@@ -68,7 +68,36 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const tierConfig = TIER_LIMITS[tier];
   const canceled = account?.billing_status === "canceled";
 
-  const [step, setStep] = useState(0);
+  const searchParams = useSearchParams();
+  const stepParam = searchParams.get("step");
+  const initialStep = stepParam ? parseInt(stepParam, 10) : 0;
+  const [step, setStepState] = useState(() =>
+    Number.isNaN(initialStep) ? 0 : Math.min(Math.max(0, initialStep), STEPS.length - 1),
+  );
+
+  const setStep = (nextVal: number | ((prev: number) => number)) => {
+    setStepState((prev) => {
+      const nextNum = typeof nextVal === "function" ? nextVal(prev) : nextVal;
+      const clamped = Math.max(0, Math.min(nextNum, STEPS.length - 1));
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("step", String(clamped));
+        window.history.replaceState(null, "", url.toString());
+      }
+      return clamped;
+    });
+  };
+
+  useEffect(() => {
+    const sp = searchParams.get("step");
+    if (sp) {
+      const parsed = parseInt(sp, 10);
+      if (!Number.isNaN(parsed) && parsed !== step) {
+        setStepState(Math.min(Math.max(0, parsed), STEPS.length - 1));
+      }
+    }
+  }, [searchParams, step]);
+
   const [submitting, setSubmitting] = useState(false);
 
   const [name, setName] = useState("");
@@ -89,6 +118,34 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     >
   >({});
   const [userAddedStages, setUserAddedStages] = useState<CadenceRenderRow[]>([]);
+
+  // Restore draft on refresh
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to restore draft
+  useEffect(() => {
+    try {
+      const draft = sessionStorage.getItem("scalepods_campaign_wizard_draft");
+      if (draft) {
+        const parsed = JSON.parse(draft);
+        if (parsed.name && !name) setName(parsed.name);
+        if (parsed.jdText && !jdText) setJdText(parsed.jdText);
+        if (parsed.numberOfRounds) setNumberOfRounds(parsed.numberOfRounds);
+        if (parsed.startDate) setStartDate(parsed.startDate);
+        if (parsed.endDate) setEndDate(parsed.endDate);
+      }
+    } catch {}
+  }, []);
+
+  // Save draft on change
+  useEffect(() => {
+    try {
+      if (name || jdText) {
+        sessionStorage.setItem(
+          "scalepods_campaign_wizard_draft",
+          JSON.stringify({ name, jdText, numberOfRounds, startDate, endDate }),
+        );
+      }
+    } catch {}
+  }, [name, jdText, numberOfRounds, startDate, endDate]);
 
   useEffect(() => {
     setRounds((prev) => syncRoundCount(prev, numberOfRounds));
@@ -113,7 +170,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     if (!startDate || !endDate) return null;
     const s = new Date(startDate).getTime();
     const e = new Date(endDate).getTime();
-    if (isNaN(s) || isNaN(e) || e < s) return null;
+    if (Number.isNaN(s) || Number.isNaN(e) || e < s) return null;
     const diffDays = Math.round((e - s) / (1000 * 60 * 60 * 24));
     return Math.max(1, diffDays);
   }, [startDate, endDate]);
@@ -380,6 +437,10 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       }
 
       await queryClient.invalidateQueries({ queryKey: campaignsKey });
+
+      try {
+        sessionStorage.removeItem("scalepods_campaign_wizard_draft");
+      } catch {}
 
       if (onSuccess) {
         onSuccess(createdId ?? undefined);

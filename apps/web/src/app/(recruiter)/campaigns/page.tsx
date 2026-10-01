@@ -14,12 +14,10 @@ import {
   Plus,
   RefreshCw,
   Search,
-  SlidersHorizontal,
   Sparkles,
   Trash2,
   Upload,
   Users,
-  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -103,6 +101,7 @@ function CampaignsContent() {
   const handleNewCampaign = () => {
     if (checkCampaignLimit()) {
       setActiveTab("new");
+      router.push("/campaigns?tab=new");
     }
   };
 
@@ -112,7 +111,7 @@ function CampaignsContent() {
         setActiveTab("new");
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // biome-ignore lint/correctness/useExhaustiveDependencies: initial check
   }, [initialTab, isPending]);
 
   const filtered = useMemo(() => {
@@ -120,7 +119,7 @@ function CampaignsContent() {
       const matchesSearch =
         !searchQuery ||
         c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (c.jd_text && c.jd_text.toLowerCase().includes(searchQuery.toLowerCase()));
+        c.jd_text?.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesStatus =
         statusFilter === "all" ||
@@ -238,10 +237,18 @@ function CampaignsContent() {
 
       {activeTab === "new" ? (
         <CampaignCreateWizard
-          onCancel={() => setActiveTab("list")}
-          onSuccess={() => {
-            refetch();
+          onCancel={() => {
             setActiveTab("list");
+            router.push("/campaigns");
+          }}
+          onSuccess={(newId) => {
+            refetch();
+            if (newId) {
+              router.push(`/campaigns/${newId}`);
+            } else {
+              setActiveTab("list");
+              router.push("/campaigns");
+            }
           }}
         />
       ) : (
@@ -373,9 +380,18 @@ function CampaignsContent() {
               {filtered.map((c) => {
                 const isActive = c.status === "on";
                 return (
+                  // biome-ignore lint/a11y/useSemanticElements: interactive card container
                   <div
                     key={c.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => router.push(`/campaigns/${c.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(`/campaigns/${c.id}`);
+                      }
+                    }}
                     className="campaign-card cursor-pointer group"
                   >
                     {/* Top gradient bar */}
@@ -404,6 +420,8 @@ function CampaignsContent() {
                           {isActive ? "Active" : "Paused"}
                         </span>
 
+                        {/* biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation */}
+                        {/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation */}
                         <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
                           <Switch
                             checked={isActive}
@@ -500,6 +518,8 @@ function CampaignsContent() {
                         </div>
                       </TableCell>
                       <TableCell>
+                        {/* biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation */}
+                        {/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation */}
                         <div
                           className="flex items-center gap-2"
                           onClick={(e) => e.stopPropagation()}
@@ -531,6 +551,8 @@ function CampaignsContent() {
                         {formatDateTime(c.created_at)}
                       </TableCell>
                       <TableCell className="text-right">
+                        {/* biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation */}
+                        {/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation */}
                         <div
                           className="flex items-center justify-end gap-1.5"
                           onClick={(e) => e.stopPropagation()}
