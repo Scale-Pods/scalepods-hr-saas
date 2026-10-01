@@ -410,8 +410,8 @@ export async function fetchUpcomingInterviews(): Promise<UpcomingInterview[]> {
   const { data } = await supabaseBrowser()
     .from("round_instances")
     .select("id,candidate_id,round_type,scheduled_at,status,created_at")
-    .or(`scheduled_at.gte.${now},status.in.(scheduled,in_progress,pending)`)
-    .order("created_at", { ascending: false })
+    .gte("scheduled_at", now)
+    .order("scheduled_at", { ascending: true })
     .limit(5);
 
   type UpcomingRow = {
