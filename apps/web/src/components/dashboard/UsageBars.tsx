@@ -12,8 +12,13 @@ export interface UsageBarProps {
 
 /** One usage row: used vs. granted, turning destructive past 90%. */
 export function UsageBar({ label, used, granted, sub }: UsageBarProps) {
-  const over = granted ? used / granted >= 0.9 : false;
-  const pct = granted && granted > 0 ? Math.min(100, (used / granted) * 100) : 0;
+  const over = granted != null && granted > 0 ? used / granted >= 0.9 : granted === 0 && used > 0;
+  const pct =
+    granted != null && granted > 0
+      ? Math.min(100, (used / granted) * 100)
+      : granted === 0 && used > 0
+        ? 100
+        : 0;
 
   return (
     <div>
@@ -25,7 +30,7 @@ export function UsageBar({ label, used, granted, sub }: UsageBarProps) {
             over && "font-semibold text-destructive",
           )}
         >
-          {used.toLocaleString()} / {granted ? granted.toLocaleString() : "unlimited"}
+          {used.toLocaleString()} / {granted != null ? granted.toLocaleString() : "unlimited"}
           {sub ? ` · ${sub}` : ""}
         </span>
       </div>

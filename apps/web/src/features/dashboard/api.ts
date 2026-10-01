@@ -266,16 +266,6 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     }
   }
 
-  // Fallback if no interviewers yet: add lead recruiter
-  if (recruiterMap.size === 0) {
-    recruiterMap.set("manish@scalepods.tech", {
-      name: "Manish Gandla",
-      email: "manish@scalepods.tech",
-      role: "Lead Recruiter",
-      count: rounds.length,
-    });
-  }
-
   const recruiters = Array.from(recruiterMap.values())
     .map((r, idx) => ({
       name: r.name,

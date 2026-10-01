@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDateTime } from "@scalepods/core";
+import { formatDateTime, TIER_LIMITS } from "@scalepods/core";
 import {
   Brain,
   Calendar,
@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { CampaignCreateWizard } from "@/components/campaigns/CampaignCreateWizard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
@@ -65,7 +65,7 @@ function CampaignsContent() {
   const searchParams = useSearchParams();
   const initialTab =
     searchParams.get("tab") === "new" || searchParams.get("create") === "true" ? "new" : "list";
-  const [activeTab, setActiveTab] = useState<"list" | "new">(initialTab);
+  const [activeTab, setActiveTab] = useState<"list" | "new">("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -80,6 +80,40 @@ function CampaignsContent() {
 
   const activeCount = rows.filter((c) => c.status === "on").length;
   const pausedCount = rows.filter((c) => c.status !== "on").length;
+
+  const tier = account?.tier ?? "free";
+  const tierConfig = TIER_LIMITS[tier];
+
+  const checkCampaignLimit = (): boolean => {
+    const limit = tierConfig.activeCampaigns;
+    if (limit === null) return true;
+    if (activeCount < limit) return true;
+    if (tierConfig.overageBehavior === "metered") {
+      showToast(`Over your included ${limit} active campaigns - extra usage will be billed.`, {
+        kind: "warning",
+      });
+      return true;
+    }
+    showErrorToast(
+      `Your ${tierConfig.label} plan allows up to ${limit} active campaigns. Please pause an existing campaign or upgrade your plan.`,
+    );
+    return false;
+  };
+
+  const handleNewCampaign = () => {
+    if (checkCampaignLimit()) {
+      setActiveTab("new");
+    }
+  };
+
+  useEffect(() => {
+    if (initialTab === "new" && !isPending && activeTab === "list") {
+      if (checkCampaignLimit()) {
+        setActiveTab("new");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTab, isPending]);
 
   const filtered = useMemo(() => {
     return rows.filter((c) => {
@@ -104,6 +138,7 @@ function CampaignsContent() {
   ) => {
     e?.stopPropagation();
     const newStatus = currentStatus === "on" ? "paused" : "on";
+    if (newStatus === "on" && !checkCampaignLimit()) return;
     setTogglingId(campaignId);
     try {
       const token = supabaseBrowser()
@@ -164,7 +199,7 @@ function CampaignsContent() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("new")}
+            onClick={handleNewCampaign}
             className={cn(
               "flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
               activeTab === "new"
@@ -191,7 +226,7 @@ function CampaignsContent() {
             </Button>
             <Button
               size="sm"
-              onClick={() => setActiveTab("new")}
+              onClick={handleNewCampaign}
               className="h-8 gap-1.5 rounded-full text-xs shadow-sm"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -326,7 +361,7 @@ function CampaignsContent() {
                   : "Create your first campaign to start screening candidates with AI workflows."
               }
               action={
-                <Button onClick={() => setActiveTab("new")} className="gap-1.5 rounded-full">
+                <Button onClick={handleNewCampaign} className="gap-1.5 rounded-full">
                   <Plus className="h-4 w-4" />
                   Create campaign
                 </Button>
