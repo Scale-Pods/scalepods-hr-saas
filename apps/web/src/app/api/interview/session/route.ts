@@ -146,12 +146,26 @@ export async function GET(request: NextRequest) {
           .order("answered_at", { ascending: true })
       : { data: [] };
 
-    // 10. Fetch Scorecard
-    const { data: scorecard } = await supabase
-      .from("scorecards")
-      .select("*")
-      .eq("session_id", sessionId)
-      .maybeSingle();
+    // 10. Fetch Scorecard — the n8n scoring pipeline writes scorecards keyed
+    // by round_instance_id (no session_id column), so query by that.
+    let scorecard = null;
+    if (session.round_instance_id) {
+      const { data: scRow } = await supabase
+        .from("scorecards")
+        .select("*")
+        .eq("round_instance_id", session.round_instance_id)
+        .maybeSingle();
+      scorecard = scRow;
+    }
+    if (!scorecard) {
+      // Fallback: some older rows may have a session_id column
+      const { data: scFallback } = await supabase
+        .from("scorecards")
+        .select("*")
+        .eq("session_id", sessionId)
+        .maybeSingle();
+      scorecard = scFallback;
+    }
 
     return NextResponse.json({
       success: true,

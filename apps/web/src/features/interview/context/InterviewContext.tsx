@@ -64,8 +64,6 @@ const InterviewContext = createContext<InterviewContextType | null>(null);
 
 const INTRO_QUESTION_TEXT =
   "Hello! I am your AI Interviewer today. Welcome to your interview. To start off, how are you doing today?";
-const OPENING_ACKNOWLEDGMENT =
-  "Hello, and thank you for joining today. I'm Alex, and I'll be guiding your interview.";
 
 export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<InterviewSession | null>(null);
@@ -184,7 +182,9 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
       const existingQuestions: InterviewQuestion[] = (
         Array.isArray(data.questions) ? data.questions : []
-      ).filter((q: any) => q && q.question_type !== "blueprint_meta");
+      ).filter((q: { question_type?: string } | null | undefined) =>
+        Boolean(q && q.question_type !== "blueprint_meta"),
+      );
       const existingAnswers: Array<{
         question_id: string;
         answer_text?: string;
@@ -296,7 +296,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
     }
 
     setCurrentTurn({
-      interviewer_text: OPENING_ACKNOWLEDGMENT,
+      interviewer_text: "",
       question_text: initialQuestionText,
       turn_type: "question",
       question_type: firstQ?.question_type || "cultural",
@@ -305,7 +305,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   }, [session, questions]);
 
   const submitAnswer = useCallback(
-    async (questionId: string, answerText: string, audioUrl?: string) => {
+    async (questionId: string, answerText: string, _audioUrl?: string) => {
       if (!session) return;
 
       answeredQuestionIdsRef.current.add(questionId);
@@ -426,7 +426,15 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           type: q.source === "llm_ts_followup" ? "follow_up" : q.question_type,
         }));
 
-      const answeredCount = answeredQuestionIdsRef.current.size;
+      // Count only primary questions (exclude intro and follow-ups) for the
+      // progress/closing threshold so the interviewer doesn't report inflated totals.
+      const answeredCount = questions.filter(
+        (q) =>
+          answeredQuestionIdsRef.current.has(q.id) &&
+          q.source !== "llm_ts_followup" &&
+          q.source !== "llm_ts_dynamic_intro" &&
+          q.source !== "hr_reviewed_intro",
+      ).length;
       const lastNote = lastAssessmentNoteRef.current;
 
       const currentQ = questions.find((q) => q.id === currentQuestionId);

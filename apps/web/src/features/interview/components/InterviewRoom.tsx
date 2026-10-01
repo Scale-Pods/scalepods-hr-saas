@@ -23,7 +23,7 @@ import { RecruiterPersona } from "./RecruiterPersona";
 import { VideoFeed } from "./VideoFeed";
 
 const INTERVIEW_TIME_MINUTES = 25;
-const DEFAULT_TARGET_QUESTIONS = 11;
+const DEFAULT_TARGET_QUESTIONS = 10;
 
 interface InterviewRoomProps {
   sessionId?: string;
@@ -457,16 +457,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       ? "var(--orange)"
       : "var(--label-secondary)";
 
-  const primaryQuestions = questions.filter(
-    (q) =>
-      q.source !== "llm_ts_followup" &&
-      q.source !== "llm_ts_dynamic_intro" &&
-      q.source !== "hr_reviewed_intro",
-  );
-  const progressTarget = Math.max(
-    primaryQuestions.length > 0 ? primaryQuestions.length : DEFAULT_TARGET_QUESTIONS,
-    1,
-  );
+  const progressTarget = DEFAULT_TARGET_QUESTIONS;
 
   const currentQuestion =
     questions.find((q) => q.id === currentQuestionId) ||
@@ -476,7 +467,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
           id: currentQuestionId || "current-active-q",
           session_id: session.id,
           question_text: currentTurn.question_text,
-          question_type: (currentTurn.question_type as any) || "technical",
+          question_type:
+            (currentTurn.question_type as InterviewQuestion["question_type"]) || "technical",
           order_index: currentQuestionIndex,
           source: currentTurn.turn_type === "follow_up" ? "llm_ts_followup" : "llm_ts_dynamic",
         }
@@ -489,7 +481,10 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       q.source !== "hr_reviewed_intro" &&
       idx <= currentQuestionIndex,
   ).length;
-  const primaryBarIndex = Math.max(0, primaryQuestionsAnsweredOrActive - 1);
+  const primaryBarIndex = Math.min(
+    Math.max(0, primaryQuestionsAnsweredOrActive - 1),
+    progressTarget - 1,
+  );
   const isClosingTurn = currentTurn?.turn_type === "closing";
 
   const candidateDisplayName =

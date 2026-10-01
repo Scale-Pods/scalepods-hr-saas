@@ -24,14 +24,11 @@ export async function POST(request: NextRequest) {
 
       if (action === "confirm_upload" && sessionId && filePath) {
         const supabaseAdmin = getAdminSupabase();
-        const nowIso = new Date().toISOString();
 
         const { data: sessionRow } = await supabaseAdmin
           .from("interview_sessions")
           .update({
             recording_url: filePath,
-            status: "completed",
-            completed_at: nowIso,
           })
           .eq("id", sessionId)
           .select("id, account_id, round_instance_id")
