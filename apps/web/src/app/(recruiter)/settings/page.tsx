@@ -63,14 +63,22 @@ function SettingsPageInner() {
   const [maxPerDay, setMaxPerDay] = useState(account?.max_messages_per_candidate_per_day ?? 3);
   const [savingPrefs, setSavingPrefs] = useState(false);
 
+  const [profileUserName, setProfileUserName] = useState(account?.name ?? "");
+  const [profileCompanyName, setProfileCompanyName] = useState(account?.company_name ?? "");
+  const [savingProfile, setSavingProfile] = useState(false);
+
   useEffect(() => {
     setQuietStart(account?.quiet_hours_start ?? "21:00");
     setQuietEnd(account?.quiet_hours_end ?? "09:00");
     setMaxPerDay(account?.max_messages_per_candidate_per_day ?? 3);
+    setProfileUserName(account?.name ?? "");
+    setProfileCompanyName(account?.company_name ?? "");
   }, [
     account?.quiet_hours_start,
     account?.quiet_hours_end,
     account?.max_messages_per_candidate_per_day,
+    account?.name,
+    account?.company_name,
   ]);
 
   const load = useCallback(async () => {
@@ -126,6 +134,29 @@ function SettingsPageInner() {
     }
   };
 
+  const saveProfile = async () => {
+    if (!account?.id) return;
+    setSavingProfile(true);
+    try {
+      const supabase = supabaseBrowser();
+      const { error } = await supabase
+        .from("accounts")
+        .update({
+          name: profileUserName.trim() || null,
+          company_name: profileCompanyName.trim() || null,
+        })
+        .eq("id", account.id);
+      if (error) {
+        showErrorToast(error);
+        return;
+      }
+      await refreshAccount();
+      showToast("Workspace profile saved.");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   const addTeammate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!account?.id) return;
@@ -158,6 +189,48 @@ function SettingsPageInner() {
   return (
     <div className="space-y-6">
       <PageHeader title="Settings" subtitle={`${t.label} plan`} />
+
+      <SectionCard
+        title="Workspace & Profile"
+        subtitle="Manage your personal recruiter name and organization company name."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="profile-user-name"
+              className="mb-1 block text-xs font-medium text-muted-foreground"
+            >
+              Your Name
+            </label>
+            <Input
+              id="profile-user-name"
+              placeholder="e.g. Alex Morgan"
+              value={profileUserName}
+              onChange={(e) => setProfileUserName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="profile-company-name"
+              className="mb-1 block text-xs font-medium text-muted-foreground"
+            >
+              Company Name
+            </label>
+            <Input
+              id="profile-company-name"
+              placeholder="e.g. Acme Corp"
+              value={profileCompanyName}
+              onChange={(e) => setProfileCompanyName(e.target.value)}
+            />
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Company name is shown to candidates on booking portals and outreach emails.
+        </p>
+        <Button className="mt-3" onClick={saveProfile} disabled={savingProfile}>
+          {savingProfile ? "Saving..." : "Save workspace profile"}
+        </Button>
+      </SectionCard>
 
       <SectionCard
         title="Calendar connection"

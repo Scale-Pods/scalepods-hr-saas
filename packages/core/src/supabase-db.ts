@@ -16,6 +16,9 @@ export type Database = {
           quiet_hours_start: string | null;
           quiet_hours_end: string | null;
           max_messages_per_candidate_per_day: number | null;
+          company_name: string | null;
+          name: string | null;
+          email?: string;
           created_at: string;
         };
         Insert: {
@@ -26,6 +29,9 @@ export type Database = {
           quiet_hours_start?: string | null;
           quiet_hours_end?: string | null;
           max_messages_per_candidate_per_day?: number | null;
+          company_name?: string | null;
+          name?: string | null;
+          email?: string;
         };
         Update: {
           tier?: string;
@@ -34,6 +40,9 @@ export type Database = {
           quiet_hours_start?: string | null;
           quiet_hours_end?: string | null;
           max_messages_per_candidate_per_day?: number | null;
+          company_name?: string | null;
+          name?: string | null;
+          email?: string;
         };
         Relationships: [];
       };

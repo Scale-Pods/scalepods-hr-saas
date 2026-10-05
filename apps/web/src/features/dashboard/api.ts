@@ -252,12 +252,9 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
   // If no campaigns exist, return empty/zero metrics and purge any orphaned candidates
   if (campaigns.length === 0) {
     if ((candCountRes.count ?? 0) > 0) {
-      supabase
-        .from("candidates")
-        .delete()
-        .neq("id", "00000000-0000-0000-0000-000000000000")
-        .then(() => {})
-        .catch(() => {});
+      Promise.resolve(
+        supabase.from("candidates").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+      ).catch(() => {});
     }
 
     return {

@@ -31,10 +31,12 @@ vi.mock("@supabase/supabase-js", () => ({
         if (table === "campaigns") {
           return {
             select: () => ({
-              eq: () =>
-                Object.assign(Promise.resolve(mockAdminSelect("campaigns")), {
-                  maybeSingle: () => Promise.resolve(mockAdminSelect("campaigns")),
-                }),
+              eq: () => {
+                const res = mockAdminSelect("campaigns");
+                return Object.assign(Promise.resolve(res), {
+                  maybeSingle: () => Promise.resolve(res),
+                });
+              },
             }),
             delete: () => ({
               eq: () => mockAdminDelete("campaigns"),

@@ -1,7 +1,7 @@
 "use client";
 
 import { AuthError } from "@supabase/supabase-js";
-import { BarChart3, Cpu, Eye, EyeOff, Lock, Mail, Users, Zap } from "lucide-react";
+import { BarChart3, Building2, Cpu, Eye, EyeOff, Lock, Mail, User, Users, Zap } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
@@ -40,6 +40,8 @@ function AuthInner() {
   const hasNext = Boolean(searchParams.get("next"));
   const { data: session, isPending } = useSession();
   const [mode, setMode] = useState<Mode>("signin");
+  const [userName, setUserName] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -69,15 +71,31 @@ function AuthInner() {
     try {
       const supabase = supabaseBrowser();
       if (mode === "signup") {
+        const trimmedName = userName.trim();
+        const trimmedCompany = companyName.trim();
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/auth/callback`,
+            data: {
+              name: trimmedName,
+              full_name: trimmedName,
+              company_name: trimmedCompany,
+            },
           },
         });
         if (error) throw error;
         if (data.session) {
+          if (trimmedName || trimmedCompany) {
+            await supabase
+              .from("accounts")
+              .update({
+                name: trimmedName || null,
+                company_name: trimmedCompany || null,
+              })
+              .eq("id", data.session.user.id);
+          }
           router.push("/dashboard");
         } else {
           showToast("Check your inbox — verify your email to finish signing up.", { kind: "info" });
@@ -227,6 +245,48 @@ function AuthInner() {
               >
                 {errorMsg}
               </div>
+            )}
+
+            {mode === "signup" && (
+              <>
+                <div>
+                  <label
+                    htmlFor="userName"
+                    className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-200"
+                  >
+                    <User className="h-3.5 w-3.5 text-blue-400" aria-hidden />
+                    Your full name
+                  </label>
+                  <input
+                    id="userName"
+                    type="text"
+                    required
+                    placeholder="e.g. Alex Morgan"
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    className="w-full rounded-xl border border-white/15 bg-white/[0.05] px-3.5 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-white/[0.08] focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="companyName"
+                    className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-200"
+                  >
+                    <Building2 className="h-3.5 w-3.5 text-blue-400" aria-hidden />
+                    Company name
+                  </label>
+                  <input
+                    id="companyName"
+                    type="text"
+                    required
+                    placeholder="e.g. Acme Corp"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className="w-full rounded-xl border border-white/15 bg-white/[0.05] px-3.5 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-white/[0.08] focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+              </>
             )}
 
             <div>

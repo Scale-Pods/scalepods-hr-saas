@@ -23,9 +23,17 @@ export interface AppShellProps {
   children: React.ReactNode;
   tier?: Tier;
   billingStatus?: BillingStatus;
+  userName?: string | null;
+  companyName?: string | null;
 }
 
-export function AppShell({ children, tier = "free", billingStatus = "active" }: AppShellProps) {
+export function AppShell({
+  children,
+  tier = "free",
+  billingStatus = "active",
+  userName,
+  companyName,
+}: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -35,6 +43,7 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
   const signOut = useSignOut();
 
   const email = session?.user?.email;
+  const displayName = userName || email;
   const tierLabel = TIER_LIMITS[tier]?.label ?? tier;
 
   const handleSignOut = async () => {
@@ -80,17 +89,19 @@ export function AppShell({ children, tier = "free", billingStatus = "active" }: 
       {!collapsed ? (
         <div className="mt-3 flex items-center gap-2.5 rounded-full bg-fill-tertiary px-3 py-2">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-            {initials(email)}
+            {initials(displayName)}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] font-semibold text-foreground">{email}</p>
-            <p className="text-[11px] text-muted-foreground">{tierLabel} plan</p>
+            <p className="truncate text-[12px] font-semibold text-foreground">{displayName}</p>
+            <p className="truncate text-[11px] text-muted-foreground">
+              {companyName ? `${companyName} · ${tierLabel}` : `${tierLabel} plan`}
+            </p>
           </div>
         </div>
       ) : (
         <div className="mt-3 flex justify-center">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-            {initials(email)}
+            {initials(displayName)}
           </span>
         </div>
       )}
