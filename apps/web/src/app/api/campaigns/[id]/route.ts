@@ -33,7 +33,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const authClient = getAuthClient(authHeader);
     const {
       data: { user },
-      error: authError,
     } = await authClient.auth.getUser();
 
     const admin = getAdminClient();
@@ -60,7 +59,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     // 2. Find all round_instances associated with this campaign
     const { data: ris, error: risErr } = await admin
       .from("round_instances")
-      .select("id")
+      .select("id, candidate_id")
       .eq("campaign_id", campaignId);
 
     if (risErr) {
@@ -68,6 +67,13 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     }
 
     const riIds = (ris ?? []).map((r) => r.id);
+    const campaignCandIds = Array.from(
+      new Set(
+        (ris ?? [])
+          .map((r) => r.candidate_id)
+          .filter((cid): cid is string => typeof cid === "string" && Boolean(cid)),
+      ),
+    );
 
     if (riIds.length > 0) {
       // 3a. Disconnect foreign keys in credit_ledger so round_instances can be deleted
@@ -102,14 +108,70 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       }
     }
 
-    // 4. Delete the campaign (cascades to campaign_rounds, round_instances, etc.)
+    // 4. Clean up storage files in bucket "resumes" for this campaign
+    try {
+      if (admin.storage) {
+        const { data: files } = await admin.storage
+          .from("resumes")
+          .list(`${campaign.account_id}/${campaignId}`, { limit: 1000 });
+
+        if (files && files.length > 0) {
+          const pathsToDelete: string[] = [];
+          for (const item of files) {
+            pathsToDelete.push(`${campaign.account_id}/${campaignId}/${item.name}`);
+            const { data: subFiles } = await admin.storage
+              .from("resumes")
+              .list(`${campaign.account_id}/${campaignId}/${item.name}`);
+            for (const sub of subFiles ?? []) {
+              pathsToDelete.push(`${campaign.account_id}/${campaignId}/${item.name}/${sub.name}`);
+            }
+          }
+          if (pathsToDelete.length > 0) {
+            await admin.storage.from("resumes").remove(pathsToDelete);
+          }
+        }
+      }
+    } catch (storageErr) {
+      console.warn("Failed to clean up campaign storage:", storageErr);
+    }
+
+    // 5. Delete the campaign (cascades to campaign_rounds, round_instances, etc.)
     const { error: delErr } = await admin.from("campaigns").delete().eq("id", campaignId);
 
     if (delErr) {
       return NextResponse.json({ error: delErr.message }, { status: 500 });
     }
 
-    // 5. Notify n8n asynchronously
+    // 6. Clean up orphaned candidates who have no remaining campaigns
+    try {
+      const { data: remainingCamps } = await admin
+        .from("campaigns")
+        .select("id")
+        .eq("account_id", campaign.account_id);
+
+      if (!remainingCamps || remainingCamps.length === 0) {
+        // If all campaigns were deleted, clean up all candidates belonging to this account.
+        // Postgres cascade deletes decision_ledger, outreach_log, interview_sessions, etc.
+        await admin.from("candidates").delete().eq("account_id", campaign.account_id);
+      } else if (campaignCandIds.length > 0) {
+        // Find remaining round instances for this account
+        const { data: activeRis } = await admin
+          .from("round_instances")
+          .select("candidate_id")
+          .eq("account_id", campaign.account_id);
+
+        const activeCandIds = new Set((activeRis ?? []).map((r) => r.candidate_id));
+        const orphanCandIds = campaignCandIds.filter((cid) => !activeCandIds.has(cid));
+
+        if (orphanCandIds.length > 0) {
+          await admin.from("candidates").delete().in("id", orphanCandIds);
+        }
+      }
+    } catch (cleanErr) {
+      console.warn("Failed to clean up orphaned candidates:", cleanErr);
+    }
+
+    // 7. Notify n8n asynchronously
     const token = authHeader?.replace(/^Bearer\s+/i, "");
     callWorkflow("campaigns", {
       body: {

@@ -21,13 +21,20 @@ vi.mock("@supabase/supabase-js", () => ({
       auth: {
         getUser: () => mockGetUser(),
       },
+      storage: {
+        from: () => ({
+          list: () => Promise.resolve({ data: [] }),
+          remove: () => Promise.resolve({ data: [] }),
+        }),
+      },
       from: (table: string) => {
         if (table === "campaigns") {
           return {
             select: () => ({
-              eq: () => ({
-                maybeSingle: () => mockAdminSelect("campaigns"),
-              }),
+              eq: () =>
+                Object.assign(Promise.resolve(mockAdminSelect("campaigns")), {
+                  maybeSingle: () => Promise.resolve(mockAdminSelect("campaigns")),
+                }),
             }),
             delete: () => ({
               eq: () => mockAdminDelete("campaigns"),
@@ -37,10 +44,18 @@ vi.mock("@supabase/supabase-js", () => ({
         if (table === "round_instances") {
           return {
             select: () => ({
-              eq: () => mockAdminSelect("round_instances"),
+              eq: () => Promise.resolve(mockAdminSelect("round_instances")),
             }),
             update: () => ({
               in: () => mockAdminUpdate("round_instances"),
+            }),
+          };
+        }
+        if (table === "candidates") {
+          return {
+            delete: () => ({
+              eq: () => mockAdminDelete("candidates"),
+              in: () => mockAdminDelete("candidates"),
             }),
           };
         }
@@ -80,26 +95,39 @@ describe("DELETE /api/campaigns/[id]", () => {
     vi.clearAllMocks();
   });
 
-  it("successfully unbinds credit_ledger and deletes campaign", async () => {
+  it("successfully unbinds credit_ledger, deletes campaign, and cleans up orphaned candidates", async () => {
     mockGetUser.mockResolvedValue({
       data: { user: { id: "acc_1" } },
       error: null,
     });
 
+    let campaignQueryCount = 0;
     mockAdminSelect.mockImplementation((table) => {
       if (table === "campaigns") {
-        return Promise.resolve({
-          data: { id: "camp_123", account_id: "acc_1", name: "Frontend Eng" },
+        campaignQueryCount++;
+        // First query is to verify campaign ownership
+        if (campaignQueryCount === 1) {
+          return {
+            data: { id: "camp_123", account_id: "acc_1", name: "Frontend Eng" },
+            error: null,
+          };
+        }
+        // Second query is to check remaining campaigns (all deleted)
+        return {
+          data: [],
           error: null,
-        });
+        };
       }
       if (table === "round_instances") {
-        return Promise.resolve({
-          data: [{ id: "ri_1" }, { id: "ri_2" }],
+        return {
+          data: [
+            { id: "ri_1", candidate_id: "cand_1" },
+            { id: "ri_2", candidate_id: "cand_2" },
+          ],
           error: null,
-        });
+        };
       }
-      return Promise.resolve({ data: [], error: null });
+      return { data: [], error: null };
     });
 
     mockAdminUpdate.mockResolvedValue({ error: null });
@@ -117,6 +145,8 @@ describe("DELETE /api/campaigns/[id]", () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.id).toBe("camp_123");
+    expect(mockAdminDelete).toHaveBeenCalledWith("campaigns");
+    expect(mockAdminDelete).toHaveBeenCalledWith("candidates");
   });
 
   it("returns 403 if user does not own campaign", async () => {
@@ -127,12 +157,12 @@ describe("DELETE /api/campaigns/[id]", () => {
 
     mockAdminSelect.mockImplementation((table) => {
       if (table === "campaigns") {
-        return Promise.resolve({
+        return {
           data: { id: "camp_123", account_id: "acc_1", name: "Frontend Eng" },
           error: null,
-        });
+        };
       }
-      return Promise.resolve({ data: [], error: null });
+      return { data: [], error: null };
     });
 
     const req = new Request("http://localhost:3000/api/campaigns/camp_123", {

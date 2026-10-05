@@ -180,6 +180,8 @@ export default function DashboardPage() {
   const upcoming = useUpcomingInterviews();
   const ledger = useLedger();
 
+  const hasCampaigns = (kpis.data?.totalCampaigns ?? 0) > 0;
+
   const { prefix, name } = greeting(session?.user?.email);
   const ledgerRows = useMemo(() => ledger.data ?? [], [ledger.data]);
   const upcomingRows = upcoming.data ?? [];
@@ -200,12 +202,14 @@ export default function DashboardPage() {
   );
 
   const avgScore = useMemo(() => {
+    if (!hasCampaigns) return null;
     const scored = ledgerRows.filter((r) => r.score != null);
     if (!scored.length) return null;
     return Math.round(scored.reduce((a, b) => a + (b.score ?? 0), 0) / scored.length);
-  }, [ledgerRows]);
+  }, [hasCampaigns, ledgerRows]);
 
   const scoreDelta = useMemo(() => {
+    if (!hasCampaigns) return 0;
     const scored = ledgerRows.filter((r) => r.score != null).map((r) => Number(r.score));
     if (scored.length < 2) return 0;
     const mid = Math.floor(scored.length / 2);
@@ -214,13 +218,13 @@ export default function DashboardPage() {
     const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
     const olderAvg = older.reduce((a, b) => a + b, 0) / older.length;
     return Math.round((recentAvg - olderAvg) * 10) / 10;
-  }, [ledgerRows]);
+  }, [hasCampaigns, ledgerRows]);
 
   const decisionQuality = useMemo(() => {
-    if (ledgerRows.length === 0) return 0;
+    if (!hasCampaigns || ledgerRows.length === 0) return 0;
     const withSignal = ledgerRows.filter((r) => r.score != null && Number(r.score) > 0).length;
     return Math.round((withSignal / ledgerRows.length) * 100);
-  }, [ledgerRows]);
+  }, [hasCampaigns, ledgerRows]);
 
   const trend14 = useMemo(
     () => dailySeries(kpis.data?.candidateCreatedAt ?? [], 14),
@@ -245,6 +249,15 @@ export default function DashboardPage() {
   const reportedFunnel = reports.data ? buildFunnelRows(reports.data) : null;
   const pipelineStages = kpis.data?.pipelineStages;
   const funnelRows = useMemo(() => {
+    if (!hasCampaigns) {
+      return [
+        { stage: "Screening", entered: 0 },
+        { stage: "Round 1 Interview", entered: 0 },
+        { stage: "Round 2 Interview", entered: 0 },
+        { stage: "Round 3 / Assignment", entered: 0 },
+        { stage: "Hired / Offer", entered: 0 },
+      ];
+    }
     if (reportedFunnel?.some((r) => r.entered > 0)) return reportedFunnel;
     const totalCand = kpis.data?.candidateCount ?? 0;
     return [
@@ -254,7 +267,7 @@ export default function DashboardPage() {
       { stage: "Round 3 / Assignment", entered: pipelineStages?.round3 ?? 0 },
       { stage: "Hired / Offer", entered: pipelineStages?.hired ?? offersCount },
     ];
-  }, [reportedFunnel, kpis.data?.candidateCount, pipelineStages, offersCount]);
+  }, [hasCampaigns, reportedFunnel, kpis.data?.candidateCount, pipelineStages, offersCount]);
 
   const funnelMax = Math.max(...funnelRows.map((r) => r.entered), 1);
   const funnelColors = ["#2563eb", "#06b6d4", "#2563eb", "#0ea5e9", "#10b981"];
@@ -300,6 +313,18 @@ export default function DashboardPage() {
     : null;
 
   const aiInsights = useMemo(() => {
+    if (!hasCampaigns) {
+      return [
+        {
+          icon: <Brain className="h-4 w-4" />,
+          bg: "rgba(37,99,235,0.1)",
+          color: "var(--blue)",
+          title: "No active campaigns",
+          desc: "Create a campaign and upload candidate resumes to activate AI screening, scoring, and automated pipeline intelligence.",
+          action: "Action: Create a campaign",
+        },
+      ];
+    }
     return [
       {
         icon: <Star className="h-4 w-4" />,
@@ -352,6 +377,7 @@ export default function DashboardPage() {
       },
     ];
   }, [
+    hasCampaigns,
     topCandidate,
     topCandidateName,
     avgScore,
@@ -379,14 +405,23 @@ export default function DashboardPage() {
         {/* Left: greeting + actions */}
         <div className="ref-hero-greeting">
           {/* Live chip */}
-          <div className="ref-hero-chip">
-            <LiveDot />
-            <span>AI Analytics Active</span>
-            <span className="ref-chip-divider" />
-            <span className="text-muted-foreground">
-              {kpis.data?.activeCampaigns ?? 0} active campaigns
-            </span>
-          </div>
+          {hasCampaigns ? (
+            <div className="ref-hero-chip">
+              <LiveDot />
+              <span>AI Analytics Active</span>
+              <span className="ref-chip-divider" />
+              <span className="text-muted-foreground">
+                {kpis.data?.activeCampaigns ?? 0} active campaigns
+              </span>
+            </div>
+          ) : (
+            <div className="ref-hero-chip">
+              <span className="inline-block h-[5px] w-[5px] rounded-full bg-muted-foreground/60" />
+              <span>No Active Campaigns</span>
+              <span className="ref-chip-divider" />
+              <span className="text-muted-foreground">0 campaigns</span>
+            </div>
+          )}
 
           <h1 className="ref-hero-title">
             {prefix},{" "}
@@ -395,9 +430,18 @@ export default function DashboardPage() {
             </span>
           </h1>
           <p className="ref-hero-sub">
-            Your hiring intelligence is live.{" "}
-            <strong>{kpis.data?.candidateCount?.toLocaleString() ?? 0}</strong> candidates flowing
-            through the pipeline with a <strong>{avgScore ?? 0}</strong> mean score.
+            {hasCampaigns ? (
+              <>
+                Your hiring intelligence is live.{" "}
+                <strong>{kpis.data?.candidateCount?.toLocaleString() ?? 0}</strong> candidates
+                flowing through the pipeline with a <strong>{avgScore ?? 0}</strong> mean score.
+              </>
+            ) : (
+              <>
+                You have no active campaigns. Create a campaign to start screening candidates and
+                track live hiring metrics.
+              </>
+            )}
           </p>
 
           <div className="flex items-center gap-3">
@@ -468,7 +512,7 @@ export default function DashboardPage() {
               </span>
               <div className="flex-1">
                 <div className="ref-hero-metric-value">
-                  {kpis.data?.candidateCount?.toLocaleString() ?? "—"}
+                  {kpis.data?.candidateCount?.toLocaleString() ?? "0"}
                 </div>
                 <div className="ref-hero-metric-label">Total Candidates</div>
               </div>
@@ -505,9 +549,9 @@ export default function DashboardPage() {
                 <div className="ref-hero-metric-label">Active Campaigns</div>
               </div>
               <span className="ref-metric-change up">
-                {kpis.data?.totalCampaigns
-                  ? `${kpis.data.activeCampaigns}/${kpis.data.totalCampaigns}`
-                  : "Live"}
+                {hasCampaigns
+                  ? `${kpis.data?.activeCampaigns}/${kpis.data?.totalCampaigns}`
+                  : "0/0"}
               </span>
             </div>
           </div>
@@ -519,7 +563,7 @@ export default function DashboardPage() {
         <div className="ref-section-header">
           <div className="ref-section-title-group">
             <h2 className="ref-section-title">Key Metrics</h2>
-            <span className="ref-section-badge">Live</span>
+            <span className="ref-section-badge">{hasCampaigns ? "Live" : "Inactive"}</span>
           </div>
           <button type="button" className="ref-btn-ghost-sm" onClick={() => kpis.refetch()}>
             <RefreshCw className="h-3 w-3" />
@@ -543,8 +587,8 @@ export default function DashboardPage() {
             icon={<Star className="h-[18px] w-[18px]" style={{ color: "var(--cyan)" }} />}
             iconBg="rgba(6,182,212,0.1)"
             label="Average Score"
-            value={avgScore ?? "0"}
-            badge={`${scoreDelta >= 0 ? "+" : ""}${scoreDelta}`}
+            value={avgScore != null ? avgScore : "—"}
+            badge={avgScore != null ? `${scoreDelta >= 0 ? "+" : ""}${scoreDelta}` : undefined}
             badgeClass={scoreDelta >= 0 ? "up" : ""}
             heights={scoreHeights}
             barColor="rgba(6,182,212,0.22)"
@@ -565,8 +609,8 @@ export default function DashboardPage() {
             icon={<BarChart2 className="h-[18px] w-[18px]" style={{ color: "var(--blue)" }} />}
             iconBg="rgba(59,130,246,0.1)"
             label="Decision Quality"
-            value={`${decisionQuality}%`}
-            badge={`${decisionQuality}% Signal`}
+            value={hasCampaigns && decisionQuality > 0 ? `${decisionQuality}%` : "—"}
+            badge={hasCampaigns && decisionQuality > 0 ? `${decisionQuality}% Signal` : undefined}
             badgeClass="up"
             heights={qualityHeights}
             barColor="rgba(99,102,241,0.22)"
@@ -582,38 +626,44 @@ export default function DashboardPage() {
           icon={<GitBranch className="h-[17px] w-[17px]" />}
           iconColor="var(--blue)"
           title="Pipeline Overview"
-          badge={<LivePill />}
+          badge={hasCampaigns ? <LivePill /> : undefined}
         >
-          <div className="flex flex-col gap-1.5">
-            {funnelRows.map((row, i) => {
-              const pct = funnelMax > 0 ? (row.entered / funnelMax) * 100 : 0;
-              const color = funnelColors[i % funnelColors.length];
-              const colorLight =
-                color === "#2563eb" ? "#3b82f6" : color === "#06b6d4" ? "#22d3ee" : color;
-              return (
-                <div key={row.stage} className="ref-pipeline-node">
-                  <div className="ref-pipeline-dot" style={{ background: color }} />
-                  <div className="ref-pipeline-content">
-                    <div className="ref-pipeline-label">
-                      <span>{row.stage}</span>
-                      <span className="font-semibold text-foreground">
-                        {row.entered.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="ref-pipeline-bar">
-                      <div
-                        className="ref-pipeline-fill"
-                        style={{
-                          width: `${Math.max(2, pct)}%`,
-                          background: `linear-gradient(90deg,${color},${colorLight})`,
-                        }}
-                      />
+          {!hasCampaigns ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              No candidate pipeline data. Create a campaign to start screening candidates.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {funnelRows.map((row, i) => {
+                const pct = funnelMax > 0 ? (row.entered / funnelMax) * 100 : 0;
+                const color = funnelColors[i % funnelColors.length];
+                const colorLight =
+                  color === "#2563eb" ? "#3b82f6" : color === "#06b6d4" ? "#22d3ee" : color;
+                return (
+                  <div key={row.stage} className="ref-pipeline-node">
+                    <div className="ref-pipeline-dot" style={{ background: color }} />
+                    <div className="ref-pipeline-content">
+                      <div className="ref-pipeline-label">
+                        <span>{row.stage}</span>
+                        <span className="font-semibold text-foreground">
+                          {row.entered.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="ref-pipeline-bar">
+                        <div
+                          className="ref-pipeline-fill"
+                          style={{
+                            width: `${Math.max(2, pct)}%`,
+                            background: `linear-gradient(90deg,${color},${colorLight})`,
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </SectionCard>
 
         {/* Conversion Rate */}
@@ -622,80 +672,86 @@ export default function DashboardPage() {
           iconColor="var(--cyan)"
           title="Conversion Rate"
         >
-          <div className="ref-conversion-visual">
-            <div className="ref-conversion-ring">
-              <svg
-                width="120"
-                height="120"
-                viewBox="0 0 120 120"
-                aria-label={`Conversion rate: ${avgConversionRate}%`}
-              >
-                <circle
-                  cx="60"
-                  cy="60"
-                  r="48"
-                  fill="none"
-                  stroke="var(--fill-tertiary)"
-                  strokeWidth="8"
-                />
-                <circle
-                  cx="60"
-                  cy="60"
-                  r="48"
-                  fill="none"
-                  stroke="url(#conv-grad)"
-                  strokeWidth="8"
-                  strokeDasharray={`${convDash} ${convCircumference}`}
-                  strokeDashoffset="0"
-                  transform="rotate(-90 60 60)"
-                  strokeLinecap="round"
-                />
-                <defs>
-                  <linearGradient id="conv-grad" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#2563eb" />
-                    <stop offset="100%" stopColor="#06b6d4" />
-                  </linearGradient>
-                </defs>
-                <text
-                  x="60"
-                  y="56"
-                  textAnchor="middle"
-                  fill="currentColor"
-                  fontSize="22"
-                  fontWeight="700"
-                  fontFamily="Inter"
-                >
-                  {avgConversionRate}
-                </text>
-                <text
-                  x="60"
-                  y="72"
-                  textAnchor="middle"
-                  fill="var(--label-tertiary)"
-                  fontSize="10"
-                  fontWeight="500"
-                  fontFamily="Inter"
-                >
-                  percent
-                </text>
-              </svg>
+          {!hasCampaigns ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              No conversion data available yet.
             </div>
-            <div className="ref-conversion-stats">
-              {funnelRows.slice(1).map((row, i) => {
-                const rate = conversionRates[i] ?? 0;
-                const color = funnelColors[i % funnelColors.length];
-                return (
-                  <div key={row.stage} className="ref-conv-stat">
-                    <span className="ref-conv-dot" style={{ background: color }} />
-                    <span className="flex-1 text-xs text-muted-foreground">
-                      {funnelRows[i].stage} → {row.stage}
-                    </span>
-                    <span className="font-semibold text-xs text-foreground">{rate}%</span>
-                  </div>
-                );
-              })}
+          ) : (
+            <div className="ref-conversion-visual">
+              <div className="ref-conversion-ring">
+                <svg
+                  width="120"
+                  height="120"
+                  viewBox="0 0 120 120"
+                  aria-label={`Conversion rate: ${avgConversionRate}%`}
+                >
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    fill="none"
+                    stroke="var(--fill-tertiary)"
+                    strokeWidth="8"
+                  />
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    fill="none"
+                    stroke="url(#conv-grad)"
+                    strokeWidth="8"
+                    strokeDasharray={`${convDash} ${convCircumference}`}
+                    strokeDashoffset="0"
+                    transform="rotate(-90 60 60)"
+                    strokeLinecap="round"
+                  />
+                  <defs>
+                    <linearGradient id="conv-grad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#2563eb" />
+                      <stop offset="100%" stopColor="#06b6d4" />
+                    </linearGradient>
+                  </defs>
+                  <text
+                    x="60"
+                    y="56"
+                    textAnchor="middle"
+                    fill="currentColor"
+                    fontSize="22"
+                    fontWeight="700"
+                    fontFamily="Inter"
+                  >
+                    {avgConversionRate}
+                  </text>
+                  <text
+                    x="60"
+                    y="72"
+                    textAnchor="middle"
+                    fill="var(--label-tertiary)"
+                    fontSize="10"
+                    fontWeight="500"
+                    fontFamily="Inter"
+                  >
+                    percent
+                  </text>
+                </svg>
+              </div>
+              <div className="ref-conversion-stats">
+                {funnelRows.slice(1).map((row, i) => {
+                  const rate = conversionRates[i] ?? 0;
+                  const color = funnelColors[i % funnelColors.length];
+                  return (
+                    <div key={row.stage} className="ref-conv-stat">
+                      <span className="ref-conv-dot" style={{ background: color }} />
+                      <span className="flex-1 text-xs text-muted-foreground">
+                        {funnelRows[i].stage} → {row.stage}
+                      </span>
+                      <span className="font-semibold text-xs text-foreground">{rate}%</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </SectionCard>
 
         {/* Candidate Location Distribution Card */}
@@ -853,38 +909,44 @@ export default function DashboardPage() {
               <Medal className="h-[17px] w-[17px]" style={{ color: "var(--blue)" }} />
               <span>Recruiter Leaderboard</span>
             </div>
-            <LivePill />
+            {hasCampaigns ? <LivePill /> : undefined}
           </div>
           <div className="ref-leaderboard">
-            {(kpis.data?.recruiters ?? []).map((lb, index) => {
-              const rankClass =
-                index === 0 ? "gold" : index === 1 ? "silver" : index === 2 ? "bronze" : "";
-              const initials = lb.name
-                .split(" ")
-                .map((n) => n[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase();
-              return (
-                <div key={lb.email || lb.name} className="ref-lb-row">
-                  <span className={cn("ref-lb-rank", rankClass)}>{index + 1}</span>
-                  <div
-                    className="ref-lb-avatar"
-                    style={{ background: "linear-gradient(135deg,var(--blue),var(--cyan))" }}
-                  >
-                    {initials}
+            {(kpis.data?.recruiters ?? []).length === 0 ? (
+              <p className="py-4 text-center text-xs text-muted-foreground">
+                No recruiter activity yet
+              </p>
+            ) : (
+              (kpis.data?.recruiters ?? []).map((lb, index) => {
+                const rankClass =
+                  index === 0 ? "gold" : index === 1 ? "silver" : index === 2 ? "bronze" : "";
+                const initials = lb.name
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase();
+                return (
+                  <div key={lb.email || lb.name} className="ref-lb-row">
+                    <span className={cn("ref-lb-rank", rankClass)}>{index + 1}</span>
+                    <div
+                      className="ref-lb-avatar"
+                      style={{ background: "linear-gradient(135deg,var(--blue),var(--cyan))" }}
+                    >
+                      {initials}
+                    </div>
+                    <div className="ref-lb-info">
+                      <div className="ref-lb-name">{lb.name}</div>
+                      <div className="ref-lb-role">{lb.role}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="ref-lb-score-value">{lb.score}</div>
+                      <div className="ref-lb-score-label">pts</div>
+                    </div>
                   </div>
-                  <div className="ref-lb-info">
-                    <div className="ref-lb-name">{lb.name}</div>
-                    <div className="ref-lb-role">{lb.role}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="ref-lb-score-value">{lb.score}</div>
-                    <div className="ref-lb-score-label">pts</div>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
       </div>

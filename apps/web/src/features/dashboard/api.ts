@@ -248,7 +248,51 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     status: string;
     created_at: string;
   }[];
-  const rounds = (roundInstancesRes.data ?? []) as {
+
+  // If no campaigns exist, return empty/zero metrics and purge any orphaned candidates
+  if (campaigns.length === 0) {
+    if ((candCountRes.count ?? 0) > 0) {
+      supabase
+        .from("candidates")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000")
+        .then(() => {})
+        .catch(() => {});
+    }
+
+    return {
+      totalCampaigns: 0,
+      activeCampaigns: 0,
+      candidateCount: 0,
+      candidateCreatedAt: [],
+      interviewsThisWeek: 0,
+      interviewsPriorWeek: 0,
+      pendingRoundsCount: 0,
+      campaignsDistribution: [],
+      cityDistribution: [],
+      pipelineStages: {
+        screening: 0,
+        round1: 0,
+        round2: 0,
+        round3: 0,
+        hired: 0,
+      },
+      usageFallback: {
+        aiInterviewsUsed: 0,
+        voiceScreensUsed: 0,
+        scheduledRoundsUsed: 0,
+      },
+      recruiters: [],
+      kpiHeights: {
+        candidates: [0, 0, 0, 0, 0, 0, 0, 0],
+        score: [0, 0, 0, 0, 0, 0, 0, 0],
+        hired: [0, 0, 0, 0, 0, 0, 0, 0],
+        quality: [0, 0, 0, 0, 0, 0, 0, 0],
+      },
+    };
+  }
+
+  const rawRounds = (roundInstancesRes.data ?? []) as {
     id: string;
     candidate_id: string;
     campaign_id: string;
@@ -258,13 +302,22 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     scheduled_at: string | null;
     created_at: string;
   }[];
-  const ledger = (ledgerRes.data ?? []) as {
+
+  const activeCampIds = new Set(campaigns.map((c) => c.id));
+  const rounds = rawRounds.filter((r) => activeCampIds.has(r.campaign_id));
+  const activeCandidateIds = new Set(rounds.map((r) => r.candidate_id));
+
+  const allLedger = (ledgerRes.data ?? []) as {
     candidate_id: string;
     stage: string;
     score: number | null;
+    created_at?: string;
+    raw_text?: string | null;
+    rationale?: string | null;
   }[];
+  const ledger = allLedger.filter((l) => activeCandidateIds.has(l.candidate_id));
 
-  const totalCandidateCount = candCountRes.count ?? 0;
+  const totalCandidateCount = activeCandidateIds.size;
   const activeCampaigns = campaigns.filter((c) => c.status === "on").length;
 
   // 1. Campaign distribution
@@ -318,11 +371,13 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     email: string;
     role: string;
   }[];
-  const crRows = (crRes.data ?? []) as {
-    campaign_id: string;
-    round_number: number;
-    interviewer_email: string | null;
-  }[];
+  const crRows = (
+    (crRes.data ?? []) as {
+      campaign_id: string;
+      round_number: number;
+      interviewer_email: string | null;
+    }[]
+  ).filter((cr) => activeCampIds.has(cr.campaign_id));
 
   const recruiterMap = new Map<
     string,
@@ -381,10 +436,20 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     .sort((a, b) => b.score - a.score);
 
   // 5. Calculate real, fitted 8-bar graph heights for all 4 KPI cards
-  const candidateDates = (candDatesRes.data ?? [])
+  const candidateRows = (
+    (candDatesRes.data ?? []) as {
+      id: string;
+      name?: string | null;
+      phone?: string | null;
+      email?: string | null;
+      created_at?: string | null;
+    }[]
+  ).filter((c) => activeCandidateIds.has(c.id));
+
+  const candidateDates = candidateRows
     .map((r) => r.created_at)
     .filter(Boolean)
-    .map((d) => new Date(d).getTime())
+    .map((d) => new Date(d ?? 0).getTime())
     .sort((a, b) => a - b);
   const nowMs = now.getTime();
   const startMs = candidateDates[0] || nowMs - 14 * 86_400_000;
@@ -398,12 +463,15 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     candBins[idx]++;
   }
   const candMax = Math.max(...candBins, 1);
-  const kpiCandHeights = candBins.map((c) => Math.max(16, Math.round((c / candMax) * 100)));
+  const kpiCandHeights =
+    totalCandidateCount === 0
+      ? [0, 0, 0, 0, 0, 0, 0, 0]
+      : candBins.map((c) => Math.max(16, Math.round((c / candMax) * 100)));
 
   // Card 2: Average Score trend
   const binScoreSums = Array(8).fill(0);
   const binScoreCounts = Array(8).fill(0);
-  for (const r of ledger as ((typeof ledger)[0] & { created_at?: string })[]) {
+  for (const r of ledger) {
     if (r.score != null) {
       const t = new Date(r.created_at || nowMs).getTime();
       const idx = Math.min(7, Math.max(0, Math.floor((t - (nowMs - spanMs)) / binWidthMs)));
@@ -414,7 +482,7 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
   const allScored = ledger.filter((r) => r.score != null).map((r) => Number(r.score));
   const overallAvg = allScored.length
     ? Math.round(allScored.reduce((a, b) => a + b, 0) / allScored.length)
-    : 45;
+    : 0;
   let lastScore = overallAvg;
   const scoreTrend: number[] = [];
   for (let i = 0; i < 8; i++) {
@@ -424,14 +492,15 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     scoreTrend.push(lastScore);
   }
   const maxScore = Math.max(...scoreTrend, 50);
-  const kpiScoreHeights = scoreTrend.map((s) =>
-    Math.max(20, Math.min(100, Math.round((s / maxScore) * 100))),
-  );
+  const kpiScoreHeights =
+    allScored.length === 0
+      ? [0, 0, 0, 0, 0, 0, 0, 0]
+      : scoreTrend.map((s) => Math.max(20, Math.min(100, Math.round((s / maxScore) * 100))));
 
   // Card 3: Hired & progression
   const offerBins = Array(8).fill(0);
   const advBins = Array(8).fill(0);
-  for (const r of ledger as ((typeof ledger)[0] & { created_at?: string })[]) {
+  for (const r of ledger) {
     const t = new Date(r.created_at || nowMs).getTime();
     const idx = Math.min(7, Math.max(0, Math.floor((t - (nowMs - spanMs)) / binWidthMs)));
     const st = (r.stage || "").toLowerCase();
@@ -445,13 +514,16 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
   const totalOffers = offerBins.reduce((a, b) => a + b, 0);
   const activeProgBins = totalOffers > 0 ? offerBins : advBins;
   const progMax = Math.max(...activeProgBins, 1);
-  const kpiHiredHeights = activeProgBins.map((c) => Math.max(16, Math.round((c / progMax) * 100)));
+  const kpiHiredHeights =
+    ledger.length === 0
+      ? [0, 0, 0, 0, 0, 0, 0, 0]
+      : activeProgBins.map((c) => Math.max(16, Math.round((c / progMax) * 100)));
 
   // Card 4: Decision Quality
   let lastQual = 80;
   const qualTrend: number[] = [];
   for (let i = 0; i < 8; i++) {
-    const binItems = (ledger as ((typeof ledger)[0] & { created_at?: string })[]).filter((r) => {
+    const binItems = ledger.filter((r) => {
       const t = new Date(r.created_at || nowMs).getTime();
       return Math.min(7, Math.max(0, Math.floor((t - (nowMs - spanMs)) / binWidthMs))) === i;
     });
@@ -462,25 +534,14 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     qualTrend.push(lastQual);
   }
   const maxQual = Math.max(...qualTrend, 60);
-  const kpiQualityHeights = qualTrend.map((q) =>
-    Math.max(20, Math.min(100, Math.round((q / maxQual) * 100))),
-  );
+  const kpiQualityHeights =
+    ledger.length === 0
+      ? [0, 0, 0, 0, 0, 0, 0, 0]
+      : qualTrend.map((q) => Math.max(20, Math.min(100, Math.round((q / maxQual) * 100))));
 
   // 6. Real-time City Distribution from actual candidate resume text, rationale, and phone
-  const candidateRows = (candDatesRes.data ?? []) as {
-    id: string;
-    name?: string | null;
-    phone?: string | null;
-    email?: string | null;
-    created_at?: string | null;
-  }[];
-
   const textByCandidate = new Map<string, string>();
-  for (const l of ledger as {
-    candidate_id: string;
-    raw_text?: string | null;
-    rationale?: string | null;
-  }[]) {
+  for (const l of ledger) {
     if (l.candidate_id) {
       const prev = textByCandidate.get(l.candidate_id) || "";
       const add = `${l.raw_text || ""} ${l.rationale || ""}`.trim();
@@ -528,7 +589,7 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     totalCampaigns: campaigns.length,
     activeCampaigns,
     candidateCount: totalCandidateCount,
-    candidateCreatedAt: (candDatesRes.data ?? [])
+    candidateCreatedAt: candidateRows
       .map((r) => r.created_at)
       .filter((v): v is string => Boolean(v)),
     interviewsThisWeek: wkCountRes.error ? 0 : (wkCountRes.count ?? 0),
@@ -559,43 +620,64 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
 }
 
 export async function fetchUpcomingInterviews(): Promise<UpcomingInterview[]> {
+  const supabase = supabaseBrowser();
   const now = new Date().toISOString();
-  const { data } = await supabaseBrowser()
-    .from("round_instances")
-    .select("id,candidate_id,round_type,scheduled_at,status,created_at")
-    .gte("scheduled_at", now)
-    .order("scheduled_at", { ascending: true })
-    .limit(5);
+
+  const [{ data: camps }, { data }] = await Promise.all([
+    supabase.from("campaigns").select("id"),
+    supabase
+      .from("round_instances")
+      .select("id,candidate_id,campaign_id,round_type,scheduled_at,status,created_at")
+      .gte("scheduled_at", now)
+      .order("scheduled_at", { ascending: true })
+      .limit(10),
+  ]);
+
+  const activeCampIds = new Set((camps ?? []).map((c) => c.id));
+  if (activeCampIds.size === 0) return [];
 
   type UpcomingRow = {
     id: string;
     candidate_id: string;
+    campaign_id: string;
     round_type: string;
     scheduled_at: string | null;
     status: string;
     created_at: string;
   };
 
-  return ((data ?? []) as unknown as UpcomingRow[]).map((r) => ({
-    id: r.id,
-    candidate_id: r.candidate_id,
-    round_type: r.round_type,
-    scheduled_at: r.scheduled_at ?? r.created_at,
-    status: r.status,
-  }));
+  return ((data ?? []) as unknown as UpcomingRow[])
+    .filter((r) => activeCampIds.has(r.campaign_id))
+    .slice(0, 5)
+    .map((r) => ({
+      id: r.id,
+      candidate_id: r.candidate_id,
+      round_type: r.round_type,
+      scheduled_at: r.scheduled_at ?? r.created_at,
+      status: r.status,
+    }));
 }
 
 export async function fetchLedger(limit = 200): Promise<LedgerEntry[]> {
-  const { data, error } = await supabaseBrowser()
-    .from("decision_ledger")
-    .select("id,candidate_id,stage,score,round_instance_id,rationale,created_at")
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const supabase = supabaseBrowser();
+  const [{ data: camps }, { data: ris }, { data, error }] = await Promise.all([
+    supabase.from("campaigns").select("id"),
+    supabase.from("round_instances").select("candidate_id,campaign_id"),
+    supabase
+      .from("decision_ledger")
+      .select("id,candidate_id,stage,score,round_instance_id,rationale,created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit),
+  ]);
 
-  if (error) {
-    console.error("fetchLedger error:", error);
+  if (error || !camps || camps.length === 0) {
     return [];
   }
+
+  const activeCampIds = new Set(camps.map((c) => c.id));
+  const activeCandIds = new Set(
+    (ris ?? []).filter((r) => activeCampIds.has(r.campaign_id)).map((r) => r.candidate_id),
+  );
 
   type LedgerRow = {
     id: string;
@@ -605,15 +687,17 @@ export async function fetchLedger(limit = 200): Promise<LedgerEntry[]> {
     created_at: string;
   };
 
-  return ((data ?? []) as unknown as LedgerRow[]).map((r) => ({
-    id: r.id,
-    candidate_id: r.candidate_id,
-    stage: r.stage === "round_undefined" ? "Round 1 interview" : r.stage,
-    score: r.score != null ? Number(r.score) : null,
-    source: "workflow",
-    override_of: null,
-    decided_at: r.created_at,
-  }));
+  return ((data ?? []) as unknown as LedgerRow[])
+    .filter((r) => activeCandIds.has(r.candidate_id))
+    .map((r) => ({
+      id: r.id,
+      candidate_id: r.candidate_id,
+      stage: r.stage === "round_undefined" ? "Round 1 interview" : r.stage,
+      score: r.score != null ? Number(r.score) : null,
+      source: "workflow",
+      override_of: null,
+      decided_at: r.created_at,
+    }));
 }
 
 export async function fetchCandidateNames(ids: string[]): Promise<Record<string, string>> {
