@@ -48,9 +48,9 @@ export default function BookPage() {
   const [success, setSuccess] = useState<BookingContext["round_instance"] | null>(null);
 
   useEffect(() => {
-    if (!token || !riId) {
+    if (!riId) {
       setView("error");
-      setError("No access token found in the URL.");
+      setError("No booking reference found in the URL.");
       return;
     }
     let cancelled = false;

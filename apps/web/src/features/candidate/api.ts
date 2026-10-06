@@ -19,6 +19,16 @@ function _rpcUrl(): string {
 }
 
 export async function fetchBookingContext(riId: string, token: string): Promise<BookingContext> {
+  try {
+    const res = await fetch(`/api/booking/context?riId=${riId}&tok=${token || ""}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.round_instance && json.candidate && json.campaign && json.round && json.account) {
+        return bookingContextSchema.parse(json);
+      }
+    }
+  } catch {}
+
   const { data, error } = await anonClient().rpc("get_booking_context", {
     p_round_instance_id: riId,
     p_token: token,
@@ -36,6 +46,18 @@ export async function fetchAvailableSlots(
   endTime: string,
   tz: string,
 ): Promise<AvailableSlots> {
+  try {
+    const res = await fetch(
+      `/api/booking/slots?riId=${riId}&tok=${token || ""}&date=${date}&startTime=${startTime}&endTime=${endTime}&tz=${encodeURIComponent(tz)}`,
+    );
+    if (res.ok) {
+      const json = await res.json();
+      if (json.window) {
+        return availableSlotsSchema.parse(json);
+      }
+    }
+  } catch {}
+
   const { data, error } = await anonClient().rpc("get_available_slots", {
     p_round_instance_id: riId,
     p_token: token,
