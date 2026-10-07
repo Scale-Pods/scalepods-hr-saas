@@ -178,4 +178,82 @@ describe("filterCadenceByDuration", () => {
     expect(filterCadenceByDuration(rows, null)).toEqual(rows);
     expect(filterCadenceByDuration(rows, undefined)).toEqual(rows);
   });
+
+  it("preserves configured dayOffset when timing is editable", () => {
+    const clamped = clampCadence(
+      {
+        stages: {
+          reminder_day1: { enabled: true, channels: ["email"], dayOffset: 2 },
+          reminder_day3: { enabled: true, channels: ["email"], dayOffset: 4 },
+        },
+      } as CadenceConfig,
+      "growth",
+    );
+    expect(clamped.stages.reminder_day1?.dayOffset).toBe(2);
+    expect(clamped.stages.reminder_day3?.dayOffset).toBe(4);
+
+    const payload = cadenceConfigPayload(clamped, "growth");
+    expect(payload.stages.reminder_day1?.dayOffset).toBe(2);
+    expect(payload.stages.reminder_day3?.dayOffset).toBe(4);
+  });
+});
+
+describe("sendTime configuration & validation", () => {
+  it("validates HH:MM format with isValidSendTime", async () => {
+    const { isValidSendTime } = await import("./cadence");
+    expect(isValidSendTime("09:00")).toBe(true);
+    expect(isValidSendTime("14:30")).toBe(true);
+    expect(isValidSendTime("23:59")).toBe(true);
+    expect(isValidSendTime("00:00")).toBe(true);
+
+    expect(isValidSendTime("9:00")).toBe(false);
+    expect(isValidSendTime("24:00")).toBe(false);
+    expect(isValidSendTime("12:60")).toBe(false);
+    expect(isValidSendTime("invalid")).toBe(false);
+  });
+
+  it("warns when sendTime has an invalid format in validateCadenceTiming", async () => {
+    const { validateCadenceTiming } = await import("./cadence");
+    const warnings = validateCadenceTiming(
+      {
+        stages: {
+          reminder_day1: { enabled: true, channels: ["email"], sendTime: "9:00" },
+        },
+      } as unknown as CadenceConfig,
+      72,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].field).toBe("sendTime");
+    expect(warnings[0].stageKey).toBe("reminder_day1");
+  });
+
+  it("preserves recruiter sendTime on Growth tier", () => {
+    const clamped = clampCadence(
+      {
+        stages: {
+          reminder_day1: { enabled: true, channels: ["email"], sendTime: "10:30" },
+          interview_day: { enabled: true, channels: ["email"], sendTime: "08:15" },
+        },
+      } as CadenceConfig,
+      "growth",
+    );
+    expect(clamped.stages.reminder_day1?.sendTime).toBe("10:30");
+    expect(clamped.stages.interview_day?.sendTime).toBe("08:15");
+
+    const payload = cadenceConfigPayload(clamped, "growth");
+    expect(payload.stages.reminder_day1?.sendTime).toBe("10:30");
+    expect(payload.stages.interview_day?.sendTime).toBe("08:15");
+  });
+
+  it("drops sendTime on Free and Basic tiers which do not have timing editability", () => {
+    const clamped = clampCadence(
+      {
+        stages: {
+          reminder_day1: { enabled: true, channels: ["email"], sendTime: "10:30" },
+        },
+      } as CadenceConfig,
+      "basic",
+    );
+    expect(clamped.stages.reminder_day1?.sendTime).toBeUndefined();
+  });
 });

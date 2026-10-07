@@ -103,7 +103,7 @@ export async function fetchSessionContext(sessionId: string): Promise<SessionCon
           round: json.round || {
             round_number: 1,
             round_type: "ai_interview",
-            cutoff_score: 70,
+            cutoff_score: null,
           },
           account: json.account || { id: "shared", tier: "enterprise" },
         });
@@ -239,7 +239,7 @@ export async function scoreInterview(body: {
     body: JSON.stringify({
       round_number: 1,
       number_of_rounds: 1,
-      cutoff_score: 70,
+      cutoff_score: null,
       ...body,
     }),
   });

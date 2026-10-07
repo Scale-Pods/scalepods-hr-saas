@@ -98,11 +98,12 @@ export type Database = {
           id: string;
           campaign_id: string;
           round_number: number;
-          round_type: "ai_interview" | "human_interview" | "assignment";
+          round_type: "ai_interview" | "human_interview" | "assignment" | "ai_voice_call";
           interviewer_email: string | null;
           cutoff_score: number | null;
           daily_start_time: string | null;
           daily_end_time: string | null;
+          brief_text: string | null;
         };
         Insert: {
           id?: string;
@@ -113,6 +114,7 @@ export type Database = {
           cutoff_score?: number | null;
           daily_start_time?: string | null;
           daily_end_time?: string | null;
+          brief_text?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["campaign_rounds"]["Insert"]>;
         Relationships: [];
@@ -132,7 +134,8 @@ export type Database = {
             | "completed"
             | "passed"
             | "failed"
-            | "no_show";
+            | "no_show"
+            | "awaiting_review";
           scheduled_at: string | null;
           event_id: string | null;
           meet_link: string | null;
@@ -140,6 +143,7 @@ export type Database = {
           deadline_at: string | null;
           fault_reason: string | null;
           retake_of_round_instance_id: string | null;
+          reviewer_cutoff: number | null;
           created_at: string;
         };
         Insert: {
@@ -157,6 +161,7 @@ export type Database = {
           deadline_at?: string | null;
           fault_reason?: string | null;
           retake_of_round_instance_id?: string | null;
+          reviewer_cutoff?: number | null;
         };
         Update: Partial<Database["public"]["Tables"]["round_instances"]["Insert"]>;
         Relationships: [];
@@ -223,7 +228,7 @@ export type Database = {
           candidate_id: string;
           round_instance_id: string | null;
           stage: string;
-          channel: "email" | "whatsapp" | "sms" | "voice_call";
+          channel: "email" | "whatsapp" | "sms" | "voice_call" | "both";
           delivery_state: string;
           fallback_used: boolean;
           sent_at: string;

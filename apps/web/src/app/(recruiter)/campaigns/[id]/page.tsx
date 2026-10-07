@@ -10,6 +10,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  CheckCircle2,
   Clock,
   Flame,
   Loader2,
@@ -17,9 +18,11 @@ import {
   PhoneCall,
   PhoneOff,
   Settings2,
+  Sliders,
   Sparkles,
   Trash2,
   Volume2,
+  XCircle,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -58,7 +61,7 @@ import {
 } from "@/components/ui/table";
 import { useAccount } from "@/features/account/hooks";
 import { useSession } from "@/features/auth/hooks";
-import { deleteCampaign } from "@/features/campaigns/api";
+import { deleteCampaign, reviewCandidateRound, type ViewCandidate } from "@/features/campaigns/api";
 import {
   campaignsKey,
   useCampaignDetail,
@@ -107,6 +110,87 @@ export default function CampaignDetailPage() {
 
   const [bulkCutoff, setBulkCutoff] = useState<number>(60);
   const [isBulkSending, setIsBulkSending] = useState(false);
+
+  const [postRoundCutoff, setPostRoundCutoff] = useState<number>(70);
+  const [isApplyingCutoff, setIsApplyingCutoff] = useState(false);
+  const [reviewingCandidateId, setReviewingCandidateId] = useState<string | null>(null);
+
+  const awaitingReviewCandidates = useMemo(() => {
+    return candidates.filter(
+      (c) =>
+        c.decision === "awaiting_review" ||
+        (Boolean(c.round_instance_id) &&
+          (c.decision === "completed" || c.decision === "in_progress")),
+    );
+  }, [candidates]);
+
+  const handleReviewCandidate = async (
+    cand: ViewCandidate,
+    decision: "passed" | "failed",
+    cutoff: number = postRoundCutoff,
+  ) => {
+    if (!cand.round_instance_id || !id) return;
+    setReviewingCandidateId(cand.candidate_id);
+    try {
+      await reviewCandidateRound({
+        roundInstanceId: cand.round_instance_id,
+        reviewerCutoff: cutoff,
+        decision,
+        campaignId: id,
+        candidateId: cand.candidate_id,
+        roundNumber: cand.round_number || 1,
+        numberOfRounds: campaign?.number_of_rounds || 1,
+        score: cand.latest_score,
+        accountId: account?.id,
+        accessToken: session?.access_token,
+      });
+      showToast(
+        `${cand.name || "Candidate"} marked as ${decision === "passed" ? "Passed" : "Rejected"}.`,
+        { kind: "success" },
+      );
+      await queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setReviewingCandidateId(null);
+    }
+  };
+
+  const handleApplyPostRoundCutoff = async () => {
+    if (awaitingReviewCandidates.length === 0 || !id) return;
+    setIsApplyingCutoff(true);
+    let passedCount = 0;
+    let failedCount = 0;
+    try {
+      for (const cand of awaitingReviewCandidates) {
+        if (!cand.round_instance_id) continue;
+        const decision = (cand.latest_score ?? 0) >= postRoundCutoff ? "passed" : "failed";
+        await reviewCandidateRound({
+          roundInstanceId: cand.round_instance_id,
+          reviewerCutoff: postRoundCutoff,
+          decision,
+          campaignId: id,
+          candidateId: cand.candidate_id,
+          roundNumber: cand.round_number || 1,
+          numberOfRounds: campaign?.number_of_rounds || 1,
+          score: cand.latest_score,
+          accountId: account?.id,
+          accessToken: session?.access_token,
+        });
+        if (decision === "passed") passedCount++;
+        else failedCount++;
+      }
+      showToast(
+        `Applied threshold (${postRoundCutoff}): ${passedCount} passed, ${failedCount} rejected.`,
+        { kind: "success" },
+      );
+      await queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setIsApplyingCutoff(false);
+    }
+  };
 
   const savedVoiceConfig = campaign?.voice_call_config as unknown as DialnexaVoiceConfig | null;
   const hasVoiceConfig = useMemo(() => {
@@ -509,6 +593,171 @@ export default function CampaignDetailPage() {
         </div>
       </SectionCard>
 
+      <SectionCard
+        title="Post-Round Cutoff & Review"
+        subtitle={
+          awaitingReviewCandidates.length > 0
+            ? `${awaitingReviewCandidates.length} candidate${awaitingReviewCandidates.length === 1 ? "" : "s"} completed their round and require threshold evaluation.`
+            : "Thresholds are determined post-round. Candidates completing an interview or assignment will appear here for score review."
+        }
+        action={
+          awaitingReviewCandidates.length > 0 ? (
+            <Badge
+              variant="outline"
+              className="border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10 gap-1.5 px-2.5 py-1"
+            >
+              <Sliders className="h-3.5 w-3.5 text-amber-500" />
+              {awaitingReviewCandidates.length} Awaiting Review
+            </Badge>
+          ) : undefined
+        }
+      >
+        {awaitingReviewCandidates.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 p-5 text-center">
+            <p className="text-xs text-muted-foreground">
+              No candidates currently awaiting post-round review. As candidates complete rounds, you
+              will set cutoffs and evaluate pass/fail here.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-4 rounded-xl border border-border/80 bg-muted/20 p-4">
+              <div className="flex items-center gap-4">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="post-round-cutoff"
+                    className="text-xs font-semibold text-foreground flex items-center gap-1.5"
+                  >
+                    <Sliders className="h-3.5 w-3.5 text-primary" />
+                    Review Cutoff Threshold (0–100)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="post-round-cutoff"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={postRoundCutoff}
+                      onChange={(e) =>
+                        setPostRoundCutoff(Math.max(0, Math.min(100, Number(e.target.value))))
+                      }
+                      className="h-9 w-24 font-mono font-semibold text-center"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      (
+                      {
+                        awaitingReviewCandidates.filter(
+                          (c) => (c.latest_score ?? 0) >= postRoundCutoff,
+                        ).length
+                      }{" "}
+                      of {awaitingReviewCandidates.length} qualify)
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="gap-1.5 text-xs font-semibold"
+                disabled={isApplyingCutoff}
+                onClick={handleApplyPostRoundCutoff}
+              >
+                {isApplyingCutoff ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                )}
+                {isApplyingCutoff
+                  ? "Applying Threshold..."
+                  : `Apply Cutoff & Advance Qualifying (${postRoundCutoff}+)`}
+              </Button>
+            </div>
+
+            <div className="rounded-xl border border-border/60 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30">
+                    <TableHead className="text-xs font-semibold">Candidate</TableHead>
+                    <TableHead className="text-xs font-semibold">Stage / Round</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">Score</TableHead>
+                    <TableHead className="text-xs font-semibold text-center">
+                      Cutoff Status
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold text-right">
+                      Decide & Advance
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {awaitingReviewCandidates.map((cand) => {
+                    const score = cand.latest_score ?? 0;
+                    const meetsCutoff = score >= postRoundCutoff;
+                    const isBusy = reviewingCandidateId === cand.candidate_id;
+
+                    return (
+                      <TableRow key={cand.candidate_id} className="hover:bg-muted/20">
+                        <TableCell>
+                          <p className="font-medium text-xs text-foreground">
+                            {cand.name || "Unnamed"}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">{cand.email}</p>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {cand.current_stage || `Round ${cand.round_number || 1}`}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-xs font-bold text-foreground">
+                          {cand.latest_score ?? "—"}/100
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] font-semibold px-2 py-0.5",
+                              meetsCutoff
+                                ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/10 dark:text-emerald-400"
+                                : "border-rose-500/30 text-rose-600 bg-rose-500/10 dark:text-rose-400",
+                            )}
+                          >
+                            {meetsCutoff ? "Meets Cutoff" : "Below Cutoff"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isBusy || isApplyingCutoff}
+                              className="h-7 px-2.5 text-xs font-semibold border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
+                              onClick={() => handleReviewCandidate(cand, "passed")}
+                            >
+                              {isBusy ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="h-3 w-3" />
+                              )}
+                              Pass
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isBusy || isApplyingCutoff}
+                              className="h-7 px-2.5 text-xs font-semibold border-rose-500/40 text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-400"
+                              onClick={() => handleReviewCandidate(cand, "failed")}
+                            >
+                              <XCircle className="h-3 w-3" />
+                              Reject
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+      </SectionCard>
+
       {!hasVoiceConfig ? (
         <SectionCard
           title="DialNexa AI Voice Screening Call"
@@ -759,6 +1008,34 @@ export default function CampaignDetailPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {c.decision === "awaiting_review" && c.round_instance_id && (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+                            disabled={reviewingCandidateId === c.candidate_id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleReviewCandidate(c, "passed");
+                            }}
+                          >
+                            Pass
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs border-rose-500/40 text-rose-600 hover:bg-rose-500/10 dark:text-rose-400"
+                            disabled={reviewingCandidateId === c.candidate_id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleReviewCandidate(c, "failed");
+                            }}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      )}
                       {hasVoiceConfig && (
                         <Button
                           size="sm"
@@ -828,8 +1105,15 @@ export default function CampaignDetailPage() {
 
 function DecisionBadge({ decision }: { decision: string | null }) {
   if (!decision) return <span className="text-xs text-muted-foreground">Pending</span>;
+  if (decision === "awaiting_review") {
+    return (
+      <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+        Awaiting Review
+      </Badge>
+    );
+  }
   const className =
-    decision === "pass" || decision === "hired"
+    decision === "pass" || decision === "passed" || decision === "hired"
       ? "bg-success/15 text-success"
       : decision === "reject" || decision === "failed"
         ? "bg-destructive/15 text-destructive"

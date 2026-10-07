@@ -4,6 +4,7 @@ import {
   CADENCE_STAGES,
   type CadenceChannel,
   type CadenceRenderRow,
+  type CadenceTimingWarning,
   cadenceForTier,
   cadenceTierEditability,
   campaignCreateSchema,
@@ -14,6 +15,7 @@ import {
   type RoundType,
   type TeamMemberRow,
   TIER_LIMITS,
+  validateCadenceTiming,
 } from "@scalepods/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -114,7 +116,16 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const [customCadence, setCustomCadence] = useState<
     Record<
       string,
-      { enabled?: boolean; channels?: CadenceChannel[]; label?: string; dayLabel?: string }
+      {
+        enabled?: boolean;
+        channels?: CadenceChannel[];
+        label?: string;
+        dayLabel?: string;
+        dayOffset?: number;
+        hoursBefore?: number;
+        sendHour?: number;
+        sendTime?: string;
+      }
     >
   >({});
   const [userAddedStages, setUserAddedStages] = useState<CadenceRenderRow[]>([]);
@@ -151,6 +162,12 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     setRounds((prev) => syncRoundCount(prev, numberOfRounds));
   }, [numberOfRounds]);
 
+  useEffect(() => {
+    if (tierConfig.overageBehavior === "hard_stop" && numberOfRounds > tierConfig.maxRounds) {
+      setNumberOfRounds(tierConfig.maxRounds);
+    }
+  }, [tierConfig, numberOfRounds]);
+
   const { data: teamMembers = [] } = useQuery({
     queryKey: ["team_members"] as const,
     queryFn: async () => {
@@ -174,6 +191,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     const diffDays = Math.round((e - s) / (1000 * 60 * 60 * 24));
     return Math.max(1, diffDays);
   }, [startDate, endDate]);
+
+  /** Campaign window in hours — used by the cadence validation engine. */
+  const durationHours = durationDays != null ? durationDays * 24 : null;
 
   const previewRows: CadenceRenderRow[] = useMemo(() => {
     const types = new Set<RoundType>(rounds.slice(0, numberOfRounds).map((r) => r.round_type));
@@ -240,6 +260,34 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     durationDays,
   ]);
 
+  /**
+   * Per-stage warnings when configured timing falls outside the campaign window.
+   * Keyed by stageKey for fast lookup in CadencePreview.
+   */
+  const timingWarnings = useMemo<Record<string, CadenceTimingWarning>>(() => {
+    if (durationHours == null) return {};
+    const config = {
+      stages: Object.fromEntries(
+        Object.entries(customCadence).map(([k, v]) => [
+          k,
+          {
+            enabled: v.enabled ?? true,
+            channels: v.channels ?? [],
+            hoursBefore: v.hoursBefore,
+            dayOffset: v.dayOffset,
+            sendHour: v.sendHour,
+            sendTime: v.sendTime,
+          },
+        ]),
+      ),
+    };
+    const warnings = validateCadenceTiming(
+      config as Parameters<typeof validateCadenceTiming>[0],
+      durationHours,
+    );
+    return Object.fromEntries(warnings.map((w) => [w.stageKey, w]));
+  }, [customCadence, durationHours]);
+
   const currentChangesCount = Object.keys(customCadence).length + userAddedStages.length;
   const maxChanges = cadenceTierEditability(tier).maxChanges;
 
@@ -294,6 +342,17 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     setCustomCadence((prev) => ({
       ...prev,
       [stageKey]: { ...prev[stageKey], label: newLabel },
+    }));
+  };
+
+  const handleChangeTiming = (
+    stageKey: string,
+    timing: { hoursBefore?: number; sendHour?: number; dayOffset?: number; sendTime?: string },
+  ) => {
+    if (!checkMaxChanges(stageKey)) return;
+    setCustomCadence((prev) => ({
+      ...prev,
+      [stageKey]: { ...prev[stageKey], ...timing },
     }));
   };
 
@@ -367,6 +426,10 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
               channels: r.channels,
               label: r.stage.label,
               dayLabel: r.stage.dayLabel,
+              dayOffset: customCadence[r.stage.key]?.dayOffset,
+              hoursBefore: customCadence[r.stage.key]?.hoursBefore,
+              sendHour: customCadence[r.stage.key]?.sendHour,
+              sendTime: customCadence[r.stage.key]?.sendTime,
             },
           ]),
         ),
@@ -379,11 +442,15 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           r.round_type === "human_interview" ? r.interviewer_email || null : undefined,
         cutoff_score: r.cutoff_score,
         daily_start_time:
-          r.round_type === "ai_interview" || r.round_type === "human_interview"
+          r.round_type === "ai_interview" ||
+          r.round_type === "human_interview" ||
+          r.round_type === "ai_voice_call"
             ? r.daily_start_time || null
             : undefined,
         daily_end_time:
-          r.round_type === "ai_interview" || r.round_type === "human_interview"
+          r.round_type === "ai_interview" ||
+          r.round_type === "human_interview" ||
+          r.round_type === "ai_voice_call"
             ? r.daily_end_time || null
             : undefined,
         brief_text: r.round_type === "assignment" ? r.brief_text.trim() || null : undefined,
@@ -514,7 +581,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             {step === 0
               ? "Provide role details, key responsibilities, and dates. ScalePods AI will calibrate resume screening rubrics and automated interview questions directly against this job description."
               : step === 1
-                ? "Structure the evaluation pipeline for this position. Select the format for each interview round (AI autonomous interviews, human recruiter meetings, or practical assignments) and define minimum passing thresholds."
+                ? "Structure the evaluation pipeline for this position. Select the format for each interview round (AI autonomous interviews, AI voice screening calls, human recruiter meetings, or practical assignments). Cutoff thresholds are evaluated post-round."
                 : "Choose how candidates are engaged and kept informed throughout the process. Multi-channel automated touchpoints ensure prompt scheduling and high completion rates."}
           </p>
         </div>
@@ -586,7 +653,12 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   onChange={(e) => setNumberOfRounds(Number(e.target.value))}
                   className="flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 dark:bg-card dark:text-foreground"
                 >
-                  {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => {
+                  {Array.from(
+                    {
+                      length: tierConfig.overageBehavior === "hard_stop" ? tierConfig.maxRounds : 6,
+                    },
+                    (_, i) => i + 1,
+                  ).map((n) => {
                     const over = n > tierConfig.maxRounds;
                     const hardStop = tierConfig.overageBehavior === "hard_stop";
                     return (
@@ -687,9 +759,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             <div className="flex items-center gap-2 rounded-xl bg-accent/40 border border-primary/20 p-3.5 text-xs text-muted-foreground">
               <Info className="h-4 w-4 text-primary shrink-0" />
               <span>
-                Each round operates sequentially. Candidates must score at or above the designated{" "}
-                <strong>Minimum Passing Score</strong> to automatically unlock and advance to the
-                next round.
+                Each round operates sequentially. Candidates complete the round format configured
+                below, and detailed AI evaluation scorecards are generated. Cutoff thresholds and
+                advancement decisions are set post-round in your review dashboard.
               </span>
             </div>
 
@@ -760,7 +832,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
               ) : (
                 tierConfig.voiceScreening && (
                   <p className="text-[11px] text-muted-foreground italic px-1">
-                    Note: Voice agent configuration is only available while creating the campaign.
+                    Note: Configure your AI voice agent here or update it anytime from campaign
+                    details.
                   </p>
                 )
               )}
@@ -803,10 +876,25 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 <CadencePreview
                   rows={previewRows}
                   editable={cadenceTierEditability(tier).stages}
+                  canEditTiming={cadenceTierEditability(tier).timing}
+                  durationHours={durationHours}
+                  timingWarnings={timingWarnings}
+                  timingConfig={Object.fromEntries(
+                    previewRows.map((r) => [
+                      r.stage.key,
+                      {
+                        hoursBefore: customCadence[r.stage.key]?.hoursBefore,
+                        sendHour: customCadence[r.stage.key]?.sendHour,
+                        dayOffset: customCadence[r.stage.key]?.dayOffset,
+                        sendTime: customCadence[r.stage.key]?.sendTime,
+                      },
+                    ]),
+                  )}
                   onToggleStage={handleToggleStage}
                   onToggleChannel={handleToggleChannel}
                   onChangeDayLabel={handleChangeDayLabel}
                   onChangeLabel={handleChangeLabel}
+                  onChangeTiming={handleChangeTiming}
                   onAddCustomStage={handleAddCustomStage}
                 />
               </div>

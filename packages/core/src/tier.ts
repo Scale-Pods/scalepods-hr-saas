@@ -125,11 +125,13 @@ export function tierFor(tier: Tier): TierLimits {
 
 export function roundTypeAllowed(tier: Tier, type: RoundType): boolean {
   if (type === "assignment") return TIER_LIMITS[tier].assignment;
+  if (type === "ai_voice_call") return TIER_LIMITS[tier].voiceScreening;
   return true;
 }
 
 export function roundTypeLimitLabel(type: RoundType): string | null {
   if (type === "assignment") return "Available on Growth+";
+  if (type === "ai_voice_call") return "Available on Basic+";
   return null;
 }
 

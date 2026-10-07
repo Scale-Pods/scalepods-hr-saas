@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
       round: {
         round_number: campaignRound?.round_number || roundInstance?.round_number || 1,
         round_type: campaignRound?.round_type || roundInstance?.round_type || "ai_interview",
-        cutoff_score: campaignRound?.cutoff_score ?? 70,
+        cutoff_score: campaignRound?.cutoff_score ?? null,
       },
       account: {
         id: accountId || "shared",
@@ -397,7 +397,7 @@ export async function POST(request: NextRequest) {
               recording_url: updatedSession.recording_url || recordingUrl || null,
               round_number: 1,
               number_of_rounds: 1,
-              cutoff_score: 70,
+              cutoff_score: null,
             }),
           });
         } catch (err) {
@@ -421,7 +421,7 @@ export async function POST(request: NextRequest) {
               recording_url: sessionRow.recording_url,
               round_number: 1,
               number_of_rounds: 1,
-              cutoff_score: 70,
+              cutoff_score: null,
             }),
           });
           const result = await scoreRes.json().catch(() => ({}));

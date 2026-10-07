@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-export const ROUND_TYPES = ["ai_interview", "human_interview", "assignment"] as const;
+export const ROUND_TYPES = [
+  "ai_interview",
+  "human_interview",
+  "assignment",
+  "ai_voice_call",
+] as const;
 
 // ---------------------------------------------------------------- campaigns
 
@@ -8,7 +13,7 @@ export const campaignRoundSchema = z.object({
   round_number: z.number().int().min(1).max(6),
   round_type: z.enum(ROUND_TYPES),
   interviewer_email: z.string().email().optional().nullable(),
-  cutoff_score: z.number().int().min(0).max(100),
+  cutoff_score: z.number().int().min(0).max(100).optional().nullable(),
   daily_start_time: z.string().optional().nullable(),
   daily_end_time: z.string().optional().nullable(),
   brief_text: z.string().optional().nullable(),
@@ -26,12 +31,31 @@ export const cadenceConfigSchema = z
         channels: z.array(cadenceChannelSchema).optional(),
         hoursBefore: z.number().int().min(0).max(168).optional(),
         sendHour: z.number().int().min(0).max(23).optional(),
+        dayOffset: z.number().int().min(0).max(30).optional(),
+        /** Exact local dispatch time in HH:MM 24-h format (e.g. "09:00", "14:30"). */
+        sendTime: z
+          .string()
+          .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "sendTime must be HH:MM (24-hour)")
+          .optional(),
         label: z.string().optional(),
         dayLabel: z.string().optional(),
       }),
     ),
   })
   .optional();
+
+export const roundReviewSchema = z.object({
+  round_instance_id: z.string().uuid(),
+  reviewer_cutoff: z.number().min(0).max(100),
+  decision: z.enum(["passed", "failed"]).optional(),
+  campaign_id: z.string().uuid().optional(),
+  candidate_id: z.string().uuid().optional(),
+  round_number: z.number().int().min(1).max(6).optional(),
+  number_of_rounds: z.number().int().min(1).max(6).optional(),
+  score: z.number().optional().nullable(),
+});
+
+export type RoundReviewPayload = z.infer<typeof roundReviewSchema>;
 
 export const dialnexaFunctionSchema = z.object({
   id: z.string().optional(),

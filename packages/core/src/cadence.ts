@@ -59,7 +59,7 @@ export const CADENCE_STAGES = [
     dayLabel: "24h before",
     description: "Reminder about the upcoming interview, sent shortly before the slot.",
     channels: ["email", "whatsapp"],
-    appliesTo: ["ai_interview", "human_interview"],
+    appliesTo: ["ai_interview", "human_interview", "ai_voice_call"],
   },
   {
     key: "interview_day",
@@ -67,7 +67,7 @@ export const CADENCE_STAGES = [
     dayLabel: "Interview day",
     description: "9 AM local: AI interview link or Google Meet link for the scheduled slot.",
     channels: ["email", "whatsapp"],
-    appliesTo: ["ai_interview", "human_interview"],
+    appliesTo: ["ai_interview", "human_interview", "ai_voice_call"],
   },
   {
     key: "voice_screen",
@@ -169,30 +169,176 @@ export type CadenceStageKey = (typeof CADENCE_STAGES)[number]["key"];
 export interface CadenceConfigStage {
   enabled: boolean;
   channels: CadenceChannel[];
-  /** Pre-interview / assignment stages. Clamped to 0-168. Growth+ only. */
+  /** Pre-interview / assignment stages. Clamped to 0–168. Growth+ only. */
   hoursBefore?: number;
-  /** Interview-day link dispatch hour. Clamped to 0-23. Growth+ only. */
+  /** Interview-day link dispatch hour (legacy). Clamped to 0–23. Growth+ only. */
   sendHour?: number;
+  /** Milestone day offset (e.g. 0, 1, 3, 5). Clamped to 0–30. */
+  dayOffset?: number;
+  /**
+   * Exact local time to send this notification, in "HH:MM" 24-hour format.
+   * - For day-offset reminders: combined with dayOffset → "Day N at HH:MM".
+   * - For pre_interview_reminder / assignment_deadline_24h: used as a
+   *   hard-clock fallback when hoursBefore would put the send time in the past.
+   * - For interview_day: replaces the legacy sendHour field.
+   * Growth+ only.  Validated as /^([01]\d|2[0-3]):[0-5]\d$/.
+   */
+  sendTime?: string;
 }
 
 export interface CadenceConfig {
   stages: Partial<Record<CadenceStageKey, CadenceConfigStage>>;
 }
 
-/** Defaults for timing-aware stages. Keys mirror CADENCE_STAGES. */
-export const CADENCE_TIMING_DEFAULTS: Partial<
-  Record<CadenceStageKey, Partial<CadenceConfigStage>>
-> = {
-  pre_interview_reminder: { hoursBefore: 24 },
-  interview_day: { sendHour: 9 },
-  assignment_deadline_24h: { hoursBefore: 24 },
-};
+/**
+ * Stages that support a recruiter-configurable sendTime (HH:MM).
+ * Used by the UI to decide which rows get a clock input.
+ */
+export const STAGE_SEND_TIME_KEYS = new Set<string>([
+  "reminder_day1",
+  "reminder_day3",
+  "reminder_day5",
+  "pre_interview_reminder",
+  "interview_day",
+  "assignment_deadline_24h",
+]);
+
+/** Validates a sendTime string. Returns true when the format is HH:MM 24-h. */
+export function isValidSendTime(s: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+}
+
+/**
+ * Returns sensible defaults for timing-aware stages scaled to the campaign window.
+ * - durationHours: total campaign length in hours (e.g. 24 for a 1-day campaign).
+ *   When omitted or null, the classic multi-day defaults (24 h, Day 1/3/5) are used.
+ * - For short campaigns (≤ 24 h) reminder follow-ups are collapsed to hour-based
+ *   values that actually fit in the window, and day-offset reminders are removed.
+ */
+export function scaledCadenceDefaults(
+  durationHours: number | null | undefined,
+): Partial<Record<CadenceStageKey, Partial<CadenceConfigStage>>> {
+  // ---- Short campaign path (≤ 24 h) ----------------------------------------
+  if (durationHours != null && durationHours <= 24) {
+    return {
+      shortlist: { dayOffset: 0 },
+      reminder_day1: { dayOffset: 0, sendTime: "09:00" },
+      reminder_day3: { dayOffset: 0, sendTime: "09:00" },
+      reminder_day5: { dayOffset: 0, sendTime: "09:00" },
+      pre_interview_reminder: { hoursBefore: Math.min(2, durationHours), sendTime: "09:00" },
+      interview_day: { sendHour: 9, sendTime: "09:00" },
+      assignment_deadline_24h: { hoursBefore: Math.min(2, durationHours), sendTime: "09:00" },
+    };
+  }
+
+  // ---- Medium campaign (25 – 72 h, i.e. 1–3 days) --------------------------
+  if (durationHours != null && durationHours <= 72) {
+    return {
+      shortlist: { dayOffset: 0 },
+      reminder_day1: { dayOffset: 1, sendTime: "09:00" },
+      reminder_day3: { dayOffset: 0, sendTime: "09:00" },
+      reminder_day5: { dayOffset: 0, sendTime: "09:00" },
+      pre_interview_reminder: { hoursBefore: Math.min(4, durationHours), sendTime: "09:00" },
+      interview_day: { sendHour: 9, sendTime: "09:00" },
+      assignment_deadline_24h: { hoursBefore: Math.min(4, durationHours), sendTime: "09:00" },
+    };
+  }
+
+  // ---- Standard / long campaign (> 3 days or no duration set) ---------------
+  return {
+    shortlist: { dayOffset: 0 },
+    reminder_day1: { dayOffset: 1, sendTime: "09:00" },
+    reminder_day3: { dayOffset: 3, sendTime: "09:00" },
+    reminder_day5: { dayOffset: 5, sendTime: "09:00" },
+    pre_interview_reminder: { hoursBefore: 24, sendTime: "09:00" },
+    interview_day: { sendHour: 9, sendTime: "09:00" },
+    assignment_deadline_24h: { hoursBefore: 24, sendTime: "09:00" },
+  };
+}
+
+/**
+ * @deprecated Use scaledCadenceDefaults() which is duration-aware.
+ * Kept for backwards compatibility; callers that don't have a campaign
+ * duration can still use this constant.
+ */
+export const CADENCE_TIMING_DEFAULTS = scaledCadenceDefaults(null);
+
+// --------------------------------------------------------------------------
+// Validation
+// --------------------------------------------------------------------------
+
+export interface CadenceTimingWarning {
+  stageKey: string;
+  field: "hoursBefore" | "dayOffset" | "sendHour" | "sendTime";
+  message: string;
+}
+
+/**
+ * Validates configured timing against the actual campaign window and returns
+ * human-readable warnings that the UI can display next to the input fields.
+ *
+ * @param config   The cadence config to validate.
+ * @param durationHours  Total campaign length in hours (e.g. 24 for 1 day).
+ */
+export function validateCadenceTiming(
+  config: CadenceConfig,
+  durationHours: number | null | undefined,
+): CadenceTimingWarning[] {
+  if (durationHours == null || durationHours <= 0) return [];
+  const warnings: CadenceTimingWarning[] = [];
+
+  for (const [key, stage] of Object.entries(config.stages)) {
+    if (!stage) continue;
+
+    // dayOffset-based reminders — must be < durationDays
+    if (stage.dayOffset != null && STAGE_DAY_OFFSETS[key] !== undefined) {
+      const maxOffset = Math.floor(durationHours / 24);
+      if (stage.dayOffset >= maxOffset) {
+        warnings.push({
+          stageKey: key,
+          field: "dayOffset",
+          message:
+            maxOffset <= 0
+              ? `Campaign is shorter than 1 day — day-offset reminders won't fire.`
+              : `Day ${stage.dayOffset} is outside the ${maxOffset}-day campaign window. This reminder won't send.`,
+        });
+      }
+    }
+
+    // hoursBefore — must be < durationHours
+    if (stage.hoursBefore != null) {
+      if (stage.hoursBefore >= durationHours) {
+        warnings.push({
+          stageKey: key,
+          field: "hoursBefore",
+          message: `${stage.hoursBefore}h before is longer than the ${durationHours}h campaign — this reminder will never send. Use ${Math.max(1, Math.floor(durationHours / 2))}h or less.`,
+        });
+      }
+    }
+
+    // sendTime — must be a valid HH:MM string
+    if (stage.sendTime != null && !isValidSendTime(stage.sendTime)) {
+      warnings.push({
+        stageKey: key,
+        field: "sendTime",
+        message: `"${stage.sendTime}" is not a valid time. Use HH:MM format (e.g. 09:00, 14:30).`,
+      });
+    }
+  }
+
+  return warnings;
+}
 
 /**
  * Full plan-default config for a tier: every stage the plan can reach is on,
  * with exactly the channels the tier entitles. Drives the editor's seed state.
+ *
+ * @param tier          The account's billing tier.
+ * @param durationHours Total campaign window in hours. Pass null/undefined for
+ *                      the classic "no-deadline" defaults (24h reminders, Day 1/3/5).
  */
-export function defaultCadenceForTier(tier: Tier): CadenceConfig {
+export function defaultCadenceForTier(tier: Tier, durationHours?: number | null): CadenceConfig {
+  const timingDefaults = scaledCadenceDefaults(durationHours);
   const stages: CadenceConfig["stages"] = {};
   for (const stage of CADENCE_STAGES) {
     const key = stage.key as CadenceStageKey;
@@ -205,7 +351,7 @@ export function defaultCadenceForTier(tier: Tier): CadenceConfig {
     const roundTypeFits =
       stage.appliesTo.length === 0 || stage.appliesTo.some((t) => roundTypeAllowed(tier, t));
     const enabled = channels.length > 0 && roundTypeFits;
-    stages[key] = { enabled, channels, ...CADENCE_TIMING_DEFAULTS[key] };
+    stages[key] = { enabled, channels, ...timingDefaults[key] };
   }
   return { stages };
 }
@@ -220,7 +366,7 @@ export function cadenceTierEditability(tier: Tier): {
   if (tier === "free") return { stages: false, channels: false, timing: false, maxChanges: 0 };
   if (tier === "basic") return { stages: true, channels: true, timing: false, maxChanges: 1 };
   if (tier === "growth") return { stages: true, channels: true, timing: true, maxChanges: 5 };
-  return { stages: true, channels: true, timing: true, maxChanges: Infinity };
+  return { stages: true, channels: true, timing: true, maxChanges: Number.MAX_SAFE_INTEGER };
 }
 
 function clampInt(n: number, min: number, max: number): number {
@@ -235,10 +381,28 @@ function clampInt(n: number, min: number, max: number): number {
  * clamp timing to bounded integers. Optional timing knobs are only forwarded
  * for stages that own them on tiers whose editability allows timing; every
  * other field the input omits falls back to the tier default.
+ *
+ * @param config        The raw cadence config to normalise.
+ * @param tier          The account's billing tier.
+ * @param durationHours Total campaign window in hours. When provided, dayOffset
+ *                      and hoursBefore are further clamped so they can't exceed
+ *                      the campaign window.
  */
-export function clampCadence(config: CadenceConfig, tier: Tier): CadenceConfig {
-  const defaults = defaultCadenceForTier(tier);
+export function clampCadence(
+  config: CadenceConfig,
+  tier: Tier,
+  durationHours?: number | null,
+): CadenceConfig {
+  const defaults = defaultCadenceForTier(tier, durationHours);
+  const timingDefaults = scaledCadenceDefaults(durationHours);
   const timing = cadenceTierEditability(tier).timing;
+  // Upper bounds derived from the campaign window (inclusive)
+  const maxHoursBefore = durationHours != null && durationHours > 0 ? durationHours - 1 : 168;
+  const maxDayOffset =
+    durationHours != null && durationHours > 0
+      ? Math.max(0, Math.floor(durationHours / 24) - 1)
+      : 30;
+
   const stages: CadenceConfig["stages"] = {};
   for (const [key, raw] of Object.entries(config.stages)) {
     const stageKey = key as CadenceStageKey;
@@ -248,10 +412,17 @@ export function clampCadence(config: CadenceConfig, tier: Tier): CadenceConfig {
       enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
       channels: raw.channels?.filter((c) => base.channels.includes(c)) ?? base.channels,
     };
-    if (timing && raw.hoursBefore != null && CADENCE_TIMING_DEFAULTS[stageKey]?.hoursBefore != null)
-      stage.hoursBefore = clampInt(raw.hoursBefore, 0, 168);
-    if (timing && raw.sendHour != null && CADENCE_TIMING_DEFAULTS[stageKey]?.sendHour != null)
+    if (timing && raw.hoursBefore != null && timingDefaults[stageKey]?.hoursBefore != null)
+      stage.hoursBefore = clampInt(raw.hoursBefore, 0, maxHoursBefore);
+    if (timing && raw.sendHour != null && timingDefaults[stageKey]?.sendHour != null)
       stage.sendHour = clampInt(raw.sendHour, 0, 23);
+    if (timing && raw.dayOffset != null && timingDefaults[stageKey]?.dayOffset != null)
+      stage.dayOffset = clampInt(raw.dayOffset, 0, maxDayOffset);
+    // sendTime: accept any valid HH:MM string for stages that support it
+    if (timing && raw.sendTime != null && STAGE_SEND_TIME_KEYS.has(stageKey))
+      stage.sendTime = isValidSendTime(raw.sendTime)
+        ? raw.sendTime
+        : (timingDefaults[stageKey]?.sendTime ?? "09:00");
     stages[stageKey] = stage;
   }
   return { stages };
@@ -279,6 +450,8 @@ export function cadenceConfigPayload(config: CadenceConfig, tier: Tier): Cadence
     if (cur.hoursBefore != null && cur.hoursBefore !== base.hoursBefore)
       diff.hoursBefore = cur.hoursBefore;
     if (cur.sendHour != null && cur.sendHour !== base.sendHour) diff.sendHour = cur.sendHour;
+    if (cur.dayOffset != null && cur.dayOffset !== base.dayOffset) diff.dayOffset = cur.dayOffset;
+    if (cur.sendTime != null && cur.sendTime !== base.sendTime) diff.sendTime = cur.sendTime;
     if (Object.keys(diff).length > 0) stages[key as CadenceStageKey] = diff as CadenceConfigStage;
   }
   return { stages };

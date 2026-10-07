@@ -1,5 +1,5 @@
 import type { RoundType } from "@scalepods/core";
-import { Bot, CalendarClock, ClipboardList, Trophy } from "lucide-react";
+import { Bot, CalendarClock, ClipboardList, PhoneCall, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const ROUND_TYPE_META: Record<
@@ -7,6 +7,11 @@ export const ROUND_TYPE_META: Record<
   { label: string; icon: typeof Bot; blurb: string }
 > = {
   ai_interview: { label: "AI Interview", icon: Bot, blurb: "Live AI-conducted interview" },
+  ai_voice_call: {
+    label: "AI Voice Call",
+    icon: PhoneCall,
+    blurb: "Autonomous phone screening call",
+  },
   human_interview: {
     label: "Human Interview",
     icon: CalendarClock,
@@ -25,9 +30,11 @@ export function RoundTypeIcon({ type, className }: { type: RoundType; className?
         "inline-flex rounded-full p-1.5",
         type === "ai_interview"
           ? "bg-accent text-primary"
-          : type === "human_interview"
-            ? "bg-success/10 text-success"
-            : "bg-warning/10 text-warning",
+          : type === "ai_voice_call"
+            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+            : type === "human_interview"
+              ? "bg-success/10 text-success"
+              : "bg-warning/10 text-warning",
         className,
       )}
     >

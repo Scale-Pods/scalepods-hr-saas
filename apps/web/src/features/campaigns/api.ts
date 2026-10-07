@@ -50,6 +50,8 @@ export interface ViewCandidate {
   latest_score: number | null;
   decision: string | null;
   round_instance_id?: string | null;
+  round_number?: number;
+  reviewer_cutoff?: number | null;
 }
 
 export interface CampaignDetail {
@@ -66,7 +68,7 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
     supabase.from("campaign_rounds").select("*").eq("campaign_id", id).order("round_number"),
     supabase
       .from("round_instances")
-      .select("id,candidate_id,campaign_id,round_number,status,created_at")
+      .select("id,candidate_id,campaign_id,round_number,status,reviewer_cutoff,created_at")
       .eq("campaign_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -209,6 +211,9 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         latest_score: candDl?.score != null ? Number(candDl.score) : null,
         decision: candRi?.status ?? null,
         round_instance_id: candRi?.id ?? null,
+        round_number: candRi?.round_number ?? 1,
+        reviewer_cutoff:
+          (candRi as unknown as { reviewer_cutoff?: number | null })?.reviewer_cutoff ?? null,
       };
     });
   }
@@ -219,6 +224,55 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
     candidates,
     roundStatuses: byRound,
   };
+}
+
+export async function reviewCandidateRound(params: {
+  roundInstanceId: string;
+  reviewerCutoff: number;
+  decision?: "passed" | "failed";
+  campaignId: string;
+  candidateId: string;
+  roundNumber?: number;
+  numberOfRounds?: number;
+  score?: number | null;
+  accountId?: string;
+  accessToken?: string;
+}): Promise<void> {
+  const supabase = supabaseBrowser();
+  const decision =
+    params.decision ??
+    (params.score != null && params.score >= params.reviewerCutoff ? "passed" : "failed");
+
+  const { error } = await supabase
+    .from("round_instances")
+    .update({
+      status: decision,
+      reviewer_cutoff: params.reviewerCutoff,
+    })
+    .eq("id", params.roundInstanceId);
+
+  if (error) throw error;
+
+  if (params.accountId) {
+    try {
+      await callWorkflow("round-review", {
+        body: {
+          round_instance_id: params.roundInstanceId,
+          reviewer_cutoff: params.reviewerCutoff,
+          decision,
+          campaign_id: params.campaignId,
+          candidate_id: params.candidateId,
+          round_number: params.roundNumber,
+          number_of_rounds: params.numberOfRounds,
+          score: params.score,
+          account_id: params.accountId,
+        },
+        accessToken: params.accessToken,
+      });
+    } catch (wfErr) {
+      console.warn("n8n round-review notification skipped or failed:", wfErr);
+    }
+  }
 }
 
 export async function updateCampaignStatus(
@@ -243,7 +297,7 @@ export async function updateCampaignStatus(
           action: "update",
           account_id: accountId,
           campaign_id: campaignId,
-          status: newStatus,
+          status: normalizedStatus,
         },
         accessToken,
       });

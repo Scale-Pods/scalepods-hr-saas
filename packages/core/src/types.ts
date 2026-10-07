@@ -4,7 +4,7 @@ export type Json = Record<string, unknown> | unknown[] | string | number | boole
 
 export type Tier = "free" | "basic" | "growth" | "enterprise";
 
-export type RoundType = "ai_interview" | "human_interview" | "assignment";
+export type RoundType = "ai_interview" | "human_interview" | "assignment" | "ai_voice_call";
 
 export interface DialnexaFunctionConfig {
   id?: string;

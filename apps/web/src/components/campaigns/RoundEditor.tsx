@@ -1,7 +1,7 @@
 import { type RoundType, type TeamMemberRow, type Tier, tierAtLeast } from "@scalepods/core";
-import { Bot, FileText, Info, Lock, Sliders, UserCheck } from "lucide-react";
+import { Bot, FileText, Info, Lock, PhoneCall, UserCheck } from "lucide-react";
+import { useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +47,12 @@ export const ROUND_TYPE_OPTIONS: {
     icon: <Bot className="h-4 w-4 text-cyan-500" />,
   },
   {
+    value: "ai_voice_call",
+    label: "AI Voice Call Screening",
+    desc: "Autonomous conversational AI places an outbound phone call to assess competencies, communication, and candidate fit.",
+    icon: <PhoneCall className="h-4 w-4 text-emerald-500" />,
+  },
+  {
     value: "human_interview",
     label: "Live Human Interview",
     desc: "Scheduled video panel or recruiter conversation with automated calendar sync.",
@@ -59,11 +65,6 @@ export const ROUND_TYPE_OPTIONS: {
     icon: <FileText className="h-4 w-4 text-purple-500" />,
   },
 ];
-
-function clamp(n: number): number {
-  if (Number.isNaN(n)) return 0;
-  return Math.max(0, Math.min(100, n));
-}
 
 export function RoundEditor({
   index,
@@ -79,8 +80,22 @@ export function RoundEditor({
   onChange: (patch: Partial<RoundDraft>) => void;
 }) {
   const growthPlus = tierAtLeast(tier as Tier, "growth");
-  const live = round.round_type === "ai_interview" || round.round_type === "human_interview";
+  const basicPlus = tierAtLeast(tier as Tier, "basic");
+  const live =
+    round.round_type === "ai_interview" ||
+    round.round_type === "human_interview" ||
+    round.round_type === "ai_voice_call";
   const activeOption = ROUND_TYPE_OPTIONS.find((o) => o.value === round.round_type);
+
+  // Dynamic round type guard: If account tier does not support assignments or voice calls, fallback to ai_interview
+  useEffect(() => {
+    if (!growthPlus && round.round_type === "assignment") {
+      onChange({ round_type: "ai_interview" });
+    }
+    if (!basicPlus && round.round_type === "ai_voice_call") {
+      onChange({ round_type: "ai_interview" });
+    }
+  }, [growthPlus, basicPlus, round.round_type, onChange]);
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-xs space-y-4">
@@ -94,12 +109,9 @@ export function RoundEditor({
             Round {index + 1}: {activeOption?.label || "Interview Stage"}
           </h4>
         </div>
-        <span className="rounded-full bg-accent/80 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
-          Passing Cutoff: {round.cutoff_score}/100
-        </span>
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid gap-5">
         {/* Round Type Selector */}
         <div>
           <label
@@ -119,7 +131,10 @@ export function RoundEditor({
             )}
           >
             {ROUND_TYPE_OPTIONS.map((opt) => {
-              const locked = opt.value === "assignment" && !growthPlus;
+              const locked =
+                (opt.value === "assignment" && !growthPlus) ||
+                (opt.value === "ai_voice_call" && !basicPlus);
+              const lockTier = opt.value === "assignment" ? "Growth" : "Basic";
               return (
                 <option
                   key={opt.value}
@@ -127,7 +142,7 @@ export function RoundEditor({
                   disabled={locked}
                   className="bg-card text-foreground dark:bg-gray-900"
                 >
-                  {opt.label} {locked ? "— (Upgrade to Growth tier)" : ""}
+                  {opt.label} {locked ? `— (Upgrade to ${lockTier} tier)` : ""}
                 </option>
               );
             })}
@@ -135,60 +150,33 @@ export function RoundEditor({
           <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
             {activeOption?.desc}
           </p>
-          {!growthPlus && (
+          {!basicPlus && (
             <div className="mt-2 flex items-center justify-between rounded-lg border border-border/50 bg-muted/20 px-2.5 py-1.5 text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5 text-[11px]">
                 <Lock className="h-3 w-3 shrink-0" />
-                Practical Assignments
+                AI Voice Calls & Assignments
               </span>
               <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium border border-border/40">
-                Available in Growth & Enterprise
+                Available on Basic & above
               </span>
             </div>
           )}
         </div>
 
-        {/* Passing Score Slider */}
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <label
-              htmlFor={`cut-${index}`}
-              className="text-xs font-semibold text-foreground flex items-center gap-1.5"
-            >
-              <Sliders className="h-3.5 w-3.5 text-primary" />
-              Minimum Passing Score
-            </label>
-            <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-bold text-foreground">
-              {round.cutoff_score} / 100
-            </span>
-          </div>
-
-          <div className="pt-2 pb-1">
-            <Slider
-              value={[round.cutoff_score]}
-              onValueChange={(v) => onChange({ cutoff_score: v[0] ?? 70 })}
-              min={0}
-              max={100}
-              step={1}
-              aria-label={`Round ${index + 1} cutoff`}
-            />
-          </div>
-
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-[11px] text-muted-foreground">
-              Candidates meeting or exceeding this threshold advance.
+        {/* AI Voice Screening Information Banner */}
+        {round.round_type === "ai_voice_call" ? (
+          <div className="rounded-xl bg-emerald-500/10 p-4 border border-emerald-500/20 space-y-1.5">
+            <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
+              <PhoneCall className="h-4 w-4 shrink-0" />
+              <span>Autonomous AI Phone Screening</span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              When candidates advance to this round, Dialnexa automatically places an outbound call
+              to their phone during the daily window. The call audio is recorded and an AI scorecard
+              with communication and qualification ratings is generated for your post-round review.
             </p>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={round.cutoff_score}
-              onChange={(e) => onChange({ cutoff_score: clamp(Number(e.target.value)) })}
-              className="w-16 rounded-lg border border-border bg-card px-2 py-1 text-right text-xs font-semibold text-foreground focus:outline-hidden focus:border-primary"
-              aria-label={`Round ${index + 1} cutoff numeric`}
-            />
           </div>
-        </div>
+        ) : null}
 
         {/* Human Interviewer Field */}
         {round.round_type === "human_interview" ? (
