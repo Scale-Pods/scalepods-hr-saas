@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { POPULAR_ELEVENLABS_VOICES } from "@/components/campaigns/CustomVoiceGuideModal";
+import { POPULAR_ELEVENLABS_VOICES } from "@/lib/voices";
 
 export const metadata: Metadata = {
   title: "How to Get a Custom Voice ID for DialNexa | ScalePods Guide",

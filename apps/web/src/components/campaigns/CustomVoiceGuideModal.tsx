@@ -13,59 +13,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { POPULAR_ELEVENLABS_VOICES, type SampleVoice } from "@/lib/voices";
 
-export interface SampleVoice {
-  id: string;
-  name: string;
-  description: string;
-  accent: string;
-  gender: string;
-}
-
-export const POPULAR_ELEVENLABS_VOICES: SampleVoice[] = [
-  {
-    id: "21m00Tcm4TlvDq8ikWAM",
-    name: "Rachel",
-    accent: "American",
-    gender: "Female",
-    description: "Calm, articulate, and professional talent prescreening voice.",
-  },
-  {
-    id: "pNInz6obpgDQGcFmaJgB",
-    name: "Adam",
-    accent: "American",
-    gender: "Male",
-    description: "Warm, authoritative, and executive recruiter tone.",
-  },
-  {
-    id: "EXAVITQu4vr4xnSDxMaL",
-    name: "Sarah",
-    accent: "American",
-    gender: "Female",
-    description: "Enthusiastic, approachable, and engaging interview flow.",
-  },
-  {
-    id: "ErXwobaYiN019PkySvjV",
-    name: "Antoni",
-    accent: "American",
-    gender: "Male",
-    description: "Balanced, friendly, and clear corporate presence.",
-  },
-  {
-    id: "TxGEqnHWrfWFTfGW9XjX",
-    name: "Josh",
-    accent: "American",
-    gender: "Male",
-    description: "Natural, casual, and energetic technical recruiter.",
-  },
-  {
-    id: "AZnzlk1XvdvUeBnXmlld",
-    name: "Domi",
-    accent: "American",
-    gender: "Female",
-    description: "Crisp, confident, and highly articulate phone screening.",
-  },
-];
+export { POPULAR_ELEVENLABS_VOICES, type SampleVoice };
 
 interface CustomVoiceGuideModalProps {
   open: boolean;
