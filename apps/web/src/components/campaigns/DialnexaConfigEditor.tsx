@@ -25,6 +25,7 @@ import {
   FileText,
   Flame,
   Headphones,
+  HelpCircle,
   MessageSquareText,
   Mic,
   PhoneCall,
@@ -40,6 +41,7 @@ import {
   Wand2,
   Zap,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,6 +55,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { CustomVoiceGuideModal } from "./CustomVoiceGuideModal";
 
 export interface DialnexaConfigEditorProps {
   value: DialnexaVoiceConfig;
@@ -80,6 +83,7 @@ export function DialnexaConfigEditor({
     isPresetVoice ? value.voice : "custom",
   );
   const [customVoiceText, setCustomVoiceText] = useState<string>(isPresetVoice ? "" : value.voice);
+  const [isVoiceGuideOpen, setIsVoiceGuideOpen] = useState(false);
 
   useEffect(() => {
     const isPreset = DIALNEXA_VOICES.some((v) => v.id === value.voice);
@@ -260,6 +264,12 @@ export function DialnexaConfigEditor({
   const handleCustomVoiceChange = (text: string) => {
     setCustomVoiceText(text);
     onChange({ ...value, voice: text.trim() || "rachel" });
+  };
+
+  const handleApplyCustomVoiceFromGuide = (voiceId: string) => {
+    setVoiceSelectValue("custom");
+    setCustomVoiceText(voiceId);
+    onChange({ ...value, voice: voiceId });
   };
 
   const applyTemplate = (templateId: string) => {
@@ -892,9 +902,19 @@ export function DialnexaConfigEditor({
                 <Volume2 className="h-4 w-4 text-cyan-500" />
                 DialNexa Synthetic Voice (TTS)
               </span>
-              <Badge variant="outline" className="text-[10px] font-mono">
-                {selectedVoiceMeta?.provider || "Custom"}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsVoiceGuideOpen(true)}
+                  className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  <HelpCircle className="h-3 w-3" />
+                  Voice ID Guide
+                </button>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {selectedVoiceMeta?.provider || "Custom"}
+                </Badge>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -932,17 +952,52 @@ export function DialnexaConfigEditor({
               </Select>
 
               {voiceSelectValue === "custom" && (
-                <div className="pt-1.5">
-                  <label htmlFor={customVoiceId} className="sr-only">
-                    Custom Voice ID
-                  </label>
-                  <Input
-                    id={customVoiceId}
-                    placeholder="e.g. eleven_labs_voice_abc123"
-                    value={customVoiceText}
-                    onChange={(e) => handleCustomVoiceChange(e.target.value)}
-                    className="h-9 text-xs font-mono bg-background"
-                  />
+                <div className="pt-1.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor={customVoiceId}
+                      className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"
+                    >
+                      <span>ElevenLabs / Custom Voice ID</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsVoiceGuideOpen(true)}
+                      className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <HelpCircle className="h-3 w-3" />
+                      How to get a Voice ID?
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id={customVoiceId}
+                      placeholder="e.g. 21m00Tcm4TlvDq8ikWAM"
+                      value={customVoiceText}
+                      onChange={(e) => handleCustomVoiceChange(e.target.value)}
+                      className="h-9 text-xs font-mono bg-background text-foreground"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsVoiceGuideOpen(true)}
+                      className="h-9 shrink-0 text-xs gap-1 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 cursor-pointer"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Pick Voice
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>Paste your 20-character ElevenLabs Voice ID.</span>
+                    <Link
+                      href="/guide/custom-voice-id"
+                      target="_blank"
+                      className="text-cyan-400 hover:underline inline-flex items-center gap-1 font-medium"
+                    >
+                      Full Guide <ExternalLink className="h-2.5 w-2.5" />
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>
@@ -2317,6 +2372,12 @@ export function DialnexaConfigEditor({
           </div>
         </div>
       </div>
+
+      <CustomVoiceGuideModal
+        open={isVoiceGuideOpen}
+        onOpenChange={setIsVoiceGuideOpen}
+        onSelectVoiceId={handleApplyCustomVoiceFromGuide}
+      />
     </div>
   );
 }

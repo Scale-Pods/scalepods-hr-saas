@@ -36,6 +36,7 @@ import { ChannelToggle } from "@/components/campaigns/ChannelToggle";
 import { DialnexaConfigEditor } from "@/components/campaigns/DialnexaConfigEditor";
 import { DEFAULT_ROUND, type RoundDraft, RoundEditor } from "@/components/campaigns/RoundEditor";
 import { StepsBar } from "@/components/campaigns/StepsBar";
+import HowToCreateButton from "@/components/HowToCreateButton";
 import { showErrorToast } from "@/components/shared/TierLimitToast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -553,17 +554,20 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             Supports up to {tierConfig.maxRounds} interview stages per role.
           </p>
         </div>
-        {onCancel && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onCancel}
-            className="h-9 gap-1.5 rounded-full text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted"
-          >
-            <X className="h-4 w-4" />
-            Exit Setup
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <HowToCreateButton target="_blank" />
+          {onCancel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCancel}
+              className="h-9 gap-1.5 rounded-full text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted"
+            >
+              <X className="h-4 w-4" />
+              Exit Setup
+            </Button>
+          )}
+        </div>
       </div>
 
       <StepsBar step={step} />
@@ -839,35 +843,37 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
               )}
             </div>
 
-            <div className="pt-4 border-t border-border space-y-2">
-              <div className="flex items-center gap-2">
-                <Layers className="h-4 w-4 text-primary" />
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground">
-                  Automated Candidate Communication Cadence
-                </h4>
+            <div className="pt-5 border-t border-border space-y-3.5">
+              <div className="space-y-1.5 text-center">
+                <div className="flex items-center justify-center gap-2">
+                  <Layers className="h-4 w-4 text-primary shrink-0" />
+                  <h4 className="text-sm font-semibold tracking-normal text-foreground">
+                    Automated Candidate Communication Cadence
+                  </h4>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl mx-auto">
+                  This communication sequence repeats <strong>for each round</strong>. When a
+                  candidate passes the AI interview, they are automatically advanced to the next
+                  round, and this cadence restarts from Day 0 to invite them to the human interview
+                  or assignment.
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                This communication sequence repeats <strong>for each round</strong>. When a
-                candidate passes the AI interview, they are automatically advanced to the next
-                round, and this cadence restarts from Day 0 to invite them to the human interview or
-                assignment.
-              </p>
               {durationDays !== null && (
-                <div className="flex items-center justify-between rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2.5 text-xs text-primary">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 shrink-0" />
-                    <span>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 rounded-xl bg-primary/10 border border-primary/20 px-4 py-3 text-xs text-primary text-center">
+                  <div className="flex flex-wrap items-center justify-center gap-2 text-center">
+                    <Calendar className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="leading-relaxed">
                       Cadence automatically tailored to your <strong>{durationDays}-day</strong>{" "}
                       campaign duration.
                       {durationDays < 6 ? (
-                        <span className="text-muted-foreground ml-1">
+                        <span className="text-muted-foreground ml-1.5 inline-block">
                           (Reminders past Day {durationDays - 1} have been excluded to fit your
                           timeline)
                         </span>
                       ) : null}
                     </span>
                   </div>
-                  <span className="font-mono text-[11px] font-semibold bg-primary/20 px-2 py-0.5 rounded-md shrink-0">
+                  <span className="font-mono text-[11px] font-semibold bg-primary/20 px-2.5 py-1 rounded-md shrink-0 whitespace-nowrap">
                     {durationDays} {durationDays === 1 ? "day window" : "days window"}
                   </span>
                 </div>

@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { CampaignCreateWizard } from "@/components/campaigns/CampaignCreateWizard";
+import HowToCreateButton from "@/components/HowToCreateButton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
 import {
@@ -177,38 +178,41 @@ function CampaignsContent() {
     <div className="space-y-6">
       {/* Top Tab Bar: Merged Campaigns & New Campaign */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
-        <div className="flex items-center gap-2 rounded-full bg-accent/60 p-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab("list")}
-            className={cn(
-              "flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
-              activeTab === "list"
-                ? "bg-card text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <FolderKanban className="h-3.5 w-3.5" />
-            <span>All Campaigns</span>
-            {rows.length > 0 && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.2 text-[10px] font-bold text-primary">
-                {rows.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={handleNewCampaign}
-            className={cn(
-              "flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
-              activeTab === "new"
-                ? "bg-primary text-white shadow-xs"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>New Campaign</span>
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 rounded-full bg-accent/60 p-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab("list")}
+              className={cn(
+                "flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
+                activeTab === "list"
+                  ? "bg-card text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <FolderKanban className="h-3.5 w-3.5" />
+              <span>All Campaigns</span>
+              {rows.length > 0 && (
+                <span className="rounded-full bg-primary/10 px-2 py-0.2 text-[10px] font-bold text-primary">
+                  {rows.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleNewCampaign}
+              className={cn(
+                "flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
+                activeTab === "new"
+                  ? "bg-primary text-white shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>New Campaign</span>
+            </button>
+          </div>
+          <HowToCreateButton />
         </div>
 
         {activeTab === "list" && (
