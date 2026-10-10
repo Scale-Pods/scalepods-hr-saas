@@ -18,6 +18,12 @@ export const campaignRoundSchema = z.object({
   daily_end_time: z.string().optional().nullable(),
   brief_text: z.string().optional().nullable(),
   assignment_deadline_hours: z.number().int().min(1).max(168).optional().nullable(),
+  duration_minutes: z.number().int().min(1).optional().nullable(),
+  buffer_minutes: z.number().int().min(0).optional().nullable(),
+  booking_window_days: z.number().int().min(1).optional().nullable(),
+  assigned_team_member_id: z.string().uuid().optional().nullable(),
+  questions: z.array(z.any()).optional().nullable(),
+  evaluation_criteria: z.array(z.any()).optional().nullable(),
 });
 
 export const cadenceChannelSchema = z.enum(["email", "whatsapp", "voice_call"]);
@@ -142,6 +148,17 @@ export const campaignCreateSchema = z.object({
   account_id: z.string().uuid(),
   name: z.string().min(1).max(240),
   jd_text: z.string().min(1),
+  location: z.string().optional().default("Remote"),
+  work_arrangement: z.enum(["remote", "hybrid", "onsite"]).optional().default("remote"),
+  opening_date: z.string().optional(),
+  closing_date: z.string().optional(),
+  number_of_openings: z.number().int().min(1).optional().default(1),
+  salary_min: z.number().optional().nullable(),
+  salary_max: z.number().optional().nullable(),
+  salary_currency: z.string().optional().nullable(),
+  salary_period: z.enum(["annual", "monthly", "hourly"]).optional().nullable(),
+  start_date: z.string().optional().nullable(),
+  end_date: z.string().optional().nullable(),
   number_of_rounds: z.number().int().min(1).max(6),
   rounds: z.array(campaignRoundSchema),
   cadence_config: cadenceConfigSchema,
@@ -346,6 +363,7 @@ export const bookingContextSchema = z.object({
     cutoff_score: z.number().nullable(),
     daily_start_time: z.string().nullable(),
     daily_end_time: z.string().nullable(),
+    duration_minutes: z.number().int().min(1).nullable(),
   }),
   account: z.object({
     tier: z.enum(["free", "basic", "growth", "enterprise"]),
@@ -432,3 +450,63 @@ export const availableSlotsSchema = z.object({
 });
 
 export type AvailableSlots = z.infer<typeof availableSlotsSchema>;
+
+// ---------------------------------------------------------------- applications & hiring
+
+export const applicationIntakeSchema = z.object({
+  campaign_id: z.string().uuid(),
+  candidate_name: z.string().min(1, "Candidate name is required"),
+  candidate_email: z.string().email("Valid email is required"),
+  candidate_phone: z.string().optional().nullable(),
+  resume_path: z.string().min(1, "Resume file is required"),
+  resume_text: z.string().min(1, "Resume text could not be extracted").max(40000),
+  whatsapp_opt_in: z.boolean().default(false),
+});
+
+export type ApplicationIntakePayload = z.infer<typeof applicationIntakeSchema>;
+
+export const applicationDecisionSchema = z.object({
+  application_id: z.string().uuid(),
+  action: z.enum(["advance", "reject", "hold", "resume"]),
+  rejection_reason: z.string().optional().nullable(),
+  confirm_rejection: z.boolean().default(false),
+});
+
+export type ApplicationDecisionPayload = z.infer<typeof applicationDecisionSchema>;
+
+export const updateApplicationContactSchema = z.object({
+  application_id: z.string().uuid(),
+  candidate_name: z.string().min(1, "Candidate name is required"),
+  candidate_email: z.string().email("Valid email is required"),
+  candidate_phone: z.string().optional().nullable(),
+  whatsapp_opt_in: z.boolean().default(false),
+});
+
+export type UpdateApplicationContactPayload = z.infer<typeof updateApplicationContactSchema>;
+
+export const offerRequestSchema = z.object({
+  campaign_id: z.string().uuid(),
+  application_id: z.string().uuid(),
+  // Omitted selects the workspace's first active company SignWell template.
+  template_id: z.string().uuid().optional(),
+  candidate_email: z.string().email().optional(),
+  company_signer_email: z.string().email().optional(),
+  field_values: z.record(z.unknown()).default({}),
+});
+
+export type OfferRequestPayload = z.infer<typeof offerRequestSchema>;
+
+export const interviewerFeedbackSubmissionSchema = z.object({
+  token: z.string().min(1),
+  criteria_scores: z.array(
+    z.object({
+      name: z.string(),
+      score: z.number().min(1).max(100),
+      comment: z.string().optional(),
+    }),
+  ),
+  overall_score: z.number().min(1).max(100),
+  notes: z.string().optional().nullable(),
+});
+
+export type InterviewerFeedbackSubmission = z.infer<typeof interviewerFeedbackSubmissionSchema>;

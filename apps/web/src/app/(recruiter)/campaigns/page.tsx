@@ -66,7 +66,7 @@ function CampaignsContent() {
     searchParams.get("tab") === "new" || searchParams.get("create") === "true" ? "new" : "list";
   const [activeTab, setActiveTab] = useState<"list" | "new">("list");
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [campaignToDelete, setCampaignToDelete] = useState<CampaignListItem | null>(null);
@@ -77,8 +77,8 @@ function CampaignsContent() {
 
   const rows = campaigns ?? [];
 
-  const activeCount = rows.filter((c) => c.status === "on").length;
-  const pausedCount = rows.filter((c) => c.status !== "on").length;
+  const openCount = rows.filter((c) => c.status === "open").length;
+  const closedCount = rows.filter((c) => c.status === "closed").length;
 
   const tier = account?.tier ?? "free";
   const tierConfig = TIER_LIMITS[tier];
@@ -86,7 +86,7 @@ function CampaignsContent() {
   const checkCampaignLimit = (): boolean => {
     const limit = tierConfig.activeCampaigns;
     if (limit === null) return true;
-    if (activeCount < limit) return true;
+    if (openCount < limit) return true;
     if (tierConfig.overageBehavior === "metered") {
       showToast(`Over your included ${limit} active campaigns - extra usage will be billed.`, {
         kind: "info",
@@ -94,7 +94,7 @@ function CampaignsContent() {
       return true;
     }
     showErrorToast(
-      `Your ${tierConfig.label} plan allows up to ${limit} active campaigns. Please pause an existing campaign or upgrade your plan.`,
+      `Your ${tierConfig.label} plan allows up to ${limit} open campaigns. Close an existing campaign or upgrade your plan.`,
     );
     return false;
   };
@@ -124,8 +124,8 @@ function CampaignsContent() {
 
       const matchesStatus =
         statusFilter === "all" ||
-        (statusFilter === "active" && c.status === "on") ||
-        (statusFilter === "paused" && c.status !== "on");
+        (statusFilter === "open" && c.status === "open") ||
+        (statusFilter === "closed" && c.status === "closed");
 
       return matchesSearch && matchesStatus;
     });
@@ -137,15 +137,15 @@ function CampaignsContent() {
     currentStatus: string,
   ) => {
     e?.stopPropagation();
-    const newStatus = currentStatus === "on" ? "paused" : "on";
-    if (newStatus === "on" && !checkCampaignLimit()) return;
+    const newStatus = currentStatus === "open" ? "closed" : "open";
+    if (newStatus === "open" && !checkCampaignLimit()) return;
     setTogglingId(campaignId);
     try {
       const token = supabaseBrowser()
         ? (await supabaseBrowser().auth.getSession()).data.session?.access_token
         : undefined;
       await updateCampaignStatus(campaignId, newStatus, account?.id, token);
-      showToast(`Campaign ${newStatus === "on" ? "activated" : "deactivated"}`, {
+      showToast(newStatus === "open" ? "Campaign opened" : "Campaign closed", {
         kind: "success",
       });
       await refetch();
@@ -289,7 +289,7 @@ function CampaignsContent() {
 
               {/* Status filter pills */}
               <div className="flex items-center rounded-full bg-accent/60 p-0.5 text-xs">
-                {(["all", "active", "paused"] as const).map((sf) => (
+                {(["all", "open", "closed"] as const).map((sf) => (
                   <button
                     key={sf}
                     type="button"
@@ -303,9 +303,9 @@ function CampaignsContent() {
                   >
                     {sf === "all"
                       ? `All (${rows.length})`
-                      : sf === "active"
-                        ? `Active (${activeCount})`
-                        : `Paused (${pausedCount})`}
+                      : sf === "open"
+                        ? `Open (${openCount})`
+                        : `Closed (${closedCount})`}
                   </button>
                 ))}
               </div>
@@ -350,7 +350,7 @@ function CampaignsContent() {
                 Campaigns
               </span>
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-foreground">
-                {activeCount} active · {pausedCount} paused · {rows.length} total
+                {openCount} open · {closedCount} closed · {rows.length} total
               </span>
             </div>
           </div>
@@ -389,7 +389,7 @@ function CampaignsContent() {
             /* Reference-Matched Campaign Cards Grid */
             <div className="campaigns-grid">
               {filtered.map((c) => {
-                const isActive = c.status === "on";
+                const isActive = c.status === "open";
                 return (
                   // biome-ignore lint/a11y/useSemanticElements: interactive card container
                   <div
@@ -428,7 +428,7 @@ function CampaignsContent() {
                             className="status-dot"
                             style={{ background: isActive ? "#10b981" : "#64748b" }}
                           />
-                          {isActive ? "Active" : "Paused"}
+                          {isActive ? "Open" : "Closed"}
                         </span>
 
                         {/* biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation */}
@@ -438,7 +438,7 @@ function CampaignsContent() {
                             checked={isActive}
                             onCheckedChange={() => handleToggleStatus(undefined, c.id, c.status)}
                             disabled={togglingId === c.id}
-                            aria-label={`Toggle active state for ${c.name}`}
+                            aria-label={`Toggle open state for ${c.name}`}
                           />
                         </div>
                       </div>
@@ -537,18 +537,18 @@ function CampaignsContent() {
                         >
                           <Badge
                             className={cn(
-                              c.status === "on"
+                              c.status === "open"
                                 ? "bg-success/15 text-success"
                                 : "bg-fill-tertiary text-muted-foreground",
                             )}
                           >
-                            {c.status === "on" ? "Active" : "Paused"}
+                            {c.status === "open" ? "Open" : "Closed"}
                           </Badge>
                           <Switch
-                            checked={c.status === "on"}
+                            checked={c.status === "open"}
                             onCheckedChange={() => handleToggleStatus(undefined, c.id, c.status)}
                             disabled={togglingId === c.id}
-                            aria-label={`Toggle active state for ${c.name}`}
+                            aria-label={`Toggle open state for ${c.name}`}
                           />
                         </div>
                       </TableCell>

@@ -42,16 +42,24 @@ export async function fetchCampaigns(): Promise<CampaignListItem[]> {
 }
 
 export interface ViewCandidate {
+  application_id?: string;
   candidate_id: string;
   name: string | null;
   email: string;
   phone: string | null;
+  resume_url?: string | null;
   current_stage: string | null;
+  current_round_number?: number | null;
+  status?: string;
+  status_before_hold?: string | null;
+  rejection_reason?: string | null;
   latest_score: number | null;
+  score_rationale?: string | null;
   decision: string | null;
   round_instance_id?: string | null;
   round_number?: number;
   reviewer_cutoff?: number | null;
+  created_at?: string;
 }
 
 export interface CampaignDetail {
@@ -63,12 +71,19 @@ export interface CampaignDetail {
 
 export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
   const supabase = supabaseBrowser();
-  const [c, r, ris, statuses] = await Promise.all([
+  const [c, r, appsRes, ris, statuses] = await Promise.all([
     supabase.from("campaigns").select("*").eq("id", id).maybeSingle(),
     supabase.from("campaign_rounds").select("*").eq("campaign_id", id).order("round_number"),
     supabase
+      .from("applications")
+      .select("*")
+      .eq("campaign_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
       .from("round_instances")
-      .select("id,candidate_id,campaign_id,round_number,status,reviewer_cutoff,created_at")
+      .select(
+        "id,candidate_id,campaign_id,application_id,round_number,status,reviewer_cutoff,created_at",
+      )
       .eq("campaign_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -88,134 +103,92 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
     id: string;
     candidate_id: string;
     campaign_id: string;
+    application_id?: string | null;
     round_number: number;
     status: string;
     created_at: string;
+    reviewer_cutoff?: number | null;
   }[];
 
-  const candIds = Array.from(new Set(roundInstances.map((ri) => ri.candidate_id)));
-
-  // Also query storage for candidate resumes uploaded to this specific campaign
-  const campaignRow = (c.data as CampaignsRow) ?? null;
-  let storageEmails: string[] = [];
-  if (campaignRow?.account_id) {
-    try {
-      const { data: storageFiles } = await supabase.storage
-        .from("resumes")
-        .list(`${campaignRow.account_id}/${id}`, { limit: 1000 });
-      if (storageFiles && storageFiles.length > 0) {
-        storageEmails = storageFiles
-          .map((f) => {
-            try {
-              return decodeURIComponent(f.name).toLowerCase().trim();
-            } catch {
-              return f.name.toLowerCase().trim();
-            }
-          })
-          .filter((name) => name.includes("@"));
-      }
-    } catch {
-      // Storage listing optional fallback
-    }
-  }
+  const applicationsList = (appsRes.data ?? []) as any[];
 
   let candidates: ViewCandidate[] = [];
-  if (candIds.length > 0 || storageEmails.length > 0) {
-    let candsQuery = supabase.from("candidates").select("id,name,email,phone");
 
-    if (campaignRow?.account_id) {
-      candsQuery = candsQuery.eq("account_id", campaignRow.account_id);
-    }
-
-    const candsRes = await candsQuery;
-    const allAccountCands = (candsRes.data ?? []) as {
-      id: string;
-      name: string | null;
-      email: string;
-      phone: string | null;
-    }[];
-
-    const storageSet = new Set(storageEmails);
-    const candIdSet = new Set(candIds);
-
-    const candsList = allAccountCands.filter((cand) => {
-      if (candIdSet.has(cand.id)) return true;
-      const em = cand.email?.toLowerCase().trim();
-      return em && storageSet.has(em);
-    });
-
-    const allCandIds = candsList.map((cand) => cand.id);
-    let dlQuery = supabase
+  if (applicationsList.length > 0) {
+    const appIds = applicationsList.map((a) => a.id);
+    const { data: dlData } = await supabase
       .from("decision_ledger")
-      .select("id,candidate_id,round_instance_id,stage,score,created_at")
-      .in("candidate_id", allCandIds)
+      .select("application_id,candidate_id,score,score_type,rationale,decided_at,created_at")
+      .in("application_id", appIds)
       .order("created_at", { ascending: false });
 
-    if (campaignRow?.account_id) {
-      dlQuery = dlQuery.eq("account_id", campaignRow.account_id);
-    }
+    const dlList = (dlData ?? []) as any[];
 
-    const dlRes = allCandIds.length > 0 ? await dlQuery : { data: [] };
+    candidates = applicationsList.map((app) => {
+      const appScoreRow = dlList.find(
+        (d) => d.application_id === app.id && d.score_type === "resume" && d.score != null,
+      );
+      const appRi = roundInstances.find(
+        (r) =>
+          r.application_id === app.id ||
+          (r.candidate_id === app.candidate_id && r.round_number === app.current_round_number),
+      );
 
-    const dlList = (dlRes.data ?? []) as unknown as {
-      id: string;
-      candidate_id: string;
-      round_instance_id: string | null;
-      stage: string;
-      score: number | null;
-      created_at: string;
-    }[];
-
-    const thisCampaignRiIds = new Set(roundInstances.map((ri) => ri.id));
-
-    candidates = candsList.map((cand) => {
-      const candRi = roundInstances.find((r) => r.candidate_id === cand.id);
-      const candDls = dlList.filter((d) => d.candidate_id === cand.id);
-
-      // 1. Direct round_instance match
-      let candDl = candRi ? candDls.find((d) => d.round_instance_id === candRi.id) : null;
-
-      // 2. Resume screening match (round_instance_id is null or belongs to this campaign)
-      if (!candDl) {
-        const resumeDls = candDls.filter(
-          (d) => !d.round_instance_id || thisCampaignRiIds.has(d.round_instance_id),
-        );
-        if (candRi && resumeDls.length > 0) {
-          const riTime = new Date(candRi.created_at).getTime();
-          // Pick the resume screening closest in time to this campaign's round instance
-          candDl = resumeDls.reduce((best, curr) => {
-            const bestDiff = Math.abs(new Date(best.created_at).getTime() - riTime);
-            const currDiff = Math.abs(new Date(curr.created_at).getTime() - riTime);
-            return currDiff < bestDiff ? curr : best;
-          }, resumeDls[0]);
-        } else {
-          candDl = resumeDls[0] || null;
-        }
-      }
-
-      let stage = candDl?.stage;
-      if (!stage || stage === "round_undefined") {
-        stage = candRi ? `Round ${candRi.round_number}` : "Resume screening";
-      } else if (stage.toLowerCase().includes("resume")) {
-        stage = "Resume screening";
-      } else if (stage.startsWith("round_")) {
-        stage = `Round ${stage.replace("round_", "")}`;
+      let stageLabel = "Resume Screening";
+      if (app.current_stage === "round") {
+        stageLabel = `Round ${app.current_round_number ?? 1}`;
+      } else if (app.current_stage === "offer") {
+        stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
       }
 
       return {
-        candidate_id: cand.id,
-        name: cand.name,
-        email: cand.email,
-        phone: cand.phone,
-        current_stage: stage,
-        latest_score: candDl?.score != null ? Number(candDl.score) : null,
-        decision: candRi?.status ?? null,
-        round_instance_id: candRi?.id ?? null,
-        round_number: candRi?.round_number ?? 1,
-        reviewer_cutoff:
-          (candRi as unknown as { reviewer_cutoff?: number | null })?.reviewer_cutoff ?? null,
+        application_id: app.id,
+        candidate_id: app.candidate_id,
+        name: app.candidate_name,
+        email: app.candidate_email,
+        phone: app.candidate_phone,
+        resume_url: app.resume_path,
+        current_stage: stageLabel,
+        current_round_number: app.current_round_number,
+        status: app.status,
+        status_before_hold: app.status_before_hold,
+        rejection_reason: app.rejection_reason,
+        latest_score: appScoreRow?.score != null ? Number(appScoreRow.score) : null,
+        score_rationale: appScoreRow?.rationale ?? null,
+        decision: app.status === "rejected" ? "rejected" : (appRi?.status ?? app.status),
+        round_instance_id: appRi?.id ?? null,
+        round_number: app.current_round_number ?? appRi?.round_number ?? 1,
+        reviewer_cutoff: appRi?.reviewer_cutoff ?? null,
+        created_at: app.created_at,
       };
     });
+  } else {
+    // Legacy fallback for pre-application campaigns
+    const candIds = Array.from(new Set(roundInstances.map((ri) => ri.candidate_id)));
+    if (candIds.length > 0) {
+      const { data: candsData } = await supabase
+        .from("candidates")
+        .select("id,name,email,phone,resume_url")
+        .in("id", candIds);
+
+      const allCands = (candsData ?? []) as any[];
+      candidates = allCands.map((cand) => {
+        const candRi = roundInstances.find((r) => r.candidate_id === cand.id);
+        return {
+          candidate_id: cand.id,
+          name: cand.name,
+          email: cand.email,
+          phone: cand.phone,
+          resume_url: cand.resume_url,
+          current_stage: candRi ? `Round ${candRi.round_number}` : "Resume Screening",
+          latest_score: null,
+          decision: candRi?.status ?? "active",
+          round_instance_id: candRi?.id ?? null,
+          round_number: candRi?.round_number ?? 1,
+          reviewer_cutoff: candRi?.reviewer_cutoff ?? null,
+        };
+      });
+    }
   }
 
   return {
@@ -226,18 +199,52 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
   };
 }
 
+export async function decideApplication(params: {
+  applicationId: string;
+  action: "advance" | "reject" | "hold" | "resume";
+  rejectionReason?: string | null;
+}): Promise<any> {
+  const supabase = supabaseBrowser();
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Sign in to change this application.");
+
+  const response = await fetch("/api/applications/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      operation: "decision",
+      application_id: params.applicationId,
+      action: params.action,
+      rejection_reason: params.rejectionReason ?? null,
+      confirm_rejection: params.action === "reject",
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Could not update the application.");
+  return result;
+}
+
 export async function reviewCandidateRound(params: {
   roundInstanceId: string;
   reviewerCutoff: number;
   decision?: "passed" | "failed";
   campaignId: string;
   candidateId: string;
+  applicationId?: string;
   roundNumber?: number;
   numberOfRounds?: number;
   score?: number | null;
   accountId?: string;
   accessToken?: string;
 }): Promise<void> {
+  if (params.applicationId) {
+    await decideApplication({
+      applicationId: params.applicationId,
+      action: params.decision === "failed" ? "reject" : "advance",
+    });
+    return;
+  }
   const supabase = supabaseBrowser();
   const decision =
     params.decision ??
@@ -277,16 +284,14 @@ export async function reviewCandidateRound(params: {
 
 export async function updateCampaignStatus(
   campaignId: string,
-  newStatus: string,
+  newStatus: "open" | "closed",
   accountId?: string,
   accessToken?: string,
 ): Promise<void> {
-  const normalizedStatus =
-    newStatus === "off" || newStatus === "paused" || newStatus === "inactive" ? "paused" : "on";
   const supabase = supabaseBrowser();
   const { error } = await supabase
     .from("campaigns")
-    .update({ status: normalizedStatus })
+    .update({ status: newStatus })
     .eq("id", campaignId);
   if (error) throw error;
 
@@ -297,7 +302,7 @@ export async function updateCampaignStatus(
           action: "update",
           account_id: accountId,
           campaign_id: campaignId,
-          status: normalizedStatus,
+          status: newStatus,
         },
         accessToken,
       });

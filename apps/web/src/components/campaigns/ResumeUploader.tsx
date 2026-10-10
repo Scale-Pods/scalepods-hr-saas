@@ -4,13 +4,13 @@ import type { CampaignsRow } from "@scalepods/core";
 import { useState } from "react";
 import { showErrorToast } from "@/components/shared/TierLimitToast";
 import { Button } from "@/components/ui/button";
+import { extractTextFromFile } from "@/lib/extract-text";
 import { parseResumeContact } from "@/lib/parse-resume";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { callWorkflow } from "@/lib/webhooks";
 import { type DropFile, UploadDropzone } from "./UploadDropzone";
 
-/** Submit a batch of resumes to workflow 1 and surface per-file progress. */
+/** Upload resume files and submit application intake through the n8n gateway. */
 export function ResumeUploader({
   campaign,
   accountId,
@@ -56,6 +56,10 @@ export function ResumeUploader({
       showErrorToast("This campaign has no JD yet — add one before screening resumes.");
       return;
     }
+    if (files.some((f) => f.status === "rejected")) {
+      showErrorToast("Remove invalid files before adding candidates.");
+      return;
+    }
     const missing = files.find((f) => !f.email?.trim());
     if (missing) {
       showErrorToast(
@@ -73,33 +77,51 @@ export function ResumeUploader({
     }
 
     setUploading(true);
-    const jdText = campaign.jd_text;
     try {
       await Promise.all(
         files.map(async (row, i) => {
           patch(i, { status: "uploading", note: "Uploading…" });
-          const form = new FormData();
-          form.append("resume_file", row.file);
-          form.append("account_id", accountId);
-          form.append("campaign_id", campaign.id);
-          form.append("jd_text", jdText);
-          form.append("candidate_email", row.email ?? "");
-          form.append("candidate_name", row.name ?? row.file.name.replace(/\.[^.]+$/, ""));
-          form.append("candidate_phone", row.phone ?? "");
-          form.append("resume_cutoff", "0");
           try {
-            await callWorkflow("candidate-intake", { formData: form, accessToken });
-            patch(i, { status: "screening", note: "Screening…" });
-            // Score polling needs the candidate's email; without it the
-            // backend still screens the file (it re-extracts contact info
-            // server-side) but we can't track the score here.
-            if (row.email?.trim()) {
-              await pollForScore(row.email, (score, _note) => {
-                if (score != null) patch(i, { status: "done", note: `Scored ${score}` });
-              });
-            } else {
-              patch(i, { status: "done", note: "Submitted for screening" });
+            const extracted = await extractTextFromFile(row.file);
+            if ("error" in extracted || !extracted.text.trim()) {
+              throw new Error(
+                "Could not extract resume text for screening. Upload a text-based PDF, DOCX, or TXT resume.",
+              );
             }
+            const supabase = supabaseBrowser();
+            const filePath = `${accountId}/${campaign.id}/${Date.now()}_${encodeURIComponent(row.file.name)}`;
+            const { error: uploadErr } = await supabase.storage
+              .from("resumes")
+              .upload(filePath, row.file, { upsert: true });
+
+            if (uploadErr) {
+              throw uploadErr;
+            }
+
+            const intakeRes = await fetch("/api/applications/intake", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+              },
+              body: JSON.stringify({
+                campaign_id: campaign.id,
+                candidate_name: row.name ?? row.file.name.replace(/\.[^.]+$/, ""),
+                candidate_email: row.email,
+                candidate_phone: row.phone || null,
+                resume_path: filePath,
+                resume_text: extracted.text.slice(0, 40000),
+                whatsapp_opt_in: false,
+              }),
+            });
+
+            if (!intakeRes.ok) {
+              const errJson = await intakeRes.json().catch(() => ({}));
+              await supabase.storage.from("resumes").remove([filePath]);
+              throw new Error(errJson.error || "Failed to create application");
+            }
+
+            patch(i, { status: "done", note: "Resume scored; ready for recruiter review" });
           } catch (err) {
             patch(i, { status: "error", note: err instanceof Error ? err.message : "Failed" });
           }
@@ -128,7 +150,9 @@ export function ResumeUploader({
           onClick={() => void uploadAll()}
           disabled={uploading || files.length === 0}
         >
-          {uploading ? "Scoring…" : `Score ${files.length} file${files.length === 1 ? "" : "s"}`}
+          {uploading
+            ? "Adding candidates…"
+            : `Add ${files.length} candidate${files.length === 1 ? "" : "s"}`}
         </Button>
       </div>
       <div className="mt-3 space-y-1.5">
@@ -181,42 +205,4 @@ function StatusPill({ f }: { f: DropFile }) {
   if (f.status === "rejected")
     return <span className="text-xs font-medium text-destructive">Rejected</span>;
   return <span className={cn("text-xs text-label-secondary")}>{f.note ?? f.status}</span>;
-}
-
-/** Poll `decision_ledger` for the resume score of a freshly screened candidate. */
-async function pollForScore(
-  email: string,
-  onProgress: (score: number | null, note: string) => void,
-): Promise<void> {
-  const supabase = supabaseBrowser();
-  const deadline = Date.now() + 120_000;
-  const e = email.trim().toLowerCase();
-  while (Date.now() < deadline) {
-    const { data } = await supabase.from("candidates").select("id").eq("email", e).maybeSingle();
-    if (data?.id) {
-      const { data: rows } = await (supabase.from("decision_ledger") as any)
-        .select("stage,score,rationale,created_at")
-        .eq("candidate_id", data.id)
-        .order("created_at", { ascending: false });
-
-      const latest =
-        (
-          (rows ?? []) as any[] as {
-            stage: string;
-            score: number | null;
-            rationale: string | null;
-          }[]
-        ).find(
-          (r) =>
-            r.stage.toLowerCase().includes("resume") || r.stage.toLowerCase().includes("screen"),
-        ) || rows?.[0];
-
-      if (latest && latest.score != null) {
-        onProgress(latest.score, latest.rationale ?? "");
-        return;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 4000));
-  }
-  onProgress(null, "Timed out");
 }

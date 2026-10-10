@@ -50,7 +50,7 @@ export function useToggleCampaignStatus(
   accessToken: string | undefined,
 ) {
   const queryClient = useQueryClient();
-  const nextStatus = currentStatus === "on" ? "paused" : "on";
+  const nextStatus = currentStatus === "open" ? "closed" : "open";
   return useMutation({
     mutationFn: () => {
       if (!accountId) throw new Error("Account not loaded");
@@ -73,7 +73,7 @@ export function useUpdateCampaignStatus() {
       accessToken,
     }: {
       campaignId: string;
-      newStatus: "on" | "paused" | "off";
+      newStatus: "open" | "closed";
       accountId?: string;
       accessToken?: string;
     }) => updateCampaignStatus(campaignId, newStatus, accountId, accessToken),

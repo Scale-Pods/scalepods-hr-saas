@@ -18,4 +18,25 @@ test-results/
 *.log
 npm-debug.log*
 reference/
-n8n/
+n8n/*
+!n8n/9 - Campaign Admin.json
+!n8n/14 - Application Intake v2.json
+!n8n/14 - Application Intake & Resume Screening.json
+!n8n/15 - Application Commands v2.json
+!n8n/6 - AI Interview Engine.json
+!n8n/16 - Resume Screening.json
+!n8n/2 - Round Engine (recursive).json
+!n8n/3 - Booking & Availability.json
+!n8n/4 - Notification Dispatch (sub-workflow).json
+!n8n/10 - Interviewer & Team Onboarding.json
+!n8n/13 - AI Voice Screening (Vapi).json
+!n8n/17 - Offer SignWell Dispatch.json
+!n8n/18 - Outbox Delivery Worker.json
+!n8n/19 - Interviewer Calendar OAuth.json
+!n8n/20 - Retention Purge Worker.json
+!n8n/21 - Assignment Evaluation.json
+!n8n/22 - Calendar Availability.json
+.temp/
+supabase/.temp/
+!n8n/1 - Intake & Screening.json
+!n8n/8 - Offer Letter Generation.json

@@ -96,7 +96,7 @@ export default function AssignmentPage() {
         text,
         filePaths,
       );
-      void scoreAssignment(roundInstanceId, submissionId);
+      void scoreAssignment(roundInstanceId, submissionId, token);
       setSubmitted(true);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Submission failed");

@@ -1,33 +1,20 @@
 "use client";
 
-import { type CalendarConnectionRow, type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
-import { Calendar, ExternalLink, Mail, MessageSquare, Phone } from "lucide-react";
+import { type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
+import { Mail, MessageSquare, Phone } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAccount } from "@/features/account/hooks";
 import { useSession } from "@/features/auth/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
-import { callWorkflow, workflowUrl } from "@/lib/webhooks";
-
-const STATUS_TONE: Record<
-  string,
-  { variant: "default" | "secondary" | "destructive"; className?: string }
-> = {
-  not_connected: { variant: "secondary" },
-  pending: { variant: "secondary", className: "bg-warning/10 text-warning" },
-  active: { variant: "secondary", className: "bg-success/10 text-success" },
-  degraded: { variant: "secondary", className: "bg-warning/10 text-warning" },
-  revoked: { variant: "destructive" },
-};
+import { callWorkflow } from "@/lib/webhooks";
 
 export default function SettingsPage() {
   return (
@@ -51,7 +38,9 @@ function SettingsPageInner() {
   const tier = (account?.tier ?? "free") as keyof typeof TIER_LIMITS;
   const t = TIER_LIMITS[tier];
 
-  const [cal, setCal] = useState<CalendarConnectionRow | null>(null);
+  const [calendarByMember, setCalendarByMember] = useState<
+    Record<string, { status: string; google_email: string | null }>
+  >({});
   const [members, setMembers] = useState<TeamMemberRow[]>([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -84,10 +73,21 @@ function SettingsPageInner() {
   const load = useCallback(async () => {
     const supabase = supabaseBrowser();
     const [calRes, memberRes] = await Promise.all([
-      supabase.from("calendar_connections").select("*").maybeSingle(),
+      supabase
+        .from("interviewer_calendar_connections")
+        .select("team_member_id,status,google_email"),
       supabase.from("team_members").select("*").order("name"),
     ]);
-    if (!calRes.error && calRes.data) setCal(calRes.data as CalendarConnectionRow);
+    if (!calRes.error && calRes.data) {
+      setCalendarByMember(
+        Object.fromEntries(
+          calRes.data.map((row) => [
+            row.team_member_id,
+            { status: row.status, google_email: row.google_email },
+          ]),
+        ),
+      );
+    }
     if (!memberRes.error && memberRes.data) setMembers(memberRes.data as TeamMemberRow[]);
   }, []);
 
@@ -105,9 +105,24 @@ function SettingsPageInner() {
     }
   }, [calendarOutcome, load]);
 
-  const connectCalendar = () => {
-    if (!account?.id) return;
-    window.location.href = workflowUrl("calendar/oauth/start", { account_id: account.id });
+  const connectCalendar = async (teamMemberId: string) => {
+    if (!session?.access_token) return;
+    try {
+      const response = await fetch("/api/calendar/authorize", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ team_member_id: teamMemberId }),
+      });
+      const result = await response.json();
+      if (!response.ok || typeof result.authorization_url !== "string")
+        throw new Error(result.error || "Could not start Google authorization.");
+      window.location.assign(result.authorization_url);
+    } catch (error) {
+      showErrorToast(error);
+    }
   };
 
   const savePrefs = async () => {
@@ -183,9 +198,6 @@ function SettingsPageInner() {
     }
   };
 
-  const calStatus = cal?.status ?? "not_connected";
-  const calMeta = STATUS_TONE[calStatus] ?? STATUS_TONE.not_connected;
-
   return (
     <div className="space-y-6">
       <PageHeader title="Settings" subtitle={`${t.label} plan`} />
@@ -230,50 +242,6 @@ function SettingsPageInner() {
         <Button className="mt-3" onClick={saveProfile} disabled={savingProfile}>
           {savingProfile ? "Saving..." : "Save workspace profile"}
         </Button>
-      </SectionCard>
-
-      <SectionCard
-        title="Calendar connection"
-        subtitle="One connected calendar per account, reused across every interview round."
-        action={
-          <Badge variant={calMeta.variant} className={cn("capitalize", calMeta.className)}>
-            {calStatus.replace(/_/g, " ")}
-          </Badge>
-        }
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="rounded-xl bg-accent p-2.5">
-              <Calendar className="h-5 w-5 text-primary" aria-hidden />
-            </span>
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {calStatus === "active"
-                  ? `Connected as ${cal?.google_email ?? "your Google account"}`
-                  : calStatus === "pending"
-                    ? "Connection in progress…"
-                    : "No calendar connected"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {calStatus === "not_connected"
-                  ? "Connect Google Calendar so candidates can book interview slots."
-                  : calStatus === "revoked"
-                    ? "The connection was revoked — reconnect to keep booking online."
-                    : calStatus === "degraded"
-                      ? "Calendar sync degraded — check Google permissions."
-                      : "Availability + slot booking run against this calendar."}
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            onClick={connectCalendar}
-            disabled={calStatus === "active" || calStatus === "pending"}
-          >
-            <ExternalLink className="h-4 w-4" aria-hidden />
-            {calStatus === "active" ? "Reconnect" : "Connect Google Calendar"}
-          </Button>
-        </div>
       </SectionCard>
 
       <SectionCard
@@ -337,7 +305,7 @@ function SettingsPageInner() {
 
       <SectionCard
         title="Team members"
-        subtitle="Interviewers you can assign to human interview rounds."
+        subtitle="Interviewers can connect their own primary Google Calendar for booking."
       >
         {members.length > 0 ? (
           <table className="w-full text-left text-sm">
@@ -346,6 +314,7 @@ function SettingsPageInner() {
                 <th className="py-2 pr-3 font-medium">Name</th>
                 <th className="py-2 pr-3 font-medium">Email</th>
                 <th className="py-2 font-medium">Role</th>
+                <th className="py-2 pr-3 font-medium">Google Calendar</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -354,6 +323,30 @@ function SettingsPageInner() {
                   <td className="py-2.5 pr-3 font-medium text-foreground">{m.name}</td>
                   <td className="py-2.5 pr-3 text-muted-foreground">{m.email}</td>
                   <td className="py-2.5 text-muted-foreground">{m.role ?? "—"}</td>
+                  <td className="py-2.5">
+                    {(() => {
+                      const connection = calendarByMember[m.id];
+                      const status = connection?.status ?? "not_connected";
+                      return (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs capitalize text-muted-foreground">
+                            {status === "active"
+                              ? connection.google_email || "Connected"
+                              : status.replace(/_/g, " ")}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void connectCalendar(m.id)}
+                            disabled={status === "pending" || !session?.access_token}
+                          >
+                            {status === "active" ? "Reconnect" : "Connect"}
+                          </Button>
+                        </div>
+                      );
+                    })()}
+                  </td>
                 </tr>
               ))}
             </tbody>

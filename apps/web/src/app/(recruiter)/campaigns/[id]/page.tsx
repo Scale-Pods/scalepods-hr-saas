@@ -10,10 +10,13 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Calendar,
   CheckCircle2,
   Clock,
+  DollarSign,
   Flame,
   Loader2,
+  MapPin,
   Mic,
   PhoneCall,
   PhoneOff,
@@ -21,6 +24,7 @@ import {
   Sliders,
   Sparkles,
   Trash2,
+  Users,
   Volume2,
   XCircle,
   Zap,
@@ -29,6 +33,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { DialnexaConfigEditor } from "@/components/campaigns/DialnexaConfigEditor";
+import { PipelineBoard } from "@/components/campaigns/PipelineBoard";
 import { ResumeUploader } from "@/components/campaigns/ResumeUploader";
 import { RoundStepper } from "@/components/campaigns/RoundStepper";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -355,7 +360,7 @@ export default function CampaignDetailPage() {
   const handleToggle = async () => {
     try {
       await toggleStatus.mutateAsync();
-      showToast(campaign?.status === "on" ? "Campaign deactivated" : "Campaign activated", {
+      showToast(campaign?.status === "open" ? "Campaign closed" : "Campaign opened", {
         kind: "success",
       });
     } catch (err) {
@@ -522,10 +527,10 @@ export default function CampaignDetailPage() {
         actions={
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-foreground">
-              {campaign.status === "on" ? "Active" : "Paused"}
+              {campaign.status === "open" ? "Open" : "Closed"}
             </span>
             <Switch
-              checked={campaign.status === "on"}
+              checked={campaign.status === "open"}
               onCheckedChange={handleToggle}
               disabled={toggleStatus.isPending}
               aria-label="Campaign status"
@@ -543,6 +548,70 @@ export default function CampaignDetailPage() {
           </div>
         }
       />
+
+      {/* Job Specifications & Retention Countdown */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-1">
+          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+            <MapPin className="h-3.5 w-3.5 text-primary" /> Location & Arrangement
+          </span>
+          <p className="text-xs font-semibold text-foreground">
+            {campaign.location || "Remote"} · {campaign.work_arrangement || "Full-time"}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-1">
+          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 text-cyan-500" /> Hiring Dates
+          </span>
+          <p className="text-xs font-semibold text-foreground">
+            {campaign.opening_date || "Today"} → {campaign.closing_date || "Open"}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-1">
+          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5 text-emerald-500" /> Openings & Capacity
+          </span>
+          <p className="text-xs font-semibold text-foreground">
+            {candidates.filter((c) => c.status === "offer_sent").length} of{" "}
+            {campaign.number_of_openings ?? 1} filled
+            {candidates.filter((c) => c.status === "offer_sent").length >=
+              (campaign.number_of_openings ?? 1) && (
+              <span className="text-[10px] text-amber-600 font-normal ml-1">
+                (Capacity reached)
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-1">
+          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+            <DollarSign className="h-3.5 w-3.5 text-purple-500" /> Compensation Range
+          </span>
+          <p className="text-xs font-semibold text-foreground">
+            {campaign.salary_min != null && campaign.salary_max != null
+              ? `${campaign.salary_currency || "$"}${Number(campaign.salary_min).toLocaleString()} - ${Number(campaign.salary_max).toLocaleString()} / ${campaign.salary_period || "yr"}`
+              : "Salary not disclosed"}
+          </p>
+        </div>
+      </div>
+
+      {campaign.status === "closed" && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2.5">
+          <Clock className="h-4 w-4 shrink-0" />
+          <span>
+            <strong>Job Closed & Retention Active:</strong> Retention snapshot is{" "}
+            <strong>{campaign.retention_days_snapshot ?? 30} days</strong>. Purge scheduled for{" "}
+            <strong>
+              {campaign.retention_purge_at
+                ? new Date(campaign.retention_purge_at).toLocaleDateString()
+                : "retention timer"}
+            </strong>
+            . Reopening the job pauses the timer.
+          </span>
+        </div>
+      )}
 
       <SectionCard title="Round pipeline" subtitle="Same cutoff-check engine for every round type">
         <RoundStepper
@@ -567,195 +636,19 @@ export default function CampaignDetailPage() {
         />
       </SectionCard>
 
+      {/* Recruiter Hiring Pipeline: Kanban & Table views */}
       <SectionCard
-        title="Bulk Candidate Outreach"
-        subtitle="Set a score threshold to manually advance and email qualifying candidates."
+        title="Candidate Hiring Pipeline"
+        subtitle={`${candidates.length} application${candidates.length === 1 ? "" : "s"} across all hiring stages · Dragging never changes stage`}
       >
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col gap-1.5 w-1/3">
-            <label htmlFor="score-threshold" className="text-sm font-medium">
-              Score Threshold (0-100)
-            </label>
-            <Input
-              id="score-threshold"
-              type="number"
-              min={0}
-              max={100}
-              value={bulkCutoff}
-              onChange={(e) => setBulkCutoff(Number(e.target.value))}
-            />
-          </div>
-          <div className="flex items-end h-[60px]">
-            <Button onClick={handleBulkAdvance} disabled={isBulkSending}>
-              {isBulkSending ? "Sending..." : "Send Interview Invites"}
-            </Button>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Post-Round Cutoff & Review"
-        subtitle={
-          awaitingReviewCandidates.length > 0
-            ? `${awaitingReviewCandidates.length} candidate${awaitingReviewCandidates.length === 1 ? "" : "s"} completed their round and require threshold evaluation.`
-            : "Thresholds are determined post-round. Candidates completing an interview or assignment will appear here for score review."
-        }
-        action={
-          awaitingReviewCandidates.length > 0 ? (
-            <Badge
-              variant="outline"
-              className="border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10 gap-1.5 px-2.5 py-1"
-            >
-              <Sliders className="h-3.5 w-3.5 text-amber-500" />
-              {awaitingReviewCandidates.length} Awaiting Review
-            </Badge>
-          ) : undefined
-        }
-      >
-        {awaitingReviewCandidates.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 p-5 text-center">
-            <p className="text-xs text-muted-foreground">
-              No candidates currently awaiting post-round review. As candidates complete rounds, you
-              will set cutoffs and evaluate pass/fail here.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-end justify-between gap-4 rounded-xl border border-border/80 bg-muted/20 p-4">
-              <div className="flex items-center gap-4">
-                <div className="space-y-1">
-                  <label
-                    htmlFor="post-round-cutoff"
-                    className="text-xs font-semibold text-foreground flex items-center gap-1.5"
-                  >
-                    <Sliders className="h-3.5 w-3.5 text-primary" />
-                    Review Cutoff Threshold (0–100)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="post-round-cutoff"
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={postRoundCutoff}
-                      onChange={(e) =>
-                        setPostRoundCutoff(Math.max(0, Math.min(100, Number(e.target.value))))
-                      }
-                      className="h-9 w-24 font-mono font-semibold text-center"
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      (
-                      {
-                        awaitingReviewCandidates.filter(
-                          (c) => (c.latest_score ?? 0) >= postRoundCutoff,
-                        ).length
-                      }{" "}
-                      of {awaitingReviewCandidates.length} qualify)
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                className="gap-1.5 text-xs font-semibold"
-                disabled={isApplyingCutoff}
-                onClick={handleApplyPostRoundCutoff}
-              >
-                {isApplyingCutoff ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                )}
-                {isApplyingCutoff
-                  ? "Applying Threshold..."
-                  : `Apply Cutoff & Advance Qualifying (${postRoundCutoff}+)`}
-              </Button>
-            </div>
-
-            <div className="rounded-xl border border-border/60 overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead className="text-xs font-semibold">Candidate</TableHead>
-                    <TableHead className="text-xs font-semibold">Stage / Round</TableHead>
-                    <TableHead className="text-xs font-semibold text-right">Score</TableHead>
-                    <TableHead className="text-xs font-semibold text-center">
-                      Cutoff Status
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold text-right">
-                      Decide & Advance
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {awaitingReviewCandidates.map((cand) => {
-                    const score = cand.latest_score ?? 0;
-                    const meetsCutoff = score >= postRoundCutoff;
-                    const isBusy = reviewingCandidateId === cand.candidate_id;
-
-                    return (
-                      <TableRow key={cand.candidate_id} className="hover:bg-muted/20">
-                        <TableCell>
-                          <p className="font-medium text-xs text-foreground">
-                            {cand.name || "Unnamed"}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">{cand.email}</p>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {cand.current_stage || `Round ${cand.round_number || 1}`}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-xs font-bold text-foreground">
-                          {cand.latest_score ?? "—"}/100
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px] font-semibold px-2 py-0.5",
-                              meetsCutoff
-                                ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/10 dark:text-emerald-400"
-                                : "border-rose-500/30 text-rose-600 bg-rose-500/10 dark:text-rose-400",
-                            )}
-                          >
-                            {meetsCutoff ? "Meets Cutoff" : "Below Cutoff"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={isBusy || isApplyingCutoff}
-                              className="h-7 px-2.5 text-xs font-semibold border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
-                              onClick={() => handleReviewCandidate(cand, "passed")}
-                            >
-                              {isBusy ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <CheckCircle2 className="h-3 w-3" />
-                              )}
-                              Pass
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={isBusy || isApplyingCutoff}
-                              className="h-7 px-2.5 text-xs font-semibold border-rose-500/40 text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-400"
-                              onClick={() => handleReviewCandidate(cand, "failed")}
-                            >
-                              <XCircle className="h-3 w-3" />
-                              Reject
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        )}
+        <PipelineBoard
+          campaign={campaign}
+          rounds={rounds}
+          candidates={candidates}
+          recruiterEmail={account?.email || session?.user?.email || "recruiter@scalepods.internal"}
+          accessToken={session?.access_token}
+          onRefresh={() => queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] })}
+        />
       </SectionCard>
 
       {!hasVoiceConfig ? (
@@ -959,123 +852,6 @@ export default function CampaignDetailPage() {
           )}
         </SectionCard>
       )}
-
-      <SectionCard title="Candidates" subtitle={`${candidates.length} in this campaign`}>
-        {candidates.length === 0 ? (
-          <EmptyState
-            title="No candidates yet"
-            hint="Upload resumes — each file kicks off screening and the candidate will appear here with a score."
-            className="py-6"
-          />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Stage</TableHead>
-                <TableHead className="text-right">Latest score</TableHead>
-                <TableHead>Decision</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {candidates.map((c) => (
-                <TableRow
-                  key={c.candidate_id}
-                  role="link"
-                  tabIndex={0}
-                  aria-label={`Open candidate ${c.name ?? c.email}`}
-                  onClick={() => router.push(`/candidates/${c.candidate_id}?campaignId=${id}`)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      router.push(`/candidates/${c.candidate_id}?campaignId=${id}`);
-                    }
-                  }}
-                  className="cursor-pointer group"
-                >
-                  <TableCell>
-                    <p className="font-medium text-foreground">{c.name || "Unnamed"}</p>
-                    <p className="text-xs text-muted-foreground">{c.email}</p>
-                    {c.phone && <p className="text-[11px] text-muted-foreground/80">{c.phone}</p>}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{c.current_stage ?? "—"}</TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {c.latest_score ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    <DecisionBadge decision={c.decision} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {c.decision === "awaiting_review" && c.round_instance_id && (
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
-                            disabled={reviewingCandidateId === c.candidate_id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleReviewCandidate(c, "passed");
-                            }}
-                          >
-                            Pass
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs border-rose-500/40 text-rose-600 hover:bg-rose-500/10 dark:text-rose-400"
-                            disabled={reviewingCandidateId === c.candidate_id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleReviewCandidate(c, "failed");
-                            }}
-                          >
-                            Reject
-                          </Button>
-                        </div>
-                      )}
-                      {hasVoiceConfig && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-xs gap-1 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
-                          title={
-                            c.phone
-                              ? `Call ${c.name || "candidate"} via DialNexa`
-                              : "No phone number available"
-                          }
-                          disabled={!c.phone || callingCandidateId === c.candidate_id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleTriggerVoiceCall(c);
-                          }}
-                        >
-                          {callingCandidateId === c.candidate_id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <PhoneCall className="h-3 w-3" />
-                          )}
-                          <span>
-                            {callingCandidateId === c.candidate_id ? "Calling..." : "Call"}
-                          </span>
-                        </Button>
-                      )}
-                      <Link
-                        href={`/candidates/${c.candidate_id}?campaignId=${id}`}
-                        className="text-xs font-semibold text-primary opacity-80 hover:opacity-100"
-                      >
-                        Open →
-                      </Link>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </SectionCard>
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>

@@ -15,7 +15,7 @@ interface CampaignListItem {
   name: string;
   jd_text: string | null;
   number_of_rounds: number;
-  status: "on" | "off";
+  status: CampaignsRow["status"];
   created_at: string;
   candidates: number;
 }
@@ -134,8 +134,8 @@ export function CampaignsPage() {
                         </p>
                       </td>
                       <td className="py-2.5 pr-3">
-                        <Badge tone={c.status === "on" ? "success" : "neutral"}>
-                          {c.status === "on" ? "Active" : "Paused"}
+                        <Badge tone={c.status === "open" || c.status === "on" ? "success" : "neutral"}>
+                          {c.status === "open" || c.status === "on" ? "Open" : "Closed"}
                         </Badge>
                       </td>
                       <td className="py-2.5 pr-3 tabular-nums text-muted-foreground">

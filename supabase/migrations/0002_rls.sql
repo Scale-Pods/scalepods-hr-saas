@@ -54,9 +54,8 @@ do $$
 declare t text;
 begin
   foreach t in array array[
-    'candidates','campaigns','campaign_rounds','round_instances','decision_ledger',
-    'credit_ledger','outreach_log','interview_sessions','interview_questions',
-    'interview_answers','scorecards','proctoring_events','audit_log','team_members',
+    'candidates','campaigns','round_instances','decision_ledger',
+    'credit_ledger','outreach_log','interview_sessions','audit_log','team_members',
     'calendar_events','assignment_submissions','candidate_access_tokens'
   ]
   loop
@@ -73,9 +72,25 @@ alter table calendar_connections enable row level security;
 create policy calendar_connections_isolation on calendar_connections
   for all using (account_id = auth.uid()) with check (account_id = auth.uid());
 
--- interview only needs scoping by session chain; RLS on the tables above covers
--- it, but question answers may include candidate content so keep the strict
--- tenant policy via session join. Re-enable explicitly:
+-- campaign_rounds inherits tenant isolation from campaigns.
+alter table campaign_rounds enable row level security;
+create policy tenant_isolation on campaign_rounds
+  for all using (
+    exists (
+      select 1 from campaigns c
+      where c.id = campaign_rounds.campaign_id
+        and c.account_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from campaigns c
+      where c.id = campaign_rounds.campaign_id
+        and c.account_id = auth.uid()
+    )
+  );
+
+-- interview questions, answers, scorecards, and proctoring events inherit tenant isolation from interview_sessions.
 alter table interview_questions enable row level security;
 create policy tenant_isolation on interview_questions
   for select using (
@@ -85,6 +100,7 @@ create policy tenant_isolation on interview_questions
         and s.account_id = auth.uid()
     )
   );
+
 alter table interview_answers enable row level security;
 create policy tenant_isolation on interview_answers
   for all using (
@@ -98,6 +114,40 @@ create policy tenant_isolation on interview_answers
     exists (
       select 1 from interview_sessions s
       where s.id = interview_answers.session_id
+        and s.account_id = auth.uid()
+    )
+  );
+
+alter table scorecards enable row level security;
+create policy tenant_isolation on scorecards
+  for all using (
+    exists (
+      select 1 from interview_sessions s
+      where s.id = scorecards.session_id
+        and s.account_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from interview_sessions s
+      where s.id = scorecards.session_id
+        and s.account_id = auth.uid()
+    )
+  );
+
+alter table proctoring_events enable row level security;
+create policy tenant_isolation on proctoring_events
+  for all using (
+    exists (
+      select 1 from interview_sessions s
+      where s.id = proctoring_events.session_id
+        and s.account_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from interview_sessions s
+      where s.id = proctoring_events.session_id
         and s.account_id = auth.uid()
     )
   );

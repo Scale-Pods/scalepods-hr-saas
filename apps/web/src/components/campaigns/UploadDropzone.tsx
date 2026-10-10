@@ -17,8 +17,9 @@ export interface DropFile {
   score?: number | null;
 }
 
-const ACCEPTED_RESUME = /\.(pdf|docx?|txt)$/i;
+const ACCEPTED_RESUME = /\.(pdf|docx)$/i;
 const ZIP_EXT = /\.zip$/i;
+const MAX_RESUME_BYTES = 10 * 1024 * 1024;
 
 /** Unzip a dropped ZIP and return the contained resume files as real File objects. */
 async function unzipResumes(zip: File): Promise<File[]> {
@@ -65,16 +66,31 @@ export function UploadDropzone({
       const next: DropFile[] = [];
       for (const file of Array.from(list)) {
         if (ZIP_EXT.test(file.name)) {
+          if (file.size > MAX_RESUME_BYTES) {
+            next.push({ file, status: "rejected", note: "ZIP file exceeds 10 MB" });
+            continue;
+          }
           try {
             const extracted = await unzipResumes(file);
             if (extracted.length === 0) {
               next.push({ file, status: "rejected", note: "No PDF/DOCX found in ZIP" });
             } else {
-              next.push(...extracted.map((f): DropFile => ({ file: f, status: "idle" })));
+              next.push(
+                ...extracted.map(
+                  (f): DropFile =>
+                    f.size > MAX_RESUME_BYTES
+                      ? { file: f, status: "rejected", note: "Resume exceeds 10 MB" }
+                      : { file: f, status: "idle" },
+                ),
+              );
             }
           } catch {
             next.push({ file, status: "rejected", note: "Could not read ZIP file" });
           }
+        } else if (!ACCEPTED_RESUME.test(file.name)) {
+          next.push({ file, status: "rejected", note: "Only PDF and DOCX resumes are accepted" });
+        } else if (file.size > MAX_RESUME_BYTES) {
+          next.push({ file, status: "rejected", note: "Resume exceeds 10 MB" });
         } else {
           next.push({ file, status: "idle" });
         }
@@ -127,7 +143,7 @@ export function UploadDropzone({
         id={inputId}
         ref={inputRef}
         type="file"
-        accept={accept ?? ".pdf,.doc,.docx,.txt,.zip"}
+        accept={accept ?? ".pdf,.docx,.zip"}
         multiple={multiple}
         className="sr-only"
         onChange={(e) => {

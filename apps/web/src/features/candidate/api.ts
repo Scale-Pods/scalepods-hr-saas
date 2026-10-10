@@ -72,6 +72,7 @@ export async function fetchAvailableSlots(
 
 export async function bookSlot(payload: {
   round_instance_id: string;
+  token: string;
   slot_start: string;
   slot_end: string;
   event_id?: string;
@@ -289,9 +290,10 @@ export async function insertAssignmentSubmission(
 export async function scoreAssignment(
   roundInstanceId: string,
   submissionId: string,
+  token: string,
 ): Promise<void> {
   const { callEdge } = await import("@/lib/edge");
   void callEdge("score-assignment", {
-    body: { round_instance_id: roundInstanceId, submission_id: submissionId },
+    body: { round_instance_id: roundInstanceId, submission_id: submissionId, token },
   }).catch(() => {});
 }

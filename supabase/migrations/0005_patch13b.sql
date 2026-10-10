@@ -101,10 +101,10 @@ declare v_camp campaigns%rowtype;
 declare v_cr campaign_rounds%rowtype;
 begin
   if not public.candidate_token_valid(p_token, 'session', p_session_id) then
-    raise exception 'invalid_link' using message='This interview link is invalid or has expired.';
+    raise exception 'invalid_link' using detail = 'This interview link is invalid or has expired.';
   end if;
   select * into v_sess from interview_sessions where id = p_session_id;
-  if not found then raise exception 'invalid_link' using message='Session not found.'; end if;
+  if not found then raise exception 'invalid_link' using detail = 'Session not found.'; end if;
   select * into v_ri from round_instances where id = v_sess.round_instance_id;
   select * into v_cand from candidates where id = v_sess.candidate_id;
   select * into v_camp from campaigns where id = v_ri.campaign_id;
@@ -154,11 +154,11 @@ declare v_account accounts%rowtype;
 declare v_booked jsonb;
 begin
   if not public.candidate_token_valid(p_token, 'booking', p_round_instance_id) then
-    raise exception 'invalid_link' using message='This booking link is invalid or has expired.';
+    raise exception 'invalid_link' using detail = 'This booking link is invalid or has expired.';
   end if;
 
   select * into v_ri from round_instances where id = p_round_instance_id;
-  if not found then raise exception 'invalid_link' using message='Round not found.'; end if;
+  if not found then raise exception 'invalid_link' using detail = 'Round not found.'; end if;
 
   select * into v_cand from candidates where id = v_ri.candidate_id;
   select * into v_camp from campaigns where id = v_ri.campaign_id;

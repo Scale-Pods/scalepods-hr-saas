@@ -1,7 +1,12 @@
 import {
+  type ApplicationsRow,
+  type AssignmentsRow,
+  type CampaignsRow,
   type CandidatesRow,
   type DecisionLedgerRow,
+  type InterviewerFeedbackRow,
   type InterviewSessionRow,
+  type OffersRow,
   type OutreachLogRow,
   type RoundInstancesRow,
   type ScorecardRow,
@@ -53,6 +58,8 @@ export interface VoiceScreenTranscriptItem {
 
 export interface CandidateProfile {
   candidate: CandidatesRow;
+  application?: ApplicationsRow | null;
+  campaign?: CampaignsRow | null;
   campaignName: string | null;
   selectedCampaignId?: string | null;
   candidateCampaigns: CandidateCampaignItem[];
@@ -63,6 +70,9 @@ export interface CandidateProfile {
   interviewTranscripts: InterviewTranscriptItem[];
   voiceScreenTranscripts: VoiceScreenTranscriptItem[];
   latestScorecard?: ScorecardRow | null;
+  assignments?: AssignmentsRow[];
+  interviewerFeedback?: InterviewerFeedbackRow[];
+  offers?: OffersRow[];
 }
 
 function roundNumberFromStage(stage: string): number | null {
@@ -93,7 +103,7 @@ export async function fetchCandidateProfile(
   }
 
   // 2. Fetch all candidate records strictly scoped to this account
-  const [ledger, rounds, sessions, logs] = await Promise.all([
+  const [ledger, rounds, sessions, logs, applicationsRes] = await Promise.all([
     supabase
       .from("decision_ledger")
       .select(
@@ -121,12 +131,18 @@ export async function fetchCandidateProfile(
       .eq("candidate_id", id)
       .eq("account_id", cand.account_id)
       .order("sent_at", { ascending: true }),
+    supabase
+      .from("applications")
+      .select("*")
+      .eq("candidate_id", id)
+      .eq("account_id", cand.account_id),
   ]);
 
   const allRoundRows = (rounds.data ?? []) as RoundInstancesRow[];
   const allSessionRows = (sessions.data ?? []) as unknown as InterviewSessionRow[];
   const allLedgerRows = (ledger.data ?? []) as DecisionLedgerRow[];
   const allOutreachLogs = (logs.data ?? []) as OutreachLogRow[];
+  const allApplications = (applicationsRes.data ?? []) as ApplicationsRow[];
 
   // 3. Resolve all campaigns this candidate belongs to within this account
   const campaignIdSet = new Set<string>(
@@ -607,17 +623,104 @@ export async function fetchCandidateProfile(
     Array.from(scorecardBySessionId.values())[0] ??
     null;
 
+  const matchedApplication =
+    allApplications.find((a) => a.campaign_id === activeCampaignId) || allApplications[0] || null;
+
+  let activeCampaignRow: CampaignsRow | null = null;
+  if (activeCampaignId) {
+    const { data: cRow } = await supabase
+      .from("campaigns")
+      .select("*")
+      .eq("id", activeCampaignId)
+      .maybeSingle();
+    activeCampaignRow = (cRow as CampaignsRow) || null;
+  }
+
+  let assignments: AssignmentsRow[] = [];
+  let interviewerFeedback: InterviewerFeedbackRow[] = [];
+  let offers: OffersRow[] = [];
+
+  if (matchedApplication?.id) {
+    const [assignRes, feedbackRes, offersRes] = await Promise.all([
+      supabase.from("assignments").select("*").eq("application_id", matchedApplication.id),
+      supabase.from("interviewer_feedback").select("*").eq("application_id", matchedApplication.id),
+      supabase.from("offers").select("*").eq("application_id", matchedApplication.id),
+    ]);
+    assignments = (assignRes.data ?? []) as AssignmentsRow[];
+    interviewerFeedback = (feedbackRes.data ?? []) as InterviewerFeedbackRow[];
+    offers = (offersRes.data ?? []) as OffersRow[];
+  }
+
   return {
     candidate: cand as CandidatesRow,
+    application: matchedApplication,
+    campaign: activeCampaignRow,
     campaignName,
     selectedCampaignId: activeCampaignId,
     candidateCampaigns,
-    resumeUrl,
+    resumeUrl: matchedApplication?.resume_path || resumeUrl,
     timeline: view,
     outreach,
     interviewRecordings,
     interviewTranscripts,
     voiceScreenTranscripts,
     latestScorecard,
+    assignments,
+    interviewerFeedback,
+    offers,
   };
+}
+
+export async function decideApplication(params: {
+  applicationId: string;
+  action: "advance" | "reject" | "hold" | "resume";
+  rejectionReason?: string | null;
+}): Promise<any> {
+  const supabase = supabaseBrowser();
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Sign in to change this application.");
+
+  const response = await fetch("/api/applications/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      operation: "decision",
+      application_id: params.applicationId,
+      action: params.action,
+      rejection_reason: params.rejectionReason ?? null,
+      confirm_rejection: params.action === "reject",
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Could not update the application.");
+  return result;
+}
+
+export async function updateApplicationContact(params: {
+  applicationId: string;
+  candidateName: string;
+  candidateEmail: string;
+  candidatePhone?: string | null;
+  whatsappOptIn?: boolean;
+}): Promise<void> {
+  const supabase = supabaseBrowser();
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Sign in to update candidate contact details.");
+
+  const response = await fetch("/api/applications/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      operation: "update_contact",
+      application_id: params.applicationId,
+      candidate_name: params.candidateName,
+      candidate_email: params.candidateEmail,
+      candidate_phone: params.candidatePhone ?? null,
+      whatsapp_opt_in: params.whatsappOptIn ?? false,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Could not update candidate contact details.");
 }

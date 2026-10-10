@@ -2,6 +2,7 @@
 -- Ensure name and company_name exist on accounts table and update trigger to capture them
 
 alter table public.accounts
+  add column if not exists email text,
   add column if not exists name text,
   add column if not exists company_name text;
 

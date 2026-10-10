@@ -56,11 +56,11 @@ declare v_account accounts%rowtype;
 declare v_booked jsonb;
 begin
   if not public.candidate_token_valid(p_token, 'booking', p_round_instance_id) then
-    raise exception 'invalid_link' using message='This booking link is invalid or has expired.';
+    raise exception 'invalid_link' using detail = 'This booking link is invalid or has expired.';
   end if;
 
   select * into v_ri from round_instances where id = p_round_instance_id;
-  if not found then raise exception 'invalid_link' using message='Round not found.'; end if;
+  if not found then raise exception 'invalid_link' using detail = 'Round not found.'; end if;
 
   select * into v_cand from candidates where id = v_ri.candidate_id;
   select * into v_camp from campaigns where id = v_ri.campaign_id;
@@ -121,10 +121,10 @@ declare v_camp campaigns%rowtype;
 declare v_cr campaign_rounds%rowtype;
 begin
   if not public.candidate_token_valid(p_token, 'session', p_session_id) then
-    raise exception 'invalid_link' using message='This interview link is invalid or has expired.';
+    raise exception 'invalid_link' using detail = 'This interview link is invalid or has expired.';
   end if;
   select * into v_sess from interview_sessions where id = p_session_id;
-  if not found then raise exception 'invalid_link' using message='Session not found.'; end if;
+  if not found then raise exception 'invalid_link' using detail = 'Session not found.'; end if;
   select * into v_ri from round_instances where id = v_sess.round_instance_id;
   select * into v_cand from candidates where id = v_sess.candidate_id;
   select * into v_camp from campaigns where id = v_ri.campaign_id;
@@ -173,10 +173,10 @@ declare v_cr campaign_rounds%rowtype;
 declare v_sub jsonb;
 begin
   if not public.candidate_token_valid(p_token, 'assignment', p_round_instance_id) then
-    raise exception 'invalid_link' using message='This assignment link is invalid or has expired.';
+    raise exception 'invalid_link' using detail = 'This assignment link is invalid or has expired.';
   end if;
   select * into v_ri from round_instances where id = p_round_instance_id;
-  if not found then raise exception 'invalid_link' using message='Round not found.'; end if;
+  if not found then raise exception 'invalid_link' using detail = 'Round not found.'; end if;
   select * into v_camp from campaigns where id = v_ri.campaign_id;
   select * into v_cr from campaign_rounds
     where campaign_id = v_ri.campaign_id and round_number = v_ri.round_number;
@@ -229,7 +229,7 @@ declare v_day_start timestamptz;
 declare v_day_end timestamptz;
 begin
   if not public.candidate_token_valid(p_token, 'booking', p_round_instance_id) then
-    raise exception 'invalid_link' using message='Invalid or expired booking link.';
+    raise exception 'invalid_link' using detail = 'Invalid or expired booking link.';
   end if;
   select * into v_ri from round_instances where id = p_round_instance_id;
   select * into v_cr from campaign_rounds
@@ -277,7 +277,7 @@ set search_path = public
 as $$
 begin
   if not public.candidate_token_valid(p_token, 'session', p_session_id) then
-    raise exception 'invalid_link' using message='Invalid or expired session link.';
+    raise exception 'invalid_link' using detail = 'Invalid or expired session link.';
   end if;
   insert into proctoring_events (session_id, event_type, severity, detail)
   values (p_session_id, p_event_type, 'warning', p_detail);
@@ -301,7 +301,7 @@ declare v_ri round_instances%rowtype;
 declare v_sub_id text;
 begin
   if not public.candidate_token_valid(p_token, 'assignment', p_round_instance_id) then
-    raise exception 'invalid_link' using message='Invalid or expired assignment link.';
+    raise exception 'invalid_link' using detail = 'Invalid or expired assignment link.';
   end if;
   select * into v_ri from round_instances where id = p_round_instance_id;
   insert into assignment_submissions (account_id, candidate_id, round_instance_id, text_response, file_paths)

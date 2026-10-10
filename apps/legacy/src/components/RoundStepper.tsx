@@ -1,4 +1,4 @@
-import { Bot, CalendarClock, ClipboardList, Trophy } from "lucide-react";
+import { Bot, CalendarClock, ClipboardList, PhoneCall, Trophy } from "lucide-react";
 import { cn } from "../lib/cn";
 import type { RoundType } from "@scalepods/core";
 
@@ -13,6 +13,7 @@ export const ROUND_TYPE_META: Record<
     blurb: "Live interview on a team calendar",
   },
   assignment: { label: "Assignment", icon: ClipboardList, blurb: "Take-home task" },
+  ai_voice_call: { label: "AI Voice Call", icon: PhoneCall, blurb: "Scheduled AI phone screening" },
 };
 
 export function RoundTypeIcon({ type, className }: { type: RoundType; className?: string }) {
@@ -36,6 +37,8 @@ function iconBg(type: RoundType): string {
       return "bg-success/10 text-success";
     case "assignment":
       return "bg-warning/10 text-warning";
+    case "ai_voice_call":
+      return "bg-accent text-primary";
   }
 }
 

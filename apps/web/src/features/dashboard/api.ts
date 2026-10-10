@@ -315,7 +315,7 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
   const ledger = allLedger.filter((l) => activeCandidateIds.has(l.candidate_id));
 
   const totalCandidateCount = activeCandidateIds.size;
-  const activeCampaigns = campaigns.filter((c) => c.status === "on").length;
+  const activeCampaigns = campaigns.filter((c) => c.status === "open").length;
 
   // 1. Campaign distribution
   const candidatesByCampaign: Record<string, Set<string>> = {};

@@ -8,6 +8,7 @@ import {
   cadenceForTier,
   cadenceTierEditability,
   campaignCreateSchema,
+  type Database,
   DEFAULT_DIALNEXA_CONFIG,
   type DialnexaVoiceConfig,
   filterCadenceByDuration,
@@ -105,9 +106,26 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
 
   const [name, setName] = useState("");
   const [jdText, setJdText] = useState("");
+  const [location, setLocation] = useState("Remote");
+  const [workArrangement, setWorkArrangement] = useState<"remote" | "hybrid" | "onsite">("remote");
+  const [openingDate, setOpeningDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [closingDate, setClosingDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split("T")[0];
+  });
+  const [numberOfOpenings, setNumberOfOpenings] = useState(1);
+  const [salaryMin, setSalaryMin] = useState("");
+  const [salaryMax, setSalaryMax] = useState("");
+  const [salaryCurrency, setSalaryCurrency] = useState("USD");
+  const [salaryPeriod, setSalaryPeriod] = useState<"annual" | "monthly" | "hourly">("annual");
   const [numberOfRounds, setNumberOfRounds] = useState(1);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split("T")[0];
+  });
   const [rounds, setRounds] = useState<RoundDraft[]>([DEFAULT_ROUND]);
   const [whatsappOn, setWhatsappOn] = useState(tierConfig.whatsapp);
   const [voiceOn, setVoiceOn] = useState(tierConfig.voiceScreening);
@@ -140,6 +158,15 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         const parsed = JSON.parse(draft);
         if (parsed.name && !name) setName(parsed.name);
         if (parsed.jdText && !jdText) setJdText(parsed.jdText);
+        if (parsed.location) setLocation(parsed.location);
+        if (parsed.workArrangement) setWorkArrangement(parsed.workArrangement);
+        if (parsed.openingDate) setOpeningDate(parsed.openingDate);
+        if (parsed.closingDate) setClosingDate(parsed.closingDate);
+        if (parsed.numberOfOpenings) setNumberOfOpenings(parsed.numberOfOpenings);
+        if (parsed.salaryMin) setSalaryMin(parsed.salaryMin);
+        if (parsed.salaryMax) setSalaryMax(parsed.salaryMax);
+        if (parsed.salaryCurrency) setSalaryCurrency(parsed.salaryCurrency);
+        if (parsed.salaryPeriod) setSalaryPeriod(parsed.salaryPeriod);
         if (parsed.numberOfRounds) setNumberOfRounds(parsed.numberOfRounds);
         if (parsed.startDate) setStartDate(parsed.startDate);
         if (parsed.endDate) setEndDate(parsed.endDate);
@@ -153,11 +180,41 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       if (name || jdText) {
         sessionStorage.setItem(
           "scalepods_campaign_wizard_draft",
-          JSON.stringify({ name, jdText, numberOfRounds, startDate, endDate }),
+          JSON.stringify({
+            name,
+            jdText,
+            location,
+            workArrangement,
+            openingDate,
+            closingDate,
+            numberOfOpenings,
+            salaryMin,
+            salaryMax,
+            salaryCurrency,
+            salaryPeriod,
+            numberOfRounds,
+            startDate,
+            endDate,
+          }),
         );
       }
     } catch {}
-  }, [name, jdText, numberOfRounds, startDate, endDate]);
+  }, [
+    name,
+    jdText,
+    location,
+    workArrangement,
+    openingDate,
+    closingDate,
+    numberOfOpenings,
+    salaryMin,
+    salaryMax,
+    salaryCurrency,
+    salaryPeriod,
+    numberOfRounds,
+    startDate,
+    endDate,
+  ]);
 
   useEffect(() => {
     setRounds((prev) => syncRoundCount(prev, numberOfRounds));
@@ -382,10 +439,17 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const validateBasics = (): string | null => {
     if (!name.trim()) return "Please enter a descriptive campaign name.";
     if (!jdText.trim()) return "Please paste the job description to enable AI candidate screening.";
-    if (!startDate) return "Please specify a target start date.";
-    if (!endDate) return "Please specify a target end date.";
-    if (endDate && startDate && endDate < startDate)
-      return "Target completion date must be scheduled after the start date.";
+    if (!location.trim())
+      return "Please specify the job location (e.g. Remote, San Francisco, CA).";
+    if (!openingDate) return "Please specify an opening date.";
+    if (!closingDate) return "Please specify a closing date.";
+    if (closingDate < openingDate)
+      return "Target closing date must be scheduled after the opening date.";
+    if (!numberOfOpenings || numberOfOpenings < 1) return "Please specify at least 1 opening.";
+    if ((salaryMin && !salaryMax) || (!salaryMin && salaryMax))
+      return "Both minimum and maximum salary must be provided if specifying a salary range.";
+    if (salaryMin && salaryMax && Number(salaryMin) > Number(salaryMax))
+      return "Minimum salary cannot exceed maximum salary.";
     return null;
   };
 
@@ -415,9 +479,18 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       account_id: account?.id ?? "",
       name,
       jd_text: jdText,
+      location,
+      work_arrangement: workArrangement,
+      opening_date: openingDate,
+      closing_date: closingDate,
+      number_of_openings: numberOfOpenings,
+      salary_min: salaryMin ? Number(salaryMin) : undefined,
+      salary_max: salaryMax ? Number(salaryMax) : undefined,
+      salary_currency: salaryMin && salaryMax ? salaryCurrency : undefined,
+      salary_period: salaryMin && salaryMax ? salaryPeriod : undefined,
       number_of_rounds: numberOfRounds,
-      start_date: startDate || undefined,
-      end_date: endDate || undefined,
+      start_date: startDate || openingDate || undefined,
+      end_date: endDate || closingDate || undefined,
       cadence_config: {
         stages: Object.fromEntries(
           previewRows.map((r) => [
@@ -457,6 +530,20 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         brief_text: r.round_type === "assignment" ? r.brief_text.trim() || null : undefined,
         assignment_deadline_hours:
           r.round_type === "assignment" ? r.assignment_deadline_hours : undefined,
+        duration_minutes: r.round_type === "assignment" ? undefined : 30,
+        questions:
+          r.round_type === "ai_interview" || r.round_type === "ai_voice_call"
+            ? [
+                "Tell me about your technical background and experience.",
+                "Describe how you handle ambiguous requirements.",
+              ]
+            : undefined,
+        evaluation_criteria:
+          r.round_type === "ai_interview" ||
+          r.round_type === "ai_voice_call" ||
+          r.round_type === "assignment"
+            ? ["Technical Competency", "Communication", "Problem Solving"]
+            : undefined,
       })),
     };
     const parsed = campaignCreateSchema.safeParse(payload);
@@ -492,7 +579,19 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       }
 
       if (createdId) {
-        const updateFields: { voice_call_config?: Json; cadence_config?: Json } = {};
+        const updateFields: Database["public"]["Tables"]["campaigns"]["Update"] = {
+          location,
+          work_arrangement: workArrangement,
+          opening_date: openingDate,
+          closing_date: closingDate,
+          number_of_openings: numberOfOpenings,
+        };
+        if (salaryMin && salaryMax) {
+          updateFields.salary_min = Number(salaryMin);
+          updateFields.salary_max = Number(salaryMax);
+          updateFields.salary_currency = salaryCurrency;
+          updateFields.salary_period = salaryPeriod;
+        }
         if (voiceOn) {
           updateFields.voice_call_config = dialnexaConfig as unknown as Json;
         }
@@ -643,6 +742,156 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
               </div>
             </div>
 
+            {/* Job Details & Requirements */}
+            <div className="grid gap-5 sm:grid-cols-3 pt-2 border-t border-border">
+              <div>
+                <label
+                  htmlFor="job-location"
+                  className="mb-1.5 block text-xs font-semibold text-foreground"
+                >
+                  Location *
+                </label>
+                <Input
+                  id="job-location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="e.g. Remote, San Francisco, CA"
+                  className="rounded-xl text-foreground"
+                />
+                <span className="mt-1 block text-[11px] text-muted-foreground">
+                  Primary office or geographic base
+                </span>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="work-arrangement"
+                  className="mb-1.5 block text-xs font-semibold text-foreground"
+                >
+                  Work Arrangement *
+                </label>
+                <select
+                  id="work-arrangement"
+                  value={workArrangement}
+                  onChange={(e) =>
+                    setWorkArrangement(e.target.value as "remote" | "hybrid" | "onsite")
+                  }
+                  className="flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                >
+                  <option value="remote">Remote (Worldwide / Distributed)</option>
+                  <option value="hybrid">Hybrid (Mix of office & remote)</option>
+                  <option value="onsite">On-site (Full-time in office)</option>
+                </select>
+                <span className="mt-1 block text-[11px] text-muted-foreground">
+                  Expectation for physical presence
+                </span>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="number-of-openings"
+                  className="mb-1.5 block text-xs font-semibold text-foreground"
+                >
+                  Number of Openings (Capacity) *
+                </label>
+                <Input
+                  id="number-of-openings"
+                  type="number"
+                  min={1}
+                  value={numberOfOpenings}
+                  onChange={(e) =>
+                    setNumberOfOpenings(Math.max(1, parseInt(e.target.value, 10) || 1))
+                  }
+                  className="rounded-xl text-foreground"
+                />
+                <span className="mt-1 block text-[11px] text-muted-foreground">
+                  Positions to fill before capacity warning
+                </span>
+              </div>
+            </div>
+
+            {/* Compensation (Optional) */}
+            <div className="grid gap-4 sm:grid-cols-4 pt-2 border-t border-border">
+              <div>
+                <label
+                  htmlFor="salary-min"
+                  className="mb-1.5 block text-xs font-semibold text-foreground"
+                >
+                  Minimum Salary
+                </label>
+                <Input
+                  id="salary-min"
+                  type="number"
+                  min={0}
+                  value={salaryMin}
+                  onChange={(e) => setSalaryMin(e.target.value)}
+                  placeholder="e.g. 120000"
+                  className="rounded-xl text-foreground"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="salary-max"
+                  className="mb-1.5 block text-xs font-semibold text-foreground"
+                >
+                  Maximum Salary
+                </label>
+                <Input
+                  id="salary-max"
+                  type="number"
+                  min={0}
+                  value={salaryMax}
+                  onChange={(e) => setSalaryMax(e.target.value)}
+                  placeholder="e.g. 160000"
+                  className="rounded-xl text-foreground"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="salary-currency"
+                  className="mb-1.5 block text-xs font-semibold text-foreground"
+                >
+                  Currency
+                </label>
+                <select
+                  id="salary-currency"
+                  value={salaryCurrency}
+                  onChange={(e) => setSalaryCurrency(e.target.value)}
+                  className="flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                >
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                  <option value="CAD">CAD ($)</option>
+                  <option value="AUD">AUD ($)</option>
+                  <option value="INR">INR (₹)</option>
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="salary-period"
+                  className="mb-1.5 block text-xs font-semibold text-foreground"
+                >
+                  Period
+                </label>
+                <select
+                  id="salary-period"
+                  value={salaryPeriod}
+                  onChange={(e) =>
+                    setSalaryPeriod(e.target.value as "annual" | "monthly" | "hourly")
+                  }
+                  className="flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                >
+                  <option value="annual">Per Year (Annual)</option>
+                  <option value="monthly">Per Month</option>
+                  <option value="hourly">Per Hour</option>
+                </select>
+              </div>
+            </div>
+
             <div className="grid gap-5 sm:grid-cols-2 pt-2 border-t border-border">
               <div>
                 <label
@@ -704,13 +953,16 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                     htmlFor="start-date"
                     className="mb-1.5 block text-xs font-semibold text-foreground"
                   >
-                    Target Start Date
+                    Opening Date
                   </label>
                   <Input
                     id="start-date"
                     type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
+                    value={openingDate}
+                    onChange={(e) => {
+                      setOpeningDate(e.target.value);
+                      setStartDate(e.target.value);
+                    }}
                     className="rounded-xl text-foreground"
                   />
                   <span className="mt-1 block text-[11px] text-muted-foreground">
@@ -722,13 +974,16 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                     htmlFor="end-date"
                     className="mb-1.5 block text-xs font-semibold text-foreground"
                   >
-                    Target End Date
+                    Closing Date
                   </label>
                   <Input
                     id="end-date"
                     type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
+                    value={closingDate}
+                    onChange={(e) => {
+                      setClosingDate(e.target.value);
+                      setEndDate(e.target.value);
+                    }}
                     className="rounded-xl text-foreground"
                   />
                   <span className="mt-1 block text-[11px] text-muted-foreground">

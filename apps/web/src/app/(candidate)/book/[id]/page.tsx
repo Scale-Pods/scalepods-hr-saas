@@ -89,7 +89,7 @@ export default function BookPage() {
     if (!ctx) return;
     setBooking(true);
     try {
-      await bookSlot({ round_instance_id: ctx.round_instance.id, ...payload });
+      await bookSlot({ round_instance_id: ctx.round_instance.id, token, ...payload });
       setSuccess(ctx.round_instance);
       setView("booked");
     } catch (err) {
@@ -237,9 +237,9 @@ function SlotPicker({
         startTime: dailyStart,
         endTime: dailyEnd,
         stepMinutes: 30,
-        durationMinutes: 45,
+        durationMinutes: ctx.round.duration_minutes ?? 45,
       }),
-    [dailyStart, dailyEnd],
+    [dailyStart, dailyEnd, ctx.round.duration_minutes],
   );
 
   const blocked = useMemo(

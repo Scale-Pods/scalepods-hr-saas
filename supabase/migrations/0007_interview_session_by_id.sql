@@ -26,10 +26,10 @@ declare v_cr campaign_rounds%rowtype;
 begin
   select * into v_sess from interview_sessions where id = p_session_id;
   if not found then
-    raise exception 'invalid_link' using message='This interview link is invalid or has expired.';
+    raise exception 'invalid_link' using detail = 'This interview link is invalid or has expired.';
   end if;
   if v_sess.expires_at is not null and v_sess.expires_at <= now() then
-    raise exception 'invalid_link' using message='This interview link has expired.';
+    raise exception 'invalid_link' using detail = 'This interview link has expired.';
   end if;
   select * into v_ri from round_instances where id = v_sess.round_instance_id;
   select * into v_cand from candidates where id = v_sess.candidate_id;
@@ -80,7 +80,7 @@ begin
     select 1 from public.interview_sessions
     where id = p_session_id and (expires_at is null or expires_at > now())
   ) then
-    raise exception 'invalid_link' using message='Invalid or expired session link.';
+    raise exception 'invalid_link' using detail = 'Invalid or expired session link.';
   end if;
   insert into proctoring_events (account_id, round_instance_id, event_type, severity, details)
   select s.account_id, s.round_instance_id, p_event_type, 'warning', jsonb_build_object('detail', p_detail)

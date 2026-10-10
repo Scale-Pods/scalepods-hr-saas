@@ -1,40 +1,68 @@
 "use client";
 
-import { formatDateTime } from "@scalepods/core";
+import {
+  type AssignmentsRow,
+  formatDateTime,
+  type InterviewerFeedbackRow,
+  type OffersRow,
+} from "@scalepods/core";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowLeft,
   Award,
   Bot,
+  Briefcase,
+  CheckCircle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Edit2,
   ExternalLink,
+  FileCheck,
+  FileSignature,
   FileText,
   Headphones,
   Layers,
   Loader2,
+  Mail,
   MessageSquare,
   MessageSquareText,
+  Pause,
+  Phone,
   PhoneCall,
+  Play,
   Redo2,
   RotateCw,
+  Send,
   Sparkles,
   User,
+  UserCheck,
   Video,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { PrepareOfferModal } from "@/components/campaigns/PrepareOfferModal";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
-import { showErrorToast } from "@/components/shared/TierLimitToast";
+import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -46,10 +74,53 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccount } from "@/features/account/hooks";
-import type { LedgerView, ScorecardRow } from "@/features/candidates/api";
+import type { ViewCandidate } from "@/features/campaigns/api";
+import {
+  decideApplication,
+  type LedgerView,
+  type ScorecardRow,
+  updateApplicationContact,
+} from "@/features/candidates/api";
 import { useCandidateProfile } from "@/features/candidates/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+
+function statusBadge(status?: string | null) {
+  switch (status) {
+    case "active":
+      return (
+        <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+          Active
+        </Badge>
+      );
+    case "on_hold":
+      return (
+        <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+          On Hold
+        </Badge>
+      );
+    case "rejected":
+      return (
+        <Badge className="bg-destructive/15 text-destructive border border-destructive/30">
+          Rejected
+        </Badge>
+      );
+    case "offer_ready":
+      return (
+        <Badge className="bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+          Offer Ready
+        </Badge>
+      );
+    case "offer_sent":
+      return (
+        <Badge className="bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30">
+          Offer Sent
+        </Badge>
+      );
+    default:
+      return <Badge variant="outline">{status || "Unknown"}</Badge>;
+  }
+}
 
 function roundNumberFromStage(stage: string): number | null {
   const m = /^round_(\d+)$/.exec(stage);
@@ -73,6 +144,13 @@ function stageLabel(stage: string): string {
   if (stage.toLowerCase().includes("resume")) return "Resume screening";
   if (stage.toLowerCase().includes("voice")) return "Voice screening";
   return STAGE_LABELS[stage] ?? stage;
+}
+
+function offerField(offer: OffersRow, key: string): string | null {
+  const fields = offer.field_values;
+  if (!fields || typeof fields !== "object" || Array.isArray(fields)) return null;
+  const value = fields[key];
+  return typeof value === "string" || typeof value === "number" ? String(value) : null;
 }
 
 export default function CandidateProfilePage() {
@@ -99,6 +177,11 @@ export default function CandidateProfilePage() {
     account?.id,
   );
   const candidate = data?.candidate;
+  const application = data?.application;
+  const campaign = data?.campaign;
+  const assignments = data?.assignments ?? [];
+  const interviewerFeedback = data?.interviewerFeedback ?? [];
+  const offers = data?.offers ?? [];
   const campaignName = data?.campaignName;
   const candidateCampaigns = data?.candidateCampaigns ?? [];
   const resumeUrl = data?.resumeUrl;
@@ -108,6 +191,121 @@ export default function CandidateProfilePage() {
   const interviewTranscripts = data?.interviewTranscripts ?? [];
   const voiceScreenTranscripts = data?.voiceScreenTranscripts ?? [];
   const latestScorecard = data?.latestScorecard;
+
+  // Application Decision & Action States
+  const [decisionBusy, setDecisionBusy] = useState(false);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("Unqualified");
+  const [rejectionNotes, setRejectionNotes] = useState("");
+  const [rejectBusy, setRejectBusy] = useState(false);
+
+  // Application Contact Editing States
+  const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactWhatsapp, setContactWhatsapp] = useState(false);
+  const [contactSaving, setContactSaving] = useState(false);
+
+  // Offer Modal State
+  const [offerModalOpen, setOfferModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (application) {
+      setContactName(application.candidate_name || candidate?.name || "");
+      setContactEmail(application.candidate_email || candidate?.email || "");
+      setContactPhone(application.candidate_phone || candidate?.phone || "");
+      setContactWhatsapp(!!application.whatsapp_opt_in);
+    } else if (candidate) {
+      setContactName(candidate.name || "");
+      setContactEmail(candidate.email || "");
+      setContactPhone(candidate.phone || "");
+      setContactWhatsapp(false);
+    }
+  }, [application, candidate]);
+
+  const handleAdvance = async () => {
+    if (!application?.id) return;
+    setDecisionBusy(true);
+    try {
+      await decideApplication({ applicationId: application.id, action: "advance" });
+      showToast("Application advanced successfully", { kind: "success" });
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+    } catch (err: any) {
+      showErrorToast(err?.message || "Failed to advance application");
+    } finally {
+      setDecisionBusy(false);
+    }
+  };
+
+  const handleHoldToggle = async () => {
+    if (!application?.id) return;
+    const isHold = application.status === "on_hold";
+    setDecisionBusy(true);
+    try {
+      await decideApplication({
+        applicationId: application.id,
+        action: isHold ? "resume" : "hold",
+      });
+      showToast(isHold ? "Application resumed" : "Application placed on hold", { kind: "success" });
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+    } catch (err: any) {
+      showErrorToast(err?.message || "Failed to update hold status");
+    } finally {
+      setDecisionBusy(false);
+    }
+  };
+
+  const handleConfirmReject = async () => {
+    if (!application?.id) return;
+    setRejectBusy(true);
+    try {
+      const fullReason = rejectionNotes.trim()
+        ? `${rejectionReason}: ${rejectionNotes.trim()}`
+        : rejectionReason;
+      await decideApplication({
+        applicationId: application.id,
+        action: "reject",
+        rejectionReason: fullReason,
+      });
+      showToast("Candidate application rejected", { kind: "info" });
+      setRejectModalOpen(false);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+    } catch (err: any) {
+      showErrorToast(err?.message || "Failed to reject application");
+    } finally {
+      setRejectBusy(false);
+    }
+  };
+
+  const handleSaveContact = async () => {
+    if (!application?.id) return;
+    if (!contactName.trim() || !contactEmail.trim()) {
+      showErrorToast("Candidate name and email are required.");
+      return;
+    }
+    setContactSaving(true);
+    try {
+      await updateApplicationContact({
+        applicationId: application.id,
+        candidateName: contactName.trim(),
+        candidateEmail: contactEmail.trim(),
+        candidatePhone: contactPhone.trim() || null,
+        whatsappOptIn: contactWhatsapp,
+      });
+      showToast("Application contact details updated", { kind: "success" });
+      setContactModalOpen(false);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+    } catch (err: any) {
+      showErrorToast(err?.message || "Failed to update contact details");
+    } finally {
+      setContactSaving(false);
+    }
+  };
 
   const [dialnexaCalls, setDialnexaCalls] = useState<
     Array<{
@@ -266,6 +464,142 @@ export default function CandidateProfilePage() {
         </div>
       )}
 
+      {/* Application Control & Status Card */}
+      {application ? (
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-card/80 backdrop-blur-sm border border-border rounded-2xl shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Briefcase className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-foreground">Application Status:</span>
+                {statusBadge(application.status)}
+                {application.current_round_number && (
+                  <Badge variant="outline" className="text-xs">
+                    Round {application.current_round_number}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {application.status === "rejected" && application.rejection_reason
+                  ? `Rejection recorded: ${application.rejection_reason}`
+                  : `Active application for ${campaignName || "Campaign"}`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {application.status !== "rejected" && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={decisionBusy}
+                  onClick={handleHoldToggle}
+                  className="rounded-xl text-xs gap-1.5"
+                >
+                  {application.status === "on_hold" ? (
+                    <>
+                      <Play className="h-3.5 w-3.5 text-emerald-500" /> Resume
+                    </>
+                  ) : (
+                    <>
+                      <Pause className="h-3.5 w-3.5 text-amber-500" /> Put on Hold
+                    </>
+                  )}
+                </Button>
+
+                {application.status !== "offer_sent" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={decisionBusy}
+                    onClick={handleAdvance}
+                    className="rounded-xl text-xs gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
+                  >
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-500" /> Advance
+                  </Button>
+                )}
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setOfferModalOpen(true)}
+                  className="rounded-xl text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                >
+                  <FileSignature className="h-3.5 w-3.5 text-primary" /> Prepare & Send Offer
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={decisionBusy}
+                  onClick={() => setRejectModalOpen(true)}
+                  className="rounded-xl text-xs gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                >
+                  <XCircle className="h-3.5 w-3.5 text-destructive" /> Reject
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Application Contact Details Card */}
+      <SectionCard
+        title="Application Contact Details"
+        subtitle="Application-scoped contact information. As per recruitment policy, candidate resumes cannot be replaced once submitted."
+        action={
+          application && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setContactModalOpen(true)}
+              className="rounded-xl text-xs gap-1.5"
+            >
+              <Edit2 className="h-3.5 w-3.5" /> Edit Contact Info
+            </Button>
+          )
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-4">
+          <div className="rounded-xl bg-muted/20 border border-border/50 p-3">
+            <span className="text-[11px] font-medium text-muted-foreground block">Name</span>
+            <span className="text-sm font-semibold text-foreground">
+              {application?.candidate_name || candidate.name || "—"}
+            </span>
+          </div>
+          <div className="rounded-xl bg-muted/20 border border-border/50 p-3">
+            <span className="text-[11px] font-medium text-muted-foreground block">Email</span>
+            <span className="text-sm font-semibold text-foreground truncate block">
+              {application?.candidate_email || candidate.email || "—"}
+            </span>
+          </div>
+          <div className="rounded-xl bg-muted/20 border border-border/50 p-3">
+            <span className="text-[11px] font-medium text-muted-foreground block">Phone</span>
+            <span className="text-sm font-semibold text-foreground">
+              {application?.candidate_phone || candidate.phone || "Not provided"}
+            </span>
+          </div>
+          <div className="rounded-xl bg-muted/20 border border-border/50 p-3">
+            <span className="text-[11px] font-medium text-muted-foreground block">
+              WhatsApp Status
+            </span>
+            <span className="text-sm font-semibold text-foreground">
+              {application?.whatsapp_opt_in ? (
+                <span className="text-emerald-500 font-medium">Opted in</span>
+              ) : (
+                <span className="text-muted-foreground font-normal">Not opted in</span>
+              )}
+            </span>
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Offers History */}
+      {offers.length > 0 && <OffersHistorySection offers={offers} />}
+
       {resumeUrl && (
         <SectionCard title="Resume">
           <a
@@ -287,6 +621,14 @@ export default function CandidateProfilePage() {
       >
         <Timeline rows={timeline} />
       </SectionCard>
+
+      {/* Take-Home Assignments */}
+      {assignments.length > 0 && <TakeHomeAssignmentsSection assignments={assignments} />}
+
+      {/* Human Interviewer Feedback */}
+      {interviewerFeedback.length > 0 && (
+        <InterviewerFeedbackSection feedback={interviewerFeedback} />
+      )}
 
       <InterviewMediaAndTranscriptSection
         recordings={interviewRecordings}
@@ -354,6 +696,225 @@ export default function CandidateProfilePage() {
       >
         <OutreachTable rows={outreach} />
       </SectionCard>
+
+      {/* Rejection Confirmation Modal */}
+      <Dialog open={rejectModalOpen} onOpenChange={setRejectModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <XCircle className="h-5 w-5" /> Reject Candidate Application
+            </DialogTitle>
+            <DialogDescription>
+              This action is permanent and transitions this application to Rejected. An optional
+              feedback reason can be recorded.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="rejection-reason" className="text-xs font-semibold">
+                Rejection Reason *
+              </Label>
+              <select
+                id="rejection-reason"
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                className="flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+              >
+                <option value="Unqualified">Unqualified / Skills Mismatch</option>
+                <option value="Culture / Team fit">Culture / Team fit</option>
+                <option value="Compensation mismatch">Compensation mismatch</option>
+                <option value="Declined assessment">Declined assessment / No show</option>
+                <option value="Offer declined">Offer declined by candidate</option>
+                <option value="Other">Other reason</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rejection-notes" className="text-xs font-semibold">
+                Internal Feedback / Audit Notes (Optional)
+              </Label>
+              <Textarea
+                id="rejection-notes"
+                value={rejectionNotes}
+                onChange={(e) => setRejectionNotes(e.target.value)}
+                placeholder="Specific notes or candidate feedback..."
+                rows={3}
+                className="rounded-xl text-xs"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRejectModalOpen(false)}
+              className="rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={rejectBusy}
+              onClick={handleConfirmReject}
+              className="rounded-xl gap-1.5"
+            >
+              {rejectBusy ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5" />
+              )}
+              Confirm Rejection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Contact Info Modal */}
+      <Dialog open={contactModalOpen} onOpenChange={setContactModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit2 className="h-5 w-5 text-primary" /> Edit Application Contact Info
+            </DialogTitle>
+            <DialogDescription>
+              Update candidate contact details for this specific application. Per hiring policy,
+              submitted resumes cannot be replaced.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3.5 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="contact-name" className="text-xs font-semibold">
+                Candidate Name *
+              </Label>
+              <Input
+                id="contact-name"
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                placeholder="Full name"
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="contact-email" className="text-xs font-semibold">
+                Candidate Email *
+              </Label>
+              <Input
+                id="contact-email"
+                type="email"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+                placeholder="candidate@example.com"
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="contact-phone" className="text-xs font-semibold">
+                Candidate Phone
+              </Label>
+              <Input
+                id="contact-phone"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                placeholder="+1..."
+                className="rounded-xl"
+              />
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                id="contact-whatsapp"
+                type="checkbox"
+                checked={contactWhatsapp}
+                onChange={(e) => setContactWhatsapp(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+              />
+              <Label
+                htmlFor="contact-whatsapp"
+                className="text-xs text-foreground font-medium cursor-pointer"
+              >
+                Candidate opted into WhatsApp outreach & reminders
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setContactModalOpen(false)}
+              className="rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={contactSaving}
+              onClick={handleSaveContact}
+              className="rounded-xl gap-1.5"
+            >
+              {contactSaving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              )}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Prepare & Send Offer Modal */}
+      {application && (
+        <PrepareOfferModal
+          open={offerModalOpen}
+          onOpenChange={setOfferModalOpen}
+          candidate={
+            candidate
+              ? {
+                  candidate_id: candidate.id,
+                  name: application.candidate_name || candidate.name || "Candidate",
+                  email: application.candidate_email || candidate.email || "",
+                  phone: application.candidate_phone || candidate.phone || null,
+                  current_stage: "offer",
+                  current_round_number: application.current_round_number ?? 1,
+                  application_id: application.id,
+                  status: application.status,
+                  latest_score: null,
+                  decision: null,
+                }
+              : null
+          }
+          campaign={
+            campaign || {
+              id: application.campaign_id,
+              name: campaignName || "Role",
+              account_id: account?.id || "",
+              jd_text: "",
+              number_of_rounds: 1,
+              status: "open",
+              number_of_openings: 1,
+              opening_date: new Date().toISOString().split("T")[0],
+              closing_date: new Date().toISOString().split("T")[0],
+              created_at: new Date().toISOString(),
+              location: "Remote",
+              work_arrangement: "remote",
+              salary_min: null,
+              salary_max: null,
+              salary_currency: "USD",
+              salary_period: null,
+              closed_at: null,
+              retention_days_snapshot: null,
+              retention_remaining_seconds: null,
+              retention_purge_at: null,
+              voice_call_config: null,
+              cadence_config: null,
+            }
+          }
+          recruiterEmail={account?.email || ""}
+          onComplete={() => {
+            refetch();
+            queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1216,6 +1777,156 @@ function VoiceScreenCallSection({
             </div>
           </div>
         )}
+      </div>
+    </SectionCard>
+  );
+}
+
+function TakeHomeAssignmentsSection({ assignments }: { assignments: AssignmentsRow[] }) {
+  if (assignments.length === 0) return null;
+  return (
+    <SectionCard
+      title="Practical Take-Home Assignments"
+      subtitle="Candidate brief, submission status, and reviewer evaluation scores"
+    >
+      <div className="space-y-4">
+        {assignments.map((a) => (
+          <div key={a.id} className="rounded-xl border border-border/70 bg-card p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <FileCheck className="h-4 w-4 text-primary" />
+                <span className="text-xs font-semibold text-foreground">Take-Home Assignment</span>
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-[11px] capitalize",
+                    a.status === "submitted"
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                      : a.status === "issued"
+                        ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                        : "bg-destructive/15 text-destructive",
+                  )}
+                >
+                  {a.status}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                Deadline: {formatDateTime(a.deadline_at)}
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-muted/20 border border-border/40 p-3 text-xs space-y-1">
+              <span className="font-semibold text-muted-foreground block text-[11px] uppercase tracking-wide">
+                Assignment Prompt / Brief:
+              </span>
+              <p className="text-foreground whitespace-pre-wrap">{a.brief_text}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+function InterviewerFeedbackSection({ feedback }: { feedback: InterviewerFeedbackRow[] }) {
+  if (feedback.length === 0) return null;
+  return (
+    <SectionCard
+      title="Human Interviewer Evaluations & Feedback"
+      subtitle="Evaluations, recommendations, and structured feedback from panel interviewers"
+    >
+      <div className="space-y-4">
+        {feedback.map((f) => (
+          <div key={f.id} className="rounded-xl border border-border/70 bg-card p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <UserCheck className="h-4 w-4 text-primary" />
+                <span className="text-xs font-semibold text-foreground">
+                  Interviewer · {f.team_member_id.slice(0, 8)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {f.overall_score != null && (
+                  <span className="text-sm font-bold text-foreground">
+                    {f.overall_score}
+                    <span className="text-xs font-normal text-muted-foreground">/100</span>
+                  </span>
+                )}
+                {f.submitted_at && (
+                  <span className="text-xs text-muted-foreground">
+                    · {formatDateTime(f.submitted_at)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {f.notes && (
+              <div className="rounded-lg bg-muted/20 border border-border/40 p-3 text-xs space-y-1">
+                <span className="font-semibold text-muted-foreground block text-[11px] uppercase tracking-wide">
+                  Feedback Notes:
+                </span>
+                <p className="text-foreground whitespace-pre-wrap">{f.notes}</p>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+function OffersHistorySection({ offers }: { offers: OffersRow[] }) {
+  if (offers.length === 0) return null;
+  return (
+    <SectionCard
+      title="Candidate Offers"
+      subtitle="Formal employment offers generated and dispatched via SignWell e-signature"
+    >
+      <div className="space-y-3">
+        {offers.map((o) => (
+          <div
+            key={o.id}
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600">
+                <FileSignature className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">
+                    {offerField(o, "position_title") || "Employment Offer"}
+                  </span>
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "text-[11px] capitalize",
+                      o.status === "sent_to_candidate"
+                        ? "bg-purple-500/15 text-purple-600"
+                        : o.status === "awaiting_company_signature"
+                          ? "bg-amber-500/15 text-amber-600"
+                          : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {o.status === "awaiting_company_signature"
+                      ? "Awaiting recruiter signature"
+                      : o.status === "sent_to_candidate"
+                        ? "Sent to candidate"
+                        : "Voided"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Compensation: {offerField(o, "currency") || ""} {offerField(o, "salary") || "—"} ·{" "}
+                  {o.sent_to_candidate_at ? "Sent" : "Created"}{" "}
+                  {formatDateTime(o.sent_to_candidate_at || o.created_at)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2"></div>
+          </div>
+        ))}
       </div>
     </SectionCard>
   );
