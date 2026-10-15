@@ -21,6 +21,10 @@ export type Database = {
           email?: string;
           timezone: string;
           created_at: string;
+          razorpay_customer_id?: string | null;
+          razorpay_subscription_id?: string | null;
+          next_billing_date?: string | null;
+          subscription_currency?: string | null;
         };
         Insert: {
           id: string;
@@ -34,6 +38,10 @@ export type Database = {
           name?: string | null;
           email?: string;
           timezone?: string;
+          razorpay_customer_id?: string | null;
+          razorpay_subscription_id?: string | null;
+          next_billing_date?: string | null;
+          subscription_currency?: string | null;
         };
         Update: {
           tier?: string;
@@ -46,6 +54,10 @@ export type Database = {
           name?: string | null;
           email?: string;
           timezone?: string;
+          razorpay_customer_id?: string | null;
+          razorpay_subscription_id?: string | null;
+          next_billing_date?: string | null;
+          subscription_currency?: string | null;
         };
         Relationships: [];
       };

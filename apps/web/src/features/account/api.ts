@@ -3,7 +3,7 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 
 /** Columns the shell + dashboard need from the RLS-protected `accounts` row. */
 export const ACCOUNT_COLUMNS =
-  "id,tier,billing_anchor_date,billing_status,quiet_hours_start,quiet_hours_end,max_messages_per_candidate_per_day,company_name,name,created_at";
+  "id,tier,billing_anchor_date,billing_status,quiet_hours_start,quiet_hours_end,max_messages_per_candidate_per_day,company_name,name,created_at,razorpay_customer_id,razorpay_subscription_id,next_billing_date,subscription_currency";
 
 export async function fetchAccount(userId: string): Promise<AccountsRow | null> {
   const { data, error } = await supabaseBrowser()

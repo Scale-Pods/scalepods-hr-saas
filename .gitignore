@@ -37,6 +37,7 @@ n8n/*
 !n8n/21 - Assignment Evaluation.json
 !n8n/22 - Calendar Availability.json
 .temp/
-supabase/.temp/
 !n8n/1 - Intake & Screening.json
 !n8n/8 - Offer Letter Generation.json
+scratch/
+

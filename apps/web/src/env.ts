@@ -5,7 +5,7 @@ const schema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   NEXT_PUBLIC_N8N_BASE_URL: z.string().url(),
   NEXT_PUBLIC_FRONTEND_URL: z.string().url(),
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z
+  NEXT_PUBLIC_RAZORPAY_KEY_ID: z
     .string()
     .transform((v) => v || undefined)
     .optional(),
@@ -47,7 +47,7 @@ export function getEnv(): Env {
       NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       NEXT_PUBLIC_N8N_BASE_URL: process.env.NEXT_PUBLIC_N8N_BASE_URL,
       NEXT_PUBLIC_FRONTEND_URL: process.env.NEXT_PUBLIC_FRONTEND_URL,
-      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
       NEXT_PUBLIC_DEEPGRAM_API_KEY: process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY,
       NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
     });
