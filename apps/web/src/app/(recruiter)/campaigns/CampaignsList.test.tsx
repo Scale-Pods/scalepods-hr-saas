@@ -30,7 +30,7 @@ const mockCampaigns = [
     account_id: "acc_1",
     name: "Full Stack Lead",
     jd_text: "React and Node.js",
-    status: "on",
+    status: "open",
     number_of_rounds: 2,
     candidates: 5,
     created_at: "2026-09-30T10:00:00Z",
@@ -40,7 +40,7 @@ const mockCampaigns = [
     account_id: "acc_1",
     name: "DevOps Engineer",
     jd_text: "Kubernetes and AWS",
-    status: "on",
+    status: "open",
     number_of_rounds: 3,
     candidates: 2,
     created_at: "2026-09-29T10:00:00Z",
@@ -90,7 +90,7 @@ describe("CampaignsPage List and Delete", () => {
     await waitFor(() => {
       expect(mockUpdateCampaignStatus).toHaveBeenCalledWith(
         "camp_1",
-        "paused",
+        "closed",
         "acc_1",
         "mock-token",
       );

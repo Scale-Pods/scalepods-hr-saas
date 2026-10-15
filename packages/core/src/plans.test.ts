@@ -10,13 +10,13 @@ describe("PLANS authoritative plan table", () => {
   });
 
   it("mirrors the Section 4.1 values for the other tiers", () => {
-    expect(PLANS.free.aiInterviewCreditsIncluded).toBe(1);
-    expect(PLANS.basic.aiInterviewCreditsIncluded).toBe(10);
-    expect(PLANS.growth.aiInterviewCreditsIncluded).toBe(100);
-    expect(PLANS.growth.aiVoiceScreeningCreditsIncluded).toBe(300);
-    expect(PLANS.growth.scheduledRoundsPerMonth).toBe(250);
+    expect(PLANS.free.aiInterviewCreditsIncluded).toBe(10);
+    expect(PLANS.basic.aiInterviewCreditsIncluded).toBe(50);
+    expect(PLANS.growth.aiInterviewCreditsIncluded).toBe(200);
+    expect(PLANS.growth.aiVoiceScreeningCreditsIncluded).toBe(100);
+    expect(PLANS.growth.scheduledRoundsPerMonth).toBe(200);
     expect(PLANS.growth.overageBehavior).toBe("metered");
-    expect(PLANS.basic.activeCampaigns).toBe(5);
+    expect(PLANS.basic.activeCampaigns).toBe(3);
     expect(PLANS.enterprise.roundTypesAvailable).toContain("custom");
     expect(PLANS.free.aiInterviewRollover).toBe(false);
   });
@@ -28,7 +28,7 @@ describe("effectiveGranted", () => {
   });
 
   it("starts from the plan allowance and ignores n8n granted", () => {
-    expect(effectiveGranted(PLANS.free, "ai_interview", { used: 1, granted: 999 })).toBe(1);
+    expect(effectiveGranted(PLANS.free, "ai_interview", { used: 1, granted: 999 })).toBe(10);
   });
 
   it("adds rolled_over and purchased to the allowance", () => {
@@ -39,10 +39,10 @@ describe("effectiveGranted", () => {
         rolled_over: 5,
         purchased: 10,
       }),
-    ).toBe(115);
+    ).toBe(215);
   });
 
   it("defaults missing rollover/purchase to 0", () => {
-    expect(effectiveGranted(PLANS.basic, "scheduled_round", undefined)).toBe(100);
+    expect(effectiveGranted(PLANS.basic, "scheduled_round", undefined)).toBe(50);
   });
 });

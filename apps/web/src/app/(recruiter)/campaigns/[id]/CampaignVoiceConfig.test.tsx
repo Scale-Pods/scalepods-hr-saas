@@ -26,7 +26,7 @@ const mockCampaignDetail = {
     id: "camp_123",
     name: "Senior Platform Architect",
     jd_text: "Building distributed systems",
-    status: "on",
+    status: "open",
     number_of_rounds: 1,
     voice_call_config: null,
   },
@@ -150,8 +150,8 @@ describe("CampaignDetailPage Voice Agent Configuration", () => {
     currentDetailData = mockCampaignDetail;
     renderWithClient(<CampaignDetailPage />);
 
-    // Shows Active badge and switch
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    // Shows Open badge and switch
+    expect(screen.getByText("Open")).toBeInTheDocument();
 
     const statusSwitch = screen.getByRole("switch", { name: /Campaign status/i });
     expect(statusSwitch).toBeInTheDocument();

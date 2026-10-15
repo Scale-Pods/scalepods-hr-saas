@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDateTime, TIER_LIMITS } from "@scalepods/core";
+import { formatDateTime, TIER_LIMITS, type Tier } from "@scalepods/core";
 import {
   Brain,
   Calendar,
@@ -80,8 +80,8 @@ function CampaignsContent() {
   const openCount = rows.filter((c) => c.status === "open").length;
   const closedCount = rows.filter((c) => c.status === "closed").length;
 
-  const tier = account?.tier ?? "free";
-  const tierConfig = TIER_LIMITS[tier];
+  const tier = (account?.tier ?? "free") as Tier;
+  const tierConfig = TIER_LIMITS[tier] ?? TIER_LIMITS.free;
 
   const checkCampaignLimit = (): boolean => {
     const limit = tierConfig.activeCampaigns;
