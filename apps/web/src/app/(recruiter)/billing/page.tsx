@@ -119,7 +119,18 @@ export default function BillingPage() {
     enabled: !!account?.id,
   });
 
-  const statusMeta = BILLING_STATUS_TONE[billingStatus] ?? BILLING_STATUS_TONE.active;
+  const isPeriodPaid = Boolean(
+    account?.next_billing_date && new Date(account.next_billing_date) > new Date(),
+  );
+
+  let statusMeta = BILLING_STATUS_TONE[billingStatus] ?? BILLING_STATUS_TONE.active;
+  if (billingStatus === "canceled" && isPeriodPaid) {
+    statusMeta = {
+      variant: "secondary",
+      className: "bg-warning/15 text-warning border-warning/30",
+      label: "Cancels at period end",
+    };
+  }
 
   const reconciled = reconcileUsage(reports?.usage, tier);
   const usageRows = [
@@ -353,10 +364,10 @@ function loadRazorpayCheckoutScript(): Promise<boolean> {
 }
 
 const PLAN_PRICING_DISPLAY: Record<Tier, { price: string; period: string }> = {
-  free: { price: "₹0", period: "forever" },
-  basic: { price: "₹1", period: "/ month" },
-  growth: { price: "₹2", period: "/ month" },
-  enterprise: { price: "₹3", period: "/ month" },
+  free: { price: "$0", period: "forever" },
+  basic: { price: "$149", period: "/ month" },
+  growth: { price: "$349", period: "/ month" },
+  enterprise: { price: "$1099", period: "/ month" },
 };
 
 function TierCompareModal({

@@ -124,8 +124,37 @@ export async function POST(req: NextRequest) {
       }
 
       case "subscription.cancelled": {
-        // Subscription cancelled
-        const updateData = { billing_status: "canceled" };
+        // Autopay cancelled
+        // If the current billing period has been paid for (current_end in the future),
+        // keep billing_status = "active" so user retains access until period end!
+        const currentEndSec = subscriptionEntity?.current_end;
+        const currentEndMs = currentEndSec ? currentEndSec * 1000 : 0;
+        const isPeriodPaid = currentEndMs > Date.now();
+
+        const updateData: Record<string, unknown> = {
+          billing_status: isPeriodPaid ? "active" : "canceled",
+        };
+
+        if (currentEndSec) {
+          updateData.next_billing_date = new Date(currentEndMs).toISOString();
+        }
+        if (!isPeriodPaid) {
+          updateData.tier = "free";
+        }
+
+        if (accountIdFromNotes) {
+          await adminSupabase.from("accounts").update(updateData).eq("id", accountIdFromNotes);
+        } else if (subscriptionId) {
+          await adminSupabase
+            .from("accounts")
+            .update(updateData)
+            .eq("razorpay_subscription_id", subscriptionId);
+        }
+        break;
+      }
+
+      case "subscription.completed": {
+        const updateData = { billing_status: "canceled", tier: "free" };
         if (accountIdFromNotes) {
           await adminSupabase.from("accounts").update(updateData).eq("id", accountIdFromNotes);
         } else if (subscriptionId) {

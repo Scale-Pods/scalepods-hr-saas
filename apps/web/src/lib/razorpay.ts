@@ -60,14 +60,14 @@ export function getRazorpayClient(): Razorpay {
  * Returns the effective currency and amount for a given tier.
  */
 export function getTierPricing(tier: SubscriptionTier): { currency: string; amount: number } {
-  const currency = process.env.RAZORPAY_CURRENCY || "INR";
+  const currency = process.env.RAZORPAY_CURRENCY || "USD";
   const config = PLAN_CONFIGS[tier];
 
   if (!config) {
     throw new Error(`Invalid subscription tier: ${tier}`);
   }
 
-  // Uses ₹1 (100 paise), ₹2 (200 paise), ₹3 (300 paise) while on INR as requested
+  // Pricing: Basic = $149 (14900 cents), Growth = $349 (34900 cents), Enterprise = $1099 (109900 cents)
   const amount = currency === "INR" ? config.testAmountPaise : config.prodAmountCents;
 
   return { currency, amount };

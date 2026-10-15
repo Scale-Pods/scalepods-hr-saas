@@ -25,6 +25,7 @@ export interface AppShellProps {
   billingStatus?: BillingStatus;
   userName?: string | null;
   companyName?: string | null;
+  nextBillingDate?: string | null;
 }
 
 export function AppShell({
@@ -33,6 +34,7 @@ export function AppShell({
   billingStatus = "active",
   userName,
   companyName,
+  nextBillingDate,
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -227,7 +229,8 @@ export function AppShell({
             </span>
           </div>
         ) : null}
-        {billingStatus === "canceled" ? (
+        {billingStatus === "canceled" &&
+        (!nextBillingDate || new Date(nextBillingDate) <= new Date()) ? (
           <div className="mx-5 mt-2 flex items-center justify-center gap-2 rounded-2xl bg-muted px-4 py-2 text-center text-xs font-medium text-muted-foreground border border-border">
             <span>
               Your plan is canceled — account is read-only.{" "}

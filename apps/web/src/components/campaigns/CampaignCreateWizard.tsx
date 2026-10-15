@@ -70,7 +70,10 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const { account } = useAccount();
   const tier = account?.tier ?? "free";
   const tierConfig = TIER_LIMITS[tier];
-  const canceled = account?.billing_status === "canceled";
+  const isPeriodPaid = Boolean(
+    account?.next_billing_date && new Date(account.next_billing_date).getTime() > Date.now(),
+  );
+  const canceled = account?.billing_status === "canceled" && !isPeriodPaid;
 
   const searchParams = useSearchParams();
   const stepParam = searchParams.get("step");

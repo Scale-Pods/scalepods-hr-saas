@@ -27,6 +27,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
       billingStatus={toBillingStatus(account?.billing_status)}
       userName={account?.name}
       companyName={account?.company_name}
+      nextBillingDate={account?.next_billing_date}
     >
       {children}
       <OnboardingModal
