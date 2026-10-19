@@ -8,6 +8,29 @@ import {
 } from "@/lib/razorpay";
 
 describe("Razorpay Integration", () => {
+  it("defaults to INR test pricing (₹1, ₹2, ₹3) when environment variables are omitted", () => {
+    const origCurrency = process.env.RAZORPAY_CURRENCY;
+    const origTest = process.env.RAZORPAY_TEST_PRICES;
+    delete process.env.RAZORPAY_CURRENCY;
+    delete process.env.RAZORPAY_TEST_PRICES;
+
+    const basic = getTierPricing("basic");
+    expect(basic.currency).toBe("INR");
+    expect(basic.amount).toBe(100); // ₹1
+
+    const growth = getTierPricing("growth");
+    expect(growth.currency).toBe("INR");
+    expect(growth.amount).toBe(200); // ₹2
+
+    const enterprise = getTierPricing("enterprise");
+    expect(enterprise.currency).toBe("INR");
+    expect(enterprise.amount).toBe(300); // ₹3
+
+    // Restore
+    if (origCurrency) process.env.RAZORPAY_CURRENCY = origCurrency;
+    if (origTest) process.env.RAZORPAY_TEST_PRICES = origTest;
+  });
+
   it("provides correct test pricing in INR (₹1, ₹2, ₹3)", () => {
     process.env.RAZORPAY_TEST_PRICES = "true";
     process.env.RAZORPAY_CURRENCY = "INR";
@@ -23,6 +46,19 @@ describe("Razorpay Integration", () => {
     const enterprise = getTierPricing("enterprise");
     expect(enterprise.currency).toBe("INR");
     expect(enterprise.amount).toBe(300); // 300 paise = ₹3
+  });
+
+  it("uses production USD pricing only when test prices is explicitly false and currency is USD", () => {
+    process.env.RAZORPAY_TEST_PRICES = "false";
+    process.env.RAZORPAY_CURRENCY = "USD";
+
+    const basic = getTierPricing("basic");
+    expect(basic.currency).toBe("USD");
+    expect(basic.amount).toBe(14900); // $149
+
+    // Reset back
+    process.env.RAZORPAY_TEST_PRICES = "true";
+    process.env.RAZORPAY_CURRENCY = "INR";
   });
 
   it("has production pricing configured properly ($149, $349, $1099)", () => {

@@ -422,11 +422,15 @@ function TierCompareModal({
       ).Razorpay;
 
       const limits = TIER_LIMITS[t];
+      const formattedPrice =
+        data.currency === "INR" ? `₹${data.amount / 100}` : `$${data.amount / 100}`;
       const rzp = new RazorpayConstructor({
         key: data.key_id,
         subscription_id: data.subscription_id,
         name: "ScalePods HR SaaS",
-        description: `${limits.label} Plan Subscription`,
+        description: `${limits.label} Plan Subscription (${formattedPrice}/mo)`,
+        currency: data.currency || "INR",
+        amount: data.amount,
         prefill: {
           name: data.customer_name || "",
           email: data.customer_email || "",

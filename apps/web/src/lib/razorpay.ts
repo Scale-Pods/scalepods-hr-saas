@@ -60,14 +60,23 @@ export function getRazorpayClient(): Razorpay {
  * Returns the effective currency and amount for a given tier.
  */
 export function getTierPricing(tier: SubscriptionTier): { currency: string; amount: number } {
-  const currency = process.env.RAZORPAY_CURRENCY || "USD";
+  const envCurrency = (
+    process.env.RAZORPAY_CURRENCY ||
+    process.env.NEXT_PUBLIC_RAZORPAY_CURRENCY ||
+    "INR"
+  ).toUpperCase();
+
   const config = PLAN_CONFIGS[tier];
 
   if (!config) {
     throw new Error(`Invalid subscription tier: ${tier}`);
   }
 
-  // Pricing: Basic = $149 (14900 cents), Growth = $349 (34900 cents), Enterprise = $1099 (109900 cents)
+  // By default, if RAZORPAY_TEST_PRICES is not explicitly "false", or if currency is INR,
+  // we enforce the ₹1, ₹2, ₹3 test pricing in INR.
+  const isTestMode = process.env.RAZORPAY_TEST_PRICES !== "false";
+  const currency = isTestMode ? "INR" : envCurrency;
+
   const amount = currency === "INR" ? config.testAmountPaise : config.prodAmountCents;
 
   return { currency, amount };
@@ -80,14 +89,18 @@ const planCache = new Map<string, string>();
  * or retrieves/creates the plan via the Razorpay API if not yet present.
  */
 export async function getOrCreateSubscriptionPlan(tier: SubscriptionTier): Promise<string> {
+  const { currency, amount } = getTierPricing(tier);
+  const isTestMode = process.env.RAZORPAY_TEST_PRICES !== "false";
+
+  // Check explicit plan ID if provided in env
   const envVarName = `RAZORPAY_PLAN_${tier.toUpperCase()}_ID`;
   const explicitPlanId = process.env[envVarName];
 
-  if (explicitPlanId?.trim().startsWith("plan_")) {
+  // In test mode (default ₹1, ₹2, ₹3), bypass legacy explicit plan IDs unless configured for test
+  if (!isTestMode && explicitPlanId?.trim().startsWith("plan_")) {
     return explicitPlanId.trim();
   }
 
-  const { currency, amount } = getTierPricing(tier);
   const cacheKey = `${tier}_${currency}_${amount}`;
   const cached = planCache.get(cacheKey);
   if (cached) {
@@ -96,13 +109,15 @@ export async function getOrCreateSubscriptionPlan(tier: SubscriptionTier): Promi
 
   const razorpay = getRazorpayClient();
   const planInfo = PLAN_CONFIGS[tier];
+  const formattedPrice = currency === "INR" ? `₹${amount / 100}` : `$${amount / 100}`;
+  const planDisplayName = `${planInfo.name} (${formattedPrice}/mo)`;
 
-  // Check if a plan with the same name and amount already exists
+  // Check if a plan with matching currency and amount already exists
   try {
     const existingPlans = await razorpay.plans.all({ count: 50 });
     const match = existingPlans.items?.find(
       (p: { item?: { name?: string; amount?: string | number; currency?: string } }) =>
-        p.item?.name === planInfo.name &&
+        (p.item?.name === planDisplayName || p.item?.name === planInfo.name) &&
         Number(p.item?.amount) === amount &&
         p.item?.currency === currency,
     );
@@ -121,14 +136,15 @@ export async function getOrCreateSubscriptionPlan(tier: SubscriptionTier): Promi
     period: "monthly",
     interval: 1,
     item: {
-      name: planInfo.name,
+      name: planDisplayName,
       amount,
       currency,
-      description: planInfo.description,
+      description: `${planInfo.description} - ${formattedPrice}/mo`,
     },
     notes: {
       tier,
       platform: "scalepods",
+      amount_formatted: formattedPrice,
     },
   })) as { id: string };
 
