@@ -26,12 +26,14 @@ import {
   ChevronRight,
   Info,
   Layers,
+  Loader2,
   Sparkles,
   Upload,
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { CadencePreview } from "@/components/campaigns/CadencePreview";
 import { ChannelToggle } from "@/components/campaigns/ChannelToggle";
 import { DialnexaConfigEditor } from "@/components/campaigns/DialnexaConfigEditor";
@@ -40,12 +42,22 @@ import { StepsBar } from "@/components/campaigns/StepsBar";
 import HowToCreateButton from "@/components/HowToCreateButton";
 import { showErrorToast } from "@/components/shared/TierLimitToast";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccount } from "@/features/account/hooks";
 import { campaignsKey } from "@/features/campaigns/hooks";
 import { syncRoundCount } from "@/features/campaigns/rounds";
+import { extractTextFromFile } from "@/lib/extract-text";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import { callWorkflow } from "@/lib/webhooks";
 
 interface CampaignCreated {
@@ -230,16 +242,73 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   }, [tierConfig, numberOfRounds]);
 
   const { data: teamMembers = [] } = useQuery({
-    queryKey: ["team_members"] as const,
+    queryKey: ["team_members_with_calendar"] as const,
     queryFn: async () => {
-      const { data } = await supabaseBrowser()
-        .from("team_members")
-        .select("id,name,email,role")
-        .order("name");
-      return (data ?? []) as TeamMemberRow[];
+      const supabase = supabaseBrowser();
+      const [membersRes, calRes] = await Promise.all([
+        supabase.from("team_members").select("id,name,email,role").order("name"),
+        supabase
+          .from("interviewer_calendar_connections")
+          .select("team_member_id,status,google_email"),
+      ]);
+      const calMap = new Map((calRes.data ?? []).map((c) => [c.team_member_id, c]));
+      return (membersRes.data ?? []).map((m) => ({
+        ...m,
+        calendar_status: calMap.get(m.id)?.status ?? "not_connected",
+        google_email: calMap.get(m.id)?.google_email,
+      }));
     },
     staleTime: 60_000,
   });
+
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+
+  const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingDoc(true);
+    toast.loading(`Extracting text from ${file.name}...`, { id: "doc-upload" });
+    try {
+      const res = await extractTextFromFile(file);
+      if ("error" in res) {
+        toast.error(res.error, { id: "doc-upload" });
+      } else if (res.text && res.text.trim()) {
+        setJdText(res.text.trim());
+        toast.success(`Loaded Job Description from ${file.name}!`, { id: "doc-upload" });
+      } else {
+        toast.error("No extractable text found in this document.", { id: "doc-upload" });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to parse document.", {
+        id: "doc-upload",
+      });
+    } finally {
+      setUploadingDoc(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleOpeningDateChange = (val: string) => {
+    setOpeningDate(val);
+    setStartDate(val);
+    // If closing date is earlier than new opening date, advance closing date to opening date + 30 days
+    if (val && closingDate && closingDate < val) {
+      const d = new Date(val);
+      d.setDate(d.getDate() + 30);
+      const nextClosing = d.toISOString().split("T")[0];
+      setClosingDate(nextClosing);
+      setEndDate(nextClosing);
+    }
+  };
+
+  const handleClosingDateChange = (val: string) => {
+    if (openingDate && val && val < openingDate) {
+      toast.error("Closing date cannot be earlier than opening date.");
+      return;
+    }
+    setClosingDate(val);
+    setEndDate(val);
+  };
 
   const updateRound = (i: number, patch: Partial<RoundDraft>) =>
     setRounds((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -463,8 +532,19 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       if (r.round_type === "ai_interview") {
         aiCount++;
       }
-      if (r.round_type === "human_interview" && !r.interviewer_email.trim()) {
-        return `Round ${i + 1} (Live Human Interview): Please provide the interviewer's email address.`;
+      if (r.round_type === "human_interview") {
+        if (!r.interviewer_email.trim()) {
+          return `Round ${i + 1} (Live Human Interview): Please select an interviewer from your team.`;
+        }
+        if (teamMembers.length === 0) {
+          return `Round ${i + 1} (Live Human Interview): No team members found in your workspace. Please add a teammate in Settings before creating a Human Interview round.`;
+        }
+        const memberExists = teamMembers.some(
+          (m) => m.email.toLowerCase() === r.interviewer_email.trim().toLowerCase(),
+        );
+        if (!memberExists) {
+          return `Round ${i + 1} (Live Human Interview): Selected interviewer must be a member of your team.`;
+        }
       }
       if (r.round_type === "assignment" && !r.brief_text.trim()) {
         return `Round ${i + 1} (Practical Assignment): Please provide the prompt and submission instructions.`;
@@ -737,10 +817,25 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   ScalePods AI uses this JD to automatically generate custom candidate evaluation
                   scores (0-100).
                 </p>
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors">
-                  <Upload className="h-3.5 w-3.5 text-primary" aria-hidden />
-                  Upload Document
-                  <input type="file" accept=".pdf,.doc,.docx,.txt" className="hidden" disabled />
+                <label
+                  className={cn(
+                    "inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors shadow-xs",
+                    uploadingDoc && "opacity-60 pointer-events-none",
+                  )}
+                >
+                  {uploadingDoc ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" aria-hidden />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5 text-primary" aria-hidden />
+                  )}
+                  {uploadingDoc ? "Extracting text..." : "Upload Document"}
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.doc,.txt,.md"
+                    className="hidden"
+                    onChange={handleDocUpload}
+                    disabled={uploadingDoc}
+                  />
                 </label>
               </div>
             </div>
@@ -773,18 +868,19 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 >
                   Work Arrangement *
                 </label>
-                <select
-                  id="work-arrangement"
+                <Select
                   value={workArrangement}
-                  onChange={(e) =>
-                    setWorkArrangement(e.target.value as "remote" | "hybrid" | "onsite")
-                  }
-                  className="flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                  onValueChange={(val) => setWorkArrangement(val as "remote" | "hybrid" | "onsite")}
                 >
-                  <option value="remote">Remote (Worldwide / Distributed)</option>
-                  <option value="hybrid">Hybrid (Mix of office & remote)</option>
-                  <option value="onsite">On-site (Full-time in office)</option>
-                </select>
+                  <SelectTrigger id="work-arrangement" className="rounded-xl">
+                    <SelectValue placeholder="Select arrangement" />
+                  </SelectTrigger>
+                  <SelectContent className="border-border bg-card">
+                    <SelectItem value="remote">Remote (Worldwide / Distributed)</SelectItem>
+                    <SelectItem value="hybrid">Hybrid (Mix of office & remote)</SelectItem>
+                    <SelectItem value="onsite">On-site (Full-time in office)</SelectItem>
+                  </SelectContent>
+                </Select>
                 <span className="mt-1 block text-[11px] text-muted-foreground">
                   Expectation for physical presence
                 </span>
@@ -858,19 +954,19 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 >
                   Currency
                 </label>
-                <select
-                  id="salary-currency"
-                  value={salaryCurrency}
-                  onChange={(e) => setSalaryCurrency(e.target.value)}
-                  className="flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                >
-                  <option value="USD">USD ($)</option>
-                  <option value="EUR">EUR (€)</option>
-                  <option value="GBP">GBP (£)</option>
-                  <option value="CAD">CAD ($)</option>
-                  <option value="AUD">AUD ($)</option>
-                  <option value="INR">INR (₹)</option>
-                </select>
+                <Select value={salaryCurrency} onValueChange={(val) => setSalaryCurrency(val)}>
+                  <SelectTrigger id="salary-currency" className="rounded-xl">
+                    <SelectValue placeholder="Currency" />
+                  </SelectTrigger>
+                  <SelectContent className="border-border bg-card">
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="EUR">EUR (€)</SelectItem>
+                    <SelectItem value="GBP">GBP (£)</SelectItem>
+                    <SelectItem value="CAD">CAD ($)</SelectItem>
+                    <SelectItem value="AUD">AUD ($)</SelectItem>
+                    <SelectItem value="INR">INR (₹)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
@@ -880,18 +976,19 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 >
                   Period
                 </label>
-                <select
-                  id="salary-period"
+                <Select
                   value={salaryPeriod}
-                  onChange={(e) =>
-                    setSalaryPeriod(e.target.value as "annual" | "monthly" | "hourly")
-                  }
-                  className="flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                  onValueChange={(val) => setSalaryPeriod(val as "annual" | "monthly" | "hourly")}
                 >
-                  <option value="annual">Per Year (Annual)</option>
-                  <option value="monthly">Per Month</option>
-                  <option value="hourly">Per Hour</option>
-                </select>
+                  <SelectTrigger id="salary-period" className="rounded-xl">
+                    <SelectValue placeholder="Period" />
+                  </SelectTrigger>
+                  <SelectContent className="border-border bg-card">
+                    <SelectItem value="annual">Per Year (Annual)</SelectItem>
+                    <SelectItem value="monthly">Per Month</SelectItem>
+                    <SelectItem value="hourly">Per Hour</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -903,40 +1000,39 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 >
                   Total Evaluation Stages (Rounds)
                 </label>
-                <select
-                  id="rounds"
-                  value={numberOfRounds}
-                  onChange={(e) => setNumberOfRounds(Number(e.target.value))}
-                  className="flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 dark:bg-card dark:text-foreground"
+                <Select
+                  value={String(numberOfRounds)}
+                  onValueChange={(val) => setNumberOfRounds(Number(val))}
                 >
-                  {Array.from(
-                    {
-                      length: tierConfig.overageBehavior === "hard_stop" ? tierConfig.maxRounds : 6,
-                    },
-                    (_, i) => i + 1,
-                  ).map((n) => {
-                    const over = n > tierConfig.maxRounds;
-                    const hardStop = tierConfig.overageBehavior === "hard_stop";
-                    return (
-                      <option
-                        key={n}
-                        value={n}
-                        disabled={hardStop && over}
-                        className="bg-card text-foreground dark:bg-gray-900"
-                      >
-                        {n}{" "}
-                        {n === 1
-                          ? "Round (Single stage screening)"
-                          : `Rounds (Multi-stage evaluation)`}
-                        {over
-                          ? hardStop
-                            ? ` — (Requires plan upgrade)`
-                            : " — (Billed as metered overage)"
-                          : ""}
-                      </option>
-                    );
-                  })}
-                </select>
+                  <SelectTrigger id="rounds" className="rounded-xl">
+                    <SelectValue placeholder="Stages" />
+                  </SelectTrigger>
+                  <SelectContent className="border-border bg-card">
+                    {Array.from(
+                      {
+                        length:
+                          tierConfig.overageBehavior === "hard_stop" ? tierConfig.maxRounds : 6,
+                      },
+                      (_, i) => i + 1,
+                    ).map((n) => {
+                      const over = n > tierConfig.maxRounds;
+                      const hardStop = tierConfig.overageBehavior === "hard_stop";
+                      return (
+                        <SelectItem key={n} value={String(n)} disabled={hardStop && over}>
+                          {n}{" "}
+                          {n === 1
+                            ? "Round (Single stage screening)"
+                            : `Rounds (Multi-stage evaluation)`}
+                          {over
+                            ? hardStop
+                              ? ` — (Requires plan upgrade)`
+                              : " — (Billed as metered overage)"
+                            : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
                 {numberOfRounds > tierConfig.maxRounds ? (
                   <p className="mt-1.5 text-xs text-warning font-medium">
                     {tierConfig.overageBehavior === "metered"
@@ -958,15 +1054,12 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   >
                     Opening Date
                   </label>
-                  <Input
+                  <DatePicker
                     id="start-date"
-                    type="date"
                     value={openingDate}
-                    onChange={(e) => {
-                      setOpeningDate(e.target.value);
-                      setStartDate(e.target.value);
-                    }}
-                    className="rounded-xl text-foreground"
+                    onChange={handleOpeningDateChange}
+                    minDate={new Date()}
+                    placeholder="Select opening date"
                   />
                   <span className="mt-1 block text-[11px] text-muted-foreground">
                     Intake begins
@@ -979,15 +1072,12 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   >
                     Closing Date
                   </label>
-                  <Input
+                  <DatePicker
                     id="end-date"
-                    type="date"
                     value={closingDate}
-                    onChange={(e) => {
-                      setClosingDate(e.target.value);
-                      setEndDate(e.target.value);
-                    }}
-                    className="rounded-xl text-foreground"
+                    onChange={handleClosingDateChange}
+                    minDate={openingDate ? new Date(openingDate) : new Date()}
+                    placeholder="Select closing date"
                   />
                   <span className="mt-1 block text-[11px] text-muted-foreground">
                     Decisions deadline

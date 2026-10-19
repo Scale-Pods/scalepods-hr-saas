@@ -209,38 +209,34 @@ export async function fetchCandidateProfile(
   // 6. Fetch scorecards strictly for active campaign rounds and sessions
   const scorecardByRoundId = new Map<string, ScorecardRow>();
   const scorecardBySessionId = new Map<string, ScorecardRow>();
-  if (roundIds.length > 0 || sessionRows.length > 0) {
-    const filters = [
-      roundIds.length > 0 ? `round_instance_id.in.(${roundIds.join(",")})` : null,
-      sessionRows.length > 0 ? `session_id.in.(${sessionRows.map((s) => s.id).join(",")})` : null,
-    ].filter(Boolean);
+  if (sessionRows.length > 0) {
+    const sessionIds = sessionRows.map((s) => s.id);
+    const { data: cards } = await supabase
+      .from("scorecards")
+      .select("*")
+      .in("session_id", sessionIds);
 
-    if (filters.length > 0) {
-      const { data: cards } = await supabase.from("scorecards").select("*").or(filters.join(","));
-
-      for (const raw of (cards ?? []) as any[]) {
-        const criteria = raw.criteria || {};
-        const sc: ScorecardRow = {
-          id: raw.id,
-          session_id: raw.round_instance_id || raw.session_id,
-          technical_score: raw.technical_score ?? criteria.technical_score ?? null,
-          communication_score: raw.communication_score ?? criteria.communication_score ?? null,
-          problem_solving_score:
-            raw.problem_solving_score ?? criteria.problem_solving_score ?? null,
-          cultural_fit_score: raw.cultural_fit_score ?? criteria.cultural_fit_score ?? null,
-          overall_score: raw.overall_score ?? criteria.overall_score ?? null,
-          authenticity_score: raw.authenticity_score ?? criteria.authenticity_score ?? null,
-          recommendation: raw.recommendation ?? criteria.recommendation ?? null,
-          red_flags: raw.red_flags ?? criteria.red_flags ?? null,
-          strengths: raw.strengths ?? criteria.strengths ?? null,
-          weaknesses: raw.weaknesses ?? criteria.weaknesses ?? null,
-          evaluated_at: raw.evaluated_at ?? criteria.evaluated_at ?? raw.created_at,
-          recording_path: raw.recording_path ?? null,
-          rationale: raw.rationale ?? criteria.detailed_rationale ?? null,
-        };
-        if (raw.round_instance_id) scorecardByRoundId.set(raw.round_instance_id, sc);
-        if (raw.session_id) scorecardBySessionId.set(raw.session_id, sc);
-      }
+    for (const raw of (cards ?? []) as any[]) {
+      const criteria = raw.criteria || {};
+      const sc: ScorecardRow = {
+        id: raw.id,
+        session_id: raw.round_instance_id || raw.session_id,
+        technical_score: raw.technical_score ?? criteria.technical_score ?? null,
+        communication_score: raw.communication_score ?? criteria.communication_score ?? null,
+        problem_solving_score: raw.problem_solving_score ?? criteria.problem_solving_score ?? null,
+        cultural_fit_score: raw.cultural_fit_score ?? criteria.cultural_fit_score ?? null,
+        overall_score: raw.overall_score ?? criteria.overall_score ?? null,
+        authenticity_score: raw.authenticity_score ?? criteria.authenticity_score ?? null,
+        recommendation: raw.recommendation ?? criteria.recommendation ?? null,
+        red_flags: raw.red_flags ?? criteria.red_flags ?? null,
+        strengths: raw.strengths ?? criteria.strengths ?? null,
+        weaknesses: raw.weaknesses ?? criteria.weaknesses ?? null,
+        evaluated_at: raw.evaluated_at ?? criteria.evaluated_at ?? raw.created_at,
+        recording_path: raw.recording_path ?? null,
+        rationale: raw.rationale ?? criteria.detailed_rationale ?? null,
+      };
+      if (raw.round_instance_id) scorecardByRoundId.set(raw.round_instance_id, sc);
+      if (raw.session_id) scorecardBySessionId.set(raw.session_id, sc);
     }
   }
 
@@ -367,30 +363,73 @@ export async function fetchCandidateProfile(
     });
   }
 
-  // Synthesize Round 1 entry if an interview in THIS campaign was completed/scored but missing from ledger
+  // Synthesize Round 1 entry if an interview round exists in THIS campaign but is missing from decision_ledger
   const firstSession = sessionRows[0];
   const firstRound = roundRows[0];
   const sc =
     (firstRound ? scorecardByRoundId.get(firstRound.id) : undefined) ??
     (firstSession ? scorecardBySessionId.get(firstSession.id) : undefined);
 
-  if ((firstSession || sc) && !view.some((v) => roundNumberFromStage(v.stage) === 1)) {
+  if (
+    (firstSession || firstRound || sc) &&
+    !view.some((v) => roundNumberFromStage(v.stage) === 1)
+  ) {
+    const isEval = sc?.overall_score != null;
+    const sessionStartMs = firstSession?.started_at
+      ? new Date(firstSession.started_at).getTime()
+      : 0;
+    const isStale =
+      firstSession?.status === "in_progress" &&
+      sessionStartMs > 0 &&
+      Date.now() - sessionStartMs > 25 * 60 * 1000;
+    const isEndedEarly =
+      firstSession?.status === "incomplete" || firstRound?.status === "incomplete" || isStale;
+    const isInProgress = firstSession?.status === "in_progress" && !isStale;
+    const isComplete = firstSession?.status === "completed" || firstRound?.status === "completed";
+
+    let roundRationale = "AI interview round initiated. Awaiting candidate to join.";
+    if (isEval) {
+      roundRationale = sc?.rationale ?? "AI Interview assessment completed.";
+    } else if (isEndedEarly) {
+      roundRationale =
+        "Candidate started the AI interview but ended the session in between. Answers recorded up to disconnection are available in the transcript below.";
+    } else if (isInProgress) {
+      roundRationale = "AI interview session is currently in progress.";
+    } else if (isComplete) {
+      roundRationale =
+        "AI interview completed. AI evaluation and scorecard generation in progress.";
+    }
+
     view.push({
       id: `synth-${firstSession?.id || firstRound?.id || "r1"}`,
       account_id: firstRound?.account_id ?? cand.account_id,
       candidate_id: id,
       round_instance_id: firstRound?.id ?? null,
       stage: "round_1",
-      score: sc?.overall_score ?? 0,
-      rationale: sc?.rationale ?? "AI Interview assessment completed.",
+      score: isEval ? sc.overall_score : null,
+      rationale: roundRationale,
       weight: 1,
-      created_at: sc?.evaluated_at ?? firstSession?.completed_at ?? new Date().toISOString(),
-      decided_at: sc?.evaluated_at ?? firstSession?.completed_at ?? new Date().toISOString(),
+      created_at:
+        sc?.evaluated_at ??
+        firstSession?.completed_at ??
+        firstSession?.started_at ??
+        firstRound?.created_at ??
+        new Date().toISOString(),
+      decided_at:
+        sc?.evaluated_at ??
+        firstSession?.completed_at ??
+        firstSession?.started_at ??
+        firstRound?.created_at ??
+        new Date().toISOString(),
       raw_text: null,
       source: "workflow",
-      session: firstSession,
+      session: firstSession
+        ? { ...firstSession, status: isEndedEarly ? "incomplete" : firstSession.status }
+        : undefined,
       scorecard: sc,
-      forRound: firstRound,
+      forRound: firstRound
+        ? { ...firstRound, status: isEndedEarly ? "incomplete" : firstRound.status }
+        : undefined,
       recordingExpired: false,
       recordingSignedUrl: null,
     });
@@ -456,9 +495,12 @@ export async function fetchCandidateProfile(
           console.warn("Could not generate signed URL for recording:", storageErr);
         }
       }
+      const startMs = s.started_at ? new Date(s.started_at).getTime() : 0;
+      const isStale =
+        s.status === "in_progress" && startMs > 0 && Date.now() - startMs > 25 * 60 * 1000;
       return {
         sessionId: s.id,
-        status: s.status,
+        status: isStale ? "incomplete" : s.status,
         startedAt: s.started_at ?? null,
         completedAt: s.completed_at ?? null,
         recordingSignedUrl,
@@ -480,11 +522,9 @@ export async function fetchCandidateProfile(
 
       const { data: questionsData } = await (supabase as any)
         .from("interview_questions")
-        .select(
-          "id,round_instance_id,session_id,question_number,question_text,question_type,created_at",
-        )
+        .select("id,round_instance_id,session_id,order_index,question_text,question_type")
         .or(qFilters.join(","))
-        .order("question_number", { ascending: true });
+        .order("order_index", { ascending: true });
 
       const ansFilters = [
         targetRoundIds.length > 0 ? `round_instance_id.in.(${targetRoundIds.join(",")})` : null,
@@ -501,11 +541,10 @@ export async function fetchCandidateProfile(
       const questionsList = (
         (questionsData ?? []) as {
           id: string;
-          round_instance_id: string;
-          question_number: number;
+          round_instance_id?: string;
+          order_index: number;
           question_text: string;
           question_type: string;
-          created_at: string;
         }[]
       ).filter((q) => q && q.question_type !== "blueprint_meta");
 
@@ -532,12 +571,12 @@ export async function fetchCandidateProfile(
           const liveNote = bestAnswer?.ai_live_note || {};
           mappedTranscripts.push({
             id: bestAnswer?.id || `q-${q.id}`,
-            question_number: q.question_number,
+            question_number: q.order_index,
             question_text: q.question_text,
             question_type: q.question_type || "Technical",
             interviewer_text: liveNote.interviewer_text || null,
             answer_text: bestAnswer?.answer_text || "",
-            answered_at: bestAnswer?.answered_at || q.created_at,
+            answered_at: bestAnswer?.answered_at || new Date().toISOString(),
             ai_note: liveNote,
           });
         });

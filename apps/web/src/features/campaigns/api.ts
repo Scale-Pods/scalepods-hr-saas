@@ -54,6 +54,17 @@ export interface ViewCandidate {
   status_before_hold?: string | null;
   rejection_reason?: string | null;
   latest_score: number | null;
+  resume_score?: number | null;
+  ai_interview_score?: number | null;
+  interview_status?:
+    | "not_started"
+    | "in_progress"
+    | "incomplete"
+    | "completed"
+    | "evaluated"
+    | null;
+  interview_session_id?: string | null;
+  answers_count?: number;
   score_rationale?: string | null;
   decision: string | null;
   round_instance_id?: string | null;
@@ -70,8 +81,25 @@ export interface CampaignDetail {
 }
 
 export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
+  // Try server API route first (which has admin service role fallback and avoids RLS/null issues)
+  try {
+    const supabase = supabaseBrowser();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    const res = await fetch(`/api/campaigns/${id}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.campaign) return data;
+    }
+  } catch (err) {
+    console.warn("API route fetchCampaignDetail failed, falling back to client query:", err);
+  }
+
   const supabase = supabaseBrowser();
-  const [c, r, appsRes, ris, statuses] = await Promise.all([
+  const [c, r, appsRes, ris, statuses, sessionsRes, answersRes, scorecardsRes] = await Promise.all([
     supabase.from("campaigns").select("*").eq("id", id).maybeSingle(),
     supabase.from("campaign_rounds").select("*").eq("campaign_id", id).order("round_number"),
     supabase
@@ -91,6 +119,11 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
       .select("round_number,status")
       .eq("campaign_id", id)
       .in("status", ["passed", "failed", "no_show"]),
+    supabase
+      .from("interview_sessions")
+      .select("id,candidate_id,round_instance_id,status,started_at,completed_at,created_at"),
+    supabase.from("interview_answers").select("id,session_id,round_instance_id"),
+    supabase.from("scorecards").select("id,session_id,overall_score"),
   ]);
   if (c.error) throw c.error;
 
@@ -111,6 +144,9 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
   }[];
 
   const applicationsList = (appsRes.data ?? []) as any[];
+  const allSessions = (sessionsRes.data ?? []) as any[];
+  const allAnswers = (answersRes.data ?? []) as any[];
+  const allScorecards = (scorecardsRes.data ?? []) as any[];
 
   let candidates: ViewCandidate[] = [];
 
@@ -118,28 +154,82 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
     const appIds = applicationsList.map((a) => a.id);
     const { data: dlData } = await supabase
       .from("decision_ledger")
-      .select("application_id,candidate_id,score,score_type,rationale,decided_at,created_at")
+      .select(
+        "application_id,candidate_id,round_instance_id,stage,score,score_type,rationale,decided_at,created_at",
+      )
       .in("application_id", appIds)
       .order("created_at", { ascending: false });
 
     const dlList = (dlData ?? []) as any[];
 
     candidates = applicationsList.map((app) => {
-      const appScoreRow = dlList.find(
-        (d) => d.application_id === app.id && d.score_type === "resume" && d.score != null,
+      const appResumeScoreRow = dlList.find(
+        (d) =>
+          (d.application_id === app.id || d.candidate_id === app.candidate_id) &&
+          (d.score_type === "resume" ||
+            d.stage === "resume_screening" ||
+            d.stage?.includes("resume")) &&
+          d.score != null,
       );
       const appRi = roundInstances.find(
         (r) =>
           r.application_id === app.id ||
-          (r.candidate_id === app.candidate_id && r.round_number === app.current_round_number),
+          (r.candidate_id === app.candidate_id &&
+            r.round_number === (app.current_round_number ?? 1)),
+      );
+      const appRoundScoreRow = dlList.find(
+        (d) =>
+          ((appRi && d.round_instance_id === appRi.id) ||
+            ((d.application_id === app.id || d.candidate_id === app.candidate_id) &&
+              d.score_type !== "resume" &&
+              !d.stage?.includes("resume"))) &&
+          d.score != null,
       );
 
+      const appSession = allSessions.find(
+        (s) => (appRi && s.round_instance_id === appRi.id) || s.candidate_id === app.candidate_id,
+      );
+      const appCard = allScorecards.find((sc) => appSession && sc.session_id === appSession.id);
+      const appAnswers = allAnswers.filter(
+        (a) =>
+          (appSession && a.session_id === appSession.id) ||
+          (appRi && a.round_instance_id === appRi.id),
+      );
+
+      let interviewStatus:
+        | "not_started"
+        | "in_progress"
+        | "incomplete"
+        | "completed"
+        | "evaluated" = "not_started";
+      if (appRoundScoreRow || appCard?.overall_score != null) {
+        interviewStatus = "evaluated";
+      } else if (appSession?.status === "completed" || appRi?.status === "completed") {
+        interviewStatus = "completed";
+      } else if (appSession?.status === "incomplete" || appRi?.status === "incomplete") {
+        interviewStatus = "incomplete";
+      } else if (appSession?.status === "in_progress" || appRi?.status === "in_progress") {
+        const startMs = appSession?.started_at ? new Date(appSession.started_at).getTime() : 0;
+        const isStale = startMs > 0 && Date.now() - startMs > 25 * 60 * 1000;
+        interviewStatus = isStale ? "incomplete" : "in_progress";
+      } else if (appRi) {
+        interviewStatus = "not_started";
+      }
+
       let stageLabel = "Resume Screening";
-      if (app.current_stage === "round") {
-        stageLabel = `Round ${app.current_round_number ?? 1}`;
+      if (app.current_stage === "round" || appRi) {
+        stageLabel = `Round ${app.current_round_number ?? appRi?.round_number ?? 1}`;
       } else if (app.current_stage === "offer") {
         stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
       }
+
+      const resumeScore = appResumeScoreRow?.score != null ? Number(appResumeScoreRow.score) : null;
+      const aiScore =
+        appRoundScoreRow?.score != null
+          ? Number(appRoundScoreRow.score)
+          : appCard?.overall_score != null
+            ? Number(appCard.overall_score)
+            : null;
 
       return {
         application_id: app.id,
@@ -149,12 +239,17 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         phone: app.candidate_phone,
         resume_url: app.resume_path,
         current_stage: stageLabel,
-        current_round_number: app.current_round_number,
+        current_round_number: app.current_round_number ?? appRi?.round_number ?? 1,
         status: app.status,
         status_before_hold: app.status_before_hold,
         rejection_reason: app.rejection_reason,
-        latest_score: appScoreRow?.score != null ? Number(appScoreRow.score) : null,
-        score_rationale: appScoreRow?.rationale ?? null,
+        latest_score: aiScore != null ? aiScore : resumeScore,
+        resume_score: resumeScore,
+        ai_interview_score: aiScore,
+        interview_status: interviewStatus,
+        interview_session_id: appSession?.id ?? null,
+        answers_count: appAnswers.length,
+        score_rationale: (appRoundScoreRow || appResumeScoreRow)?.rationale ?? null,
         decision: app.status === "rejected" ? "rejected" : (appRi?.status ?? app.status),
         round_instance_id: appRi?.id ?? null,
         round_number: app.current_round_number ?? appRi?.round_number ?? 1,

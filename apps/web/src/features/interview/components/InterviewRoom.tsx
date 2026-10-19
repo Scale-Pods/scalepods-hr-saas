@@ -139,20 +139,28 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     }
   }, [session, markInterviewStarted, setMediaStreams, startRecording, startProctoring]);
 
-  const finishInterview = useCallback(async () => {
-    if (completionStartedRef.current || session?.status === "completed") return;
-    completionStartedRef.current = true;
-    setCompleting(true);
-    setCompletingError("");
-    stopProctoring();
-    try {
-      await completeInterview();
-    } catch (err) {
-      setCompletingError((err as Error).message || "Failed to complete interview");
-    } finally {
-      setCompleting(false);
-    }
-  }, [completeInterview, session?.status, stopProctoring]);
+  const finishInterview = useCallback(
+    async (isEndedEarly: boolean = false) => {
+      if (
+        completionStartedRef.current ||
+        session?.status === "completed" ||
+        session?.status === "incomplete"
+      )
+        return;
+      completionStartedRef.current = true;
+      setCompleting(true);
+      setCompletingError("");
+      stopProctoring();
+      try {
+        await completeInterview(isEndedEarly);
+      } catch (err) {
+        setCompletingError((err as Error).message || "Failed to complete interview");
+      } finally {
+        setCompleting(false);
+      }
+    },
+    [completeInterview, session?.status, stopProctoring],
+  );
 
   const onSpeakCompleteRef = useRef<() => void>(undefined);
   onSpeakCompleteRef.current = () => {
@@ -308,11 +316,30 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     if (!endEarly || completionStartedRef.current) return;
     const timer = setTimeout(() => {
       if (endEarlyRef.current && !completionStartedRef.current) {
-        finishInterview();
+        finishInterview(true);
       }
     }, 3000);
     return () => clearTimeout(timer);
   }, [endEarly, finishInterview]);
+
+  // Sync state if candidate closes the window/tab midway
+  useEffect(() => {
+    const handlePageHide = () => {
+      if (session?.id && session.status !== "completed" && !completionStartedRef.current) {
+        const payload = JSON.stringify({
+          action: "complete",
+          sessionId: session.id,
+          endedEarly: true,
+        });
+        navigator.sendBeacon(
+          "/api/interview/session",
+          new Blob([payload], { type: "application/json" }),
+        );
+      }
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [session?.id, session?.status]);
 
   const handleAnswerComplete = useCallback(
     async (text: string, audioBlob?: Blob) => {
@@ -863,6 +890,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
                   onClick={() => {
                     setShowEndConfirm(false);
                     setEndEarly(true);
+                    finishInterview(true);
                   }}
                   className="flex-1 py-1.5 px-3 rounded-lg text-xs font-bold text-white transition-all shadow-sm active:scale-95"
                   style={{ background: "var(--red)" }}

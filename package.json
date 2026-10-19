@@ -14,6 +14,7 @@
     "format": "biome format --write .",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "bundle:migrations": "node scripts/bundle_migrations.js",
     "prepare": "node -e \"if (!process.env.CI && !process.env.VERCEL) { try { require('child_process').execSync('npx --no-install husky', { stdio: 'inherit' }); } catch {} }\""
   },
   "devDependencies": {

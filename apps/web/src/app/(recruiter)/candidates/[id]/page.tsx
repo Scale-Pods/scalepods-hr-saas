@@ -199,6 +199,56 @@ export default function CandidateProfilePage() {
   const [rejectionNotes, setRejectionNotes] = useState("");
   const [rejectBusy, setRejectBusy] = useState(false);
 
+  // Real-time live data sync: refetch candidate profile as interview rounds, answers, sessions, and scorecards stream in
+  useEffect(() => {
+    if (!id) return;
+    const supabase = supabaseBrowser();
+    const channel = supabase
+      .channel(`candidate-live-sync-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "round_instances", filter: `candidate_id=eq.${id}` },
+        () => {
+          refetch();
+          queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "interview_sessions",
+          filter: `candidate_id=eq.${id}`,
+        },
+        () => {
+          refetch();
+          queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+        },
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "interview_answers" }, () => {
+        refetch();
+        queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "scorecards" }, () => {
+        refetch();
+        queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "decision_ledger", filter: `candidate_id=eq.${id}` },
+        () => {
+          refetch();
+          queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, refetch, queryClient]);
+
   // Application Contact Editing States
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [contactName, setContactName] = useState("");
@@ -977,7 +1027,34 @@ function Timeline({ rows }: { rows: LedgerView[] }) {
                 <p className="text-xs text-muted-foreground">{formatDateTime(row.decided_at)}</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-semibold text-foreground">{row.score ?? "—"}</span>
+                {row.score != null ? (
+                  <span className="text-lg font-semibold text-foreground">{row.score}</span>
+                ) : row.session?.status === "incomplete" ||
+                  row.forRound?.status === "incomplete" ? (
+                  <Badge
+                    variant="outline"
+                    className="border-rose-500/40 text-rose-600 bg-rose-500/10 text-xs gap-1 font-semibold"
+                  >
+                    <AlertCircle className="h-3 w-3 text-rose-500" /> Ended Early
+                  </Badge>
+                ) : row.session?.status === "in_progress" ||
+                  row.forRound?.status === "in_progress" ? (
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/40 text-amber-600 bg-amber-500/10 text-xs gap-1 animate-pulse"
+                  >
+                    <Clock className="h-3 w-3 animate-spin" /> In Progress
+                  </Badge>
+                ) : row.session?.status === "completed" || row.forRound?.status === "completed" ? (
+                  <Badge
+                    variant="outline"
+                    className="border-blue-500/40 text-blue-600 bg-blue-500/10 text-xs gap-1"
+                  >
+                    <Sparkles className="h-3 w-3" /> Evaluating
+                  </Badge>
+                ) : (
+                  <span className="text-lg font-semibold text-muted-foreground">—</span>
+                )}
                 {isOpen ? (
                   <ChevronUp className="h-4 w-4 text-muted-foreground" aria-hidden />
                 ) : (
@@ -1211,6 +1288,13 @@ function InterviewMediaAndTranscriptSection({
   const hasRecordings = recordings.some((r) => !!r.recordingSignedUrl);
   const hasTranscripts = transcripts.length > 0;
   const hasScorecard = !!scorecard;
+  const currentRec = recordings.find((r) => r.sessionId === sessionId) || recordings[0];
+  const isEndedEarly =
+    currentRec?.status === "incomplete" ||
+    (!currentRec?.completedAt &&
+      !!currentRec?.startedAt &&
+      Date.now() - new Date(currentRec.startedAt).getTime() > 25 * 60 * 1000);
+  const isInProgress = currentRec?.status === "in_progress" && !isEndedEarly;
 
   if (!hasRecordings && !hasTranscripts && recordings.length === 0 && !hasScorecard) {
     return (
@@ -1388,6 +1472,80 @@ function InterviewMediaAndTranscriptSection({
                     {scorecard.rationale}
                   </p>
                 </div>
+              )}
+            </div>
+          ) : isEndedEarly ? (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-6 text-center space-y-3">
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/15 text-amber-500">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  AI Interview Incomplete — Candidate Ended Session Early
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                  The candidate closed or left the interview room before answering all questions.
+                  {transcripts.length > 0
+                    ? ` ${transcripts.length} partial response(s) were recorded.`
+                    : ""}
+                  You can inspect the answers submitted so far or generate an evaluation based on
+                  their partial performance.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                {transcripts.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setActiveTab("transcript")}
+                    className="rounded-xl text-xs gap-1.5"
+                  >
+                    <MessageSquareText className="h-3.5 w-3.5 text-emerald-500" />
+                    View Captured Transcript ({transcripts.length})
+                  </Button>
+                )}
+                {sessionId && transcripts.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={scoringBusy}
+                    onClick={handleTriggerScoring}
+                    className="rounded-xl text-xs gap-1.5 border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                  >
+                    {scoringBusy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCw className="h-3.5 w-3.5 text-amber-500" />
+                    )}
+                    {scoringBusy ? "Evaluating Partial Answers..." : "Score Available Answers"}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : isInProgress ? (
+            <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-6 text-center space-y-3">
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/15 text-blue-500">
+                <Loader2 className="h-5 w-5 animate-spin" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  AI Interview Currently In Progress
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                  The candidate is currently in the interview room. Responses are syncing to the
+                  database as questions are answered.
+                </p>
+              </div>
+              {transcripts.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setActiveTab("transcript")}
+                  className="rounded-xl text-xs gap-1.5"
+                >
+                  <MessageSquareText className="h-3.5 w-3.5 text-emerald-500" />
+                  View Synced Answers ({transcripts.length})
+                </Button>
               )}
             </div>
           ) : (

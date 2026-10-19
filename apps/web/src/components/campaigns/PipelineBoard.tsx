@@ -187,32 +187,30 @@ export function PipelineBoard({
     }
 
     for (const cand of filteredCandidates) {
-      if (cand.status === "rejected" || cand.status === "on_hold") {
-        // Still place in column according to their underlying stage
-      }
-
       if (
-        cand.current_stage === "needs_review" ||
-        cand.current_stage === "Resume Screening" ||
-        !cand.current_stage
-      ) {
-        if (map["needs_review"]) map["needs_review"].push(cand);
-      } else if (
-        cand.current_stage === "offer" ||
         cand.status === "offer_ready" ||
-        cand.status === "offer_sent"
+        cand.status === "offer_sent" ||
+        cand.current_stage === "offer" ||
+        cand.current_stage === "Offer Sent" ||
+        cand.current_stage === "Offer Ready"
       ) {
         if (map["offer"]) map["offer"].push(cand);
-      } else {
+      } else if (
+        cand.round_instance_id ||
+        (cand.current_stage && cand.current_stage.startsWith("Round ")) ||
+        cand.round_number
+      ) {
         const roundNum = cand.current_round_number || cand.round_number || 1;
         const colId = `round_${roundNum}`;
         if (map[colId]) {
           map[colId].push(cand);
-        } else {
-          // fallback to first round
-          if (map["round_1"]) map["round_1"].push(cand);
-          else if (map["needs_review"]) map["needs_review"].push(cand);
+        } else if (map["round_1"]) {
+          map["round_1"].push(cand);
+        } else if (map["needs_review"]) {
+          map["needs_review"].push(cand);
         }
+      } else {
+        if (map["needs_review"]) map["needs_review"].push(cand);
       }
     }
     return map;
@@ -473,26 +471,46 @@ export function PipelineBoard({
                               </span>
                             </div>
 
-                            {/* Unified 1-100 Score Pill */}
-                            {cand.latest_score != null ? (
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-[10px] font-mono font-bold shrink-0",
-                                  cand.latest_score >= 70
-                                    ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/10 dark:text-emerald-400"
-                                    : cand.latest_score >= 50
-                                      ? "border-amber-500/30 text-amber-600 bg-amber-500/10 dark:text-amber-400"
-                                      : "border-rose-500/30 text-rose-600 bg-rose-500/10 dark:text-rose-400",
-                                )}
-                              >
-                                {cand.latest_score}/100
-                              </Badge>
-                            ) : (
-                              <span className="text-[10px] text-muted-foreground shrink-0 font-mono">
-                                unscored
-                              </span>
-                            )}
+                            {/* Score Pills */}
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              {cand.ai_interview_score != null ? (
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[10px] font-mono font-bold",
+                                    cand.ai_interview_score >= 70
+                                      ? "border-blue-500/30 text-blue-600 bg-blue-500/10 dark:text-blue-400"
+                                      : cand.ai_interview_score >= 50
+                                        ? "border-amber-500/30 text-amber-600 bg-amber-500/10 dark:text-amber-400"
+                                        : "border-rose-500/30 text-rose-600 bg-rose-500/10 dark:text-rose-400",
+                                  )}
+                                >
+                                  Interview: {cand.ai_interview_score}/100
+                                </Badge>
+                              ) : null}
+
+                              {cand.resume_score != null ? (
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[10px] font-mono font-bold",
+                                    cand.resume_score >= 70
+                                      ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/10 dark:text-emerald-400"
+                                      : cand.resume_score >= 50
+                                        ? "border-amber-500/30 text-amber-600 bg-amber-500/10 dark:text-amber-400"
+                                        : "border-rose-500/30 text-rose-600 bg-rose-500/10 dark:text-rose-400",
+                                  )}
+                                >
+                                  Resume: {cand.resume_score}/100
+                                </Badge>
+                              ) : (
+                                cand.ai_interview_score == null && (
+                                  <span className="text-[10px] text-muted-foreground shrink-0 font-mono">
+                                    unscored
+                                  </span>
+                                )
+                              )}
+                            </div>
                           </div>
 
                           {cand.current_stage === "Resume Screening" && cand.score_rationale && (
@@ -501,8 +519,91 @@ export function PipelineBoard({
                             </p>
                           )}
 
+                          {/* Score Highlight Box */}
+                          {cand.current_stage === "Resume Screening" &&
+                            cand.resume_score != null && (
+                              <div className="mt-2.5 flex items-center justify-between rounded-lg bg-muted/40 px-2.5 py-1.5 border border-border/60">
+                                <span className="text-[11px] font-medium text-muted-foreground">
+                                  Resume Match Score:
+                                </span>
+                                <span className="text-xs font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                                  {cand.resume_score}/100
+                                </span>
+                              </div>
+                            )}
+
+                          {cand.current_stage !== "Resume Screening" && (
+                            <div className="mt-2.5 flex items-center justify-between rounded-lg bg-muted/40 px-2.5 py-1.5 border border-border/60">
+                              <span className="text-[11px] font-medium text-muted-foreground">
+                                {cand.current_stage} Score:
+                              </span>
+                              <span className="text-xs font-bold font-mono text-primary">
+                                {cand.ai_interview_score != null
+                                  ? `${cand.ai_interview_score}/100`
+                                  : cand.interview_status === "incomplete"
+                                    ? "Ended Early"
+                                    : "Awaiting Score"}
+                              </span>
+                            </div>
+                          )}
+
                           {/* Status and Reason */}
                           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                            {/* AI Interview Status Badge */}
+                            {cand.interview_status === "evaluated" && (
+                              <Badge
+                                variant="outline"
+                                className="border-emerald-500/40 text-emerald-600 bg-emerald-500/10 text-[10px] gap-1 px-1.5 py-0.5 font-semibold"
+                              >
+                                <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500" />
+                                AI Interview: Evaluated (
+                                {cand.ai_interview_score != null
+                                  ? `${cand.ai_interview_score}/100`
+                                  : "Scored"}
+                                )
+                              </Badge>
+                            )}
+                            {cand.interview_status === "in_progress" && (
+                              <Badge
+                                variant="outline"
+                                className="border-amber-500/40 text-amber-600 bg-amber-500/10 text-[10px] gap-1 px-1.5 py-0.5 animate-pulse"
+                              >
+                                <Clock className="h-2.5 w-2.5 animate-spin" />
+                                AI Interview: In Progress
+                              </Badge>
+                            )}
+                            {cand.interview_status === "incomplete" && (
+                              <Badge
+                                variant="outline"
+                                className="border-rose-500/40 text-rose-600 bg-rose-500/10 text-[10px] gap-1 px-1.5 py-0.5 font-semibold"
+                              >
+                                <AlertCircle className="h-2.5 w-2.5 text-rose-500" />
+                                AI Interview: Ended Early{" "}
+                                {cand.answers_count
+                                  ? `(${cand.answers_count} answered)`
+                                  : "(Incomplete)"}
+                              </Badge>
+                            )}
+                            {cand.interview_status === "completed" && (
+                              <Badge
+                                variant="outline"
+                                className="border-blue-500/40 text-blue-600 bg-blue-500/10 text-[10px] gap-1 px-1.5 py-0.5"
+                              >
+                                <Sparkles className="h-2.5 w-2.5" />
+                                AI Interview: Evaluating
+                              </Badge>
+                            )}
+                            {cand.interview_status === "not_started" &&
+                              (cand.round_instance_id || cand.round_number) && (
+                                <Badge
+                                  variant="outline"
+                                  className="border-border text-muted-foreground bg-muted/20 text-[10px] gap-1 px-1.5 py-0.5"
+                                >
+                                  <Clock className="h-2.5 w-2.5" />
+                                  AI Interview: Invited
+                                </Badge>
+                              )}
+
                             {cand.status === "on_hold" && (
                               <Badge
                                 variant="outline"
@@ -521,15 +622,16 @@ export function PipelineBoard({
                                 Rejected
                               </Badge>
                             )}
-                            {cand.status === "incomplete" && (
-                              <Badge
-                                variant="outline"
-                                className="border-purple-500/40 text-purple-600 bg-purple-500/10 text-[10px] gap-1 px-1.5 py-0"
-                              >
-                                <HelpCircle className="h-2.5 w-2.5" />
-                                Incomplete
-                              </Badge>
-                            )}
+                            {cand.status === "incomplete" &&
+                              cand.interview_status !== "incomplete" && (
+                                <Badge
+                                  variant="outline"
+                                  className="border-purple-500/40 text-purple-600 bg-purple-500/10 text-[10px] gap-1 px-1.5 py-0"
+                                >
+                                  <HelpCircle className="h-2.5 w-2.5" />
+                                  Incomplete
+                                </Badge>
+                              )}
                             {isOfferSent && (
                               <Badge
                                 variant="outline"

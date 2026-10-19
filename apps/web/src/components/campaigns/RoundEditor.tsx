@@ -1,9 +1,36 @@
 import { type RoundType, type TeamMemberRow, type Tier, tierAtLeast } from "@scalepods/core";
-import { Bot, FileText, Info, Lock, PhoneCall, UserCheck } from "lucide-react";
+import {
+  AlertCircle,
+  Bot,
+  CheckCircle2,
+  ExternalLink,
+  FileText,
+  Info,
+  Lock,
+  PhoneCall,
+  UserCheck,
+} from "lucide-react";
+import Link from "next/link";
 import { useEffect } from "react";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+
+export interface TeamMemberOption {
+  id: string;
+  name: string;
+  email: string;
+  role?: string | null;
+  calendar_status?: string;
+  google_email?: string | null;
+}
 
 export interface RoundDraft {
   id: string;
@@ -76,7 +103,7 @@ export function RoundEditor({
   index: number;
   round: RoundDraft;
   tier: string;
-  teamMembers: TeamMemberRow[];
+  teamMembers: TeamMemberOption[];
   onChange: (patch: Partial<RoundDraft>) => void;
 }) {
   const growthPlus = tierAtLeast(tier as Tier, "growth");
@@ -120,33 +147,27 @@ export function RoundEditor({
           >
             Interview Format & Evaluation Method
           </label>
-          <select
-            id={`rt-${index}`}
+          <Select
             value={round.round_type}
-            onChange={(e) => onChange({ round_type: e.target.value as RoundType })}
-            className={cn(
-              "flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors",
-              "focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
-              "dark:bg-card dark:text-foreground",
-            )}
+            onValueChange={(val) => onChange({ round_type: val as RoundType })}
           >
-            {ROUND_TYPE_OPTIONS.map((opt) => {
-              const locked =
-                (opt.value === "assignment" && !growthPlus) ||
-                (opt.value === "ai_voice_call" && !basicPlus);
-              const lockTier = opt.value === "assignment" ? "Growth" : "Basic";
-              return (
-                <option
-                  key={opt.value}
-                  value={opt.value}
-                  disabled={locked}
-                  className="bg-card text-foreground dark:bg-gray-900"
-                >
-                  {opt.label} {locked ? `— (Upgrade to ${lockTier} tier)` : ""}
-                </option>
-              );
-            })}
-          </select>
+            <SelectTrigger id={`rt-${index}`} className="rounded-xl">
+              <SelectValue placeholder="Select interview format" />
+            </SelectTrigger>
+            <SelectContent className="border-border bg-card">
+              {ROUND_TYPE_OPTIONS.map((opt) => {
+                const locked =
+                  (opt.value === "assignment" && !growthPlus) ||
+                  (opt.value === "ai_voice_call" && !basicPlus);
+                const lockTier = opt.value === "assignment" ? "Growth" : "Basic";
+                return (
+                  <SelectItem key={opt.value} value={opt.value} disabled={locked}>
+                    {opt.label} {locked ? `— (Upgrade to ${lockTier} tier)` : ""}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
           <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
             {activeOption?.desc}
           </p>
@@ -180,47 +201,92 @@ export function RoundEditor({
 
         {/* Human Interviewer Field */}
         {round.round_type === "human_interview" ? (
-          <div className="sm:col-span-2 rounded-xl bg-accent/40 p-4 border border-primary/20 space-y-2">
-            <label htmlFor={`int-${index}`} className="block text-xs font-semibold text-foreground">
-              Assigned Lead Interviewer Email *
-            </label>
-            {teamMembers.length > 0 ? (
-              <select
-                id={`int-${index}`}
-                value={round.interviewer_email}
-                onChange={(e) => onChange({ interviewer_email: e.target.value })}
-                className={cn(
-                  "flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors",
-                  "focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
-                  "dark:bg-card dark:text-foreground",
-                )}
+          <div className="sm:col-span-2 rounded-xl bg-accent/40 p-4 border border-primary/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor={`int-${index}`}
+                className="block text-xs font-semibold text-foreground"
               >
-                <option value="" className="bg-card text-foreground dark:bg-gray-900">
-                  Select an interviewer from your team…
-                </option>
-                {teamMembers.map((m) => (
-                  <option
-                    key={m.id}
-                    value={m.email}
-                    className="bg-card text-foreground dark:bg-gray-900"
-                  >
-                    {m.name} ({m.email})
-                  </option>
-                ))}
-              </select>
+                Assigned Team Interviewer *
+              </label>
+              <Link
+                href="/settings"
+                target="_blank"
+                className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
+              >
+                Manage teammates <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+            {teamMembers.length > 0 ? (
+              <div className="space-y-2">
+                <Select
+                  value={round.interviewer_email || "unassigned"}
+                  onValueChange={(val) =>
+                    onChange({ interviewer_email: val === "unassigned" ? "" : val })
+                  }
+                >
+                  <SelectTrigger id={`int-${index}`} className="rounded-xl">
+                    <SelectValue placeholder="Select a team member as interviewer…" />
+                  </SelectTrigger>
+                  <SelectContent className="border-border bg-card">
+                    <SelectItem value="unassigned">Select a team member as interviewer…</SelectItem>
+                    {teamMembers.map((m) => (
+                      <SelectItem key={m.id} value={m.email}>
+                        {m.name} ({m.email}){" "}
+                        {m.calendar_status === "active" ? "— 🟢 Calendar Connected" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(() => {
+                  const selected = teamMembers.find(
+                    (m) => m.email.toLowerCase() === round.interviewer_email.toLowerCase(),
+                  );
+                  if (!selected) {
+                    return (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <Info className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        Only teammates added to your workspace can be selected as interviewers.
+                      </p>
+                    );
+                  }
+                  if (selected.calendar_status === "active") {
+                    return (
+                      <p className="text-xs text-emerald-500 font-medium flex items-center gap-1.5">
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                        Google Calendar connected ({selected.google_email || selected.email}).
+                        Candidates will auto-book against live free slots.
+                      </p>
+                    );
+                  }
+                  return (
+                    <p className="text-xs text-amber-500 font-medium flex items-center gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                      Google Calendar not connected yet for this teammate. They can connect it in
+                      Settings.
+                    </p>
+                  );
+                })()}
+              </div>
             ) : (
-              <Input
-                id={`int-${index}`}
-                placeholder="e.g., alex.lead@company.com"
-                value={round.interviewer_email}
-                onChange={(e) => onChange({ interviewer_email: e.target.value })}
-                className="bg-card"
-              />
+              <div className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/10 p-3.5 space-y-2">
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs font-semibold">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  No team members added yet
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Live human interviews require an assigned team member from your workspace. Add
+                  your teammates in Settings to enable this round.
+                </p>
+                <Link
+                  href="/settings"
+                  target="_blank"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                >
+                  Go to Settings &rarr; Add Teammate
+                </Link>
+              </div>
             )}
-            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Info className="h-3.5 w-3.5 shrink-0 text-primary" />
-              Calendar invites and video interview links will be scheduled against this interviewer.
-            </p>
           </div>
         ) : null}
 

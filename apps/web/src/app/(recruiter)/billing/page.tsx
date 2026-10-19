@@ -364,10 +364,10 @@ function loadRazorpayCheckoutScript(): Promise<boolean> {
 }
 
 const PLAN_PRICING_DISPLAY: Record<Tier, { price: string; period: string }> = {
-  free: { price: "$0", period: "forever" },
-  basic: { price: "$149", period: "/ month" },
-  growth: { price: "$349", period: "/ month" },
-  enterprise: { price: "$1099", period: "/ month" },
+  free: { price: "₹0", period: "forever" },
+  basic: { price: "₹1", period: "/ month" },
+  growth: { price: "₹2", period: "/ month" },
+  enterprise: { price: "₹3", period: "/ month" },
 };
 
 function TierCompareModal({

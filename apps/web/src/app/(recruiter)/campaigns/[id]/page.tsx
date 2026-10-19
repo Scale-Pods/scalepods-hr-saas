@@ -92,6 +92,45 @@ export default function CampaignDetailPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Real-time live data sync: invalidate campaign details when any related interview/round/application data updates
+  useEffect(() => {
+    if (!id) return;
+    const supabase = supabaseBrowser();
+    const channel = supabase
+      .channel(`campaign-live-sync-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "round_instances", filter: `campaign_id=eq.${id}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "applications", filter: `campaign_id=eq.${id}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+        },
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "interview_sessions" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "interview_answers" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "scorecards" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "decision_ledger" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, queryClient]);
+
   const toggleStatus = useToggleCampaignStatus(
     id,
     campaign?.status ?? "on",

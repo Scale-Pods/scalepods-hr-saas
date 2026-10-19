@@ -22,6 +22,206 @@ function getAuthClient(authHeader?: string | null) {
   });
 }
 
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id: campaignId } = await params;
+    if (!campaignId) {
+      return NextResponse.json({ error: "Campaign ID is required" }, { status: 400 });
+    }
+
+    const admin = getAdminClient();
+
+    // 1. Fetch Campaign and Rounds
+    const [cRes, rRes, appsRes, risRes, statusesRes] = await Promise.all([
+      admin.from("campaigns").select("*").eq("id", campaignId).maybeSingle(),
+      admin.from("campaign_rounds").select("*").eq("campaign_id", campaignId).order("round_number"),
+      admin
+        .from("applications")
+        .select("*")
+        .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: false }),
+      admin
+        .from("round_instances")
+        .select("*")
+        .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: false }),
+      admin
+        .from("round_instances")
+        .select("round_number, status")
+        .eq("campaign_id", campaignId)
+        .in("status", ["passed", "failed", "no_show"]),
+    ]);
+
+    if (cRes.error) {
+      return NextResponse.json({ error: cRes.error.message }, { status: 500 });
+    }
+    if (!cRes.data) {
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+
+    const campaign = cRes.data;
+    const rounds = rRes.data ?? [];
+    const applicationsList = appsRes.data ?? [];
+    const roundInstances = risRes.data ?? [];
+    const byRound: Record<number, string> = {};
+    for (const s of (statusesRes.data ?? []) as { round_number: number; status: string }[]) {
+      byRound[s.round_number] = s.status;
+    }
+
+    const candidateIds = applicationsList.map((a) => a.candidate_id).filter(Boolean);
+    const roundInstanceIds = roundInstances.map((r) => r.id);
+    const appIds = applicationsList.map((a) => a.id);
+
+    // 2. Fetch Sessions, Answers, Scorecards, Decision Ledger
+    const [sessionsRes, answersRes, scorecardsRes, dlRes] = await Promise.all([
+      candidateIds.length > 0
+        ? admin.from("interview_sessions").select("*").in("candidate_id", candidateIds)
+        : Promise.resolve({ data: [] }),
+      roundInstanceIds.length > 0
+        ? admin.from("interview_answers").select("id, session_id, round_instance_id, answer_text")
+        : Promise.resolve({ data: [] }),
+      admin.from("scorecards").select("*"),
+      appIds.length > 0 || candidateIds.length > 0
+        ? admin
+            .from("decision_ledger")
+            .select("*")
+            .or(
+              [
+                appIds.length > 0 ? `application_id.in.(${appIds.join(",")})` : null,
+                candidateIds.length > 0 ? `candidate_id.in.(${candidateIds.join(",")})` : null,
+                roundInstanceIds.length > 0
+                  ? `round_instance_id.in.(${roundInstanceIds.join(",")})`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(","),
+            )
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const allSessions = (sessionsRes.data ?? []) as any[];
+    const allAnswers = (answersRes.data ?? []) as any[];
+    const allScorecards = (scorecardsRes.data ?? []) as any[];
+    const dlList = (dlRes.data ?? []) as any[];
+
+    // 3. Map candidates
+    const candidates = applicationsList.map((app) => {
+      const appRi = roundInstances.find(
+        (r) =>
+          r.application_id === app.id ||
+          (r.candidate_id === app.candidate_id &&
+            r.round_number === (app.current_round_number ?? 1)),
+      );
+
+      const appResumeScoreRow = dlList.find(
+        (d) =>
+          (d.application_id === app.id || d.candidate_id === app.candidate_id) &&
+          (d.score_type === "resume" ||
+            d.stage === "resume_screening" ||
+            d.stage?.includes("resume")) &&
+          d.score != null,
+      );
+
+      const appRoundScoreRow = dlList.find(
+        (d) =>
+          ((appRi && d.round_instance_id === appRi.id) ||
+            ((d.application_id === app.id || d.candidate_id === app.candidate_id) &&
+              d.score_type !== "resume" &&
+              !d.stage?.includes("resume"))) &&
+          d.score != null,
+      );
+
+      const appSession = allSessions.find(
+        (s) => (appRi && s.round_instance_id === appRi.id) || s.candidate_id === app.candidate_id,
+      );
+
+      const appCard = allScorecards.find(
+        (sc) =>
+          (appSession && sc.session_id === appSession.id) ||
+          (appRi && sc.round_instance_id === appRi.id),
+      );
+
+      const appAnswers = allAnswers.filter(
+        (a) =>
+          (appSession && a.session_id === appSession.id) ||
+          (appRi && a.round_instance_id === appRi.id),
+      );
+
+      let interviewStatus:
+        | "not_started"
+        | "in_progress"
+        | "incomplete"
+        | "completed"
+        | "evaluated" = "not_started";
+      if (appRoundScoreRow || appCard?.overall_score != null) {
+        interviewStatus = "evaluated";
+      } else if (appSession?.status === "completed" || appRi?.status === "completed") {
+        interviewStatus = "completed";
+      } else if (appSession?.status === "incomplete" || appRi?.status === "incomplete") {
+        interviewStatus = "incomplete";
+      } else if (appSession?.status === "in_progress" || appRi?.status === "in_progress") {
+        const startMs = appSession?.started_at ? new Date(appSession.started_at).getTime() : 0;
+        const isStale = startMs > 0 && Date.now() - startMs > 25 * 60 * 1000;
+        interviewStatus = isStale ? "incomplete" : "in_progress";
+      } else if (appRi) {
+        interviewStatus = "not_started";
+      }
+
+      let stageLabel = "Resume Screening";
+      if (app.current_stage === "round" || appRi) {
+        stageLabel = `Round ${app.current_round_number ?? appRi?.round_number ?? 1}`;
+      } else if (app.current_stage === "offer") {
+        stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
+      }
+
+      const resumeScore = appResumeScoreRow?.score != null ? Number(appResumeScoreRow.score) : null;
+      const aiScore =
+        appRoundScoreRow?.score != null
+          ? Number(appRoundScoreRow.score)
+          : appCard?.overall_score != null
+            ? Number(appCard.overall_score)
+            : null;
+
+      return {
+        application_id: app.id,
+        candidate_id: app.candidate_id,
+        name: app.candidate_name,
+        email: app.candidate_email,
+        phone: app.candidate_phone,
+        resume_url: app.resume_path,
+        current_stage: stageLabel,
+        current_round_number: app.current_round_number ?? appRi?.round_number ?? 1,
+        status: app.status,
+        status_before_hold: app.status_before_hold,
+        rejection_reason: app.rejection_reason,
+        latest_score: aiScore != null ? aiScore : resumeScore,
+        resume_score: resumeScore,
+        ai_interview_score: aiScore,
+        interview_status: interviewStatus,
+        interview_session_id: appSession?.id ?? null,
+        answers_count: appAnswers.length,
+        score_rationale: (appRoundScoreRow || appResumeScoreRow)?.rationale ?? null,
+        decision: app.status === "rejected" ? "rejected" : (appRi?.status ?? app.status),
+        round_instance_id: appRi?.id ?? null,
+        round_number: app.current_round_number ?? appRi?.round_number ?? 1,
+        reviewer_cutoff: appRi?.reviewer_cutoff ?? null,
+        created_at: app.created_at,
+      };
+    });
+
+    return NextResponse.json({
+      campaign,
+      rounds,
+      candidates,
+      roundStatuses: byRound,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: campaignId } = await params;

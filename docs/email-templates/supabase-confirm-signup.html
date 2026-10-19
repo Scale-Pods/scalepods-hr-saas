@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Confirm Your ScalePods Account</title>
+  <!--[if mso]>
+  <style type="text/css">
+    body, table, td, a { font-family: Arial, Helvetica, sans-serif !important; }
+  </style>
+  <![endif]-->
+  <style type="text/css">
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0b0f19;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -ms-text-size-adjust: 100%;
+      -webkit-text-size-adjust: 100%;
+    }
+    table {
+      border-collapse: collapse;
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+    }
+    img {
+      border: 0;
+      height: auto;
+      line-height: 100%;
+      outline: none;
+      text-decoration: none;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .btn-gradient {
+      display: inline-block;
+      padding: 14px 36px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #ffffff !important;
+      text-decoration: none;
+      background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+      background-color: #2563eb;
+      border-radius: 10px;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+      letter-spacing: 0.2px;
+    }
+    .footer-text {
+      font-size: 12px;
+      line-height: 18px;
+      color: #64748b;
+      text-align: center;
+    }
+    .footer-text a {
+      color: #94a3b8;
+      text-decoration: underline;
+    }
+    @media only screen and (max-width: 620px) {
+      .email-container {
+        width: 100% !important;
+        border-radius: 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+      }
+      .content-padding {
+        padding: 32px 24px !important;
+      }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 40px 10px; background-color: #0b0f19;">
+  <!-- Preheader text (anti-spam & inbox preview) -->
+  <div style="display: none; font-size: 1px; color: #0b0f19; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
+    Verify your email address to activate your ScalePods AI Talent Intelligence workspace.
+  </div>
+
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+    <tr>
+      <td align="center">
+        <table role="presentation" class="email-container" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #111827; border: 1px solid #1f2937; border-radius: 16px;">
+          
+          <!-- Top Accent Gradient Line -->
+          <tr>
+            <td height="4" style="background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%); font-size: 0px; line-height: 0px;">&nbsp;</td>
+          </tr>
+
+          <!-- Header Logo -->
+          <tr>
+            <td align="center" style="padding: 40px 40px 20px 40px;">
+              <table role="presentation" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center">
+                    <span style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: #ffffff;">
+                      Scale<span style="color: #3b82f6;">Pods</span>
+                    </span>
+                    <span style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #64748b; margin-top: 4px; font-weight: 600;">
+                      Talent Intelligence Platform
+                    </span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td class="content-padding" style="padding: 20px 48px 40px 48px; text-align: center;">
+              
+              <h1 style="margin: 0 0 16px 0; font-size: 22px; font-weight: 700; color: #f8fafc; letter-spacing: -0.3px;">
+                Confirm Your Email Address
+              </h1>
+              
+              <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 24px; color: #94a3b8;">
+                Welcome to ScalePods! You're one step away from launching automated AI interviews, smart candidate evaluations, and seamless calendar scheduling.
+              </p>
+
+              <!-- CTA Button -->
+              <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin: 32px auto;">
+                <tr>
+                  <td align="center" border-radius="10px">
+                    <a href="{{ .ConfirmationURL }}" target="_blank" class="btn-gradient" style="display: inline-block; padding: 14px 38px; font-size: 15px; font-weight: 600; color: #ffffff; text-decoration: none; background-color: #2563eb; border-radius: 10px;">
+                      Confirm Email Address &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 28px 0 0 0; font-size: 13px; line-height: 20px; color: #64748b;">
+                Button not working? Copy and paste this link into your browser:
+              </p>
+              <p style="margin: 8px 0 0 0; font-size: 12px; line-height: 18px; word-break: break-all; color: #3b82f6;">
+                <a href="{{ .ConfirmationURL }}" target="_blank" style="color: #60a5fa; text-decoration: underline;">
+                  {{ .ConfirmationURL }}
+                </a>
+              </p>
+
+              <div style="margin-top: 36px; padding-top: 24px; border-top: 1px solid #1f2937; text-align: left;">
+                <p style="margin: 0; font-size: 12px; line-height: 18px; color: #64748b;">
+                  🔒 If you did not create an account with ScalePods, you can safely ignore this email. This link will expire in 24 hours.
+                </p>
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 40px; background-color: #0c121e; border-top: 1px solid #1f2937;">
+              <p class="footer-text" style="margin: 0 0 8px 0;">
+                &copy; 2026 ScalePods Tech Inc. All rights reserved.
+              </p>
+              <p class="footer-text" style="margin: 0;">
+                <a href="https://scalepods.tech" target="_blank">Website</a> &bull;
+                <a href="https://scalepods.tech/privacy" target="_blank">Privacy Policy</a> &bull;
+                <a href="mailto:support@scalepods.tech">Contact Support</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

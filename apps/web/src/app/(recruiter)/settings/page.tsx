@@ -46,6 +46,7 @@ function SettingsPageInner() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
   const [adding, setAdding] = useState(false);
+  const [connectingMemberId, setConnectingMemberId] = useState<string | null>(null);
 
   const [quietStart, setQuietStart] = useState(account?.quiet_hours_start ?? "21:00");
   const [quietEnd, setQuietEnd] = useState(account?.quiet_hours_end ?? "09:00");
@@ -107,6 +108,7 @@ function SettingsPageInner() {
 
   const connectCalendar = async (teamMemberId: string) => {
     if (!session?.access_token) return;
+    setConnectingMemberId(teamMemberId);
     try {
       const response = await fetch("/api/calendar/authorize", {
         method: "POST",
@@ -122,6 +124,7 @@ function SettingsPageInner() {
       window.location.assign(result.authorization_url);
     } catch (error) {
       showErrorToast(error);
+      setConnectingMemberId(null);
     }
   };
 
@@ -174,23 +177,30 @@ function SettingsPageInner() {
 
   const addTeammate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!account?.id) return;
+    if (!account?.id || !name.trim() || !email.trim()) return;
     setAdding(true);
     try {
-      await callWorkflow("interviewers", {
-        body: {
-          action: "assign_round",
-          account_id: account.id,
-          name,
-          email,
-          role: role || undefined,
+      const res = await fetch("/api/team-members", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
         },
-        accessToken: session?.access_token,
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          role: role.trim() || "interviewer",
+        }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to add teammate.");
+      }
       setName("");
       setEmail("");
       setRole("");
       await load();
+      showToast("Teammate added.");
     } catch (err) {
       showErrorToast(err);
     } finally {
@@ -329,20 +339,44 @@ function SettingsPageInner() {
                       const status = connection?.status ?? "not_connected";
                       return (
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs capitalize text-muted-foreground">
-                            {status === "active"
-                              ? connection.google_email || "Connected"
-                              : status.replace(/_/g, " ")}
-                          </span>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void connectCalendar(m.id)}
-                            disabled={status === "pending" || !session?.access_token}
-                          >
-                            {status === "active" ? "Reconnect" : "Connect"}
-                          </Button>
+                          {status === "active" ? (
+                            <>
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                Connected
+                                {connection.google_email ? ` (${connection.google_email})` : ""}
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() => void connectCalendar(m.id)}
+                                disabled={connectingMemberId === m.id || !session?.access_token}
+                              >
+                                {connectingMemberId === m.id ? "Connecting..." : "Reconnect"}
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-xs capitalize text-muted-foreground">
+                                {status.replace(/_/g, " ")}
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void connectCalendar(m.id)}
+                                disabled={connectingMemberId === m.id || !session?.access_token}
+                              >
+                                {connectingMemberId === m.id
+                                  ? "Connecting..."
+                                  : status === "pending"
+                                    ? "Retry Connect"
+                                    : "Connect"}
+                              </Button>
+                            </>
+                          )}
                         </div>
                       );
                     })()}

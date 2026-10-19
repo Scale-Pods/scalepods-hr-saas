@@ -57,7 +57,7 @@ interface InterviewContextType {
     sessionId: string,
     streams: { camera: MediaStream; screen?: MediaStream | null; audio?: MediaStream | null },
   ) => Promise<void>;
-  completeInterview: () => Promise<void>;
+  completeInterview: (isEndedEarly?: boolean) => Promise<void>;
 }
 
 const InterviewContext = createContext<InterviewContextType | null>(null);
@@ -563,39 +563,43 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
     [recorder, session],
   );
 
-  const completeInterview = useCallback(async () => {
-    if (!session) return;
+  const completeInterview = useCallback(
+    async (isEndedEarly: boolean = false) => {
+      if (!session) return;
 
-    const recResult = await recorderStopRef.current();
-    const recordingUrl = recResult?.filePath ?? null;
-    setMediaStreams(null, null, null);
+      const recResult = await recorderStopRef.current();
+      const recordingUrl = recResult?.filePath ?? null;
+      setMediaStreams(null, null, null);
 
-    setSession((prev) =>
-      prev
-        ? {
-            ...prev,
-            status: "completed",
-            completed_at: new Date().toISOString(),
-            recording_url: recordingUrl || prev.recording_url,
-          }
-        : null,
-    );
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: isEndedEarly ? "incomplete" : "completed",
+              completed_at: new Date().toISOString(),
+              recording_url: recordingUrl || prev.recording_url,
+            }
+          : null,
+      );
 
-    // Call complete API to finalize session record and trigger scoring pipeline
-    try {
-      await fetch("/api/interview/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "complete",
-          sessionId: session.id,
-          recordingUrl,
-        }),
-      });
-    } catch (err) {
-      console.warn("Failed to finalize session on server:", err);
-    }
-  }, [session, setMediaStreams]);
+      // Call complete API to finalize session record and trigger scoring pipeline
+      try {
+        await fetch("/api/interview/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "complete",
+            sessionId: session.id,
+            recordingUrl,
+            endedEarly: isEndedEarly,
+          }),
+        });
+      } catch (err) {
+        console.warn("Failed to finalize session on server:", err);
+      }
+    },
+    [session, setMediaStreams],
+  );
 
   useEffect(() => {
     return () => {
