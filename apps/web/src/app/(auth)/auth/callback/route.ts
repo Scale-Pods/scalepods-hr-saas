@@ -4,6 +4,12 @@ import { getEnv } from "@/env";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
+  const host = request.headers.get("x-forwarded-host") || requestUrl.host;
+  const proto =
+    request.headers.get("x-forwarded-proto") ||
+    (request.url.startsWith("https") ? "https" : "http");
+  const origin = `${proto}://${host}`;
+
   const code = requestUrl.searchParams.get("code");
   const token_hash = requestUrl.searchParams.get("token_hash");
   const type = requestUrl.searchParams.get("type");
@@ -11,10 +17,10 @@ export async function GET(request: NextRequest) {
   const urlError = requestUrl.searchParams.get("error");
   const urlErrorDescription = requestUrl.searchParams.get("error_description");
 
-  let redirectUrl = new URL(next, requestUrl.origin);
+  let redirectUrl = new URL(next, origin);
 
   if (type === "recovery") {
-    redirectUrl = new URL("/auth/verify?type=recovery", requestUrl.origin);
+    redirectUrl = new URL("/auth/verify?type=recovery", origin);
   }
 
   const response = NextResponse.redirect(redirectUrl);
