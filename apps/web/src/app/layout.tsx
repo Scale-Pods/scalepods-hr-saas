@@ -19,6 +19,15 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: "ScalePods",
   description: "Recruiting, automated.",
+  icons: {
+    icon: [
+      { url: "https://www.scalepods.co/icon.png", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/brand/scalepods-logo.png", type: "image/png" },
+    ],
+    shortcut: "https://www.scalepods.co/icon.png",
+    apple: "https://www.scalepods.co/icon.png",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

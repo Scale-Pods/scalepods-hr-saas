@@ -178,13 +178,13 @@ function CampaignsContent() {
     <div className="space-y-6">
       {/* Top Tab Bar: Merged Campaigns & New Campaign */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 rounded-full bg-accent/60 p-1">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1 sm:gap-2 rounded-full bg-accent/60 p-1">
             <button
               type="button"
               onClick={() => setActiveTab("list")}
               className={cn(
-                "flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
+                "flex items-center gap-2 rounded-full px-3.5 sm:px-4 py-1.5 text-xs font-semibold transition-all",
                 activeTab === "list"
                   ? "bg-card text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
@@ -202,7 +202,7 @@ function CampaignsContent() {
               type="button"
               onClick={handleNewCampaign}
               className={cn(
-                "flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
+                "flex items-center gap-2 rounded-full px-3.5 sm:px-4 py-1.5 text-xs font-semibold transition-all",
                 activeTab === "new"
                   ? "bg-primary text-white shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
@@ -212,14 +212,18 @@ function CampaignsContent() {
               <span>New Campaign</span>
             </button>
           </div>
-          <HowToCreateButton />
-          <Link
-            href="/guide/resume-scoring"
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#2f6bff]/40 bg-[#2f6bff]/10 px-3.5 py-1.5 text-xs font-semibold text-[#60a5fa] hover:bg-[#2f6bff]/20 hover:border-[#2f6bff]/60 hover:text-white transition-all shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/50"
-          >
-            <Brain className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span>How we score</span>
-          </Link>
+          {activeTab === "list" && (
+            <>
+              <HowToCreateButton />
+              <Link
+                href="/guide/resume-scoring"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#2f6bff]/40 bg-[#2f6bff]/10 px-3.5 py-1.5 text-xs font-semibold text-[#60a5fa] hover:bg-[#2f6bff]/20 hover:border-[#2f6bff]/60 hover:text-white transition-all shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/50"
+              >
+                <Brain className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>How we score</span>
+              </Link>
+            </>
+          )}
         </div>
 
         {activeTab === "list" && (

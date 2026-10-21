@@ -421,17 +421,17 @@
   .auth-split {
     display: flex;
     min-height: 100vh;
-    overflow: hidden;
+    overflow-x: hidden;
   }
   .auth-marketing {
     flex: 1;
     background: #111827;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    padding: 60px 56px;
+    justify-content: space-between;
+    padding: 52px 56px 36px 56px;
     position: relative;
-    overflow: hidden;
+    overflow-y: auto;
   }
   .auth-marketing::before {
     content: "";
@@ -462,9 +462,10 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 48px 56px;
+    padding: 40px 48px;
     background: #090d16;
     border-left: 1px solid rgba(255, 255, 255, 0.08);
+    overflow-y: auto;
   }
   @media (max-width: 768px) {
     .auth-split {
@@ -1313,7 +1314,15 @@
     grid-template-columns: 1fr;
   }
   .ref-hero-greeting {
-    padding: 24px;
+    padding: 20px 16px;
+  }
+}
+@media (max-width: 480px) {
+  .ref-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .campaigns-grid {
+    grid-template-columns: 1fr;
   }
 }
 

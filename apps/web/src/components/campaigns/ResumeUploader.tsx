@@ -166,14 +166,14 @@ export function ResumeUploader({
               {f.file.name}
             </span>
             <input
-              className="rounded border border-input px-2 py-1 text-xs"
+              className="w-full sm:w-auto sm:flex-1 rounded-lg border border-input bg-card px-2.5 py-1 text-xs"
               placeholder="Name"
               value={f.name ?? ""}
               disabled={f.status !== "idle" && f.status !== "error"}
               onChange={(e) => patch(i, { name: e.target.value })}
             />
             <input
-              className="rounded border border-input px-2 py-1 text-xs"
+              className="w-full sm:w-auto sm:flex-1 rounded-lg border border-input bg-card px-2.5 py-1 text-xs"
               placeholder="Email"
               type="email"
               value={f.email ?? ""}
@@ -181,13 +181,15 @@ export function ResumeUploader({
               onChange={(e) => patch(i, { email: e.target.value })}
             />
             <input
-              className="rounded border border-input px-2 py-1 text-xs"
+              className="w-full sm:w-auto sm:flex-1 rounded-lg border border-input bg-card px-2.5 py-1 text-xs"
               placeholder="Phone"
               value={f.phone ?? ""}
               disabled={f.status !== "idle" && f.status !== "error"}
               onChange={(e) => patch(i, { phone: e.target.value })}
             />
-            <StatusPill f={f} />
+            <div className="w-full sm:w-auto flex justify-end">
+              <StatusPill f={f} />
+            </div>
           </div>
         ))}
       </div>

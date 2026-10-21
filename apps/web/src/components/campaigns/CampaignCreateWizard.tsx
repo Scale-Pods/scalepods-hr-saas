@@ -721,13 +721,13 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Wizard Header Banner */}
-      <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-6 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-xs">
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
             <Sparkles className="h-3.5 w-3.5" />
             AI Campaign Creation Studio
           </div>
-          <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+          <h2 className="mt-2 text-xl sm:text-2xl font-bold tracking-tight text-foreground">
             Launch a New Hiring Campaign
           </h2>
           <p className="mt-1 text-xs text-muted-foreground font-medium">
@@ -736,7 +736,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             Supports up to {tierConfig.maxRounds} interview stages per role.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto shrink-0">
           <HowToCreateButton target="_blank" />
           {onCancel && (
             <Button
@@ -754,7 +754,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
 
       <StepsBar step={step} />
 
-      <div className="rounded-2xl border border-border bg-card p-7 shadow-xs">
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-7 shadow-xs">
         {/* Step Title & Guidance */}
         <div className="mb-6 border-b border-border pb-5">
           <div className="flex items-center gap-2">
@@ -1046,7 +1046,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label
                     htmlFor="start-date"
@@ -1084,7 +1084,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   </span>
                 </div>
                 {durationDays !== null && (
-                  <div className="col-span-2 flex items-center gap-2 rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2 text-xs text-primary">
+                  <div className="col-span-1 sm:col-span-2 flex items-center gap-2 rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2 text-xs text-primary">
                     <Calendar className="h-4 w-4 shrink-0" />
                     <span>
                       Campaign Duration:{" "}
@@ -1257,12 +1257,12 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         ) : null}
 
         {/* Action Controls */}
-        <div className="mt-8 flex items-center justify-between border-t border-border pt-5">
+        <div className="mt-8 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 border-t border-border pt-5">
           <Button
             variant="ghost"
             onClick={() => setStep((s) => Math.max(0, s - 1))}
             disabled={step === 0}
-            className="rounded-xl gap-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+            className="w-full sm:w-auto rounded-xl gap-1.5 text-xs font-semibold text-foreground hover:bg-muted justify-center"
           >
             <ChevronLeft className="h-4 w-4" aria-hidden /> Previous Step
           </Button>
@@ -1271,16 +1271,16 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             <Button
               onClick={next}
               disabled={canceled}
-              className="rounded-xl gap-1.5 px-5 text-xs font-semibold bg-primary hover:bg-primary/90 text-white shadow-sm"
+              className="w-full sm:w-auto rounded-xl gap-1.5 px-5 text-xs font-semibold bg-primary hover:bg-primary/90 text-white shadow-sm justify-center"
             >
-              Continue to {step === 0 ? "Interview Rounds" : "Communication Channels"}{" "}
-              <ChevronRight className="h-4 w-4" aria-hidden />
+              <span>Continue to {step === 0 ? "Interview Rounds" : "Channels"}</span>
+              <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
             </Button>
           ) : canceled ? (
             <Button
               disabled
               title="Your plan is canceled — reactivate it in Billing to create campaigns."
-              className="rounded-xl"
+              className="w-full sm:w-auto rounded-xl justify-center"
             >
               Reactivate Plan in Billing to Create
             </Button>
@@ -1288,7 +1288,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             <Button
               onClick={submit}
               disabled={submitting}
-              className="rounded-xl gap-2 px-6 text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md shadow-blue-500/20"
+              className="w-full sm:w-auto rounded-xl gap-2 px-6 text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md shadow-blue-500/20 justify-center"
             >
               {submitting ? "Publishing Campaign…" : "Deploy & Publish Campaign"}
             </Button>
@@ -1296,9 +1296,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
-        <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-        <span>
+      <div className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground pb-8 sm:pb-4">
+        <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
+        <span className="leading-relaxed">
           Campaigns are powered by ScalePods automated AI screening and evaluation pipelines.
         </span>
       </div>

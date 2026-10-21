@@ -20,7 +20,7 @@ export function PageHeader({ title, subtitle, actions, className }: PageHeaderPr
           <p className="mt-1 text-sm tracking-[-0.011em] text-label-secondary">{subtitle}</p>
         ) : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
   );
 }

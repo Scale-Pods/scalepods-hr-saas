@@ -14,7 +14,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAccount } from "@/features/account/hooks";
 import { useSession } from "@/features/auth/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { callWorkflow } from "@/lib/webhooks";
 
 export default function SettingsPage() {
   return (
@@ -318,73 +317,76 @@ function SettingsPageInner() {
         subtitle="Interviewers can connect their own primary Google Calendar for booking."
       >
         {members.length > 0 ? (
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-muted-foreground">
-              <tr className="border-b border-border">
-                <th className="py-2 pr-3 font-medium">Name</th>
-                <th className="py-2 pr-3 font-medium">Email</th>
-                <th className="py-2 font-medium">Role</th>
-                <th className="py-2 pr-3 font-medium">Google Calendar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {members.map((m) => (
-                <tr key={m.id}>
-                  <td className="py-2.5 pr-3 font-medium text-foreground">{m.name}</td>
-                  <td className="py-2.5 pr-3 text-muted-foreground">{m.email}</td>
-                  <td className="py-2.5 text-muted-foreground">{m.role ?? "—"}</td>
-                  <td className="py-2.5">
-                    {(() => {
-                      const connection = calendarByMember[m.id];
-                      const status = connection?.status ?? "not_connected";
-                      return (
-                        <div className="flex flex-wrap items-center gap-2">
-                          {status === "active" ? (
-                            <>
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                                Connected
-                                {connection.google_email ? ` (${connection.google_email})` : ""}
-                              </span>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                                onClick={() => void connectCalendar(m.id)}
-                                disabled={connectingMemberId === m.id || !session?.access_token}
-                              >
-                                {connectingMemberId === m.id ? "Connecting..." : "Reconnect"}
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <span className="text-xs capitalize text-muted-foreground">
-                                {status.replace(/_/g, " ")}
-                              </span>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => void connectCalendar(m.id)}
-                                disabled={connectingMemberId === m.id || !session?.access_token}
-                              >
-                                {connectingMemberId === m.id
-                                  ? "Connecting..."
-                                  : status === "pending"
-                                    ? "Retry Connect"
-                                    : "Connect"}
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </td>
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[500px] text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-muted-foreground">
+                <tr className="border-b border-border">
+                  <th className="py-2 pr-3 font-medium">Name</th>
+                  <th className="py-2 pr-3 font-medium">Email</th>
+                  <th className="py-2 font-medium">Role</th>
+                  <th className="py-2 pr-3 font-medium">Google Calendar</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {members.map((m) => (
+                  <tr key={m.id}>
+                    <td className="py-2.5 pr-3 font-medium text-foreground whitespace-nowrap">{m.name}</td>
+                    <td className="py-2.5 pr-3 text-muted-foreground whitespace-nowrap">{m.email}</td>
+                    <td className="py-2.5 text-muted-foreground whitespace-nowrap">{m.role ?? "—"}</td>
+                    <td className="py-2.5">
+                      {(() => {
+                        const connection = calendarByMember[m.id];
+                        const status = connection?.status ?? "not_connected";
+                        return (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {status === "active" ? (
+                              <>
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                  Connected
+                                  {connection.google_email ? ` (${connection.google_email})` : ""}
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground whitespace-nowrap"
+                                  onClick={() => void connectCalendar(m.id)}
+                                  disabled={connectingMemberId === m.id || !session?.access_token}
+                                >
+                                  {connectingMemberId === m.id ? "Connecting..." : "Reconnect"}
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-xs capitalize text-muted-foreground whitespace-nowrap">
+                                  {status.replace(/_/g, " ")}
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void connectCalendar(m.id)}
+                                  disabled={connectingMemberId === m.id || !session?.access_token}
+                                  className="whitespace-nowrap"
+                                >
+                                  {connectingMemberId === m.id
+                                    ? "Connecting..."
+                                    : status === "pending"
+                                      ? "Retry Connect"
+                                      : "Connect"}
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <EmptyState
             title="No teammates yet"
@@ -425,10 +427,10 @@ function SettingsPageInner() {
         subtitle={'Which "from" address / WhatsApp number candidate messages come from.'}
       >
         <div className="space-y-2.5 text-sm">
-          <div className="flex items-center justify-between rounded-lg border border-border/40 bg-card/60 px-3 py-2">
-            <div className="flex items-center gap-2 text-foreground text-xs">
-              <Mail className="h-4 w-4 text-muted-foreground" aria-hidden />
-              <span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg border border-border/40 bg-card/60 px-3.5 py-2.5">
+            <div className="flex items-center gap-2 text-foreground text-xs min-w-0">
+              <Mail className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="truncate">
                 Email:{" "}
                 <strong className="text-foreground">
                   {t.customIdentity
@@ -438,16 +440,16 @@ function SettingsPageInner() {
               </span>
             </div>
             {!t.customIdentity && (
-              <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40">
+              <span className="self-start sm:self-auto rounded-full bg-muted/80 px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40 shrink-0">
                 Custom domain available on Growth & Enterprise
               </span>
             )}
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border border-border/40 bg-card/60 px-3 py-2">
-            <div className="flex items-center gap-2 text-foreground text-xs">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" aria-hidden />
-              <span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg border border-border/40 bg-card/60 px-3.5 py-2.5">
+            <div className="flex items-center gap-2 text-foreground text-xs min-w-0">
+              <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="truncate">
                 WhatsApp:{" "}
                 <strong className="text-foreground">
                   {t.whatsapp
@@ -459,16 +461,16 @@ function SettingsPageInner() {
               </span>
             </div>
             {!t.whatsapp && (
-              <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40">
+              <span className="self-start sm:self-auto rounded-full bg-muted/80 px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40 shrink-0">
                 Available on Basic, Growth & Enterprise
               </span>
             )}
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border border-border/40 bg-card/60 px-3 py-2">
-            <div className="flex items-center gap-2 text-foreground text-xs">
-              <Phone className="h-4 w-4 text-muted-foreground" aria-hidden />
-              <span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg border border-border/40 bg-card/60 px-3.5 py-2.5">
+            <div className="flex items-center gap-2 text-foreground text-xs min-w-0">
+              <Phone className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="truncate">
                 AI Voice line:{" "}
                 <strong className="text-foreground">
                   {t.voiceScreening ? "ScalePods outbound telephony" : "Not enabled"}
@@ -476,7 +478,7 @@ function SettingsPageInner() {
               </span>
             </div>
             {!t.voiceScreening && (
-              <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40">
+              <span className="self-start sm:self-auto rounded-full bg-muted/80 px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40 shrink-0">
                 Available on Basic, Growth & Enterprise
               </span>
             )}

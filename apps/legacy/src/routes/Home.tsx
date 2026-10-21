@@ -473,11 +473,11 @@ export function Home() {
               <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
                 <li>
                   <a
-                    href="mailto:info@scalepods.co"
+                    href="mailto:info@scalepods.tech"
                     className="flex items-center gap-1.5 hover:text-foreground"
                   >
                     <Mail className="h-3.5 w-3.5" aria-hidden />
-                    info@scalepods.co
+                    info@scalepods.tech
                   </a>
                 </li>
                 <li>Book a free call</li>

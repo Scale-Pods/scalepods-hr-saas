@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev:legacy": "npm run dev --workspace @scalepods/legacy",
-    "dev": "npm run dev --workspace apps/web",
+    "dev": "node scripts/dev.js",
     "build": "npm run build --workspace apps/web",
     "lint": "biome ci .",
     "format": "biome format --write .",

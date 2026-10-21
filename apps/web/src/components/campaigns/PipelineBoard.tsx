@@ -297,12 +297,12 @@ export function PipelineBoard({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           {/* Filter Tabs */}
-          <div className="inline-flex rounded-lg border border-border/80 bg-muted/30 p-1">
+          <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-border/80 bg-muted/30 p-1">
             <button
               type="button"
               onClick={() => setFilterTab("active")}
               className={cn(
-                "rounded-md px-3 py-1 text-xs font-semibold transition-colors",
+                "rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap",
                 filterTab === "active"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
@@ -315,7 +315,7 @@ export function PipelineBoard({
               type="button"
               onClick={() => setFilterTab("on_hold")}
               className={cn(
-                "rounded-md px-3 py-1 text-xs font-semibold transition-colors",
+                "rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap",
                 filterTab === "on_hold"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
@@ -327,7 +327,7 @@ export function PipelineBoard({
               type="button"
               onClick={() => setFilterTab("rejected")}
               className={cn(
-                "rounded-md px-3 py-1 text-xs font-semibold transition-colors",
+                "rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap",
                 filterTab === "rejected"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
@@ -339,7 +339,7 @@ export function PipelineBoard({
               type="button"
               onClick={() => setFilterTab("all")}
               className={cn(
-                "rounded-md px-3 py-1 text-xs font-semibold transition-colors",
+                "rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap",
                 filterTab === "all"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
@@ -350,18 +350,18 @@ export function PipelineBoard({
           </div>
 
           {/* Search Box */}
-          <div className="relative w-48 sm:w-64">
+          <div className="relative w-full sm:w-64">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search candidate name or email..."
-              className="h-8 pl-8 text-xs"
+              className="h-8 pl-8 text-xs w-full"
             />
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-2">
           {/* View Mode Switcher */}
           <div className="inline-flex rounded-lg border border-border/80 bg-muted/30 p-1">
             <button

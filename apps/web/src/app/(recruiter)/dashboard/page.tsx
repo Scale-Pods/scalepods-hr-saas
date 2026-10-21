@@ -444,7 +444,7 @@ export default function DashboardPage() {
             )}
           </p>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
             <Button
               asChild
               className="rounded-full gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-md shadow-blue-500/20 transition-all hover:shadow-lg hover:shadow-blue-500/30"
@@ -468,7 +468,7 @@ export default function DashboardPage() {
             </Button>
             <Link
               href="/guide/resume-scoring"
-              className="inline-flex items-center gap-2 rounded-full border border-[#2f6bff]/40 bg-[#2f6bff]/10 px-5 py-2.5 text-sm font-semibold text-[#60a5fa] hover:bg-[#2f6bff]/20 hover:border-[#2f6bff]/60 hover:text-white transition-all shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/50"
+              className="inline-flex items-center gap-2 rounded-full border border-[#2f6bff]/40 bg-[#2f6bff]/10 px-4 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-semibold text-[#60a5fa] hover:bg-[#2f6bff]/20 hover:border-[#2f6bff]/60 hover:text-white transition-all shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/50 whitespace-nowrap"
             >
               <Brain className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span>How we score</span>

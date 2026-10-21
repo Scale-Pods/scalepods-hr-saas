@@ -55,11 +55,17 @@ export function AppShell({
 
   /** Sidebar inner content — shared between desktop and mobile sheet */
   const sidebar = (
-    <div className="flex h-full flex-col py-7 px-3.5">
+    <div className="flex h-full flex-col py-6 px-3.5">
+      {/* Top mobile theme switcher inside hamburger menu */}
+      <div className="mb-4 flex items-center justify-between border-b border-border pb-3.5 lg:hidden">
+        <span className="text-xs font-semibold text-muted-foreground">Theme</span>
+        <ThemeToggle />
+      </div>
+
       {/* Logo */}
       <div
         className={cn(
-          "mb-8 flex items-center border-b border-border pb-6",
+          "mb-6 flex items-center border-b border-border pb-5",
           collapsed ? "justify-center" : "px-2",
         )}
       >
@@ -198,18 +204,20 @@ export function AppShell({
           </Link>
           <div className="flex items-center gap-2">
             <NotificationBell />
-            <ThemeToggle />
+            <div className="hidden sm:flex">
+              <ThemeToggle />
+            </div>
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
                 <button
                   type="button"
                   aria-label="Toggle navigation"
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-fill-tertiary hover:text-foreground"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-fill-tertiary text-foreground hover:bg-fill-secondary transition shadow-sm"
                 >
                   <Menu className="h-5 w-5" aria-hidden />
                 </button>
               </SheetTrigger>
-              <SheetContent side="left" className="sidebar w-[220px] rounded-r-[44px] border-0 p-0">
+              <SheetContent side="left" className="sidebar w-[240px] rounded-r-[32px] border-0 p-0">
                 <SheetTitle className="sr-only">Navigation</SheetTitle>
                 {sidebar}
               </SheetContent>
@@ -243,7 +251,7 @@ export function AppShell({
         ) : null}
 
         {/* Page content */}
-        <main className="flex-1 px-5 py-5 pt-6">
+        <main className="flex-1 px-3.5 sm:px-5 py-5 pb-16 sm:pb-8 pt-4 sm:pt-6">
           <div className="mx-auto max-w-[1400px]">{children}</div>
         </main>
       </div>
