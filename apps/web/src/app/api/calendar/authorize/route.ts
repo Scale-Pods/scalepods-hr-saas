@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     const clientId =
       process.env.GOOGLE_CLIENT_ID ||
-      "323942066392-51mmuobaqqpjdgf0bavtrg9k7hhg7tjh.apps.googleusercontent.com";
+      "218710053867-n83jdachg5a44a2f56dk5afei46jjesg.apps.googleusercontent.com";
     const n8nBase = env.NEXT_PUBLIC_N8N_BASE_URL.replace(/\/+$/, "").replace(/\/webhook\/?$/, "");
     const redirectUri = `${n8nBase}/webhook/calendar/oauth/callback`;
 
