@@ -330,9 +330,15 @@ function SettingsPageInner() {
               <tbody className="divide-y divide-border">
                 {members.map((m) => (
                   <tr key={m.id}>
-                    <td className="py-2.5 pr-3 font-medium text-foreground whitespace-nowrap">{m.name}</td>
-                    <td className="py-2.5 pr-3 text-muted-foreground whitespace-nowrap">{m.email}</td>
-                    <td className="py-2.5 text-muted-foreground whitespace-nowrap">{m.role ?? "—"}</td>
+                    <td className="py-2.5 pr-3 font-medium text-foreground whitespace-nowrap">
+                      {m.name}
+                    </td>
+                    <td className="py-2.5 pr-3 text-muted-foreground whitespace-nowrap">
+                      {m.email}
+                    </td>
+                    <td className="py-2.5 text-muted-foreground whitespace-nowrap">
+                      {m.role ?? "—"}
+                    </td>
                     <td className="py-2.5">
                       {(() => {
                         const connection = calendarByMember[m.id];
@@ -433,9 +439,7 @@ function SettingsPageInner() {
               <span className="truncate">
                 Email:{" "}
                 <strong className="text-foreground">
-                  {t.customIdentity
-                    ? "Custom domain"
-                    : "ScalePods platform (noreply@scalepods.app)"}
+                  {t.customIdentity ? "Custom domain" : "ScalePods platform"}
                 </strong>
               </span>
             </div>

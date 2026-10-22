@@ -282,7 +282,7 @@ export function SettingsPage() {
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-2 text-foreground">
             <Mail className="h-4 w-4 text-muted-foreground" aria-hidden />
-            Email: <span className="font-medium">{t.customIdentity ? "your custom domain" : "platform-managed (noreply@scalepods.app)"}</span>
+            Email: <span className="font-medium">{t.customIdentity ? "your custom domain" : "platform-managed"}</span>
           </div>
           <div className="flex items-center gap-2 text-foreground">
             <MessageSquare className="h-4 w-4 text-muted-foreground" aria-hidden />
