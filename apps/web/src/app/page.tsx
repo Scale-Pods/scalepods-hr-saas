@@ -23,6 +23,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { LegalModal } from "@/components/legal/LegalModal";
 import { ScalePodsFooter } from "@/components/shared/ScalePodsFooter";
+import { ScalePodsChatAgent } from "@/components/agent/ScalePodsChatAgent";
 
 const trustedCompanies = [
   { name: "BECO Capital", logo: "https://www.scalepods.co/brands/BECO.avif", h: "h-7" },
@@ -640,6 +641,9 @@ export default function HomePage() {
         tab={legalTab}
         onTabChange={setLegalTab}
       />
+
+      {/* Floating AI Chat Agent Widget (Bottom-Right) */}
+      <ScalePodsChatAgent position="right" />
     </div>
   );
 }
