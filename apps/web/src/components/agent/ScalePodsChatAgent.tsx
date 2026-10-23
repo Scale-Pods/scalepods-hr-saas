@@ -42,10 +42,7 @@ const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: "welcome-1",
     sender: "bot",
-    text:
-      "Hello there! I'm your **ScalePods AI Assistant**.\n\n" +
-      "I have full knowledge about **ScalePods** (our workflow automation ecosystem & Claude Partner Network status) and this **HR Talent Intelligence Platform**!\n\n" +
-      "Ask me anything about **AI resume screening**, **voice phone screening**, **pricing plans**, **client case studies**, or talk directly with our sales team.",
+    text: "Welcome to **ScalePods**! I'm your AI assistant. How can I help you today?",
     timestamp: "Just now",
     suggestions: INITIAL_SUGGESTIONS,
     actionButtons: [
