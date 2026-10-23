@@ -489,6 +489,125 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
     };
   }
 
+  // ── General "What is this tool" / Clarify HR tool vs other ScalePods tools ──
+  if (
+    query.includes("what is this tool") ||
+    query.includes("about this tool") ||
+    query.includes("what tool is this") ||
+    query.includes("which tool is this") ||
+    query.includes("what is this tool all about") ||
+    query.includes("what is this all about") ||
+    query.includes("tell me about this tool") ||
+    query.includes("what does this tool") ||
+    query.includes("what is this platform about") ||
+    query.includes("which platform is this") ||
+    query.includes("hr tool or any other") ||
+    query.includes("hr tool or other") ||
+    query.includes("this tool or other") ||
+    query === "what is this tool" ||
+    query === "what is this tool all about" ||
+    query === "what is this tool all about?" ||
+    query === "what is this?" ||
+    query === "what is this" ||
+    query === "this tool"
+  ) {
+    return {
+      reply:
+        "### ScalePods: Platform Overview\n\n" +
+        "Are you asking about **this HR Talent Intelligence tool**, or **any other ScalePods tool**?\n\n" +
+        "ScalePods provides specialized AI automation across two primary focus areas:\n\n" +
+        "1. **This HR Talent Intelligence Tool**:\n" +
+        "   - Automated AI resume screening and JD competency fit scoring (0–100%)\n" +
+        "   - Autonomous pre-screening phone calls powered by conversational Voice AI\n" +
+        "   - Interactive live video assessments with automated vision proctoring\n" +
+        "   - Direct two-way Google Calendar candidate scheduling\n\n" +
+        "2. **Other ScalePods Enterprise Tools**:\n" +
+        "   - Sales & B2B outreach automation (AI agent Alex)\n" +
+        "   - Operations, logistics & 3-way freight auditing (AI agent Orion)\n" +
+        "   - Marketing automation and campaign execution (AI agent Maya)\n" +
+        "   - Custom Claude-powered enterprise workflows for specialized industries\n\n" +
+        "Which tool would you like to explore?",
+      suggestions: [
+        "This HR tool",
+        "Other ScalePods tools",
+        "What are the pricing plans?",
+      ],
+      actionButtons: [
+        { label: "Try HR Tool Free", href: "/auth?mode=signup" },
+        { label: "Explore ScalePods.co", href: "https://www.scalepods.co", isExternal: true },
+      ],
+    };
+  }
+
+  // ── Other ScalePods Tools / Non-HR Workflows ──
+  if (
+    query.includes("other scalepods tool") ||
+    query.includes("other scalepods tools") ||
+    query.includes("other tool") ||
+    query.includes("other tools") ||
+    query.includes("other solution") ||
+    query.includes("other solutions") ||
+    query.includes("other products") ||
+    query.includes("other product") ||
+    query.includes("what other") ||
+    query.includes("different tool")
+  ) {
+    return {
+      reply:
+        "### Other ScalePods Automation Solutions\n\n" +
+        "Beyond our HR Talent Intelligence platform, **ScalePods** ([scalepods.co](https://www.scalepods.co)) architects full-stack AI automation and digital employees for growing businesses:\n\n" +
+        "1. **Sales Workflow Automation (Alex)**:\n" +
+        "   - Sourcing B2B prospects, intent discovery, and personalized outbound sequences across Email and LinkedIn.\n\n" +
+        "2. **Operations & Freight Auditing (Orion)**:\n" +
+        "   - Automated 3-way logistics reconciliation cross-referencing Supplier Invoices, E-Way Bills, and Lorry Receipts (within +/-300kg tolerance).\n\n" +
+        "3. **Marketing & Copywriting (Maya)**:\n" +
+        "   - Multi-channel content syndication, social distribution, and automated campaign tracking.\n\n" +
+        "4. **Custom Claude Enterprise Deployments**:\n" +
+        "   - As an official Claude Partner Network Services Partner, ScalePods designs secure, production-grade AI architectures tailored to your stack.\n\n" +
+        "You can deploy dedicated pods or integrate them into your existing CRM, ERP, and communication channels.",
+      suggestions: [
+        "This HR tool",
+        "Show Client Case Studies",
+        "Talk to a sales expert",
+      ],
+      actionButtons: [
+        { label: "Explore ScalePods.co", href: "https://www.scalepods.co", isExternal: true },
+        { label: "Book Strategy Call", href: "https://www.scalepods.co/contact", isExternal: true },
+      ],
+    };
+  }
+
+  // ── This HR Tool Specific Query ──
+  if (
+    query === "this hr tool" ||
+    query.includes("this hr tool") ||
+    query.includes("tell me about this hr tool") ||
+    query.includes("about this hr tool") ||
+    query.includes("hr talent intelligence") ||
+    query.includes("hiring platform") ||
+    query.includes("talent intelligence")
+  ) {
+    return {
+      reply:
+        "### ScalePods HR Talent Intelligence Platform\n\n" +
+        "This platform acts as an autonomous hiring copilot designed for recruiters, founders, and hiring teams:\n\n" +
+        "1. **AI Resume Screening & Fit Scoring**: Upload PDF or Word resumes to receive an instant 0–100% JD alignment score, candidate summary, and skill breakdown.\n" +
+        "2. **Conversational Voice Screening**: The AI dials candidates to screen them on salary expectations, domain background, and notice periods.\n" +
+        "3. **Video Assessments & Vision Proctoring**: Secure candidate video rounds with automated multi-face detection, tab-switching tracking, and answer transcription.\n" +
+        "4. **Self-Serve Calendar Scheduling**: Seamlessly integrates with Google Calendar to let qualified candidates book available interviewer slots.\n" +
+        "5. **Applicant Tracking Ledger**: Filter candidates into Strong Match, Qualified, or Review Required, with zero training on your applicant data.",
+      suggestions: [
+        "Can I try for free first?",
+        "What are the pricing plans?",
+        "Other ScalePods tools",
+      ],
+      actionButtons: [
+        { label: "Start Free Screening", href: "/auth?mode=signup" },
+        { label: "Sign In to Dashboard", href: "/auth?mode=signin" },
+      ],
+    };
+  }
+
   // ── Who is ScalePods / Company overview ──
   if (
     query.includes("what is scalepods") ||
@@ -508,9 +627,8 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
         "5. **Global Enterprise Reach**: Operations across India, Dubai / GCC, and global clients.\n\n" +
         "We help companies eliminate 80%+ of repetitive busywork and scale without headcount bloat.",
       suggestions: [
-        "Show ScalePods Blog Articles",
-        "Show Client Case Studies",
-        "How does the HR SaaS tool work?",
+        "This HR tool",
+        "Other ScalePods tools",
         "What are the pricing plans?",
       ],
       actionButtons: [
@@ -535,7 +653,7 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
     return {
       reply:
         "**Hello and welcome to ScalePods!**\n\n" +
-        "I'm your **ScalePods AI Assistant**, here to help you explore our **ScalePods Ecosystem** and this **HR Talent Intelligence Platform**.\n\n" +
+        "I'm here to help you navigate our **Talent Intelligence Platform** and candidate automation workflows.\n\n" +
         "**How can I assist your team today?**\n" +
         "- **Try Free**: 10 resume screens & 1 campaign on our Free Tier (no credit card required)\n" +
         "- **Resume Scoring**: Automated 0–100% JD alignment parsing\n" +
@@ -894,29 +1012,23 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
     };
   }
 
-  // ── Default / Fallback ──
+  // ── Default / Off-Topic Boundary Fallback ──
   return {
     reply:
-      "I'm your **ScalePods AI Assistant**, ready to help with our talent intelligence platform and workflow automation solutions!\n\n" +
-      "**Explore Any Topic:**\n" +
-      "- **Guides & Playbooks**: Browse articles on AI recruitment, SDR workflows, operations & ROI\n" +
-      "- **Verified Case Studies**: ZV Steels (80% HR screening cut), Lotus Manor (7,000+ follow-ups), Lootah Group\n" +
-      "- **Claude Partner Network**: ScalePods' official Anthropic partnership\n" +
-      "- **Digital Workforce**: Meet AI Employees Alex, Maya, Harper, and Orion\n" +
-      "- **This HR SaaS Tool**: Resume screening, phone voice screening, and multi-round interviews\n" +
-      "- **Pricing Plans**: Free, Basic ($149), Growth ($299), Enterprise\n\n" +
-      "Click one of the suggestions below or ask any question!",
+      "I can only assist with questions related to **ScalePods** and our **Talent Intelligence Platform** (such as AI resume screening, phone voice screening, video proctoring, and subscription plans).\n\n" +
+      "How can I help you with your candidate screening or hiring automation needs today?",
     suggestions: [
-      "Show ScalePods Blog Articles",
-      "Show Client Case Studies",
-      "Tell me about the Claude Partnership",
-      "What is ScalePods?",
-      "How does AI Resume Scoring work?",
       "What are the pricing plans?",
+      "Can I try for free first?",
+      "How does Resume Scoring work?",
     ],
     actionButtons: [
       { label: "Start Free Screening", href: "/auth?mode=signup" },
-      { label: "Browse ScalePods.co", href: "https://www.scalepods.co", isExternal: true },
+      {
+        label: "Chat on WhatsApp (+91 98672 71848)",
+        href: "https://wa.me/919867271848?text=Hi%20ScalePods%20team%2C%20I'd%20like%20to%20learn%20more%20about%20the%20platform",
+        isExternal: true,
+      },
     ],
   };
 }
