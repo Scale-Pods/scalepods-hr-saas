@@ -1,5 +1,6 @@
 "use client";
 
+import type { EmailOtpType } from "@supabase/supabase-js";
 import { AlertCircle, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, Lock } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -93,7 +94,7 @@ function VerifyInner() {
 
         // Flow 2: Token hash verification
         if (tokenHash) {
-          const otpType = (type || "recovery") as "recovery" | "email" | "signup";
+          const otpType = (type || "recovery") as EmailOtpType;
           const { error } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
             type: otpType,
@@ -314,32 +315,68 @@ function VerifyInner() {
   }
 
   if (status === "error") {
+    const isPkceMismatch = errorMessage?.toLowerCase().includes("code verifier");
+    const typeParam = searchParams.get("type");
+    const isRecovery = typeParam === "recovery";
+
     return (
       <Card className="w-full max-w-sm rounded-[28px] border border-white/10 bg-[#090d16] p-0 shadow-2xl">
         <CardContent className="p-8 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 text-rose-400">
             <AlertCircle className="h-6 w-6" />
           </div>
-          <h2 className="text-xl font-bold tracking-tight text-white">Invalid or Expired Link</h2>
+          <h2 className="text-xl font-bold tracking-tight text-white">
+            {isPkceMismatch
+              ? "Different Browser or Device"
+              : isRecovery
+                ? "Invalid or Expired Reset Link"
+                : "Invalid or Expired Link"}
+          </h2>
           <p className="mt-2 text-sm text-slate-400">
-            {errorMessage ||
-              "This link may have expired or is invalid. Reset links are single-use."}
+            {isPkceMismatch
+              ? isRecovery
+                ? "For security, this reset link must be opened in the same browser and profile where you requested it. You can copy the link from your email and paste it into that browser, or request a new reset link."
+                : "For security, this confirmation link must be opened in the same browser and profile where you signed up. You can copy the link from your email and paste it into that browser, or sign in directly."
+              : errorMessage ||
+                (isRecovery
+                  ? "This reset link may have expired or has already been used."
+                  : "This confirmation link may have expired or has already been used.")}
           </p>
 
           <div className="mt-6 flex flex-col gap-2.5">
-            <Button
-              asChild
-              className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 py-2.5 font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:from-blue-500 hover:to-cyan-500"
-            >
-              <Link href="/auth/reset">Request a new reset link</Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="w-full rounded-xl border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] hover:text-white"
-            >
-              <Link href="/auth">Back to sign in</Link>
-            </Button>
+            {isRecovery ? (
+              <>
+                <Button
+                  asChild
+                  className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 py-2.5 font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:from-blue-500 hover:to-cyan-500"
+                >
+                  <Link href="/auth/reset">Request a new reset link</Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="w-full rounded-xl border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] hover:text-white"
+                >
+                  <Link href="/auth">Back to sign in</Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  asChild
+                  className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 py-2.5 font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:from-blue-500 hover:to-cyan-500"
+                >
+                  <Link href="/auth">Back to sign in</Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="w-full rounded-xl border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] hover:text-white"
+                >
+                  <Link href="/auth?mode=signup">Create a new account</Link>
+                </Button>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

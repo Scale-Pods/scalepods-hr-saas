@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import type { EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
 
@@ -45,11 +46,12 @@ export async function GET(request: NextRequest) {
 
   // If Supabase redirected with an error, handle it directly
   if (urlError) {
+    const typeParam = type ? `&type=${encodeURIComponent(type)}` : "";
     return NextResponse.redirect(
       new URL(
         `/auth/verify?error=${encodeURIComponent(urlError)}&error_description=${encodeURIComponent(
           urlErrorDescription || "Authentication failed",
-        )}`,
+        )}${typeParam}`,
         requestUrl.origin,
       ),
     );
@@ -66,7 +68,7 @@ export async function GET(request: NextRequest) {
   } else if (token_hash && type) {
     const { error } = await supabase.auth.verifyOtp({
       token_hash,
-      type: type as "recovery" | "email" | "signup",
+      type: type as EmailOtpType,
     });
     if (!error) {
       return response;
@@ -74,9 +76,10 @@ export async function GET(request: NextRequest) {
     errorMessage = error.message;
   }
 
+  const typeParam = type ? `&type=${encodeURIComponent(type)}` : "";
   return NextResponse.redirect(
     new URL(
-      `/auth/verify?error=access_denied&error_description=${encodeURIComponent(errorMessage)}`,
+      `/auth/verify?error=access_denied&error_description=${encodeURIComponent(errorMessage)}${typeParam}`,
       requestUrl.origin,
     ),
   );
