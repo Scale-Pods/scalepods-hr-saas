@@ -54,6 +54,15 @@ function VerifyInner() {
       return;
     }
 
+    const isAlreadyVerified =
+      searchParams.get("status") === "verified" || searchParams.get("verified") === "true";
+
+    if (isAlreadyVerified) {
+      void supabase.auth.signOut().catch(() => {});
+      setStatus("done");
+      return;
+    }
+
     const code = searchParams.get("code") || hashParams.get("code");
     const tokenHash = searchParams.get("token_hash") || hashParams.get("token_hash");
     const accessToken = hashParams.get("access_token");
@@ -85,9 +94,8 @@ function VerifyInner() {
           if (isRecovery) {
             setStatus("need_new_password");
           } else {
+            void supabase.auth.signOut().catch(() => {});
             setStatus("done");
-            showToast("Email verified successfully!", { kind: "success" });
-            router.replace("/dashboard");
           }
           return;
         }
@@ -108,9 +116,8 @@ function VerifyInner() {
           if (isRecovery || otpType === "recovery") {
             setStatus("need_new_password");
           } else {
+            void supabase.auth.signOut().catch(() => {});
             setStatus("done");
-            showToast("Email verified successfully!", { kind: "success" });
-            router.replace("/dashboard");
           }
           return;
         }
@@ -130,9 +137,8 @@ function VerifyInner() {
           if (isRecovery) {
             setStatus("need_new_password");
           } else {
+            void supabase.auth.signOut().catch(() => {});
             setStatus("done");
-            showToast("Verified successfully!", { kind: "success" });
-            router.replace("/dashboard");
           }
           return;
         }
@@ -148,8 +154,8 @@ function VerifyInner() {
             setStatus("need_new_password");
             return;
           }
+          void supabase.auth.signOut().catch(() => {});
           setStatus("done");
-          router.replace("/dashboard");
           return;
         }
 
@@ -385,12 +391,22 @@ function VerifyInner() {
 
   return (
     <Card className="w-full max-w-sm rounded-[28px] border border-white/10 bg-[#090d16] p-0 shadow-2xl">
-      <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
+      <CardContent className="p-8 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
           <CheckCircle2 className="h-6 w-6" />
         </div>
-        <h2 className="text-lg font-bold text-white">Success!</h2>
-        <p className="text-xs text-slate-400">Redirecting to sign in…</p>
+        <h2 className="text-xl font-bold tracking-tight text-white">Email Verified!</h2>
+        <p className="mt-2 text-sm text-slate-400">
+          Your email address has been successfully verified. Please sign in to access your ScalePods account.
+        </p>
+        <div className="mt-6">
+          <Button
+            asChild
+            className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 py-2.5 font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:from-blue-500 hover:to-cyan-500"
+          >
+            <Link href="/auth">Back to sign in</Link>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

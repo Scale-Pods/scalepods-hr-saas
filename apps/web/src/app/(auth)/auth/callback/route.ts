@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
 
   if (type === "recovery") {
     redirectUrl = new URL("/auth/verify?type=recovery", origin);
+  } else if (type === "signup" || type === "email") {
+    redirectUrl = new URL("/auth/verify?status=verified", origin);
   }
 
   const response = NextResponse.redirect(redirectUrl);
