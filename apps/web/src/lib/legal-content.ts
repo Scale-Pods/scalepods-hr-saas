@@ -17,7 +17,7 @@ export interface LegalDocument {
 export const PRIVACY_POLICY: LegalDocument = {
   id: "privacy",
   title: "Privacy Policy",
-  lastUpdated: "23 Jan 2025",
+  lastUpdated: "24 Oct 2026",
   intro:
     'Welcome to ScalePods ("we" or "us"). This Privacy Policy is designed to help you understand how we collect, use, disclose, and safeguard your personal information when you use our website and related services.',
   contactEmail: "info@scalepods.tech",
@@ -107,7 +107,7 @@ export const PRIVACY_POLICY: LegalDocument = {
 export const TERMS_OF_SERVICE: LegalDocument = {
   id: "terms",
   title: "Terms of Service",
-  lastUpdated: "23 Jan 2025",
+  lastUpdated: "24 Oct 2026",
   intro:
     'Welcome to ScalePods ("we" or "us"). These Terms of Service govern your access to and use of ScalePods, our website, autonomous AI workflow automation pods, candidate screening tools, and related SaaS services.',
   contactEmail: "info@scalepods.tech",
