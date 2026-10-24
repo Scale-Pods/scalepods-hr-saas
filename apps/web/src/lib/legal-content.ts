@@ -84,9 +84,21 @@ export const PRIVACY_POLICY: LegalDocument = {
       ],
     },
     {
-      title: "9. Contact Us",
+      title: "9. Google Workspace API User Data & Limited Use Policy",
       paragraphs: [
-        "If you have any questions about this Privacy Policy, please contact us at info@scalepods.tech.",
+        "ScalePods' use and transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data Policy, including the Limited Use requirements.",
+        "The use of raw or derived user data received from Workspace APIs will adhere to the Google User Data Policy, including the Limited Use requirements.",
+      ],
+      listItems: [
+        "Purpose & Minimization: ScalePods requests the narrowest scope necessary (https://www.googleapis.com/auth/calendar.events) solely to check interviewer availability and create scheduled interview calendar appointments on behalf of hiring teams.",
+        "Prohibition on AI/ML Training: In strict compliance with Google Workspace API Limited Use requirements, raw, aggregated, or derived data obtained from Google Workspace APIs is NEVER transferred, shared, sold, or used to train, retrain, or improve foundational, generalized, or third-party machine learning (ML) or artificial intelligence (AI) models.",
+        "Data Isolation & Control: Google OAuth access tokens and calendar references are encrypted at rest and in transit, isolated per team member via strict Row-Level Security, and are never shared across organizations or with unapproved third parties. Users can revoke calendar access at any time through their ScalePods settings or Google account security page.",
+      ],
+    },
+    {
+      title: "10. Contact Us",
+      paragraphs: [
+        "If you have any questions about this Privacy Policy or our data practices, please contact us at info@scalepods.tech.",
       ],
     },
   ],
