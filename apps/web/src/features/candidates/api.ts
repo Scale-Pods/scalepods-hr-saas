@@ -70,6 +70,7 @@ export interface CandidateProfile {
   interviewTranscripts: InterviewTranscriptItem[];
   voiceScreenTranscripts: VoiceScreenTranscriptItem[];
   latestScorecard?: ScorecardRow | null;
+  interviewSessionId?: string | null;
   assignments?: AssignmentsRow[];
   interviewerFeedback?: InterviewerFeedbackRow[];
   offers?: OffersRow[];
@@ -78,7 +79,12 @@ export interface CandidateProfile {
 function roundNumberFromStage(stage: string): number | null {
   const m = /^round_(\d+)$/.exec(stage);
   if (m) return Number(m[1]);
-  if (stage === "round_undefined" || stage.includes("round") || stage.includes("interview"))
+  if (
+    stage === "round_undefined" ||
+    stage.includes("round") ||
+    stage.includes("interview") ||
+    stage.includes("voice")
+  )
     return 1;
   return null;
 }
@@ -121,7 +127,7 @@ export async function fetchCandidateProfile(
     supabase
       .from("interview_sessions")
       .select(
-        "id,round_instance_id,candidate_id,status,expires_at,started_at,completed_at,created_at,recording_url,account_id",
+        "id,round_instance_id,candidate_id,status,expires_at,started_at,created_at,account_id",
       )
       .eq("candidate_id", id)
       .eq("account_id", cand.account_id),
@@ -343,7 +349,7 @@ export async function fetchCandidateProfile(
     if (recordingPath) {
       try {
         const { data: signed } = await supabase.storage
-          .from("recordings")
+          .from(BUCKETS.recordings)
           .createSignedUrl(recordingPath, 3600);
         recordingSignedUrl = signed?.signedUrl ?? null;
       } catch {
@@ -351,8 +357,17 @@ export async function fetchCandidateProfile(
       }
     }
 
+    const resolvedScore =
+      scorecard && scorecard.overall_score != null ? scorecard.overall_score : row.score;
+    const resolvedRationale =
+      scorecard && scorecard.overall_score != null
+        ? scorecard.rationale || row.rationale
+        : row.rationale;
+
     view.push({
       ...row,
+      score: resolvedScore,
+      rationale: resolvedRationale,
       decided_at: row.created_at,
       source: "workflow",
       session,
@@ -372,7 +387,11 @@ export async function fetchCandidateProfile(
 
   if (
     (firstSession || firstRound || sc) &&
-    !view.some((v) => roundNumberFromStage(v.stage) === 1)
+    !view.some(
+      (v) =>
+        roundNumberFromStage(v.stage) === 1 ||
+        (firstRound && v.round_instance_id === firstRound.id),
+    )
   ) {
     const isEval = sc?.overall_score != null;
     const sessionStartMs = firstSession?.started_at
@@ -472,14 +491,11 @@ export async function fetchCandidateProfile(
       if (!resolvedPath && s.account_id && s.id) {
         try {
           const { data: files } = await supabase.storage
-            .from("recordings")
-            .list(`${s.account_id}/${s.id}`, { limit: 1 });
-          if (files && files.length > 0 && files[0]?.name) {
-            resolvedPath = `${s.account_id}/${s.id}/${files[0].name}`;
-            void supabase
-              .from("interview_sessions")
-              .update({ recording_url: resolvedPath })
-              .eq("id", s.id);
+            .from(BUCKETS.recordings)
+            .list(`${s.account_id}/${s.id}`, { limit: 10 });
+          const recFile = files?.find((f) => f.name.endsWith(".webm"));
+          if (recFile) {
+            resolvedPath = `${s.account_id}/${s.id}/${recFile.name}`;
           }
         } catch {}
       }
@@ -488,7 +504,7 @@ export async function fetchCandidateProfile(
       if (resolvedPath) {
         try {
           const { data: signed } = await supabase.storage
-            .from("recordings")
+            .from(BUCKETS.recordings)
             .createSignedUrl(resolvedPath, 86400);
           recordingSignedUrl = signed?.signedUrl ?? null;
         } catch (storageErr) {
@@ -548,57 +564,95 @@ export async function fetchCandidateProfile(
         }[]
       ).filter((q) => q && q.question_type !== "blueprint_meta");
 
-      // Group answers by question_id
-      const answersByQuestionId = new Map<string, any[]>();
-      for (const ans of answersList) {
-        if (!ans.question_id) continue;
-        const existing = answersByQuestionId.get(ans.question_id) || [];
-        existing.push(ans);
-        answersByQuestionId.set(ans.question_id, existing);
+      const questionById = new Map<
+        string,
+        {
+          id: string;
+          order_index: number;
+          question_text: string;
+          question_type: string;
+        }
+      >();
+      for (const q of questionsList) {
+        questionById.set(q.id, q);
       }
 
       const mappedTranscripts: InterviewTranscriptItem[] = [];
 
-      // A. Map known questions from interview_questions
-      if (questionsList.length > 0) {
-        questionsList.forEach((q) => {
-          const ansList = answersByQuestionId.get(q.id) || [];
-          const bestAnswer =
-            ansList.find((a) => a.answer_text && a.answer_text.trim().length > 0) ||
-            ansList[ansList.length - 1] ||
-            null;
+      if (answersList.length > 0) {
+        // Identify timestamps of genuine answered turns to eliminate concurrent transition placeholder artifacts
+        const answeredTimestamps = answersList
+          .filter((a) => (a.answer_text || "").trim().length > 0)
+          .map((a) => new Date(a.answered_at).getTime());
 
-          const liveNote = bestAnswer?.ai_live_note || {};
+        const meaningfulAnswers = answersList.filter((ans) => {
+          const hasText = (ans.answer_text || "").trim().length > 0;
+          if (hasText) return true;
+          const ansTime = new Date(ans.answered_at).getTime();
+          // Skip empty placeholder answers created within 5 seconds of a real answered turn
+          const isSpurious = answeredTimestamps.some((t) => Math.abs(t - ansTime) < 5000);
+          return !isSpurious;
+        });
+
+        // Collect answers in chronological order, deduplicating identical questions and prioritizing non-empty answer text
+        const turnsMap = new Map<string, InterviewTranscriptItem>();
+        let counter = 1;
+
+        for (const ans of meaningfulAnswers) {
+          const q = ans.question_id ? questionById.get(ans.question_id) : undefined;
+          const liveNote = (ans.ai_live_note || {}) as Record<string, any>;
+          const qText = (q?.question_text || liveNote.question_text || "Interview Question").trim();
+          const normKey = qText.toLowerCase();
+
+          const existing = turnsMap.get(normKey);
+          if (existing) {
+            // If previous turn had no answer text and this one does, update it
+            if (!existing.answer_text?.trim() && ans.answer_text?.trim()) {
+              existing.answer_text = ans.answer_text.trim();
+              existing.id = ans.id;
+              existing.answered_at = ans.answered_at;
+              if (liveNote && Object.keys(liveNote).length > 0) {
+                existing.ai_note = liveNote;
+                if (liveNote.interviewer_text) {
+                  existing.interviewer_text = liveNote.interviewer_text;
+                }
+              }
+            }
+          } else {
+            turnsMap.set(normKey, {
+              id: ans.id,
+              question_number: counter++,
+              question_text: qText,
+              question_type: q?.question_type || liveNote.question_type || "Technical",
+              interviewer_text: liveNote.interviewer_text || null,
+              answer_text: (ans.answer_text || "").trim(),
+              answered_at: ans.answered_at || new Date().toISOString(),
+              ai_note: liveNote,
+            });
+          }
+        }
+
+        mappedTranscripts.push(...Array.from(turnsMap.values()));
+      } else if (questionsList.length > 0) {
+        // No answers recorded yet; show deduplicated list of questions
+        const seenTexts = new Set<string>();
+        let qIdx = 1;
+        for (const q of questionsList) {
+          const norm = (q.question_text || "").trim().toLowerCase();
+          if (seenTexts.has(norm)) continue;
+          seenTexts.add(norm);
+
           mappedTranscripts.push({
-            id: bestAnswer?.id || `q-${q.id}`,
-            question_number: q.order_index,
+            id: `q-${q.id}`,
+            question_number: q.order_index || qIdx++,
             question_text: q.question_text,
             question_type: q.question_type || "Technical",
-            interviewer_text: liveNote.interviewer_text || null,
-            answer_text: bestAnswer?.answer_text || "",
-            answered_at: bestAnswer?.answered_at || new Date().toISOString(),
-            ai_note: liveNote,
+            interviewer_text: null,
+            answer_text: "",
+            answered_at: new Date().toISOString(),
+            ai_note: null,
           });
-        });
-      } else if (answersList.length > 0) {
-        // Fallback if interview_questions was empty: deduplicate by question text
-        const seenQuestionTexts = new Set<string>();
-        answersList.forEach((ans) => {
-          const liveNote = ans.ai_live_note || {};
-          const qText = liveNote.question_text || "Interview Question";
-          if (seenQuestionTexts.has(qText)) return;
-          seenQuestionTexts.add(qText);
-
-          mappedTranscripts.push({
-            id: ans.id,
-            question_text: qText,
-            question_type: liveNote.question_type || "General",
-            interviewer_text: liveNote.interviewer_text || null,
-            answer_text: ans.answer_text || "",
-            answered_at: ans.answered_at,
-            ai_note: liveNote,
-          });
-        });
+        }
       }
 
       interviewTranscripts = mappedTranscripts;
@@ -700,6 +754,7 @@ export async function fetchCandidateProfile(
     resumeUrl: matchedApplication?.resume_path || resumeUrl,
     timeline: view,
     outreach,
+    interviewSessionId: sessionRows[0]?.id || allSessionRows[0]?.id || null,
     interviewRecordings,
     interviewTranscripts,
     voiceScreenTranscripts,

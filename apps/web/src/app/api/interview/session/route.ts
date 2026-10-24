@@ -2,10 +2,10 @@ import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 
 function getAdminSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://inkfjgmnxkfitnegpiej.supabase.co";
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!key) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured.");
+  if (!url || !key) {
+    throw new Error("Supabase credentials are not configured.");
   }
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -146,25 +146,15 @@ export async function GET(request: NextRequest) {
           .order("answered_at", { ascending: true })
       : { data: [] };
 
-    // 10. Fetch Scorecard — the n8n scoring pipeline writes scorecards keyed
-    // by round_instance_id (no session_id column), so query by that.
+    // 10. Fetch Scorecard
     let scorecard = null;
-    if (session.round_instance_id) {
+    if (sessionId) {
       const { data: scRow } = await supabase
-        .from("scorecards")
-        .select("*")
-        .eq("round_instance_id", session.round_instance_id)
-        .maybeSingle();
-      scorecard = scRow;
-    }
-    if (!scorecard) {
-      // Fallback: some older rows may have a session_id column
-      const { data: scFallback } = await supabase
         .from("scorecards")
         .select("*")
         .eq("session_id", sessionId)
         .maybeSingle();
-      scorecard = scFallback;
+      scorecard = scRow;
     }
 
     return NextResponse.json({
@@ -241,6 +231,18 @@ async function evaluateAndPersistSession(
     .maybeSingle();
 
   if (existingCard && existingCard.overall_score != null) {
+    if (sessionRow.round_instance_id) {
+      await supabase
+        .from("decision_ledger")
+        .update({
+          score: existingCard.overall_score,
+          stage: "round_1",
+          rationale: `AI interview evaluation completed with score ${existingCard.overall_score}/100.`,
+          score_type: "ai_interview",
+          decided_at: new Date().toISOString(),
+        })
+        .eq("round_instance_id", sessionRow.round_instance_id);
+    }
     return existingCard;
   }
 
@@ -320,24 +322,44 @@ async function evaluateAndPersistSession(
     : `AI interview evaluation completed across technical, communication, and authenticity signals with overall score of ${overallScore}/100.`;
 
   // 1. Insert or update scorecard
-  const { data: newCard } = await supabase
+  const cardPayload = {
+    session_id: sessionId,
+    technical_score: techScore,
+    communication_score: commScore,
+    problem_solving_score: psScore,
+    cultural_fit_score: cultScore,
+    authenticity_score: authScore,
+    overall_score: overallScore,
+    recommendation,
+    strengths,
+    weaknesses,
+    red_flags: redFlags,
+    evaluated_at: new Date().toISOString(),
+  };
+
+  const { data: priorCard } = await supabase
     .from("scorecards")
-    .upsert({
-      session_id: sessionId,
-      technical_score: techScore,
-      communication_score: commScore,
-      problem_solving_score: psScore,
-      cultural_fit_score: cultScore,
-      authenticity_score: authScore,
-      overall_score: overallScore,
-      recommendation,
-      strengths,
-      weaknesses,
-      red_flags: redFlags,
-      evaluated_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
+    .select("id")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+
+  let newCard = null;
+  if (priorCard?.id) {
+    const { data: updated } = await supabase
+      .from("scorecards")
+      .update(cardPayload)
+      .eq("id", priorCard.id)
+      .select()
+      .maybeSingle();
+    newCard = updated;
+  } else {
+    const { data: inserted } = await supabase
+      .from("scorecards")
+      .insert(cardPayload)
+      .select()
+      .maybeSingle();
+    newCard = inserted;
+  }
 
   // 2. Insert or update decision_ledger
   if (sessionRow.round_instance_id) {
@@ -372,7 +394,16 @@ async function evaluateAndPersistSession(
         decided_at: new Date().toISOString(),
       });
     }
+
+    // 3. Mark round instance completed
+    await supabase
+      .from("round_instances")
+      .update({ status: "completed" })
+      .eq("id", sessionRow.round_instance_id);
   }
+
+  // 4. Mark interview session completed
+  await supabase.from("interview_sessions").update({ status: "completed" }).eq("id", sessionId);
 
   return newCard;
 }
@@ -391,7 +422,7 @@ export async function POST(request: NextRequest) {
     // Resolve session row to obtain correct foreign keys
     const { data: sessionRow, error: sessionErr } = await supabase
       .from("interview_sessions")
-      .select("id, account_id, candidate_id, round_instance_id, recording_url")
+      .select("id, account_id, candidate_id, round_instance_id")
       .eq("id", sessionId)
       .maybeSingle();
 
@@ -529,24 +560,15 @@ export async function POST(request: NextRequest) {
       }
 
       case "complete": {
-        const { recordingUrl, endedEarly } = body;
-        const now = new Date().toISOString();
+        const { endedEarly } = body;
         const sessionStatus = endedEarly ? "incomplete" : "completed";
         const roundStatus = endedEarly ? "incomplete" : "completed";
 
-        const updateData: Record<string, unknown> = {
-          status: sessionStatus,
-          completed_at: now,
-        };
-        if (recordingUrl) {
-          updateData.recording_url = recordingUrl;
-        }
-
         const { data: updatedSession, error: updateErr } = await supabase
           .from("interview_sessions")
-          .update(updateData)
+          .update({ status: sessionStatus })
           .eq("id", sessionId)
-          .select("id, account_id, candidate_id, round_instance_id, recording_url, status")
+          .select("id, account_id, candidate_id, round_instance_id, status")
           .single();
 
         if (updateErr) {
@@ -561,14 +583,6 @@ export async function POST(request: NextRequest) {
             .eq("id", sessionRow.round_instance_id);
         }
 
-        // If recordingUrl provided, also link to scorecard
-        if (recordingUrl && sessionRow.round_instance_id) {
-          void supabase
-            .from("scorecards")
-            .update({ recording_path: recordingUrl })
-            .eq("round_instance_id", sessionRow.round_instance_id);
-        }
-
         // Trigger n8n scoring webhook, falling back to autonomous evaluation if n8n is offline or errors
         const n8nBase = getN8nBase();
         let scored = false;
@@ -581,7 +595,7 @@ export async function POST(request: NextRequest) {
               account_id: sessionRow.account_id,
               candidate_id: sessionRow.candidate_id,
               round_instance_id: sessionRow.round_instance_id,
-              recording_url: updatedSession?.recording_url || recordingUrl || null,
+              recording_url: null,
               round_number: 1,
               number_of_rounds: 1,
               cutoff_score: null,
@@ -613,7 +627,7 @@ export async function POST(request: NextRequest) {
               account_id: sessionRow.account_id,
               candidate_id: sessionRow.candidate_id,
               round_instance_id: sessionRow.round_instance_id,
-              recording_url: sessionRow.recording_url,
+              recording_url: null,
               round_number: 1,
               number_of_rounds: 1,
               cutoff_score: null,

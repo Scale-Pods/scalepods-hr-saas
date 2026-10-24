@@ -57,13 +57,20 @@ vi.mock("@/features/campaigns/hooks", () => ({
 }));
 
 vi.mock("@/lib/supabase/client", () => ({
-  supabaseBrowser: () => ({
-    from: () => ({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
+  supabaseBrowser: () => {
+    const channelMock: any = {};
+    channelMock.on = vi.fn().mockReturnValue(channelMock);
+    channelMock.subscribe = vi.fn().mockReturnValue(channelMock);
+    return {
+      from: () => ({
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ error: null }),
+        }),
       }),
-    }),
-  }),
+      channel: () => channelMock,
+      removeChannel: vi.fn(),
+    };
+  },
 }));
 
 vi.mock("@/lib/webhooks", () => ({

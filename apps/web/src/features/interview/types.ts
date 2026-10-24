@@ -23,7 +23,8 @@ export type SessionStatus =
   | "completed"
   | "expired"
   | "cancelled"
-  | "flagged";
+  | "flagged"
+  | "incomplete";
 
 export interface InterviewSession {
   id: string;

@@ -47,6 +47,13 @@ export const cadenceConfigSchema = z
         dayLabel: z.string().optional(),
       }),
     ),
+    offer_template: z
+      .object({
+        file_name: z.string().optional(),
+        text: z.string(),
+        uploaded_at: z.string().optional(),
+      })
+      .optional(),
   })
   .optional();
 

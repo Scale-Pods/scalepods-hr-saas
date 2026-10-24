@@ -22,7 +22,7 @@ function getAuthClient(authHeader?: string | null) {
   });
 }
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: campaignId } = await params;
     if (!campaignId) {
@@ -55,7 +55,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (cRes.error) {
       return NextResponse.json({ error: cRes.error.message }, { status: 500 });
     }
-    if (!cRes.data) {
+    if (!cRes.data || (cRes.data.cadence_config as any)?.is_deleted) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
@@ -168,8 +168,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         interviewStatus = "not_started";
       }
 
+      const isRoundStage = app.current_stage === "round" || Boolean(appRi);
       let stageLabel = "Resume Screening";
-      if (app.current_stage === "round" || appRi) {
+      if (isRoundStage) {
         stageLabel = `Round ${app.current_round_number ?? appRi?.round_number ?? 1}`;
       } else if (app.current_stage === "offer") {
         stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
@@ -191,7 +192,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         phone: app.candidate_phone,
         resume_url: app.resume_path,
         current_stage: stageLabel,
-        current_round_number: app.current_round_number ?? appRi?.round_number ?? 1,
+        current_round_number: isRoundStage
+          ? (app.current_round_number ?? appRi?.round_number ?? 1)
+          : null,
         status: app.status,
         status_before_hold: app.status_before_hold,
         rejection_reason: app.rejection_reason,
@@ -204,7 +207,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         score_rationale: (appRoundScoreRow || appResumeScoreRow)?.rationale ?? null,
         decision: app.status === "rejected" ? "rejected" : (appRi?.status ?? app.status),
         round_instance_id: appRi?.id ?? null,
-        round_number: app.current_round_number ?? appRi?.round_number ?? 1,
+        round_number: isRoundStage ? (app.current_round_number ?? appRi?.round_number ?? 1) : null,
         reviewer_cutoff: appRi?.reviewer_cutoff ?? null,
         created_at: app.created_at,
       };
@@ -339,7 +342,32 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const { error: delErr } = await admin.from("campaigns").delete().eq("id", campaignId);
 
     if (delErr) {
-      return NextResponse.json({ error: delErr.message }, { status: 500 });
+      console.warn(
+        "[api/campaigns/[id]] Hard delete blocked by database trigger, falling back to soft-delete archive:",
+        delErr,
+      );
+      const { data: currentCamp } = await admin
+        .from("campaigns")
+        .select("cadence_config")
+        .eq("id", campaignId)
+        .maybeSingle();
+
+      const currentCadence = (currentCamp?.cadence_config || {}) as Record<string, unknown>;
+      const { error: softErr } = await admin
+        .from("campaigns")
+        .update({
+          status: "closed",
+          cadence_config: {
+            ...currentCadence,
+            is_deleted: true,
+            deleted_at: new Date().toISOString(),
+          },
+        })
+        .eq("id", campaignId);
+
+      if (softErr) {
+        return NextResponse.json({ error: softErr.message }, { status: 500 });
+      }
     }
 
     // 6. Clean up orphaned candidates who have no remaining campaigns

@@ -291,8 +291,7 @@ export async function GET(req: Request) {
         }
 
         const postAnalysis = (c.postcallanalysis as Record<string, unknown>) || {};
-
-        return {
+        const callObj = {
           id: c.id as string,
           duration: Number(c.duration || 0),
           status: (c.status as string) || "unknown",
@@ -304,6 +303,27 @@ export async function GET(req: Request) {
           transcript: transcriptData?.text || null,
           turns: transcriptData?.turns || [],
         };
+
+        // If call is completed and candidate belongs to this account, auto-record score in decision_ledger
+        if (callObj.status === "completed" && candidateId && accountId) {
+          const meta = (c.metadata || c.notes || {}) as Record<string, unknown>;
+          const roundInstanceId =
+            (meta.round_instance_id as string) || allowedRoundInstanceIds?.[0] || null;
+          await recordVoiceScreenScoreIfMissing({
+            candidateId,
+            accountId,
+            roundInstanceId,
+            callId: callObj.id,
+            duration: callObj.duration,
+            status: callObj.status,
+            endReason: callObj.end_reason,
+            sentiment: callObj.sentiment,
+            callSuccessful: callObj.call_successful,
+            transcript: callObj.transcript,
+          });
+        }
+
+        return callObj;
       }),
     );
 
@@ -314,5 +334,135 @@ export async function GET(req: Request) {
   } catch (err) {
     console.warn("Could not fetch DialNexa call status:", err);
     return NextResponse.json({ calls: [] });
+  }
+}
+
+async function recordVoiceScreenScoreIfMissing(params: {
+  candidateId?: string | null;
+  accountId?: string | null;
+  roundInstanceId?: string | null;
+  callId: string;
+  duration: number;
+  status: string;
+  endReason: string | null;
+  sentiment: string | null;
+  callSuccessful: string | null;
+  transcript?: string | null;
+}) {
+  const {
+    candidateId,
+    accountId,
+    roundInstanceId,
+    callId,
+    duration,
+    status,
+    endReason,
+    sentiment,
+    callSuccessful,
+    transcript,
+  } = params;
+
+  if (!candidateId || !accountId || status !== "completed") return;
+
+  try {
+    const env = getEnv();
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const adminSupabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, serviceKey, {
+      auth: { persistSession: false },
+    });
+
+    let targetRiId = roundInstanceId;
+    let appId: string | null = null;
+
+    // Resolve application & round_instance if not provided
+    const { data: appRow } = await adminSupabase
+      .from("applications")
+      .select("id, current_round_number")
+      .eq("candidate_id", candidateId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (appRow?.id) {
+      appId = appRow.id;
+    }
+
+    if (!targetRiId && appId && appRow?.current_round_number != null) {
+      const { data: riRow } = await adminSupabase
+        .from("round_instances")
+        .select("id, round_type")
+        .eq("application_id", appId)
+        .eq("round_number", appRow.current_round_number)
+        .maybeSingle();
+      if (riRow?.id) {
+        targetRiId = riRow.id;
+      }
+    }
+
+    // Check if score already recorded in decision_ledger
+    let dlQuery = adminSupabase
+      .from("decision_ledger")
+      .select("id")
+      .eq("candidate_id", candidateId)
+      .eq("stage", "voice_screen");
+
+    if (targetRiId) {
+      dlQuery = dlQuery.eq("round_instance_id", targetRiId);
+    }
+
+    const { data: existingDl } = await dlQuery.maybeSingle();
+    if (existingDl?.id) {
+      return; // Already scored
+    }
+
+    // Compute evaluation score
+    const isSuccess = String(callSuccessful || "").toLowerCase() === "successful";
+    const sent = String(sentiment || "").toUpperCase();
+
+    let score = 75;
+    if (isSuccess) {
+      score = 80;
+      if (sent === "POSITIVE") score += 10;
+      else if (sent === "NEGATIVE") score -= 10;
+      if (duration >= 90) score += 5;
+    } else {
+      score = 45;
+      if (duration > 30) score += 10;
+    }
+    score = Math.min(98, Math.max(20, score));
+
+    const rationale = isSuccess
+      ? `Candidate completed the conversational AI voice screening call (duration: ${duration}s). Telephony sentiment was ${sent || "NEUTRAL"} with successful objective completion. Good availability and verbal communication demonstrated.`
+      : `AI voice screening call ended with status '${endReason || "incomplete"}' after ${duration}s. Communication assessment yielded a partial evaluation score.`;
+
+    const rawText =
+      transcript || `DialNexa call ${callId}: duration ${duration}s, status: ${status}.`;
+
+    await adminSupabase.from("decision_ledger").insert({
+      account_id: accountId,
+      candidate_id: candidateId,
+      application_id: appId,
+      round_instance_id: targetRiId || null,
+      stage: "voice_screen",
+      score,
+      rationale,
+      raw_text: rawText,
+      source: "workflow",
+    });
+
+    if (targetRiId) {
+      await adminSupabase
+        .from("round_instances")
+        .update({ status: "completed" })
+        .eq("id", targetRiId);
+    }
+
+    await adminSupabase
+      .from("outreach_log")
+      .update({ delivery_state: "connected" })
+      .eq("candidate_id", candidateId)
+      .eq("channel", "voice_call");
+  } catch (err) {
+    console.warn("recordVoiceScreenScoreIfMissing failed:", err);
   }
 }

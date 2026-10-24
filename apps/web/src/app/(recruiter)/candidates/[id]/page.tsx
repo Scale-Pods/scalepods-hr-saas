@@ -684,7 +684,12 @@ export default function CandidateProfilePage() {
         recordings={interviewRecordings}
         transcripts={interviewTranscripts}
         scorecard={latestScorecard}
-        sessionId={interviewRecordings[0]?.sessionId}
+        sessionId={
+          interviewRecordings[0]?.sessionId ||
+          (data as any)?.interviewSessionId ||
+          timeline.find((t) => t.session?.id)?.session?.id ||
+          undefined
+        }
         onRefresh={() => refetch()}
       />
 
@@ -1536,17 +1541,35 @@ function InterviewMediaAndTranscriptSection({
                   database as questions are answered.
                 </p>
               </div>
-              {transcripts.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setActiveTab("transcript")}
-                  className="rounded-xl text-xs gap-1.5"
-                >
-                  <MessageSquareText className="h-3.5 w-3.5 text-emerald-500" />
-                  View Synced Answers ({transcripts.length})
-                </Button>
-              )}
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                {transcripts.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setActiveTab("transcript")}
+                    className="rounded-xl text-xs gap-1.5"
+                  >
+                    <MessageSquareText className="h-3.5 w-3.5 text-emerald-500" />
+                    View Synced Answers ({transcripts.length})
+                  </Button>
+                )}
+                {sessionId && transcripts.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={scoringBusy}
+                    onClick={handleTriggerScoring}
+                    className="rounded-xl text-xs gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                  >
+                    {scoringBusy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCw className="h-3.5 w-3.5 text-primary" />
+                    )}
+                    {scoringBusy ? "Running Evaluation..." : "Generate AI Scorecard Now"}
+                  </Button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-6 text-center space-y-3">

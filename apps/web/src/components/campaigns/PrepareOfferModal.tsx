@@ -103,7 +103,7 @@ export function PrepareOfferModal({
         );
       } else {
         showToast(
-          `Offer sent to you for signature. SignWell will send it to ${candidate.name || candidate.email} after you sign.`,
+          `Offer letter & agreement generated and emailed directly to ${candidate.name || candidate.email}!`,
         );
       }
 
@@ -116,24 +116,46 @@ export function PrepareOfferModal({
     }
   };
 
+  const campaignTemplate = (
+    campaign.cadence_config as { offer_template?: { file_name?: string; text?: string } } | null
+  )?.offer_template;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSignature className="h-5 w-5 text-primary" />
-            Prepare & Send Offer
+            Generate & Send Offer Letter
           </DialogTitle>
           <DialogDescription>
-            Generate an official employment agreement via SignWell. Your recruiter email signs
-            first, then SignWell automatically delivers the packet to the candidate.
+            Generate an official employment offer and NDA agreement. ScalePods AI automatically
+            populates your template variables and delivers the signed agreement directly to the
+            candidate via email.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {campaignTemplate?.file_name ? (
+            <div className="flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 p-2.5 text-xs text-primary">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>
+                Using Campaign Template: <strong>{campaignTemplate.file_name}</strong> (AI variable
+                fill active)
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 p-2.5 text-xs text-muted-foreground">
+              <FileSignature className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span>
+                Using Standard Agreement Template. AI will automatically structure candidate terms.
+              </span>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
             <div>
-              <span className="text-muted-foreground block">1st Signer (Recruiter):</span>
+              <span className="text-muted-foreground block">Sender (Company / Recruiter):</span>
               <span className="font-semibold text-foreground truncate block">{recruiterEmail}</span>
             </div>
             <div>
@@ -220,7 +242,7 @@ export function PrepareOfferModal({
           </Button>
           <Button onClick={handleSendOffer} disabled={sending} className="gap-1.5">
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            {sending ? "Sending to SignWell..." : "Send to Recruiter for Signature"}
+            {sending ? "Generating & Emailing Offer..." : "Generate & Email Offer Letter"}
           </Button>
         </DialogFooter>
       </DialogContent>

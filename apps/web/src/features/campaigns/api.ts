@@ -35,7 +35,11 @@ export async function fetchCampaigns(): Promise<CampaignListItem[]> {
     }
   }
 
-  return ((campaigns.data as CampaignsRow[] | null) ?? []).map((row) => ({
+  const activeCampaigns = ((campaigns.data as CampaignsRow[] | null) ?? []).filter(
+    (row) => !(row.cadence_config as any)?.is_deleted,
+  );
+
+  return activeCampaigns.map((row) => ({
     ...row,
     candidates: counts[row.id] ?? 0,
   }));
@@ -121,8 +125,8 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
       .in("status", ["passed", "failed", "no_show"]),
     supabase
       .from("interview_sessions")
-      .select("id,candidate_id,round_instance_id,status,started_at,completed_at,created_at"),
-    supabase.from("interview_answers").select("id,session_id,round_instance_id"),
+      .select("id,candidate_id,round_instance_id,status,started_at,created_at"),
+    (supabase as any).from("interview_answers").select("id,session_id,round_instance_id"),
     supabase.from("scorecards").select("id,session_id,overall_score"),
   ]);
   if (c.error) throw c.error;
@@ -216,8 +220,9 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         interviewStatus = "not_started";
       }
 
+      const isRoundStage = app.current_stage === "round" || Boolean(appRi);
       let stageLabel = "Resume Screening";
-      if (app.current_stage === "round" || appRi) {
+      if (isRoundStage) {
         stageLabel = `Round ${app.current_round_number ?? appRi?.round_number ?? 1}`;
       } else if (app.current_stage === "offer") {
         stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
@@ -239,7 +244,9 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         phone: app.candidate_phone,
         resume_url: app.resume_path,
         current_stage: stageLabel,
-        current_round_number: app.current_round_number ?? appRi?.round_number ?? 1,
+        current_round_number: isRoundStage
+          ? (app.current_round_number ?? appRi?.round_number ?? 1)
+          : null,
         status: app.status,
         status_before_hold: app.status_before_hold,
         rejection_reason: app.rejection_reason,
@@ -252,7 +259,7 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         score_rationale: (appRoundScoreRow || appResumeScoreRow)?.rationale ?? null,
         decision: app.status === "rejected" ? "rejected" : (appRi?.status ?? app.status),
         round_instance_id: appRi?.id ?? null,
-        round_number: app.current_round_number ?? appRi?.round_number ?? 1,
+        round_number: isRoundStage ? (app.current_round_number ?? appRi?.round_number ?? 1) : null,
         reviewer_cutoff: appRi?.reviewer_cutoff ?? null,
         created_at: app.created_at,
       };

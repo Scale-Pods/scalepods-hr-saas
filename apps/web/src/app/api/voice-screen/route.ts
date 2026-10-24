@@ -24,18 +24,30 @@ export async function POST(req: Request) {
     let roleTitle = body.role_title;
     let accountId = body.account_id;
     let planTier = body.plan_tier || body.tier;
+    let roundQuestions: string[] = [];
+    let roundCriteria: string[] = [];
 
-    if (body.candidate_id && (!roundInstanceId || !voiceCallConfig || !accountId)) {
+    if (body.candidate_id || roundInstanceId) {
       try {
         const { supabaseServer } = await import("@/lib/supabase/server");
         const supabase = await supabaseServer();
-        const { data: ri } = await supabase
+
+        let riQuery = supabase
           .from("round_instances")
-          .select("id, account_id, campaigns(id, name, voice_call_config)")
-          .eq("candidate_id", body.candidate_id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .select(
+            "id, account_id, round_number, campaign_id, campaigns(id, name, voice_call_config)",
+          );
+
+        if (roundInstanceId) {
+          riQuery = riQuery.eq("id", roundInstanceId);
+        } else if (body.candidate_id) {
+          riQuery = riQuery
+            .eq("candidate_id", body.candidate_id)
+            .order("created_at", { ascending: false });
+        }
+
+        const { data: ri } = await riQuery.limit(1).maybeSingle();
+
         if (ri?.id) {
           roundInstanceId = roundInstanceId || ri.id;
         }
@@ -51,6 +63,26 @@ export async function POST(req: Request) {
           }
           if (!roleTitle && camp?.name) {
             roleTitle = camp.name;
+          }
+        }
+
+        // Fetch round questions & evaluation criteria if available
+        if (ri?.campaign_id && ri?.round_number) {
+          const { data: roundDef } = await supabase
+            .from("campaign_rounds")
+            .select("questions, evaluation_criteria")
+            .eq("campaign_id", ri.campaign_id)
+            .eq("round_number", ri.round_number)
+            .maybeSingle();
+
+          if (Array.isArray(roundDef?.questions) && roundDef.questions.length > 0) {
+            roundQuestions = roundDef.questions as string[];
+          }
+          if (
+            Array.isArray(roundDef?.evaluation_criteria) &&
+            roundDef.evaluation_criteria.length > 0
+          ) {
+            roundCriteria = roundDef.evaluation_criteria as string[];
           }
         }
       } catch (dbErr) {
@@ -95,68 +127,146 @@ export async function POST(req: Request) {
         candidate_name: body.candidate_name,
         role_title: roleTitle,
         company_name: body.company_name || "ScalePods",
+        questions: roundQuestions,
+        evaluation_criteria: roundCriteria,
       });
     }
 
+    // Try n8n first
     const authHeader = req.headers.get("authorization");
-    const n8nRes = await fetch(`${n8nBase}/webhook/voice-screen`, {
+    let n8nSuccess = false;
+    let n8nData: Record<string, unknown> = {};
+
+    try {
+      const n8nRes = await fetch(`${n8nBase}/webhook/voice-screen`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
+        body: JSON.stringify({
+          ...body,
+          candidate_phone: phone,
+          round_instance_id: isUuid(roundInstanceId) ? roundInstanceId : null,
+          account_id: isUuid(accountId) ? accountId : "00000000-0000-0000-0000-000000000000",
+          voice_call_config: voiceCallConfig || undefined,
+          role_title: roleTitle || undefined,
+          plan_tier: planTier || undefined,
+          tier: planTier || undefined,
+          is_enterprise: isEnterprise,
+        }),
+      });
+
+      const responseText = await n8nRes.text();
+      try {
+        n8nData = JSON.parse(responseText) as Record<string, unknown>;
+      } catch {
+        n8nData = { response: responseText };
+      }
+
+      if (n8nRes.ok) {
+        n8nSuccess = true;
+      } else {
+        console.warn("[api/voice-screen] n8n returned non-ok status:", n8nRes.status, n8nData);
+      }
+    } catch (n8nErr) {
+      console.warn("[api/voice-screen] n8n webhook unreachable:", n8nErr);
+    }
+
+    if (n8nSuccess) {
+      return NextResponse.json({
+        success: true,
+        source: "n8n",
+        ...n8nData,
+      });
+    }
+
+    // Resilient fallback: Direct DialNexa API call dispatch
+    console.log("[api/voice-screen] Initiating direct DialNexa call dispatch fallback...");
+    const { DEFAULT_DIALNEXA_API_KEY, DEFAULT_DIALNEXA_AGENT_ID } = await import("@/lib/dialnexa");
+    const dialnexaApiKey = process.env.DIALNEXA_API_KEY || DEFAULT_DIALNEXA_API_KEY;
+    const targetAgentId = voiceCallConfig?.agent_id || DEFAULT_DIALNEXA_AGENT_ID;
+
+    const dialnexaRes = await fetch("https://api.dialnexa.com/v1/calls", {
       method: "POST",
       headers: {
+        Authorization: `Bearer ${dialnexaApiKey}`,
         "Content-Type": "application/json",
-        ...(authHeader ? { Authorization: authHeader } : {}),
       },
       body: JSON.stringify({
-        ...body,
-        candidate_phone: phone,
-        round_instance_id: isUuid(roundInstanceId) ? roundInstanceId : null,
-        account_id: isUuid(accountId) ? accountId : "00000000-0000-0000-0000-000000000000",
-        voice_call_config: voiceCallConfig || undefined,
-        role_title: roleTitle || undefined,
-        plan_tier: planTier || undefined,
-        tier: planTier || undefined,
-        is_enterprise: isEnterprise,
+        phone_number: phone,
+        agent_id: targetAgentId,
+        metadata: {
+          candidate_phone: phone,
+          candidate_name: body.candidate_name || "Candidate",
+          company_name: body.company_name || "ScalePods",
+          role_title: roleTitle || "Open Position",
+          candidate_id: body.candidate_id || null,
+          round_instance_id: roundInstanceId || null,
+          account_id: accountId || null,
+          source: "scalepods_direct_dispatch",
+        },
+        notes: {
+          candidate_phone: phone,
+          candidate_name: body.candidate_name || "Candidate",
+          role_title: roleTitle || "Open Position",
+          candidate_id: body.candidate_id || null,
+          round_instance_id: roundInstanceId || null,
+          account_id: accountId || null,
+        },
       }),
     });
 
-    const responseText = await n8nRes.text();
-    let data: Record<string, unknown> = {};
+    const dialnexaText = await dialnexaRes.text();
+    let dialnexaData: Record<string, unknown> = {};
     try {
-      data = JSON.parse(responseText) as Record<string, unknown>;
+      dialnexaData = JSON.parse(dialnexaText) as Record<string, unknown>;
     } catch {
-      data = { response: responseText };
+      dialnexaData = { response: dialnexaText };
     }
 
-    if (!n8nRes.ok) {
-      const errorMsg =
-        typeof data.message === "string" && data.message
-          ? data.message
-          : typeof data.error === "string" && data.error
-            ? data.error
-            : typeof data.error === "object" &&
-                data.error !== null &&
-                typeof (data.error as Record<string, unknown>).message === "string"
-              ? String((data.error as Record<string, unknown>).message)
-              : "n8n workflow error";
-
+    if (!dialnexaRes.ok) {
       return NextResponse.json(
         {
-          error: errorMsg,
-          detail: data,
+          error:
+            (dialnexaData.message as string) ||
+            (dialnexaData.error as string) ||
+            "DialNexa dispatch failed",
+          detail: dialnexaData,
         },
-        { status: n8nRes.status },
+        { status: dialnexaRes.status },
       );
+    }
+
+    // Log the call attempt in outreach_log
+    try {
+      const { supabaseServer } = await import("@/lib/supabase/server");
+      const supabase = await supabaseServer();
+      if (accountId && body.candidate_id) {
+        await supabase.from("outreach_log").insert({
+          account_id: accountId,
+          candidate_id: body.candidate_id,
+          round_instance_id: isUuid(roundInstanceId) ? roundInstanceId : null,
+          stage: "voice_screening_call",
+          channel: "voice_call",
+          delivery_state: "attempted",
+        });
+      }
+    } catch (logErr) {
+      console.warn("Could not insert outreach_log attempt:", logErr);
     }
 
     return NextResponse.json({
       success: true,
-      source: "n8n",
-      ...data,
+      source: "dialnexa_direct",
+      status: "call_initiated",
+      call: dialnexaData.data || dialnexaData,
     });
   } catch (error) {
-    console.error("Voice screening error calling n8n:", error);
+    console.error("Voice screening error calling DialNexa / n8n:", error);
     return NextResponse.json(
       {
-        error: "Failed to dispatch call to n8n",
+        error: "Failed to dispatch voice screening call",
         message: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },

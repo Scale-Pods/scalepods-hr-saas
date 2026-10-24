@@ -196,9 +196,15 @@ export function PipelineBoard({
       ) {
         if (map["offer"]) map["offer"].push(cand);
       } else if (
+        cand.current_stage === "needs_review" ||
+        cand.current_stage === "Resume Screening" ||
+        (!cand.round_instance_id && !cand.current_round_number)
+      ) {
+        if (map["needs_review"]) map["needs_review"].push(cand);
+      } else if (
         cand.round_instance_id ||
         (cand.current_stage && cand.current_stage.startsWith("Round ")) ||
-        cand.round_number
+        cand.current_round_number
       ) {
         const roundNum = cand.current_round_number || cand.round_number || 1;
         const colId = `round_${roundNum}`;
@@ -594,7 +600,7 @@ export function PipelineBoard({
                               </Badge>
                             )}
                             {cand.interview_status === "not_started" &&
-                              (cand.round_instance_id || cand.round_number) && (
+                              Boolean(cand.round_instance_id) && (
                                 <Badge
                                   variant="outline"
                                   className="border-border text-muted-foreground bg-muted/20 text-[10px] gap-1 px-1.5 py-0.5"

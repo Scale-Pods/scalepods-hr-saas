@@ -15,6 +15,8 @@ export interface SyncDialnexaAgentParams {
   candidate_name?: string;
   role_title?: string;
   company_name?: string;
+  questions?: string[];
+  evaluation_criteria?: string[];
 }
 
 /**
@@ -33,8 +35,8 @@ export function interpolateDialnexaVariables(
 
 /**
  * Synchronizes the agent prompt, greeting, and conversation settings to DialNexa.
- * DialNexa requires updating the agent via PATCH /v1/agents/{agent_id} before dispatching calls
- * so that the outbound telephony engine runs the custom screening prompt.
+ * DialNexa requires updating the agent via PATCH /v1/agents/{agent_id} with is_published: true
+ * so that outbound telephony places calls with the active screening prompt and round questions.
  */
 export async function syncDialnexaAgentConfig(
   params: SyncDialnexaAgentParams,
@@ -43,8 +45,9 @@ export async function syncDialnexaAgentConfig(
   const apiKey = process.env.DIALNEXA_API_KEY || DEFAULT_DIALNEXA_API_KEY;
 
   try {
-    // 1. Fetch current agent version number
+    // 1. Fetch current agent version number and published state
     let currentVersion = 13;
+    let isCurrentPublished = true;
     try {
       const getRes = await fetch(`https://api.dialnexa.com/v1/agents/${agentId}`, {
         headers: {
@@ -55,13 +58,19 @@ export async function syncDialnexaAgentConfig(
         const getData = (await getRes.json()) as {
           data?: {
             current_version_number?: number;
-            current_version?: { version_number?: number };
+            current_version?: { version_number?: number; is_published?: boolean };
+            versions?: Array<{ version_number?: number; is_published?: boolean }>;
           };
         };
         currentVersion =
           getData.data?.current_version_number ||
           getData.data?.current_version?.version_number ||
           13;
+        isCurrentPublished = Boolean(
+          getData.data?.current_version?.is_published ??
+            getData.data?.versions?.find((v) => Number(v.version_number) === Number(currentVersion))
+              ?.is_published,
+        );
       }
     } catch (getErr) {
       console.warn("Could not fetch current agent version, defaulting to version 13:", getErr);
@@ -74,61 +83,106 @@ export async function syncDialnexaAgentConfig(
       company_name: params.company_name || "ScalePods",
     };
 
-    const patchBody: Record<string, unknown> = {
-      version_number: Number(currentVersion),
+    let fullPrompt = params.prompt || "";
+    if (params.questions && params.questions.length > 0) {
+      const formattedQuestions = params.questions
+        .filter((q) => Boolean(q && q.trim()))
+        .map((q, idx) => `${idx + 1}. ${q.trim()}`)
+        .join("\n");
+      if (formattedQuestions) {
+        fullPrompt += `\n\nSpecific Interview Questions to ask the candidate:\n${formattedQuestions}`;
+      }
+    }
+    if (params.evaluation_criteria && params.evaluation_criteria.length > 0) {
+      const formattedCriteria = params.evaluation_criteria
+        .filter((c) => Boolean(c && c.trim()))
+        .map((c) => `- ${c.trim()}`)
+        .join("\n");
+      if (formattedCriteria) {
+        fullPrompt += `\n\nEvaluation Criteria to evaluate:\n${formattedCriteria}`;
+      }
+    }
+
+    // DialNexa prohibits patching an already published version (HTTP 403).
+    // If the latest version is already published, increment to the next version number.
+    let targetVersion = isCurrentPublished ? Number(currentVersion) + 1 : Number(currentVersion);
+
+    const buildPatchBody = (vNum: number): Record<string, unknown> => {
+      const body: Record<string, unknown> = {
+        version_number: vNum,
+        is_published: true, // Must be published for DialNexa outbound calls to execute this prompt
+      };
+
+      if (fullPrompt) {
+        body.prompt_text = interpolateDialnexaVariables(fullPrompt, vars);
+      }
+
+      if (params.first_message) {
+        body.welcome_message = interpolateDialnexaVariables(params.first_message, vars);
+      }
+
+      if (typeof params.response_eagerness === "number") {
+        body.response_eagerness = params.response_eagerness;
+      }
+
+      if (typeof params.responsiveness === "number") {
+        body.responsiveness = params.responsiveness;
+      }
+
+      if (typeof params.interruption_sensitivity === "number") {
+        body.interruption_sensitivity = params.interruption_sensitivity;
+      }
+
+      if (typeof params.max_duration_seconds === "number" && params.max_duration_seconds > 0) {
+        body.max_call_duration_sec = params.max_duration_seconds;
+      }
+
+      if (typeof params.end_call_on_silence_sec === "number") {
+        body.end_call_on_silence_sec = params.end_call_on_silence_sec;
+      }
+
+      if (typeof params.ambient_noise === "boolean") {
+        body.ambient_noise = params.ambient_noise;
+      }
+
+      return body;
     };
 
-    if (params.prompt) {
-      patchBody.prompt_text = interpolateDialnexaVariables(params.prompt, vars);
-    }
-
-    if (params.first_message) {
-      patchBody.welcome_message = interpolateDialnexaVariables(params.first_message, vars);
-    }
-
-    if (typeof params.response_eagerness === "number") {
-      patchBody.response_eagerness = params.response_eagerness;
-    }
-
-    if (typeof params.responsiveness === "number") {
-      patchBody.responsiveness = params.responsiveness;
-    }
-
-    if (typeof params.interruption_sensitivity === "number") {
-      patchBody.interruption_sensitivity = params.interruption_sensitivity;
-    }
-
-    if (typeof params.max_duration_seconds === "number" && params.max_duration_seconds > 0) {
-      patchBody.max_call_duration_sec = params.max_duration_seconds;
-    }
-
-    if (typeof params.end_call_on_silence_sec === "number") {
-      patchBody.end_call_on_silence_sec = params.end_call_on_silence_sec;
-    }
-
-    if (typeof params.ambient_noise === "boolean") {
-      patchBody.ambient_noise = params.ambient_noise;
-    }
-
-    // 3. Send PATCH request to DialNexa
-    const patchRes = await fetch(`https://api.dialnexa.com/v1/agents/${agentId}`, {
+    // 3. Send PATCH request to DialNexa (with retry on published version collision)
+    let patchRes = await fetch(`https://api.dialnexa.com/v1/agents/${agentId}`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(patchBody),
+      body: JSON.stringify(buildPatchBody(targetVersion)),
     });
 
     let patchData: { message?: string; error?: string; data?: { id?: string } } = {};
-    if (typeof patchRes.json === "function") {
-      patchData = (await patchRes.json().catch(() => ({}))) as typeof patchData;
-    } else if (typeof patchRes.text === "function") {
+    const parseRes = async (r: Response) => {
       try {
-        patchData = JSON.parse(await patchRes.text());
+        return (await r.json()) as typeof patchData;
       } catch {
-        // ignore
+        return {};
       }
+    };
+    patchData = await parseRes(patchRes);
+
+    // If 403 "cannot patch an already published agent version", bump version and retry once
+    if (
+      !patchRes.ok &&
+      (patchRes.status === 403 || String(patchData.message).includes("published"))
+    ) {
+      targetVersion += 1;
+      patchRes = await fetch(`https://api.dialnexa.com/v1/agents/${agentId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildPatchBody(targetVersion)),
+      });
+      patchData = await parseRes(patchRes);
     }
 
     if (!patchRes.ok) {
@@ -140,7 +194,7 @@ export async function syncDialnexaAgentConfig(
       return { success: false, error: errMsg };
     }
 
-    return { success: true, version_number: currentVersion };
+    return { success: true, version_number: targetVersion };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.warn("DialNexa agent sync exception:", errMsg);

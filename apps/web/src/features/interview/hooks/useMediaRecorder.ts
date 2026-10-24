@@ -31,6 +31,8 @@ export function useMediaRecorder() {
   const compositeCleanupRef = useRef<(() => void) | null>(null);
   const mimeTypeRef = useRef<string>("video/webm");
   const chunksRef = useRef<Blob[]>([]);
+  const chunkIndexRef = useRef<number>(0);
+  const inFlightChunksRef = useRef<Promise<any>[]>([]);
 
   const start = useCallback(
     async (
@@ -46,6 +48,8 @@ export function useMediaRecorder() {
         sessionIdRef.current = sessionId;
         accountIdRef.current = accountId || "";
         chunksRef.current = [];
+        chunkIndexRef.current = 0;
+        inFlightChunksRef.current = [];
         setState((prev) => ({ ...prev, status: "recording", error: null }));
 
         const cameraStream = existingStreams?.camera || (await getCameraStream());
@@ -117,6 +121,36 @@ export function useMediaRecorder() {
         recorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) {
             chunksRef.current.push(e.data);
+            const chunk = e.data;
+            const index = chunkIndexRef.current++;
+            const currentSessionId = sessionIdRef.current;
+            const currentAccountId = accountIdRef.current;
+
+            if (currentSessionId) {
+              const chunkUploadPromise = (async () => {
+                try {
+                  const formData = new FormData();
+                  formData.append("action", "upload_chunk");
+                  formData.append("sessionId", currentSessionId);
+                  formData.append("chunkIndex", String(index));
+                  formData.append("chunk", chunk, `chunk_${String(index).padStart(5, "0")}.webm`);
+                  if (currentAccountId) {
+                    formData.append("accountId", currentAccountId);
+                  }
+                  const res = await fetch("/api/interview/recording", {
+                    method: "POST",
+                    body: formData,
+                  });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    console.warn(`[useMediaRecorder] Chunk ${index} upload failed:`, err);
+                  }
+                } catch (uploadErr) {
+                  console.warn(`[useMediaRecorder] Chunk ${index} upload error:`, uploadErr);
+                }
+              })();
+              inFlightChunksRef.current.push(chunkUploadPromise);
+            }
           }
         };
 
@@ -125,7 +159,7 @@ export function useMediaRecorder() {
           setState((prev) => ({ ...prev, error: "Recording error" }));
         };
 
-        recorder.start(5000); // 5s chunk slices for frequent flushing
+        recorder.start(10000); // 10s chunk slices for real-time background streaming
         startTimeRef.current = Date.now();
 
         if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
@@ -175,13 +209,52 @@ export function useMediaRecorder() {
           compositeCleanupRef.current = null;
         }
 
-        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || "video/webm" });
+        // 1. Wait for all in-flight chunk uploads to settle
+        if (inFlightChunksRef.current.length > 0) {
+          try {
+            await Promise.allSettled(inFlightChunksRef.current);
+          } catch (chunkWaitErr) {
+            console.warn("[useMediaRecorder] Error awaiting chunk uploads:", chunkWaitErr);
+          }
+        }
+
         let uploadedFilePath: string | null = null;
 
-        // Upload interview video to Supabase Storage
-        if (sessionIdRef.current && blob.size > 0) {
+        // 2. Finalize streamed chunks on server into a single playable recording.webm
+        if (sessionIdRef.current && chunkIndexRef.current > 0) {
           try {
-            // Attempt 1: Direct signed upload URL (bypasses server body limits)
+            const finalizeRes = await fetch("/api/interview/recording", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "finalize_chunks",
+                sessionId: sessionIdRef.current,
+              }),
+            });
+
+            if (finalizeRes.ok) {
+              const finData = await finalizeRes.json();
+              uploadedFilePath = finData.filePath ?? null;
+              console.log("[useMediaRecorder] Recording finalized from chunks:", finData.filePath);
+              setState((prev) => ({ ...prev, recordingId: finData.filePath }));
+            } else {
+              const finErrData = await finalizeRes.json().catch(() => ({}));
+              console.warn(
+                "[useMediaRecorder] Finalize chunks failed, trying fallback:",
+                finErrData,
+              );
+            }
+          } catch (finErr) {
+            console.warn("[useMediaRecorder] Finalize chunks error:", finErr);
+          }
+        }
+
+        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || "video/webm" });
+
+        // 3. Fallback: If chunk finalization didn't yield a filePath, upload the full assembled blob
+        if (!uploadedFilePath && sessionIdRef.current && blob.size > 0) {
+          try {
+            // Attempt 2a: Direct signed upload URL (bypasses server body limits)
             let directUploadSuccess = false;
             try {
               const urlRes = await fetch(
@@ -223,7 +296,7 @@ export function useMediaRecorder() {
               console.warn("[useMediaRecorder] Signed upload error, trying fallback:", signedErr);
             }
 
-            // Attempt 2: FormData POST fallback
+            // Attempt 2b: FormData POST fallback
             if (!directUploadSuccess) {
               const formData = new FormData();
               formData.append("sessionId", sessionIdRef.current);
@@ -250,8 +323,8 @@ export function useMediaRecorder() {
           } catch (uploadErr) {
             console.warn("[useMediaRecorder] Storage upload skipped/failed:", uploadErr);
           }
-        } else {
-          console.warn("[useMediaRecorder] No recording blob to upload. Blob size:", blob.size);
+        } else if (!uploadedFilePath && blob.size === 0) {
+          console.warn("[useMediaRecorder] No recording blob to upload. Blob size: 0");
         }
 
         resolve({ blob, filePath: uploadedFilePath });

@@ -24,6 +24,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  FileSignature,
+  FileText,
   Info,
   Layers,
   Loader2,
@@ -31,7 +33,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CadencePreview } from "@/components/campaigns/CadencePreview";
@@ -87,35 +89,46 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   );
   const canceled = account?.billing_status === "canceled" && !isPeriodPaid;
 
-  const searchParams = useSearchParams();
-  const stepParam = searchParams.get("step");
-  const initialStep = stepParam ? parseInt(stepParam, 10) : 0;
-  const [step, setStepState] = useState(() =>
-    Number.isNaN(initialStep) ? 0 : Math.min(Math.max(0, initialStep), STEPS.length - 1),
-  );
-
-  const setStep = (nextVal: number | ((prev: number) => number)) => {
-    setStepState((prev) => {
-      const nextNum = typeof nextVal === "function" ? nextVal(prev) : nextVal;
-      const clamped = Math.max(0, Math.min(nextNum, STEPS.length - 1));
-      if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        url.searchParams.set("step", String(clamped));
-        window.history.replaceState(null, "", url.toString());
-      }
-      return clamped;
-    });
-  };
-
-  useEffect(() => {
-    const sp = searchParams.get("step");
-    if (sp) {
-      const parsed = parseInt(sp, 10);
-      if (!Number.isNaN(parsed) && parsed !== step) {
-        setStepState(Math.min(Math.max(0, parsed), STEPS.length - 1));
+  const [step, setStep] = useState(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search).get("step");
+      if (sp) {
+        const parsed = parseInt(sp, 10);
+        if (!Number.isNaN(parsed)) {
+          return Math.min(Math.max(0, parsed), STEPS.length - 1);
+        }
       }
     }
-  }, [searchParams, step]);
+    return 0;
+  });
+
+  // Sync step changes to URL
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("step") !== String(step)) {
+        url.searchParams.set("step", String(step));
+        window.history.replaceState(null, "", url.toString());
+      }
+    }
+  }, [step]);
+
+  // Sync browser back/forward button navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const sp = new URLSearchParams(window.location.search).get("step");
+      if (sp) {
+        const parsed = parseInt(sp, 10);
+        if (!Number.isNaN(parsed)) {
+          setStep(Math.min(Math.max(0, parsed), STEPS.length - 1));
+        }
+      } else {
+        setStep(0);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -141,6 +154,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     d.setDate(d.getDate() + 30);
     return d.toISOString().split("T")[0];
   });
+  const [offerTemplateText, setOfferTemplateText] = useState("");
+  const [offerTemplateFileName, setOfferTemplateFileName] = useState("");
   const [rounds, setRounds] = useState<RoundDraft[]>([DEFAULT_ROUND]);
   const [whatsappOn, setWhatsappOn] = useState(tierConfig.whatsapp);
   const [voiceOn, setVoiceOn] = useState(tierConfig.voiceScreening);
@@ -185,6 +200,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         if (parsed.numberOfRounds) setNumberOfRounds(parsed.numberOfRounds);
         if (parsed.startDate) setStartDate(parsed.startDate);
         if (parsed.endDate) setEndDate(parsed.endDate);
+        if (parsed.offerTemplateText) setOfferTemplateText(parsed.offerTemplateText);
+        if (parsed.offerTemplateFileName) setOfferTemplateFileName(parsed.offerTemplateFileName);
       }
     } catch {}
   }, []);
@@ -210,6 +227,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             numberOfRounds,
             startDate,
             endDate,
+            offerTemplateText,
+            offerTemplateFileName,
           }),
         );
       }
@@ -229,6 +248,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     numberOfRounds,
     startDate,
     endDate,
+    offerTemplateText,
+    offerTemplateFileName,
   ]);
 
   useEffect(() => {
@@ -262,6 +283,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   });
 
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadingOfferDoc, setUploadingOfferDoc] = useState(false);
 
   const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -284,6 +306,34 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       });
     } finally {
       setUploadingDoc(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleOfferDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingOfferDoc(true);
+    toast.loading(`Extracting template text from ${file.name}...`, { id: "offer-doc-upload" });
+    try {
+      const res = await extractTextFromFile(file);
+      if ("error" in res) {
+        toast.error(res.error, { id: "offer-doc-upload" });
+      } else if (res.text && res.text.trim()) {
+        setOfferTemplateText(res.text.trim());
+        setOfferTemplateFileName(file.name);
+        toast.success(`Loaded Offer & NDA Template from ${file.name}!`, { id: "offer-doc-upload" });
+      } else {
+        toast.error("No extractable text found in this template document.", {
+          id: "offer-doc-upload",
+        });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to parse document.", {
+        id: "offer-doc-upload",
+      });
+    } finally {
+      setUploadingOfferDoc(false);
       e.target.value = "";
     }
   };
@@ -509,10 +559,18 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   };
 
   const validateBasics = (): string | null => {
-    if (!name.trim()) return "Please enter a descriptive campaign name.";
-    if (!jdText.trim()) return "Please paste the job description to enable AI candidate screening.";
-    if (!location.trim())
+    if (!name.trim()) {
+      document.getElementById("campaign-name")?.focus();
+      return "Please enter a descriptive campaign name.";
+    }
+    if (!jdText.trim()) {
+      document.getElementById("jd")?.focus();
+      return "Please paste the job description to enable AI candidate screening.";
+    }
+    if (!location.trim()) {
+      document.getElementById("location")?.focus();
       return "Please specify the job location (e.g. Remote, San Francisco, CA).";
+    }
     if (!openingDate) return "Please specify an opening date.";
     if (!closingDate) return "Please specify a closing date.";
     if (closingDate < openingDate)
@@ -590,6 +648,13 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             },
           ]),
         ),
+        offer_template: offerTemplateText.trim()
+          ? {
+              file_name: offerTemplateFileName || "offer_template.docx",
+              text: offerTemplateText.trim(),
+              uploaded_at: new Date().toISOString(),
+            }
+          : undefined,
       },
       voice_call_config: voiceOn ? dialnexaConfig : undefined,
       rounds: rounds.slice(0, numberOfRounds).map((r, i) => ({
@@ -709,13 +774,22 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const next = () => {
     if (step === 0) {
       const err = validateBasics();
-      if (err) return showErrorToast(err);
+      if (err) {
+        toast.error(err);
+        return;
+      }
     }
     if (step === 1) {
       const err = validateRounds();
-      if (err) return showErrorToast(err);
+      if (err) {
+        toast.error(err);
+        return;
+      }
     }
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   return (
@@ -1101,6 +1175,70 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Offer Letter & NDA Agreement Template */}
+            <div className="pt-4 border-t border-border">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <div>
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <FileSignature className="h-4 w-4 text-primary" />
+                    Offer Letter & NDA Agreement Template (Optional)
+                  </span>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 max-w-xl">
+                    Upload your company&apos;s pre-signed offer letter or NDA (PDF, DOCX, or TXT).
+                    ScalePods&apos; AI will automatically detect and populate dynamic candidate
+                    variables (name, compensation, start date) when extending an offer.
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  <label className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors">
+                    {uploadingOfferDoc ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="h-3.5 w-3.5" />
+                    )}
+                    {uploadingOfferDoc
+                      ? "Extracting..."
+                      : offerTemplateFileName
+                        ? "Replace Document"
+                        : "Upload Template"}
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,.doc,.txt,.md"
+                      className="hidden"
+                      onChange={handleOfferDocUpload}
+                      disabled={uploadingOfferDoc}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {offerTemplateFileName ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <FileText className="h-4 w-4 text-primary shrink-0" />
+                    <span className="font-medium text-foreground truncate">
+                      {offerTemplateFileName}
+                    </span>
+                    <span className="text-muted-foreground text-[11px] shrink-0">
+                      ({offerTemplateText.length} characters extracted)
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      setOfferTemplateFileName("");
+                      setOfferTemplateText("");
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}

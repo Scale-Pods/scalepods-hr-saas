@@ -121,13 +121,14 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       }
       await markInterviewStarted();
       setMediaStreams(av, audio, screen);
-      if (session) {
-        await startRecording(session.id, {
+      const activeSessionId = session?.id || propSessionId || sessionId;
+      if (activeSessionId) {
+        await startRecording(activeSessionId, {
           camera: av,
           screen: screen ?? null,
           audio: audio ?? null,
         });
-        startProctoring(session.id);
+        startProctoring(activeSessionId);
       }
     } catch (err) {
       console.error("Failed to get media streams:", err);
@@ -137,7 +138,15 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       );
       startingRef.current = false;
     }
-  }, [session, markInterviewStarted, setMediaStreams, startRecording, startProctoring]);
+  }, [
+    session,
+    markInterviewStarted,
+    setMediaStreams,
+    startRecording,
+    startProctoring,
+    propSessionId,
+    sessionId,
+  ]);
 
   const finishInterview = useCallback(
     async (isEndedEarly: boolean = false) => {
@@ -331,14 +340,28 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
           sessionId: session.id,
           endedEarly: true,
         });
-        navigator.sendBeacon(
-          "/api/interview/session",
-          new Blob([payload], { type: "application/json" }),
-        );
+        try {
+          fetch("/api/interview/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payload,
+            keepalive: true,
+          }).catch(() => {});
+        } catch {}
+        try {
+          navigator.sendBeacon(
+            "/api/interview/session",
+            new Blob([payload], { type: "application/json" }),
+          );
+        } catch {}
       }
     };
     window.addEventListener("pagehide", handlePageHide);
-    return () => window.removeEventListener("pagehide", handlePageHide);
+    window.addEventListener("beforeunload", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("beforeunload", handlePageHide);
+    };
   }, [session?.id, session?.status]);
 
   const handleAnswerComplete = useCallback(

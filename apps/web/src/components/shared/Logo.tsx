@@ -9,7 +9,7 @@ export interface LogoProps {
 }
 
 /** ScalePods brand logo matching the reference zip file. Inverted in dark mode. */
-export function Logo({ variant = "full", size = "md", className, priority = false }: LogoProps) {
+export function Logo({ variant = "full", size = "md", className, priority = true }: LogoProps) {
   if (variant === "mark") {
     const px = size === "sm" ? 22 : size === "lg" ? 34 : 28;
     return (
@@ -19,6 +19,7 @@ export function Logo({ variant = "full", size = "md", className, priority = fals
         width={px}
         height={px}
         priority={priority}
+        style={{ width: "auto", height: "auto" }}
         className={cn("shrink-0 object-contain dark:brightness-0 dark:invert", className)}
       />
     );
@@ -33,6 +34,7 @@ export function Logo({ variant = "full", size = "md", className, priority = fals
       width={130}
       height={height}
       priority={priority}
+      style={{ width: "auto", height: "auto" }}
       className={cn(
         "h-7 w-auto object-contain dark:brightness-0 dark:invert transition-all",
         size === "sm" && "h-6",

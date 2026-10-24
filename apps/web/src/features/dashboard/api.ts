@@ -207,7 +207,7 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
     voiceCountRes,
     ledgerRes,
   ] = await Promise.all([
-    supabase.from("campaigns").select("id,name,status,created_at"),
+    supabase.from("campaigns").select("id,name,status,created_at,cadence_config"),
     supabase.from("candidates").select("id", { count: "exact", head: true }),
     supabase
       .from("candidates")
@@ -242,12 +242,14 @@ export async function fetchDashboardKpis(): Promise<DashboardKpis> {
       .limit(500),
   ]);
 
-  const campaigns = (campsRes.data ?? []) as {
+  const rawCampaigns = (campsRes.data ?? []) as {
     id: string;
     name: string;
     status: string;
     created_at: string;
+    cadence_config?: Record<string, unknown>;
   }[];
+  const campaigns = rawCampaigns.filter((c) => !(c.cadence_config as any)?.is_deleted);
 
   // If no campaigns exist, return empty/zero metrics and purge any orphaned candidates
   if (campaigns.length === 0) {
@@ -621,7 +623,7 @@ export async function fetchUpcomingInterviews(): Promise<UpcomingInterview[]> {
   const now = new Date().toISOString();
 
   const [{ data: camps }, { data }] = await Promise.all([
-    supabase.from("campaigns").select("id"),
+    supabase.from("campaigns").select("id,cadence_config"),
     supabase
       .from("round_instances")
       .select("id,candidate_id,campaign_id,round_type,scheduled_at,status,created_at")
@@ -630,7 +632,9 @@ export async function fetchUpcomingInterviews(): Promise<UpcomingInterview[]> {
       .limit(10),
   ]);
 
-  const activeCampIds = new Set((camps ?? []).map((c) => c.id));
+  const activeCampIds = new Set(
+    (camps ?? []).filter((c: any) => !c.cadence_config?.is_deleted).map((c) => c.id),
+  );
   if (activeCampIds.size === 0) return [];
 
   type UpcomingRow = {
@@ -658,7 +662,7 @@ export async function fetchUpcomingInterviews(): Promise<UpcomingInterview[]> {
 export async function fetchLedger(limit = 200): Promise<LedgerEntry[]> {
   const supabase = supabaseBrowser();
   const [{ data: camps }, { data: ris }, { data, error }] = await Promise.all([
-    supabase.from("campaigns").select("id"),
+    supabase.from("campaigns").select("id,cadence_config"),
     supabase.from("round_instances").select("candidate_id,campaign_id"),
     supabase
       .from("decision_ledger")
@@ -667,11 +671,13 @@ export async function fetchLedger(limit = 200): Promise<LedgerEntry[]> {
       .limit(limit),
   ]);
 
-  if (error || !camps || camps.length === 0) {
+  const activeCampIds = new Set(
+    (camps ?? []).filter((c: any) => !c.cadence_config?.is_deleted).map((c) => c.id),
+  );
+  if (error || activeCampIds.size === 0) {
     return [];
   }
 
-  const activeCampIds = new Set(camps.map((c) => c.id));
   const activeCandIds = new Set(
     (ris ?? []).filter((r) => activeCampIds.has(r.campaign_id)).map((r) => r.candidate_id),
   );

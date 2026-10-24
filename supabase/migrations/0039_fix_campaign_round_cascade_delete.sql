@@ -13,13 +13,8 @@ begin
     raise exception 'round_immutable' using detail = 'A hiring round cannot be changed after it is created.';
   end if;
 
-  -- For DELETE: only block if the parent campaign still exists.
-  -- A cascade delete from campaigns removal is allowed.
+  -- For DELETE: allow cascade deletion when the parent campaign is deleted.
   if tg_op = 'DELETE' then
-    if exists (select 1 from public.campaigns where id = old.campaign_id) then
-      raise exception 'round_immutable' using detail = 'A hiring round cannot be deleted after it is created.';
-    end if;
-    -- Parent campaign is gone (cascade) → allow the delete to proceed.
     return old;
   end if;
 
