@@ -1,0 +1,295 @@
+{
+  "name": "10 - Interviewer & Team Onboarding",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "interviewers",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "3faf7ea7-a83c-48d8-862d-5098b9304542",
+      "name": "Webhook - /interviewers",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2016,
+        1808
+      ],
+      "webhookId": "interviewers"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.body.action}}",
+              "rightValue": "assign_round",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "22ec87b7-020e-476d-bdc1-0883cd066462",
+      "name": "IF Action = assign_round",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1808,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.body.action}}",
+              "rightValue": "add_team_member",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f180fd56-7758-4d83-8606-45be186b4423",
+      "name": "IF Action = add_team_member",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1488,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"error\", \"message\": \"Unrecognized action for /interviewers\" } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "8bd7a021-ef1c-4d70-ada9-15b55d722111",
+      "name": "Respond Unknown Action",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1104,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/team_members",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"account_id\": $json.body.account_id, \"name\": $json.body.name, \"email\": $json.body.email, \"role\": $json.body.role || 'interviewer' } }}",
+        "options": {}
+      },
+      "id": "ead19265-a542-4fc4-bb12-0e594c2b3ed2",
+      "name": "Supabase - Create team_member",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -832,
+        1808
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods Tool(Aqib)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/campaign_rounds?id=eq.{{$node[\"Webhook - /interviewers\"].json.body.campaign_round_id}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"interviewer_email\": $node[\"Webhook - /interviewers\"].json.body.interviewer_email } }}",
+        "options": {}
+      },
+      "id": "a20120d0-17e3-44de-920b-f800b5da9699",
+      "name": "Supabase - Assign Interviewer to campaign_round",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1504,
+        1504
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods Tool(Aqib)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"assigned\" } }}",
+        "options": {}
+      },
+      "id": "158de7cd-efc1-4bd4-8f43-c36f120177f1",
+      "name": "Respond Assigned",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1104,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"team_member_created\" } }}",
+        "options": {}
+      },
+      "id": "1c28e2c0-2bd7-44cb-8265-86cbe7ede8be",
+      "name": "Respond Team Member Created",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -416,
+        1808
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - /interviewers": {
+      "main": [
+        [
+          {
+            "node": "IF Action = assign_round",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Action = assign_round": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Assign Interviewer to campaign_round",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF Action = add_team_member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Action = add_team_member": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Create team_member",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Unknown Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Create team_member": {
+      "main": [
+        [
+          {
+            "node": "Respond Team Member Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Assign Interviewer to campaign_round": {
+      "main": [
+        [
+          {
+            "node": "Respond Assigned",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "1b8d67bc-f5d0-4421-b9f8-99abee5c32c7",
+  "meta": {
+    "instanceId": "11e350345aae172743fe2665ba36f76304fbd6b68282474d7d08206f6a010061"
+  },
+  "nodeGroups": [],
+  "id": "QzTxFuXApf7BrGWV",
+  "tags": []
+}

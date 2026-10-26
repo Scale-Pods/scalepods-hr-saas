@@ -3254,6 +3254,7 @@ create or replace function public.claim_expired_campaign_purges(p_batch_size int
 returns table(campaign_id uuid, account_id uuid, lease_token uuid)
 language plpgsql security definer set search_path=public
 as $$
+#variable_conflict use_column
 begin
   if coalesce(auth.role(), '') <> 'service_role' then raise exception 'service_role_required' using errcode='42501'; end if;
   insert into public.retention_purge_queue(campaign_id,account_id)
@@ -3269,10 +3270,10 @@ begin
     order by q.created_at for update of q skip locked
     limit greatest(1,least(coalesce(p_batch_size,10),50))
   ), claimed as (
-    update public.retention_purge_queue q set status='processing',lease_token=gen_random_uuid(),claimed_at=now(),attempt_count=attempt_count+1
+    update public.retention_purge_queue q set status='processing',lease_token=gen_random_uuid(),claimed_at=now(),attempt_count=q.attempt_count+1
     from picked where q.campaign_id=picked.campaign_id
     returning q.campaign_id,q.account_id,q.lease_token
-  ) select * from claimed;
+  ) select claimed.campaign_id, claimed.account_id, claimed.lease_token from claimed;
 end;
 $$;
 
@@ -4662,3 +4663,42 @@ group by a.account_id;
 grant select on public.v_funnel_conversion to authenticated, service_role, anon;
 grant select on public.v_time_to_hire to authenticated, service_role, anon;
 grant select on public.v_source_effectiveness to authenticated, service_role, anon;
+
+-- Bookings view alias over calendar_events for n8n workflows
+alter table public.calendar_events
+  add column if not exists status text not null default 'booked';
+
+drop view if exists public.bookings;
+
+create or replace view public.bookings as
+select
+  ce.id,
+  ce.account_id,
+  ce.round_instance_id,
+  ce.interviewer_email,
+  ce.event_id,
+  ce.slot_start,
+  ce.slot_end,
+  ce.meet_link,
+  ri.candidate_id,
+  ri.campaign_id,
+  ri.round_number,
+  ri.round_type,
+  ri.status as round_status,
+  case
+    when ri.status = 'no_show' then 'no_show'
+    when ri.status in ('completed', 'passed', 'failed') then ri.status
+    else 'booked'
+  end as status,
+  case
+    when ri.status = 'no_show' then true
+    else false
+  end as no_show
+from public.calendar_events ce
+left join public.round_instances ri on ri.id = ce.round_instance_id;
+
+alter view public.bookings set (security_invoker = true);
+grant select, insert, update on public.bookings to anon, authenticated, service_role;
+grant select, update on public.calendar_events to anon, authenticated, service_role;
+
+

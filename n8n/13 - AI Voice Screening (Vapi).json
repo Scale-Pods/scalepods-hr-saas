@@ -1,0 +1,848 @@
+{
+  "name": "13 - AI Voice Screening (Vapi)",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.dialnexa.com/v1/agents/{{ $node[\"Attempt Count Check (max 2)\"].json.voice_call_config.agent_id || \"agent_Lg812J59k27OXl\" }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer rb0665oacdbt33:7f1d56728f43ab2e3274e928785d840e08457909852df246ae2cae0a8e2350c0"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  version_number: 14,\n  is_published: true,\n  prompt_text: $node[\"Attempt Count Check (max 2)\"].json.dialnexa_payload.prompt,\n  welcome_message: $node[\"Attempt Count Check (max 2)\"].json.dialnexa_payload.first_message,\n  response_eagerness: $node[\"Attempt Count Check (max 2)\"].json.dialnexa_payload.response_eagerness,\n  responsiveness: $node[\"Attempt Count Check (max 2)\"].json.dialnexa_payload.responsiveness,\n  interruption_sensitivity: $node[\"Attempt Count Check (max 2)\"].json.dialnexa_payload.interruption_sensitivity,\n  max_call_duration_sec: $node[\"Attempt Count Check (max 2)\"].json.dialnexa_payload.max_duration_seconds\n}) }}",
+        "options": {}
+      },
+      "id": "72bdb125-ba26-4fbc-ba58-af898f2017ba",
+      "name": "Sync DialNexa Agent (Prompt & Config)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1200,
+        1616
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"dialnexa_dispatch_failed\", \"status\": \"failed\", \"message\": $json.message || $json.error || \"DialNexa dispatch failed\", \"details\": $json } }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "id": "7c67440d-be61-4455-9dd4-f73acf7d5f73",
+      "name": "Respond DialNexa Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -832,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice-screen",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "d2402ddf-12f0-406e-9615-253e57265456",
+      "name": "Webhook - /voice-screen (start call)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2208,
+        1760
+      ],
+      "webhookId": "voice-screen"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "4H1J1DEhFehbdcR9",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "value": {
+            "account_id": "={{ (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test($json.body?.account_id)) ? $json.body.account_id : '00000000-0000-0000-0000-000000000000' }}",
+            "credit_type": "ai_voice_screening",
+            "action": "check_only",
+            "amount": "={{ ($json.body.is_test_call || ($json.body.plan_tier || $json.body.tier || '').toLowerCase() === 'enterprise' || $json.body.is_enterprise) ? 0 : 1 }}",
+            "plan_tier": "={{ $json.body.plan_tier || $json.body.tier || '' }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "2f030503-d11e-411e-96b5-2ef0831e9ca8",
+      "name": "Credit & Usage Guard (check)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -2016,
+        1760
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ Boolean($json.allowed || $node[\"Webhook - /voice-screen (start call)\"].json.body.is_test_call || ($node[\"Webhook - /voice-screen (start call)\"].json.body.plan_tier || $node[\"Webhook - /voice-screen (start call)\"].json.body.tier || '').toLowerCase() === 'enterprise' || $node[\"Webhook - /voice-screen (start call)\"].json.body.is_enterprise || ($json.plan_tier || '').toLowerCase() === 'enterprise' || $json.isEnterprise) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bcc80c54-15db-4cc8-8872-1144850d9d5c",
+      "name": "IF Allowed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1824,
+        1760
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"no_voice_screening_credit\" } }}",
+        "options": {
+          "responseCode": 402
+        }
+      },
+      "id": "e08acda0-2483-4606-9241-657fba0aaf5a",
+      "name": "Respond 402 No Credit",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -784,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/candidates",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "=eq.{{$node[\"Webhook - /voice-screen (start call)\"].json.body.candidate_id}}"
+            },
+            {
+              "name": "select",
+              "value": "id,name,email,phone,round_instances(id,account_id,campaign_id,round_number,campaigns(id,name,voice_call_config))"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "50d453c4-e8ee-461d-b669-ed7b16b165f9",
+      "name": "Supabase - Fetch Candidate Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1616,
+        1616
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods Tool(Aqib)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/outreach_log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "candidate_id",
+              "value": "=eq.{{$node[\"Webhook - /voice-screen (start call)\"].json.body.candidate_id}}"
+            },
+            {
+              "name": "stage",
+              "value": "eq.voice_screening_call"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e8988373-5ce2-4d36-b5ee-cfa1fdef297c",
+      "name": "Supabase - Get prior call attempts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1472,
+        1616
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods Tool(Aqib)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Two attempts allowed together cost at most one credit, and only once a call connects (doc Section 4.2 / 3.2).\nconst prior = $input.first().json || [];\nconst priorList = Array.isArray(prior) ? prior : (prior && prior.id ? [prior] : []);\nconst attemptsSoFar = priorList.filter(p => p.delivery_state === 'attempted').length;\nconst alreadyConnected = priorList.some(p => p.delivery_state === 'connected');\n\nconst webhookBody = $node[\"Webhook - /voice-screen (start call)\"].json.body || {};\nconst candDataRaw = $node[\"Supabase - Fetch Candidate Details\"]?.json;\nconst candData = Array.isArray(candDataRaw) ? candDataRaw[0] : (candDataRaw || {});\nconst roundInstances = candData.round_instances || [];\nconst latestRound = Array.isArray(roundInstances) ? (roundInstances[roundInstances.length - 1] || roundInstances[0]) : roundInstances;\nconst campaign = latestRound?.campaigns || {};\n\nconst isUuid = (val) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);\n\nconst candidate_phone = webhookBody.candidate_phone || candData.phone || '';\nconst candidate_name = webhookBody.candidate_name || candData.name || '';\nconst rawRoundId = webhookBody.round_instance_id || latestRound?.id || null;\nconst round_instance_id = isUuid(rawRoundId) ? rawRoundId : null;\nconst rawAccountId = webhookBody.account_id || latestRound?.account_id || candData.account_id || null;\nconst account_id = isUuid(rawAccountId) ? rawAccountId : '00000000-0000-0000-0000-000000000000';\nconst rawCandId = webhookBody.candidate_id || candData.id || null;\nconst candidate_id = isUuid(rawCandId) ? rawCandId : null;\nconst role_title = webhookBody.role_title || campaign?.name || 'Open Position';\nconst company_name = webhookBody.company_name || 'ScalePods';\nconst is_test_call = Boolean(webhookBody.is_test_call);\n\n// Dynamic voice config priority: Webhook payload > Campaign DB config > Defaults\nconst rawConfig = webhookBody.voice_call_config || campaign?.voice_call_config || {};\nconst dynamicVoiceConfig = {\n  agent_id: rawConfig.agent_id || webhookBody.agent_id || 'agent_Lg812J59k27OXl',\n  voice: rawConfig.voice || webhookBody.voice || 'rachel',\n  prompt: rawConfig.prompt || webhookBody.prompt || webhookBody.role_context || 'You are an AI recruiter screening a candidate.',\n  first_message: rawConfig.first_message || webhookBody.first_message || 'Hi {{candidate_name}}, thank you for taking the time to speak with us today.',\n  max_duration_seconds: Number(rawConfig.max_duration_seconds || webhookBody.max_duration_seconds || 300),\n  language: rawConfig.language || 'en-US',\n  response_eagerness: rawConfig.response_eagerness !== undefined ? Number(rawConfig.response_eagerness) : 0.7,\n  responsiveness: rawConfig.responsiveness !== undefined ? Number(rawConfig.responsiveness) : 0.8,\n  interruption_sensitivity: rawConfig.interruption_sensitivity !== undefined ? Number(rawConfig.interruption_sensitivity) : 0.5,\n  agent_functions: Array.isArray(rawConfig.agent_functions) ? rawConfig.agent_functions : [],\n  transcriber_id: rawConfig.transcriber_id || 'trs_deepgram_nova_2',\n  boosted_keywords: Array.isArray(rawConfig.boosted_keywords) ? rawConfig.boosted_keywords : [],\n  ambient_noise: Boolean(rawConfig.ambient_noise),\n  denoise_strength: rawConfig.denoise_strength !== undefined ? Number(rawConfig.denoise_strength) : 1,\n  voicemail_detection: rawConfig.voicemail_detection !== undefined ? Boolean(rawConfig.voicemail_detection) : true,\n  post_call_analysis: Array.isArray(rawConfig.post_call_analysis) ? rawConfig.post_call_analysis : []\n};\n\n// Normalize phone to E.164\nconst rawPhone = String(candidate_phone || '').replace(/[\\s-]/g, '');\nconst normalizedPhone = rawPhone.startsWith('+') ? rawPhone : (rawPhone ? '+' + rawPhone : '');\n\n// Interpolate variables in prompt and greeting\nconst populatedPrompt = dynamicVoiceConfig.prompt\n  .replace(/\\{\\{candidate_name\\}\\}/g, candidate_name || 'Candidate')\n  .replace(/\\{\\{job_title\\}\\}/g, role_title || 'Open Position')\n  .replace(/\\{\\{company_name\\}\\}/g, company_name || 'ScalePods');\n\nconst populatedGreeting = dynamicVoiceConfig.first_message\n  .replace(/\\{\\{candidate_name\\}\\}/g, candidate_name || 'Candidate')\n  .replace(/\\{\\{job_title\\}\\}/g, role_title || 'Open Position')\n  .replace(/\\{\\{company_name\\}\\}/g, company_name || 'ScalePods');\n\nconst dialnexa_payload = {\n  phone_number: normalizedPhone,\n  agent_id: dynamicVoiceConfig.agent_id,\n  voice: dynamicVoiceConfig.voice,\n  prompt: populatedPrompt,\n  first_message: populatedGreeting,\n  max_duration_seconds: dynamicVoiceConfig.max_duration_seconds,\n  response_eagerness: dynamicVoiceConfig.response_eagerness,\n  responsiveness: dynamicVoiceConfig.responsiveness,\n  interruption_sensitivity: dynamicVoiceConfig.interruption_sensitivity,\n  agent_functions: dynamicVoiceConfig.agent_functions,\n  transcriber_id: dynamicVoiceConfig.transcriber_id,\n  boosted_keywords: dynamicVoiceConfig.boosted_keywords,\n  ambient_noise: dynamicVoiceConfig.ambient_noise,\n  denoise_strength: dynamicVoiceConfig.denoise_strength,\n  voicemail_detection: dynamicVoiceConfig.voicemail_detection,\n  post_call_analysis: dynamicVoiceConfig.post_call_analysis,\n  metadata: {\n    candidate_phone: normalizedPhone,\n    candidate_name: candidate_name || 'Candidate',\n    customer_name: candidate_name || 'Candidate',\n    company_name: company_name || 'ScalePods',\n    role_title: role_title || 'Open Position',\n    job_title: role_title || 'Open Position',\n    candidate_id: candidate_id,\n    round_instance_id: round_instance_id,\n    account_id: account_id,\n    is_test_call: is_test_call,\n    source: is_test_call ? 'scalepods_voice_test_console' : 'scalepods_campaign_pipeline'\n  },\n  notes: {\n    candidate_phone: normalizedPhone,\n    candidate_name: candidate_name || 'Candidate',\n    company_name: company_name || 'ScalePods',\n    role_title: role_title || 'Open Position',\n    candidate_id: candidate_id,\n    round_instance_id: round_instance_id,\n    account_id: account_id,\n    is_test_call: is_test_call,\n    source: is_test_call ? 'scalepods_voice_test_console' : 'scalepods_campaign_pipeline'\n  }\n};\n\nreturn [{\n  json: {\n    ...webhookBody,\n    candidate_id,\n    candidate_name,\n    candidate_phone: normalizedPhone,\n    role_title,\n    company_name,\n    round_instance_id,\n    account_id,\n    is_test_call,\n    voice_call_config: dynamicVoiceConfig,\n    attempt_number: is_test_call ? 1 : (attemptsSoFar + 1),\n    skip_call: is_test_call ? false : (attemptsSoFar >= 2 || alreadyConnected),\n    dialnexa_payload\n  }\n}];"
+      },
+      "id": "cbcf4cf6-f8ba-4b18-bbfd-7e627276f977",
+      "name": "Attempt Count Check (max 2)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        1616
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/outreach_log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"account_id\": $node[\"Attempt Count Check (max 2)\"].json.account_id, \"candidate_id\": $node[\"Attempt Count Check (max 2)\"].json.candidate_id, \"round_instance_id\": $node[\"Attempt Count Check (max 2)\"].json.round_instance_id, \"stage\": \"voice_screening_call\", \"channel\": \"voice_call\", \"delivery_state\": \"attempted\" } }}",
+        "options": {}
+      },
+      "id": "03bcc540-7528-4a70-811a-c80762c010e8",
+      "name": "Supabase - Log call attempt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -832,
+        1680
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods Tool(Aqib)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"call_initiated\", \"source\": \"n8n_backend\", \"call_id\": $node[\"Place Dialnexa Call (Day-10)\"].json?.id || $node[\"Place Dialnexa Call (Day-10)\"].json?.data?.id || $json.id, \"dialnexa_call_id\": $node[\"Place Dialnexa Call (Day-10)\"].json?.id || $node[\"Place Dialnexa Call (Day-10)\"].json?.data?.id || $json.id, \"vapi_call_id\": $node[\"Place Dialnexa Call (Day-10)\"].json?.id || $node[\"Place Dialnexa Call (Day-10)\"].json?.data?.id || $json.id, \"to_number\": $node[\"Attempt Count Check (max 2)\"].json.candidate_phone } }}",
+        "options": {}
+      },
+      "id": "1e11cf8a-52b8-4570-96fc-862fb0248e89",
+      "name": "Respond Call Initiated",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -624,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.signature_valid}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6119699f-36b1-496a-acd2-9c74e390089a",
+      "name": "IF Signature Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1968,
+        2512
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"invalid_signature\" } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "f7117ac4-c40a-4e19-8081-30506e822476",
+      "name": "Respond 401 Invalid Signature",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1968,
+        2784
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handles DialNexa call.completed webhooks and fallback Vapi end-of-call-report\nconst body = $json.body || {};\nconst meta = body.metadata || body.notes || body.message?.call?.assistantOverrides?.metadata || body.message?.assistant?.metadata || {};\nconst connected = Boolean(\n  body.status === 'completed' ||\n  body.event === 'call.completed' ||\n  (body.duration && Number(body.duration) > 0) ||\n  (body.message?.endedReason && body.message.endedReason !== 'no-answer' && body.message.endedReason !== 'busy')\n);\nconst transcript = body.transcript || body.data?.transcript || body.message?.transcript || '';\nconst summary = body.summary || body.data?.summary || body.message?.summary || '';\nconst endedReason = body.end_reason || body.status || body.message?.endedReason || 'completed';\n\nconst isUuid = (val) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);\n\nreturn [{ json: {\n  candidate_id: isUuid(meta.candidate_id) ? meta.candidate_id : null,\n  round_instance_id: isUuid(meta.round_instance_id) ? meta.round_instance_id : null,\n  account_id: isUuid(meta.account_id) ? meta.account_id : '00000000-0000-0000-0000-000000000000',\n  is_enterprise: Boolean(meta.is_enterprise || meta.plan_tier === 'enterprise'),\n  connected,\n  transcript,\n  summary,\n  ended_reason: endedReason\n} }];"
+      },
+      "id": "020940e4-0540-4d71-8327-8466c9bc3ec5",
+      "name": "Parse Vapi End-of-Call Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1696,
+        2576
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.connected}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "83b4ca6b-faad-4ea0-9d68-0216dc51bf3e",
+      "name": "IF Call Connected",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1424,
+        2576
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$vars.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { return { \"model\": \"gpt-4o-mini\", \"messages\": [ {\"role\":\"system\",\"content\": \"Score this voice-screening call transcript as a lighter pre-interview qualifier, 0-100. Return strict JSON: {\\\"score\\\": number, \\\"rationale\\\": string}.\"}, {\"role\":\"user\",\"content\": $json.transcript} ], \"response_format\": {\"type\":\"json_object\"} }; })() }}",
+        "options": {}
+      },
+      "id": "3dccde37-2d3f-466b-9d6b-14c98acbe562",
+      "name": "OpenAI - Score Voice Screening",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1008,
+        2288
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/decision_ledger",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"account_id\": $node[\"Parse Vapi End-of-Call Report\"].json.account_id, \"candidate_id\": $node[\"Parse Vapi End-of-Call Report\"].json.candidate_id, \"round_instance_id\": $node[\"Parse Vapi End-of-Call Report\"].json.round_instance_id || null, \"stage\": \"voice_screen\", \"score\": JSON.parse($json.message?.content ?? $json.choices?.[0]?.message?.content ?? '{}').score, \"rationale\": JSON.parse($json.message?.content ?? $json.choices?.[0]?.message?.content ?? '{}').rationale, \"raw_text\": $node[\"Parse Vapi End-of-Call Report\"].json.transcript } }}",
+        "options": {}
+      },
+      "id": "d7657ae8-da2e-4408-a137-cefac51a3b96",
+      "name": "Supabase - Write decision_ledger (voice_screen)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -784,
+        2288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods Tool(Aqib)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "4H1J1DEhFehbdcR9",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "value": {
+            "account_id": "={{ (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test($node[\"Parse Vapi End-of-Call Report\"].json.account_id)) ? $node[\"Parse Vapi End-of-Call Report\"].json.account_id : '00000000-0000-0000-0000-000000000000' }}",
+            "credit_type": "ai_voice_screening",
+            "action": "reserve",
+            "amount": "={{ $node[\"Parse Vapi End-of-Call Report\"].json.is_enterprise ? 0 : 1 }}",
+            "round_instance_id": "={{$node[\"Parse Vapi End-of-Call Report\"].json.round_instance_id}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "07358862-dd91-4313-a322-efbddd5ab096",
+      "name": "Credit & Usage Guard (charge - only on connect)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -576,
+        2288
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/outreach_log?candidate_id=eq.{{$node[\"Parse Vapi End-of-Call Report\"].json.candidate_id}}&order=sent_at.desc&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"delivery_state\": $node[\"Parse Vapi End-of-Call Report\"].json.connected ? \"connected\" : \"no_answer\" } }}",
+        "options": {}
+      },
+      "id": "e635f67c-d9a1-4db5-b13d-35c4c2384bab",
+      "name": "Supabase - Update outreach_log delivery_state",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -912,
+        2560
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods Tool(Aqib)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"processed\" } }}",
+        "options": {}
+      },
+      "id": "a34150f7-6317-4a08-88e5-907879ff2f77",
+      "name": "Respond 200 (ack to Vapi)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -80,
+        2272
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.dialnexa.com/v1/calls",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer rb0665oacdbt33:7f1d56728f43ab2e3274e928785d840e08457909852df246ae2cae0a8e2350c0"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $node[\"Attempt Count Check (max 2)\"].json.dialnexa_payload }}",
+        "options": {}
+      },
+      "id": "905de6c2-99e2-45c6-916c-e656dae64ecf",
+      "name": "Place Dialnexa Call (Day-10)",
+      "notesInFlow": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": false,
+      "position": [
+        -1024,
+        1616
+      ],
+      "onError": "continueErrorOutput",
+      "notes": "Dialnexa credentials: replace YOUR_DIALNEXA_API_KEY with a real key (Dialnexa dashboard > Settings > API Keys) before enabling this step in production. agent_id = agent_44j7eA1uKPqm2h (\"Salon CRM shills\", confirmed live via GET /v1/agents). Both metadata.master_leads_id AND notes.master_leads_id are set (Dialnexa's own docs point to `notes` as what gets echoed back in the call.completed webhook payload - metadata is kept too since it's used for {{variable}} injection into the agent's prompt and its own webhook-echo behavior wasn't fully confirmed at build time). The call-fetch workflow (Call sentiment dialnexa / Normalization Engine) reads master_leads_id from notes first, falling back to metadata - keep field names in sync on both sides if either changes. The agent's own call script/prompt (Alka) is configured on Dialnexa's side, not sent from here. Fires without a per-item wait so up to 10 calls in a batch go out back-to-back."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dialnexa-webhook",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "3ce434d6-35a1-4594-8863-4229c6659ea8",
+      "name": "Webhook - /dialnexa-webhook (call ended)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2416,
+        2512
+      ],
+      "webhookId": "vapi-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Web Crypto API implementation (no 'require()' or external modules needed)\nasync function verifySignature() {\n  const secret = '1bc3565569fe6c8f397d898335734c7f9f7ea1eacfb66eb9c1db12822c4a821f';\n  const headers = $json.headers || {};\n  const signatureHeader = (headers['x-dialnexa-signature'] || headers['x-signature'] || '').trim();\n\n  // If Dialnexa sends direct token match\n  if (signatureHeader === secret) {\n    return [{ json: { ...$json, signature_valid: true } }];\n  }\n\n  if (!signatureHeader || !secret) {\n    return [{ json: { ...$json, signature_valid: false } }];\n  }\n\n  try {\n    // 1. Get raw string payload\n    const rawPayload = typeof $json.body === 'string' \n      ? $json.body \n      : JSON.stringify($json.body || {});\n\n    // 2. Import secret key using Web Crypto API\n    const encoder = new TextEncoder();\n    const keyData = encoder.encode(secret);\n    const cryptoKey = await crypto.subtle.importKey(\n      'raw',\n      keyData,\n      { name: 'HMAC', hash: 'SHA-256' },\n      false,\n      ['sign']\n    );\n\n    // 3. Compute HMAC digest\n    const signatureBuffer = await crypto.subtle.sign(\n      'HMAC',\n      cryptoKey,\n      encoder.encode(rawPayload)\n    );\n\n    // 4. Convert digest buffer to hex string\n    const hashArray = Array.from(new Uint8Array(signatureBuffer));\n    const computedSignature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');\n\n    const isValid = computedSignature.toLowerCase() === signatureHeader.toLowerCase();\n\n    return [{ json: { ...$json, signature_valid: isValid } }];\n  } catch (err) {\n    return [{ json: { ...$json, signature_valid: false, error: err.message } }];\n  }\n}\n\nreturn await verifySignature();"
+      },
+      "id": "14634772-3509-4b9b-9b77-0ad3bc1d8bd6",
+      "name": "Verify dialnexa Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2208,
+        2512
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - /voice-screen (start call)": {
+      "main": [
+        [
+          {
+            "node": "Credit & Usage Guard (check)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Credit & Usage Guard (check)": {
+      "main": [
+        [
+          {
+            "node": "IF Allowed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Allowed": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Fetch Candidate Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 402 No Credit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Fetch Candidate Details": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Get prior call attempts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Get prior call attempts": {
+      "main": [
+        [
+          {
+            "node": "Attempt Count Check (max 2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attempt Count Check (max 2)": {
+      "main": [
+        [
+          {
+            "node": "Sync DialNexa Agent (Prompt & Config)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync DialNexa Agent (Prompt & Config)": {
+      "main": [
+        [
+          {
+            "node": "Place Dialnexa Call (Day-10)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Log call attempt": {
+      "main": [
+        [
+          {
+            "node": "Respond Call Initiated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Signature Valid": {
+      "main": [
+        [
+          {
+            "node": "Parse Vapi End-of-Call Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 401 Invalid Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Vapi End-of-Call Report": {
+      "main": [
+        [
+          {
+            "node": "IF Call Connected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Call Connected": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Score Voice Screening",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase - Update outreach_log delivery_state",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase - Update outreach_log delivery_state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Score Voice Screening": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Write decision_ledger (voice_screen)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Write decision_ledger (voice_screen)": {
+      "main": [
+        [
+          {
+            "node": "Credit & Usage Guard (charge - only on connect)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Credit & Usage Guard (charge - only on connect)": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 (ack to Vapi)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Update outreach_log delivery_state": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 (ack to Vapi)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Place Dialnexa Call (Day-10)": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Log call attempt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond DialNexa Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - /dialnexa-webhook (call ended)": {
+      "main": [
+        [
+          {
+            "node": "Verify dialnexa Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify dialnexa Signature": {
+      "main": [
+        [
+          {
+            "node": "IF Signature Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "8ab9012c-c4fe-4150-849f-3cfab66cbec3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "11e350345aae172743fe2665ba36f76304fbd6b68282474d7d08206f6a010061"
+  },
+  "nodeGroups": [],
+  "id": "3mtiVCgTRtRonq0E",
+  "tags": []
+}
