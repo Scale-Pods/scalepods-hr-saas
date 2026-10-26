@@ -122,6 +122,12 @@ function AuthInner() {
               .eq("id", data.session.user.id);
           }
           router.push("/dashboard");
+        } else if (
+          data.user &&
+          Array.isArray(data.user.identities) &&
+          data.user.identities.length === 0
+        ) {
+          setErrorMsg("An account with this email already exists. Please sign in or reset your password.");
         } else {
           setSignupSuccessEmail(email);
           showToast("Verification link sent! Check your inbox.", { kind: "success" });
@@ -189,6 +195,7 @@ function AuthInner() {
       <header className="relative z-20 w-full max-w-5xl mx-auto px-4 sm:px-6 pt-4 pb-1 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center">
+            {/* biome-ignore lint/performance/noImgElement: static navbar brand logo */}
             <img
               src="/brand/scalepods-navbar-logo.png"
               alt="ScalePods"
