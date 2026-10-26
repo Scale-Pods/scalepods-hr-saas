@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       .eq("id", parsed.data.application_id)
       .maybeSingle();
 
-    const fieldValues = (parsed.data.field_values || {}) as Record<string, string>;
+    const fieldValues = (parsed.data.field_values || {}) as Record<string, unknown>;
     const candidateName =
       (fieldValues.candidate_name as string) || appRow?.candidate_name || "Aqib Firdous Khan";
     const positionTitle =
@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
         company_name: companyName,
         signatory_name: signatoryName,
         signatory_title: signatoryTitle,
+        dynamic_variables: (fieldValues.dynamic_variables || fieldValues) as Record<string, string>,
       });
       pdfBase64 = pdfBuffer.toString("base64");
       pdfFilename = `Offer_Letter_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;

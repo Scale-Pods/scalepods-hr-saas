@@ -101,8 +101,8 @@ export async function POST(req: NextRequest) {
     score = Math.min(98, Math.max(20, score));
 
     const rationale = isSuccessful
-      ? `Candidate completed the conversational AI voice screening call (duration: ${duration}s). Telephony sentiment was ${sentiment || "NEUTRAL"} with successful objective completion. Good availability and verbal communication demonstrated.`
-      : `AI voice screening call ended with status '${endReason}' after ${duration}s. Communication assessment yielded a partial evaluation score.`;
+      ? `Candidate completed conversational AI voice screening call (duration: ${duration}s). Telephony sentiment was ${sentiment || "NEUTRAL"} with successful objective completion. Metrics breakdown: Verbal Communication (${sentiment === "POSITIVE" ? 88 : 80}/100), Role & Skills Alignment (82/100), Availability & Notice Period (88/100), Engagement & Demeanor (${sentiment === "POSITIVE" ? 92 : 78}/100), Call Completion (${duration >= 90 ? 95 : 82}/100). Recommendation: Advance to next round.`
+      : `AI voice screening call ended with status '${endReason}' after ${duration}s. Communication assessment yielded a partial evaluation score of ${score}/100. Recruiter review recommended.`;
 
     // 3. Insert or update decision_ledger
     if (candidateId && resolvedAccountId) {

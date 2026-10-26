@@ -1,7 +1,7 @@
 "use client";
 
 import { format, isValid, parseISO } from "date-fns";
-import { Calendar as CalendarIcon, X } from "lucide-react";
+import { Calendar as CalendarIcon } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -70,7 +70,7 @@ export function DatePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-auto p-0 rounded-2xl border border-border bg-card shadow-xl"
+        className="w-auto p-0 rounded-2xl border border-border bg-card shadow-xl z-[60]"
         align="start"
       >
         <Calendar
@@ -78,8 +78,16 @@ export function DatePicker({
           selected={selectedDate}
           onSelect={handleSelect}
           disabled={(date) => {
-            if (minDate && date < new Date(minDate.setHours(0, 0, 0, 0))) return true;
-            if (maxDate && date > new Date(maxDate.setHours(23, 59, 59, 999))) return true;
+            if (minDate) {
+              const minCopy = new Date(minDate);
+              minCopy.setHours(0, 0, 0, 0);
+              if (date < minCopy) return true;
+            }
+            if (maxDate) {
+              const maxCopy = new Date(maxDate);
+              maxCopy.setHours(23, 59, 59, 999);
+              if (date > maxCopy) return true;
+            }
             return false;
           }}
           autoFocus

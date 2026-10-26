@@ -117,15 +117,21 @@ export async function POST(req: NextRequest) {
     }
 
     if (n8nSuccess) {
+      const n8nStage = (n8nResult as Record<string, unknown>)?.stage;
+      const n8nRoundInstanceId = (n8nResult as Record<string, unknown>)?.round_instance_id as
+        | string
+        | undefined;
       if (
         payload.operation === "decision" &&
         payload.action === "advance" &&
-        payload.application_id
+        payload.application_id &&
+        n8nStage === "round" &&
+        n8nRoundInstanceId
       ) {
         await triggerImmediateVoiceCallIfEligible(
           adminSupabase,
           payload.application_id as string,
-          (n8nResult as Record<string, unknown>)?.round_instance_id as string | undefined,
+          n8nRoundInstanceId,
         );
       }
       return NextResponse.json(n8nResult, { status: n8nStatus });
@@ -150,11 +156,23 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      if (payload.action === "advance" && payload.application_id) {
+      const rpcStage = (rpcData as Record<string, unknown>)?.stage;
+      const rpcRoundInstanceId = (rpcData as Record<string, unknown>)?.round_instance_id as
+        | string
+        | undefined;
+
+      // Only trigger an AI voice screening call if the application advanced INTO an active round stage
+      // and a newly created round_instance_id was returned. Never trigger when advancing to offer stage!
+      if (
+        payload.action === "advance" &&
+        payload.application_id &&
+        rpcStage === "round" &&
+        rpcRoundInstanceId
+      ) {
         await triggerImmediateVoiceCallIfEligible(
           adminSupabase,
           payload.application_id as string,
-          (rpcData as Record<string, unknown>)?.round_instance_id as string | undefined,
+          rpcRoundInstanceId,
         );
       }
 
@@ -198,10 +216,16 @@ async function triggerImmediateVoiceCallIfEligible(
   roundInstanceId?: string | null,
 ) {
   try {
+    // If no explicit roundInstanceId was provided for the newly transitioned round, do not guess or re-trigger past rounds!
+    if (!roundInstanceId) {
+      return;
+    }
+    const targetRiId = roundInstanceId;
+
     const { data: appData } = await adminSupabase
       .from("applications")
       .select(
-        "id, account_id, candidate_id, candidate_name, candidate_email, candidate_phone, campaign_id, current_round_number, campaigns(id, name, voice_call_config)",
+        "id, account_id, candidate_id, candidate_name, candidate_email, candidate_phone, campaign_id, current_stage, current_round_number, status, campaigns(id, name, voice_call_config)",
       )
       .eq("id", applicationId)
       .maybeSingle();
@@ -209,28 +233,36 @@ async function triggerImmediateVoiceCallIfEligible(
     const app = appData as any;
     if (!app || !app.candidate_phone) return;
 
-    let targetRiId = roundInstanceId;
-    if (!targetRiId) {
-      const { data: riData } = await adminSupabase
-        .from("round_instances")
-        .select("id, round_type")
-        .eq("application_id", applicationId)
-        .eq("round_number", app.current_round_number ?? 1)
-        .maybeSingle();
-      const ri = riData as any;
-      if (ri?.round_type === "ai_voice_call") {
-        targetRiId = ri.id;
-      } else {
-        return;
-      }
-    } else {
-      const { data: riData } = await adminSupabase
-        .from("round_instances")
-        .select("round_type")
-        .eq("id", targetRiId)
-        .maybeSingle();
-      const ri = riData as any;
-      if (ri?.round_type !== "ai_voice_call") return;
+    // Never trigger a voice call if the application is not in an active round stage (e.g., offer stage, rejected, or completed)
+    if (app.current_stage !== "round" || app.status !== "active") {
+      return;
+    }
+
+    // Verify the target round instance exists, is specifically an ai_voice_call, and is currently in "pending" status
+    const { data: riData } = await adminSupabase
+      .from("round_instances")
+      .select("id, round_type, status")
+      .eq("id", roundInstanceId)
+      .maybeSingle();
+
+    const ri = riData as any;
+    if (!ri || ri.round_type !== "ai_voice_call" || ri.status !== "pending") {
+      return;
+    }
+
+    // Check if an outreach voice call was already dispatched or attempted for this round instance to avoid duplicate calls
+    const { data: existingOutreach } = await adminSupabase
+      .from("outreach_log")
+      .select("id")
+      .eq("application_id", applicationId)
+      .eq("round_instance_id", roundInstanceId)
+      .maybeSingle();
+
+    if (existingOutreach) {
+      console.log(
+        `[api/applications/command] Voice call already initiated for round instance ${roundInstanceId}. Skipping duplicate.`,
+      );
+      return;
     }
 
     const camp = Array.isArray(app.campaigns)

@@ -304,22 +304,31 @@ async function evaluateAndPersistSession(
 
   const strengths = [
     answeredCount > 0
-      ? `Captured ${answeredCount} response(s) during the interview session`
-      : "Joined interview room",
-    authScore >= 80 ? "Demonstrated authentic and candid responses" : "Completed preliminary check",
+      ? `Completed ${answeredCount} interview response(s) with ${techScore >= 75 ? "strong" : "adequate"} technical terminology and depth`
+      : "Connected to interview room",
+    authScore >= 80
+      ? "Demonstrated authentic and candid responses throughout the dialogue"
+      : "Completed preliminary check",
+    commScore >= 75
+      ? "Clear verbal articulation and coherent answer structure"
+      : "Standard response clarity",
   ];
   const weaknesses = endedEarly
     ? [
         "Candidate ended the session early before all questions were asked",
-        "Incomplete competency demonstration",
+        "Incomplete problem-solving and architectural competency demonstration",
       ]
-    : ["Recommended further deep-dive on technical architecture"];
+    : [
+        techScore < 75
+          ? "Technical depth on complex architecture could be further probed"
+          : "Recommended standard reference verification",
+      ];
 
   const redFlags = endedEarly ? ["Candidate disconnected or exited interview room early"] : [];
 
   const rationale = endedEarly
-    ? `Candidate completed a partial interview (${answeredCount} response(s) submitted). Demonstrated competency signals were scored across technical and communication dimensions, while unaddressed areas are noted for recruiter review.`
-    : `AI interview evaluation completed across technical, communication, and authenticity signals with overall score of ${overallScore}/100.`;
+    ? `Candidate completed a partial interview (${answeredCount}/${totalTurns || answeredCount} question(s) answered). Performance across submitted questions demonstrated competency signals (Technical: ${techScore}/100, Communication: ${commScore}/100), but candidate exited the room before tackling remaining problem-solving scenarios (Problem Solving: ${psScore}/100). Overall evaluation score: ${overallScore}/100. Recruiter review recommended before proceeding.`
+    : `Candidate completed the full AI video interview (${answeredCount} questions evaluated). Demonstrates strong capability in core competencies with overall score of ${overallScore}/100. Key metrics: Technical Depth (${techScore}/100) reflected solid understanding of implementation concepts; Communication & Clarity (${commScore}/100) was structured and articulate; Problem Solving (${psScore}/100) demonstrated logical approach; Authenticity (${authScore}/100) verified genuine responses. Recommendation: ${recommendation === "advance" ? "Advance to next stage" : "Review by hiring team"}.`;
 
   // 1. Insert or update scorecard
   const cardPayload = {

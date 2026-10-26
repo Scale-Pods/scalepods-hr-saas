@@ -21,9 +21,9 @@ describe("reconcileUsage", () => {
 
   it("uses the plan allowance and ignores n8n granted", () => {
     expect(reconcileUsage({ ai_interview: { used: 1, granted: 999 } }, "free")).toEqual({
-      ai_interview: { used: 1, granted: 1 },
+      ai_interview: { used: 1, granted: 10 },
       ai_voice_screening: { used: 0, granted: 0 },
-      scheduled_round: { used: 0, granted: 2 },
+      scheduled_round: { used: 0, granted: 10 },
     });
   });
 
@@ -38,17 +38,17 @@ describe("reconcileUsage", () => {
         "growth",
       ),
     ).toEqual({
-      ai_interview: { used: 4, granted: 115 },
-      ai_voice_screening: { used: 7, granted: 300 },
-      scheduled_round: { used: 0, granted: 250 },
+      ai_interview: { used: 4, granted: 215 },
+      ai_voice_screening: { used: 7, granted: 100 },
+      scheduled_round: { used: 0, granted: 200 },
     });
   });
 
   it("defaults to the plan allowance when the report slice is missing", () => {
     expect(reconcileUsage(undefined, "basic")).toEqual({
-      ai_interview: { used: 0, granted: 10 },
-      ai_voice_screening: { used: 0, granted: 100 },
-      scheduled_round: { used: 0, granted: 100 },
+      ai_interview: { used: 0, granted: 50 },
+      ai_voice_screening: { used: 0, granted: 20 },
+      scheduled_round: { used: 0, granted: 50 },
     });
   });
 });

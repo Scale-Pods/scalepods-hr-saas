@@ -50,8 +50,9 @@ export const cadenceConfigSchema = z
     offer_template: z
       .object({
         file_name: z.string().optional(),
-        text: z.string(),
+        text: z.string().optional(),
         uploaded_at: z.string().optional(),
+        variables: z.array(z.string()).optional(),
       })
       .optional(),
   })
