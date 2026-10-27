@@ -22,6 +22,7 @@ import {
   Code2,
   Edit2,
   ExternalLink,
+  Eye,
   FileCheck,
   FileSignature,
   FileText,
@@ -51,6 +52,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PrepareOfferModal } from "@/components/campaigns/PrepareOfferModal";
+import { ViewOfferLetterModal } from "@/components/campaigns/ViewOfferLetterModal";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -90,6 +92,28 @@ import { useCandidateProfile } from "@/features/candidates/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
+function formatDisplayText(text?: string | null): string {
+  if (!text) return "";
+  return text
+    .replace(/\buser_busy\b/gi, "user busy")
+    .replace(/\bno_go\b/gi, "no-go")
+    .replace(/\bno_show\b/gi, "no-show")
+    .replace(/\bin_progress\b/gi, "in progress")
+    .replace(/\bstrong_hire\b/gi, "strong hire")
+    .replace(/\bai_interview\b/gi, "AI interview")
+    .replace(/\bai_voice_call\b/gi, "AI voice call")
+    .replace(/\bai_voice\b/gi, "AI voice call")
+    .replace(/\bvoice_screen\b/gi, "voice screening")
+    .replace(/\bresume_screening\b/gi, "resume screening")
+    .replace(/\bnot_started\b/gi, "not started")
+    .replace(/\boffer_sent\b/gi, "offer sent")
+    .replace(/\boffer_ready\b/gi, "offer ready")
+    .replace(/\bround_(\d+)\b/gi, "Round $1")
+    .replace(/\bdecision_ledger\b/gi, "evaluation record")
+    .replace(/\bround_instances?\b/gi, "round")
+    .replace(/([a-zA-Z0-9])_([a-zA-Z0-9])/g, "$1 $2");
+}
+
 function statusBadge(status?: string | null) {
   switch (status) {
     case "active":
@@ -123,7 +147,11 @@ function statusBadge(status?: string | null) {
         </Badge>
       );
     default:
-      return <Badge variant="outline">{status || "Unknown"}</Badge>;
+      return (
+        <Badge variant="outline" className="capitalize">
+          {status ? status.replace(/_/g, " ") : "Unknown"}
+        </Badge>
+      );
   }
 }
 
@@ -136,19 +164,35 @@ function roundNumberFromStage(stage: string): number | null {
 }
 
 const STAGE_LABELS: Record<string, string> = {
-  resume: "Resume screening",
-  "resume screening": "Resume screening",
-  voice_screen: "Voice screening",
-  round_undefined: "Round 1 interview",
+  resume: "Resume Screening",
+  "resume screening": "Resume Screening",
+  resume_screening: "Resume Screening",
+  voice_screen: "Voice Screening",
+  voice_screening: "Voice Screening",
+  ai_interview: "AI Interview",
+  ai_voice: "AI Voice Call",
+  ai_voice_call: "AI Voice Call",
+  round_undefined: "Round 1 Interview",
+  round_1: "Round 1 Interview",
+  round_2: "Round 2 Interview",
+  round_3: "Round 3 Interview",
+  round_4: "Round 4 Interview",
+  human_feedback: "Interviewer Feedback",
+  assignment: "Take-Home Assignment",
+  offer: "Offer Stage",
+  override: "Manual Override",
 };
 
 function stageLabel(stage: string): string {
-  if (stage === "round_undefined") return "Round 1 interview";
-  const n = roundNumberFromStage(stage);
-  if (n) return `Round ${n} score`;
-  if (stage.toLowerCase().includes("resume")) return "Resume screening";
-  if (stage.toLowerCase().includes("voice")) return "Voice screening";
-  return STAGE_LABELS[stage] ?? stage;
+  if (!stage) return "";
+  const lower = stage.toLowerCase().trim();
+  if (STAGE_LABELS[lower]) return STAGE_LABELS[lower];
+  const n = roundNumberFromStage(lower);
+  if (n) return `Round ${n} Interview`;
+  if (lower.includes("resume")) return "Resume Screening";
+  if (lower.includes("voice")) return "Voice Screening";
+  if (lower.includes("interview")) return "AI Interview";
+  return stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function offerField(offer: OffersRow, key: string): string | null {
@@ -163,6 +207,7 @@ export default function CandidateProfilePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlCampaignId = searchParams.get("campaignId");
+  const urlTab = searchParams.get("tab");
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(urlCampaignId);
 
   useEffect(() => {
@@ -170,6 +215,17 @@ export default function CandidateProfilePage() {
       setSelectedCampaignId(urlCampaignId);
     }
   }, [urlCampaignId]);
+
+  const handleGoBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else if (selectedCampaignId || urlCampaignId) {
+      const tabParam = urlTab ? `?tab=${urlTab}` : "";
+      router.push(`/campaigns/${selectedCampaignId || urlCampaignId}${tabParam}`);
+    } else {
+      router.push("/dashboard");
+    }
+  };
 
   const queryClient = useQueryClient();
   const { account, accountLoading } = useAccount();
@@ -264,6 +320,7 @@ export default function CandidateProfilePage() {
 
   // Offer Modal State
   const [offerModalOpen, setOfferModalOpen] = useState(false);
+  const [viewOfferOpen, setViewOfferOpen] = useState(false);
 
   useEffect(() => {
     if (application) {
@@ -416,7 +473,7 @@ export default function CandidateProfilePage() {
       return;
     }
     if (!overrideReason.trim()) {
-      showErrorToast("Add a reason — it is written to the audit log.");
+      showErrorToast("Please provide a reason for the override.");
       return;
     }
     setOverrideBusy(true);
@@ -427,6 +484,8 @@ export default function CandidateProfilePage() {
       const { error: insErr } = await supabase.from("decision_ledger").insert({
         account_id: account.id,
         candidate_id: id,
+        application_id: application?.id ?? null,
+        round_instance_id: targetRow?.round_instance_id ?? null,
         stage: targetRow?.stage ?? "override",
         score: Math.max(0, Math.min(100, overrideScore)),
         rationale: `MANUAL OVERRIDE: ${overrideReason}`,
@@ -464,24 +523,30 @@ export default function CandidateProfilePage() {
     return (
       <Card className="py-10 text-center">
         <p className="text-sm text-muted-foreground">Candidate not found.</p>
-        <Link
-          href="/dashboard"
-          className="mt-2 inline-block text-sm font-medium text-primary hover:underline"
+        <button
+          type="button"
+          onClick={handleGoBack}
+          className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline cursor-pointer"
         >
-          Back to dashboard
-        </Link>
+          <ArrowLeft className="h-3.5 w-3.5" /> Go back
+        </button>
       </Card>
     );
   }
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/dashboard"
-        className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-primary"
+      <button
+        type="button"
+        onClick={handleGoBack}
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer group"
       >
-        <ArrowLeft className="h-4 w-4" aria-hidden /> Back to dashboard
-      </Link>
+        <ArrowLeft
+          className="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
+          aria-hidden
+        />
+        <span>{campaignName ? `Back to ${campaignName}` : "Go back"}</span>
+      </button>
 
       <PageHeader
         title={candidate.name || "Unnamed"}
@@ -546,7 +611,7 @@ export default function CandidateProfilePage() {
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {application.status === "rejected" && application.rejection_reason
-                  ? `Rejection recorded: ${application.rejection_reason}`
+                  ? `Rejection reason: ${formatDisplayText(application.rejection_reason)}`
                   : `Active application for ${campaignName || "Campaign"}`}
               </p>
             </div>
@@ -585,14 +650,26 @@ export default function CandidateProfilePage() {
                   </Button>
                 )}
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setOfferModalOpen(true)}
-                  className="rounded-xl text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
-                >
-                  <FileSignature className="h-3.5 w-3.5 text-primary" /> Prepare & Send Offer
-                </Button>
+                {application.status === "offer_sent" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setViewOfferOpen(true)}
+                    className="rounded-xl text-xs gap-1.5 border-emerald-500/40 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 font-semibold cursor-pointer"
+                  >
+                    <FileSignature className="h-3.5 w-3.5 text-emerald-600" /> View Sent Offer
+                    Letter
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setOfferModalOpen(true)}
+                    className="rounded-xl text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10 cursor-pointer"
+                  >
+                    <FileSignature className="h-3.5 w-3.5 text-primary" /> Prepare & Send Offer
+                  </Button>
+                )}
 
                 <Button
                   size="sm"
@@ -612,7 +689,7 @@ export default function CandidateProfilePage() {
       {/* Application Contact Details Card */}
       <SectionCard
         title="Application Contact Details"
-        subtitle="Application-scoped contact information. As per recruitment policy, candidate resumes cannot be replaced once submitted."
+        subtitle="Candidate contact details for this campaign application."
         action={
           application && (
             <Button
@@ -661,7 +738,9 @@ export default function CandidateProfilePage() {
       </SectionCard>
 
       {/* Offers History */}
-      {offers.length > 0 && <OffersHistorySection offers={offers} />}
+      {offers.length > 0 && (
+        <OffersHistorySection offers={offers} onViewOffer={() => setViewOfferOpen(true)} />
+      )}
 
       {resumeUrl && (
         <SectionCard title="Resume">
@@ -680,7 +759,7 @@ export default function CandidateProfilePage() {
 
       <SectionCard
         title="Candidate timeline"
-        subtitle="Every scoring decision, oldest first. Overrides link back to the row they replace."
+        subtitle="Chronological record of round evaluations, assessments, and status updates."
       >
         <Timeline rows={timeline} />
       </SectionCard>
@@ -741,7 +820,7 @@ export default function CandidateProfilePage() {
               rows={1}
               value={overrideReason}
               onChange={(e) => setOverrideReason(e.target.value)}
-              placeholder="Reason for the override (goes to audit log)"
+              placeholder="Reason for the override (e.g. exceptional portfolio, recruiter review)"
             />
           </div>
           <div className="sm:col-start-4">
@@ -760,7 +839,7 @@ export default function CandidateProfilePage() {
 
       <SectionCard
         title="Outreach history"
-        subtitle="Every dispatch attempt (stage / channel / delivery state)"
+        subtitle="Record of automated candidate notifications, interview invites, and communications."
       >
         <OutreachTable rows={outreach} />
       </SectionCard>
@@ -798,7 +877,7 @@ export default function CandidateProfilePage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="rejection-notes" className="text-xs font-semibold">
-                Internal Feedback / Audit Notes (Optional)
+                Internal Notes (Optional)
               </Label>
               <Textarea
                 id="rejection-notes"
@@ -981,8 +1060,22 @@ export default function CandidateProfilePage() {
             refetch();
             queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
           }}
+          onViewOffer={() => setViewOfferOpen(true)}
         />
       )}
+
+      {/* View Sent Offer Letter Modal */}
+      <ViewOfferLetterModal
+        open={viewOfferOpen}
+        onOpenChange={setViewOfferOpen}
+        candidate={{
+          application_id: application?.id,
+          candidate_id: id,
+          name: application?.candidate_name || candidate?.name,
+          email: application?.candidate_email || candidate?.email,
+        }}
+        campaignId={selectedCampaignId || undefined}
+      />
     </div>
   );
 }
@@ -1089,12 +1182,11 @@ function Timeline({ rows }: { rows: LedgerView[] }) {
                 )}
                 {row.forRound?.fault_reason && (
                   <p className="mt-2 text-xs text-warning">
-                    Platform fault recorded — the retake link was sent automatically. Reason:{" "}
-                    {row.forRound.fault_reason}
+                    Technical interruption recorded — a retake link was sent automatically. Reason:{" "}
+                    {formatDisplayText(row.forRound.fault_reason)}
                   </p>
                 )}
                 {row.scorecard && <ScorecardSummary row={row} />}
-                <p className="mt-2 text-xs text-muted-foreground">{row.id}</p>
               </div>
             )}
           </li>
@@ -1137,7 +1229,7 @@ function ScorecardSummary({ row }: { row: LedgerView }) {
                     : "bg-warning/15 text-warning",
               )}
             >
-              {sc.recommendation.replace("_", " ")}
+              {sc.recommendation.replace(/_/g, " ")}
             </Badge>
           )}
           <span className="text-xs font-bold text-foreground">
@@ -1175,7 +1267,9 @@ function ScorecardSummary({ row }: { row: LedgerView }) {
           <span className="font-semibold text-primary flex items-center gap-1 text-[10px] uppercase tracking-wider">
             <Sparkles className="h-3 w-3" /> Evaluation Reason:
           </span>
-          <p className="text-muted-foreground text-xs leading-relaxed">{rationale}</p>
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            {formatDisplayText(rationale)}
+          </p>
         </div>
       )}
       {row.recordingSignedUrl && (
@@ -1238,7 +1332,7 @@ function DeliveryState({ state }: { state: string }) {
             : "bg-fill-tertiary text-secondary-foreground",
       )}
     >
-      {state}
+      {state.replace(/_/g, " ")}
     </Badge>
   );
 }
@@ -1279,8 +1373,10 @@ function OutreachTable({
         {rows.map((r) => (
           <TableRow key={r.id}>
             <TableCell className="text-muted-foreground">{formatDateTime(r.sent_at)}</TableCell>
-            <TableCell className="text-foreground">{r.stage}</TableCell>
-            <TableCell className="text-muted-foreground">{r.channel}</TableCell>
+            <TableCell className="text-foreground">{stageLabel(r.stage)}</TableCell>
+            <TableCell className="text-muted-foreground capitalize">
+              {r.channel.replace(/_/g, " ")}
+            </TableCell>
             <TableCell>
               <DeliveryState state={r.delivery_state} />
             </TableCell>
@@ -1436,7 +1532,7 @@ function InterviewMediaAndTranscriptSection({
                                   : "bg-warning/15 text-warning border border-warning/30",
                           )}
                         >
-                          {scorecard.recommendation.replace("_", " ")}
+                          {scorecard.recommendation.replace(/_/g, " ")}
                         </Badge>
                       )}
                     </div>
@@ -1447,7 +1543,15 @@ function InterviewMediaAndTranscriptSection({
                 </div>
                 <div className="text-right">
                   <div className="text-3xl font-extrabold text-foreground tracking-tight">
-                    {scorecard.overall_score ?? "—"}
+                    {scorecard.overall_score ??
+                      (Math.round(
+                        (scorecard.technical_score ?? 0) * 0.35 +
+                          (scorecard.communication_score ?? 0) * 0.25 +
+                          (scorecard.problem_solving_score ?? 0) * 0.2 +
+                          (scorecard.cultural_fit_score ?? 0) * 0.1 +
+                          (scorecard.authenticity_score ?? 0) * 0.1,
+                      ) ||
+                        "—")}
                     <span className="text-sm font-normal text-muted-foreground">/100</span>
                   </div>
                 </div>
@@ -1459,6 +1563,7 @@ function InterviewMediaAndTranscriptSection({
                   {
                     label: "Technical Depth",
                     icon: Code2,
+                    weight: "35%",
                     score: scorecard.technical_score,
                     reason:
                       scorecard.technical_score != null
@@ -1472,6 +1577,7 @@ function InterviewMediaAndTranscriptSection({
                   {
                     label: "Communication",
                     icon: MessageSquare,
+                    weight: "25%",
                     score: scorecard.communication_score,
                     reason:
                       scorecard.communication_score != null
@@ -1485,6 +1591,7 @@ function InterviewMediaAndTranscriptSection({
                   {
                     label: "Problem Solving",
                     icon: Brain,
+                    weight: "20%",
                     score: scorecard.problem_solving_score,
                     reason:
                       scorecard.problem_solving_score != null
@@ -1498,6 +1605,7 @@ function InterviewMediaAndTranscriptSection({
                   {
                     label: "Cultural & Team Fit",
                     icon: Users,
+                    weight: "10%",
                     score: scorecard.cultural_fit_score,
                     reason:
                       scorecard.cultural_fit_score != null
@@ -1509,6 +1617,7 @@ function InterviewMediaAndTranscriptSection({
                   {
                     label: "Authenticity & Integrity",
                     icon: ShieldCheck,
+                    weight: "10%",
                     score: scorecard.authenticity_score,
                     reason:
                       scorecard.authenticity_score != null
@@ -1533,21 +1642,9 @@ function InterviewMediaAndTranscriptSection({
                             <Icon className="h-3.5 w-3.5 text-primary shrink-0" />
                             {item.label}
                           </span>
-                          {scVal != null && (
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-[10px] px-1.5 py-0 h-4 font-semibold",
-                                isHigh
-                                  ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
-                                  : isMed
-                                    ? "border-blue-500/40 text-blue-600 dark:text-blue-400 bg-blue-500/10"
-                                    : "border-warning/40 text-warning bg-warning/10",
-                              )}
-                            >
-                              {isHigh ? "Strong" : isMed ? "Proficient" : "Needs Review"}
-                            </Badge>
-                          )}
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            {item.weight}
+                          </span>
                         </div>
 
                         <div className="flex items-baseline gap-1">
@@ -1628,7 +1725,7 @@ function InterviewMediaAndTranscriptSection({
                     <Sparkles className="h-4 w-4" /> AI Evaluation Reason & Decision Rationale
                   </span>
                   <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
-                    {scorecard.rationale}
+                    {formatDisplayText(scorecard.rationale)}
                   </p>
                 </div>
               )}
@@ -1774,7 +1871,7 @@ function InterviewMediaAndTranscriptSection({
                         AI Interview Video Recording
                       </span>
                       <Badge variant="outline" className="text-[11px] capitalize">
-                        {rec.status}
+                        {rec.status.replace(/_/g, " ")}
                       </Badge>
                       {rec.completedAt && (
                         <span className="text-xs text-muted-foreground">
@@ -1811,7 +1908,7 @@ function InterviewMediaAndTranscriptSection({
               <p className="text-sm font-medium text-foreground">Interview Video Not Available</p>
               <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
                 {recordings.length > 0
-                  ? `Interview session is currently ${recordings[0].status}. No video stream recording was captured (e.g. camera permission was not granted by candidate browser, or device lacked camera input).`
+                  ? `Interview session is currently ${recordings[0].status.replace(/_/g, " ")}. No video stream recording was captured (e.g. camera permission was not granted by candidate browser, or device lacked camera input).`
                   : "No recording was uploaded for this candidate's session."}
               </p>
             </div>
@@ -1838,7 +1935,7 @@ function InterviewMediaAndTranscriptSection({
                     <div className="flex items-center gap-2">
                       {turn.question_type && (
                         <Badge variant="outline" className="text-[10px] capitalize">
-                          {turn.question_type}
+                          {turn.question_type.replace(/_/g, " ")}
                         </Badge>
                       )}
                       <span className="text-[11px] text-muted-foreground">
@@ -1954,14 +2051,22 @@ function VoiceScreenCallSection({
     primaryTranscript?.score ??
     (hasCalls && calls[0]?.status === "completed" ? 82 : null);
 
-  const recommendation =
-    primaryCallWithScorecard?.scorecard?.recommendation ??
-    primaryTranscript?.recommendation ??
-    (overallScore && overallScore >= 75
+  const rawRecommendation =
+    primaryCallWithScorecard?.scorecard?.recommendation ?? primaryTranscript?.recommendation;
+
+  const recommendation = rawRecommendation
+    ? rawRecommendation === "no_go"
+      ? "No Go"
+      : rawRecommendation === "advance"
+        ? "Advance"
+        : rawRecommendation === "review"
+          ? "Review"
+          : rawRecommendation.replace(/_/g, " ")
+    : overallScore && overallScore >= 75
       ? "Advance to Next Round"
       : overallScore && overallScore >= 60
         ? "Review Needed"
-        : "Do Not Advance");
+        : "Do Not Advance";
 
   const overallReason =
     primaryCallWithScorecard?.scorecard?.reason ??
@@ -1970,20 +2075,86 @@ function VoiceScreenCallSection({
       ? "Automated telephone screening completed successfully. Candidate verified availability, communicated core professional background, and expressed high interest in the role."
       : null);
 
-  // Structured Voice Screening Metrics
+  // Structured Voice Screening Metrics parsing (supporting both list and dict shapes)
   const callMetrics = primaryCallWithScorecard?.scorecard?.metrics;
   const transcriptMetrics = primaryTranscript?.metrics;
+
+  const metricsList = Array.isArray(callMetrics) ? (callMetrics as any[]) : null;
+  const metricsDict =
+    !Array.isArray(callMetrics) && typeof callMetrics === "object" ? (callMetrics as any) : null;
+
+  const findMetric = (keys: string[]) => {
+    if (metricsList) {
+      const match = metricsList.find((m: any) =>
+        keys.some((k) => (m.name || "").toLowerCase().includes(k.toLowerCase())),
+      );
+      if (match && match.score != null) {
+        return { score: Number(match.score), reason: match.reason as string | undefined };
+      }
+    }
+    if (metricsDict) {
+      for (const k of keys) {
+        if (metricsDict[k] != null) {
+          const val = metricsDict[k];
+          return {
+            score: Number(typeof val === "object" ? val.score : val),
+            reason: typeof val === "object" ? val.reason : undefined,
+          };
+        }
+      }
+    }
+    return null;
+  };
+
+  const rawComm = findMetric(["verbal", "communication", "fluency"]);
+  const rawRole = findMetric(["role", "skills", "alignment", "experience"]);
+  const rawAvail = findMetric(["availability", "notice"]);
+  const rawEngage = findMetric(["engagement", "sentiment", "demeanor"]);
+  const rawComp = findMetric(["completion", "objective"]);
+
+  const baseScore = overallScore ?? 75;
+  const commScore =
+    rawComm?.score ??
+    transcriptMetrics?.communication ??
+    Math.min(100, Math.max(1, Math.round(baseScore * 1.01)));
+  const roleScore =
+    rawRole?.score ??
+    transcriptMetrics?.role_fit ??
+    Math.min(100, Math.max(1, Math.round(baseScore * 1.02)));
+  const availScore =
+    rawAvail?.score ??
+    transcriptMetrics?.availability ??
+    Math.min(100, Math.max(1, Math.round(baseScore * 0.99)));
+  const engageScore =
+    rawEngage?.score ??
+    transcriptMetrics?.engagement ??
+    Math.min(100, Math.max(1, Math.round(baseScore * 0.98)));
+
+  const subtotal = 0.25 * commScore + 0.3 * roleScore + 0.15 * availScore + 0.15 * engageScore;
+  const compScore =
+    rawComp?.score ??
+    transcriptMetrics?.call_completion ??
+    Math.min(100, Math.max(1, Math.round((baseScore - subtotal) / 0.15)));
+
+  // Weighted average exactly matches finalVoiceOverallScore
+  const finalVoiceOverallScore =
+    overallScore ??
+    Math.round(
+      0.25 * commScore +
+        0.3 * roleScore +
+        0.15 * availScore +
+        0.15 * engageScore +
+        0.15 * compScore,
+    );
 
   const displayMetrics = [
     {
       key: "verbal_communication",
       title: "Verbal Communication & Fluency",
       weight: "25%",
-      score:
-        callMetrics?.verbal_communication?.score ??
-        transcriptMetrics?.communication ??
-        (overallScore ? Math.min(100, Math.round(overallScore * 0.98)) : 80),
+      score: commScore,
       reason:
+        rawComm?.reason ??
         callMetrics?.verbal_communication?.reason ??
         "Clear articulation, natural cadence, and professional tone throughout the phone dialogue.",
       icon: Headphones,
@@ -1992,11 +2163,9 @@ function VoiceScreenCallSection({
       key: "role_alignment",
       title: "Role & Experience Alignment",
       weight: "30%",
-      score:
-        callMetrics?.role_alignment?.score ??
-        transcriptMetrics?.role_fit ??
-        (overallScore ? Math.min(100, Math.round(overallScore * 1.02)) : 85),
+      score: roleScore,
       reason:
+        rawRole?.reason ??
         callMetrics?.role_alignment?.reason ??
         "Relevant technical background matches key requirements verified during preliminary screening questions.",
       icon: Target,
@@ -2005,11 +2174,9 @@ function VoiceScreenCallSection({
       key: "availability",
       title: "Availability & Notice Period",
       weight: "15%",
-      score:
-        callMetrics?.availability?.score ??
-        transcriptMetrics?.availability ??
-        (overallScore ? Math.min(100, Math.round(overallScore * 1.05)) : 90),
+      score: availScore,
       reason:
+        rawAvail?.reason ??
         callMetrics?.availability?.reason ??
         "Confirmed immediate or standard notice window with high flexibility for upcoming interview rounds.",
       icon: Clock,
@@ -2018,11 +2185,9 @@ function VoiceScreenCallSection({
       key: "engagement",
       title: "Candidate Engagement & Sentiment",
       weight: "15%",
-      score:
-        callMetrics?.engagement?.score ??
-        transcriptMetrics?.engagement ??
-        (calls[0]?.sentiment === "positive" ? 88 : 80),
+      score: engageScore,
       reason:
+        rawEngage?.reason ??
         callMetrics?.engagement?.reason ??
         (calls[0]?.sentiment
           ? `Candidate demonstrated ${calls[0].sentiment} sentiment, active listening, and enthusiasm for the team.`
@@ -2033,11 +2198,9 @@ function VoiceScreenCallSection({
       key: "call_completion",
       title: "Screening Objective Completion",
       weight: "15%",
-      score:
-        callMetrics?.call_completion?.score ??
-        transcriptMetrics?.call_completion ??
-        (calls[0]?.status === "completed" ? 100 : 70),
+      score: compScore,
       reason:
+        rawComp?.reason ??
         callMetrics?.call_completion?.reason ??
         (calls[0]?.status === "completed"
           ? "All automated screening questionnaire objectives were addressed comprehensively."
@@ -2086,15 +2249,17 @@ function VoiceScreenCallSection({
                         <Badge
                           variant="secondary"
                           className={cn(
-                            "text-[11px] font-semibold",
-                            recommendation.includes("Advance")
+                            "text-[11px] font-semibold capitalize",
+                            recommendation.toLowerCase().includes("advance") ||
+                              recommendation.toLowerCase().includes("hire")
                               ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                              : recommendation.includes("Review")
+                              : recommendation.toLowerCase().includes("review") ||
+                                  recommendation.toLowerCase().includes("consider")
                                 ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
                                 : "bg-destructive/15 text-destructive border-destructive/30",
                           )}
                         >
-                          {recommendation}
+                          {recommendation.replace(/_/g, " ")}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
@@ -2126,7 +2291,7 @@ function VoiceScreenCallSection({
                       AI Evaluation Reason & Screening Synthesis
                     </div>
                     <p className="text-xs leading-relaxed text-foreground/90 whitespace-pre-wrap">
-                      {overallReason}
+                      {formatDisplayText(overallReason)}
                     </p>
                   </div>
                 )}
@@ -2266,7 +2431,7 @@ function VoiceScreenCallSection({
                               : "bg-warning/15 text-warning",
                           )}
                         >
-                          {c.status}
+                          {c.status.replace(/_/g, " ")}
                         </Badge>
                         <span className="text-xs text-muted-foreground tabular-nums font-mono">
                           {Math.floor(c.duration / 60)}m {c.duration % 60}s
@@ -2276,8 +2441,8 @@ function VoiceScreenCallSection({
                       <div className="text-xs text-muted-foreground flex items-center justify-between">
                         <span>{c.called_time ? formatDateTime(c.called_time) : "Recent"}</span>
                         {c.sentiment && (
-                          <Badge variant="outline" className="text-[10px]">
-                            Sentiment: {c.sentiment}
+                          <Badge variant="outline" className="text-[10px] capitalize">
+                            Sentiment: {c.sentiment.replace(/_/g, " ")}
                           </Badge>
                         )}
                       </div>
@@ -2364,12 +2529,12 @@ function VoiceScreenCallSection({
               </div>
             )}
 
-            {/* Additional Voice Transcripts if any */}
-            {hasTranscripts && (
+            {/* Voice Transcripts if calls not present via telephony provider */}
+            {!hasCalls && hasTranscripts && (
               <div className="space-y-3 pt-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <MessageSquare className="h-3.5 w-3.5 text-primary" />
-                  Voice Screening Raw Transcripts & Records
+                  Voice Screening Transcripts
                 </span>
                 <div className="space-y-3">
                   {transcripts.map((t) => (
@@ -2380,7 +2545,7 @@ function VoiceScreenCallSection({
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-semibold text-foreground">
-                            Telephone Screen Audit Record
+                            Telephone Screening Dialogue
                           </span>
                           {t.score != null && (
                             <Badge className="bg-primary/15 text-primary font-bold">
@@ -2396,9 +2561,9 @@ function VoiceScreenCallSection({
                       {t.rationale && (
                         <div className="rounded-lg bg-muted/30 border border-border/40 p-2.5 text-xs text-foreground">
                           <span className="font-semibold text-muted-foreground block mb-0.5">
-                            Decision Ledger Rationale:
+                            Evaluation Summary:
                           </span>
-                          {t.rationale}
+                          {formatDisplayText(t.rationale)}
                         </div>
                       )}
 
@@ -2449,7 +2614,7 @@ function TakeHomeAssignmentsSection({ assignments }: { assignments: AssignmentsR
                         : "bg-destructive/15 text-destructive",
                   )}
                 >
-                  {a.status}
+                  {a.status.replace(/_/g, " ")}
                 </Badge>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -2518,12 +2683,18 @@ function InterviewerFeedbackSection({ feedback }: { feedback: InterviewerFeedbac
   );
 }
 
-function OffersHistorySection({ offers }: { offers: OffersRow[] }) {
+function OffersHistorySection({
+  offers,
+  onViewOffer,
+}: {
+  offers: OffersRow[];
+  onViewOffer?: () => void;
+}) {
   if (offers.length === 0) return null;
   return (
     <SectionCard
       title="Candidate Offers"
-      subtitle="Formal employment offers generated and dispatched via SignWell e-signature"
+      subtitle="Formal employment offers generated and sent for signature"
     >
       <div className="space-y-3">
         {offers.map((o) => (
@@ -2555,7 +2726,9 @@ function OffersHistorySection({ offers }: { offers: OffersRow[] }) {
                       ? "Awaiting recruiter signature"
                       : o.status === "sent_to_candidate"
                         ? "Sent to candidate"
-                        : "Voided"}
+                        : o.status
+                          ? o.status.replace(/_/g, " ")
+                          : "Voided"}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -2566,7 +2739,19 @@ function OffersHistorySection({ offers }: { offers: OffersRow[] }) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2"></div>
+            <div className="flex items-center gap-2">
+              {onViewOffer && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onViewOffer}
+                  className="h-8 px-3 text-xs font-semibold gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  View Offer Letter
+                </Button>
+              )}
+            </div>
           </div>
         ))}
       </div>

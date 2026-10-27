@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
       (fieldValues.candidate_name as string) || appRow?.candidate_name || "Aqib Firdous Khan";
     const positionTitle =
       (fieldValues.position_title as string) ||
-      (appRow?.campaigns as any)?.name ||
+      (appRow?.campaigns as { name?: string } | undefined)?.name ||
       "Ai Automation Intern";
     const salary = String(fieldValues.salary || "10000");
     const currency = (fieldValues.currency as string) || "INR";
@@ -154,15 +154,54 @@ export async function POST(req: NextRequest) {
       console.warn("[api/offers/send] n8n gateway unreachable:", n8nErr);
     }
 
-    if (n8nSuccess) {
-      return NextResponse.json(n8nPayload ?? { success: true }, { status: n8nStatus });
-    }
-
-    // Fallback: Check if n8n already updated the application, or update it directly
+    // Guaranteed persistence: Update applications table
     await adminSupabase
       .from("applications")
       .update({ status: "offer_sent", current_stage: "offer" })
       .eq("id", parsed.data.application_id);
+
+    // Guaranteed persistence: Upsert into offers table
+    const resolvedFieldValues = {
+      ...fieldValues,
+      candidate_name: candidateName,
+      position_title: positionTitle,
+      salary,
+      currency,
+      start_date: startDate,
+      company_name: companyName,
+      signatory_name: signatoryName,
+      signatory_title: signatoryTitle,
+    };
+
+    try {
+      const { data: existingOffer } = await adminSupabase
+        .from("offers")
+        .select("id")
+        .eq("application_id", parsed.data.application_id)
+        .maybeSingle();
+
+      const offerRecord = {
+        account_id: user.id,
+        campaign_id: parsed.data.campaign_id,
+        application_id: parsed.data.application_id,
+        field_values: resolvedFieldValues,
+        candidate_email: appRow?.candidate_email || (fieldValues.candidate_email as string) || "",
+        company_signer_email: user.email || "",
+        status: "sent_to_candidate",
+        sent_to_candidate_at: new Date().toISOString(),
+      };
+
+      if (existingOffer) {
+        await adminSupabase.from("offers").update(offerRecord).eq("id", existingOffer.id);
+      } else {
+        await adminSupabase.from("offers").insert(offerRecord);
+      }
+    } catch (offerSaveErr) {
+      console.warn(
+        "[api/offers/send] Failed to persist offer record in offers table:",
+        offerSaveErr,
+      );
+    }
 
     // Record offer decision in decision_ledger
     try {
@@ -173,15 +212,38 @@ export async function POST(req: NextRequest) {
         stage: "offer",
         decision: "offer_sent",
         action: "offer",
-        rationale: `Offer letter generated for position ${parsed.data.field_values.position_title} (${parsed.data.field_values.currency} ${parsed.data.field_values.salary}).`,
+        rationale: `Offer letter generated for position ${positionTitle} (${currency} ${salary}).`,
         source: "recruiter",
         decided_at: new Date().toISOString(),
       });
     } catch {}
 
+    const responseOffer = {
+      candidate_name: candidateName,
+      position_title: positionTitle,
+      salary,
+      currency,
+      start_date: startDate,
+      company_name: companyName,
+      signatory_name: signatoryName,
+      signatory_title: signatoryTitle,
+      field_values: resolvedFieldValues,
+      sent_at: new Date().toISOString(),
+    };
+
+    if (n8nSuccess) {
+      return NextResponse.json(
+        typeof n8nPayload === "object" && n8nPayload !== null
+          ? { ...(n8nPayload as Record<string, unknown>), success: true, offer: responseOffer }
+          : { success: true, offer: responseOffer },
+        { status: n8nStatus },
+      );
+    }
+
     return NextResponse.json({
       success: true,
-      message: `Offer letter generated and sent to ${appRow?.candidate_name || appRow?.candidate_email || "candidate"}.`,
+      offer: responseOffer,
+      message: `Offer letter generated and sent to ${candidateName || appRow?.candidate_email || "candidate"}.`,
     });
   } catch (dispatchError) {
     console.error("[api/offers/send] Offer dispatch error:", dispatchError);

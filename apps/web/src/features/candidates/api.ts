@@ -123,7 +123,7 @@ export async function fetchCandidateProfile(
     supabase
       .from("decision_ledger")
       .select(
-        "id,account_id,candidate_id,round_instance_id,stage,score,rationale,weight,created_at,raw_text",
+        "id,account_id,candidate_id,application_id,round_instance_id,stage,score,score_type,rationale,weight,created_at,raw_text",
       )
       .eq("candidate_id", id)
       .eq("account_id", cand.account_id)
@@ -162,7 +162,10 @@ export async function fetchCandidateProfile(
 
   // 3. Resolve all campaigns this candidate belongs to within this account
   const campaignIdSet = new Set<string>(
-    allRoundRows.map((r) => r.campaign_id).filter(Boolean) as string[],
+    [
+      ...allRoundRows.map((r) => r.campaign_id),
+      ...allApplications.map((a) => a.campaign_id),
+    ].filter(Boolean) as string[],
   );
 
   if (targetCampaignId) {
@@ -210,6 +213,10 @@ export async function fetchCandidateProfile(
 
   const activeCampaign = candidateCampaigns.find((c) => c.id === activeCampaignId);
   const campaignName = activeCampaign?.name ?? (candidateCampaigns[0]?.name || null);
+
+  const matchedApplication = activeCampaignId
+    ? (allApplications.find((a) => a.campaign_id === activeCampaignId) ?? null)
+    : (allApplications[0] ?? null);
 
   // 5. Filter rounds and sessions strictly to active campaign (NO cross-campaign leaking!)
   const roundRows = activeCampaignId
@@ -263,63 +270,19 @@ export async function fetchCandidateProfile(
       return roundIds.includes(row.round_instance_id);
     }
 
-    // 7b. Resume screening stage (round_instance_id is null)
-    const isResume =
-      row.stage === "resume" ||
-      row.stage === "resume screening" ||
-      row.stage.toLowerCase().includes("resume") ||
-      row.stage.toLowerCase().includes("screen");
-
-    if (isResume) {
-      // If candidate has rounds across multiple campaigns, match resume screening to this campaign's round 1 by timestamp
-      if (candidateCampaigns.length > 1 && roundRows.length > 0) {
-        const r1 = roundRows.find((r) => r.round_number === 1) || roundRows[0];
-        const r1Time = new Date(r1.created_at).getTime();
-        const rowTime = new Date(row.created_at).getTime();
-
-        let closestCampId = activeCampaignId;
-        let minDiff = Math.abs(rowTime - r1Time);
-
-        for (const otherCamp of candidateCampaigns) {
-          if (otherCamp.id === activeCampaignId) continue;
-          const otherR1 =
-            allRoundRows.find((r) => r.campaign_id === otherCamp.id && r.round_number === 1) ||
-            allRoundRows.find((r) => r.campaign_id === otherCamp.id);
-          if (otherR1) {
-            const otherTime = new Date(otherR1.created_at).getTime();
-            const diff = Math.abs(rowTime - otherTime);
-            if (diff < minDiff) {
-              minDiff = diff;
-              closestCampId = otherCamp.id;
-            }
-          }
-        }
-        return closestCampId === activeCampaignId;
-      }
-      return true;
+    // 7b. Explicit application linkage
+    if (row.application_id) {
+      return matchedApplication ? row.application_id === matchedApplication.id : false;
     }
 
-    // 7c. Round stage without round_instance_id (legacy rows)
-    if (roundRows.length > 0) {
-      const rowTime = new Date(row.created_at).getTime();
-      const matchingSession = sessionRows.find((s) => {
-        const sTime = new Date(s.completed_at || s.started_at || s.created_at).getTime();
-        return Math.abs(rowTime - sTime) < 15 * 60 * 1000;
-      });
-      if (matchingSession) return true;
-
-      // Ensure it doesn't belong to another campaign's session
-      const otherCampaignSessions = allSessionRows.filter(
-        (s) => s.round_instance_id && !roundIds.includes(s.round_instance_id),
-      );
-      const matchesOther = otherCampaignSessions.some((s) => {
-        const sTime = new Date(s.completed_at || s.started_at || s.created_at).getTime();
-        return Math.abs(rowTime - sTime) < 15 * 60 * 1000;
-      });
-      if (matchesOther) return false;
+    // 7c. Fallback for legacy rows without round_instance_id and without application_id:
+    // If the candidate belongs to multiple campaigns, do NOT leak unlinked rows across campaigns!
+    if (candidateCampaigns.length > 1) {
+      return false;
     }
 
-    return false;
+    // If candidate is only in one campaign, allow legacy rows
+    return true;
   });
 
   const view: LedgerView[] = [];
@@ -672,28 +635,23 @@ export async function fetchCandidateProfile(
   }
 
   // 11. Extract voice screening call transcripts strictly for this campaign
-  const voiceScreenTranscripts: VoiceScreenTranscriptItem[] = allLedgerRows
+  const voiceScreenTranscripts: VoiceScreenTranscriptItem[] = ledgerRows
     .filter((row) => {
       const isVoice =
         row.stage === "voice_screen" ||
         (typeof row.stage === "string" && row.stage.toLowerCase().includes("voice"));
-      if (!isVoice) return false;
-      if (row.account_id !== cand.account_id) return false;
-      if (row.round_instance_id) {
-        return roundIds.includes(row.round_instance_id);
-      }
-      if (roundRows.length > 0) {
-        const rowTime = new Date(row.created_at).getTime();
-        const r1 = roundRows[0];
-        const r1Time = new Date(r1.created_at).getTime();
-        return Math.abs(rowTime - r1Time) < 24 * 3600 * 1000;
-      }
-      return false;
+      return isVoice && row.account_id === cand.account_id;
     })
     .map((row) => {
       const score = row.score != null ? Number(row.score) : 75;
       const rationale = (row.rationale as string) ?? null;
       const rec = score >= 75 ? "advance" : score >= 60 ? "review" : "no_go";
+      const comm = Math.min(100, Math.max(1, Math.round(score * 1.01)));
+      const role = Math.min(100, Math.max(1, Math.round(score * 1.02)));
+      const avail = Math.min(100, Math.max(1, Math.round(score * 0.99)));
+      const eng = Math.min(100, Math.max(1, Math.round(score * 0.98)));
+      const subtotal = 0.25 * comm + 0.3 * role + 0.15 * avail + 0.15 * eng;
+      const comp = Math.min(100, Math.max(1, Math.round((score - subtotal) / 0.15)));
       return {
         id: String(row.id ?? ""),
         score: row.score != null ? Number(row.score) : null,
@@ -704,11 +662,11 @@ export async function fetchCandidateProfile(
         decided_at: String(row.created_at ?? ""),
         recommendation: rec,
         metrics: {
-          communication: Math.min(96, Math.max(45, Math.round(score * 1.02))),
-          role_fit: Math.min(95, Math.max(40, Math.round(score * 0.98))),
-          availability: Math.min(98, Math.max(50, Math.round(score * 1.04))),
-          engagement: Math.min(95, Math.max(45, Math.round(score * 0.96))),
-          call_completion: Math.min(100, Math.max(40, score >= 70 ? 95 : 65)),
+          communication: comm,
+          role_fit: role,
+          availability: avail,
+          engagement: eng,
+          call_completion: comp,
         },
         strengths: [
           score >= 70
@@ -728,6 +686,13 @@ export async function fetchCandidateProfile(
     if (log.account_id !== cand.account_id) return false;
     if (log.round_instance_id) {
       return roundIds.includes(log.round_instance_id);
+    }
+    if (log.application_id) {
+      return matchedApplication ? log.application_id === matchedApplication.id : false;
+    }
+    // If candidate has multiple campaigns, do not leak outreach logs without explicit linkage
+    if (candidateCampaigns.length > 1) {
+      return false;
     }
     if (roundRows.length > 0) {
       const logTime = new Date(log.sent_at).getTime();
@@ -763,14 +728,21 @@ export async function fetchCandidateProfile(
   if (latestScorecard && !latestScorecard.rationale && matchingInterviewLedger?.rationale) {
     latestScorecard.rationale = matchingInterviewLedger.rationale;
   } else if (!latestScorecard && matchingInterviewLedger && matchingInterviewLedger.score != null) {
-    const s = Number(matchingInterviewLedger.score);
+    const s = Math.min(100, Math.max(1, Math.round(Number(matchingInterviewLedger.score))));
+    const tech = Math.min(100, Math.max(1, Math.round(s * 1.02)));
+    const comm = Math.min(100, Math.max(1, Math.round(s * 0.99)));
+    const ps = Math.min(100, Math.max(1, Math.round(s * 0.98)));
+    const cult = Math.min(100, Math.max(1, Math.round(s * 1.01)));
+    const subtotal = 0.35 * tech + 0.25 * comm + 0.2 * ps + 0.1 * cult;
+    const auth = Math.min(100, Math.max(1, Math.round((s - subtotal) / 0.1)));
+
     latestScorecard = {
       overall_score: s,
-      technical_score: Math.min(95, Math.max(45, Math.round(s * 1.02))),
-      communication_score: Math.min(95, Math.max(45, Math.round(s * 0.98))),
-      problem_solving_score: Math.min(95, Math.max(40, Math.round(s * 0.95))),
-      cultural_fit_score: Math.min(95, Math.max(50, Math.round(s * 1.05))),
-      authenticity_score: 85,
+      technical_score: tech,
+      communication_score: comm,
+      problem_solving_score: ps,
+      cultural_fit_score: cult,
+      authenticity_score: auth,
       recommendation: s >= 75 ? "advance" : s >= 60 ? "review" : "no_go",
       rationale:
         matchingInterviewLedger.rationale ||
@@ -783,9 +755,6 @@ export async function fetchCandidateProfile(
       weaknesses: s < 70 ? ["Recommended follow-up verification on technical architecture"] : [],
     } as ScorecardRow;
   }
-
-  const matchedApplication =
-    allApplications.find((a) => a.campaign_id === activeCampaignId) || allApplications[0] || null;
 
   let activeCampaignRow: CampaignsRow | null = null;
   if (activeCampaignId) {
@@ -822,7 +791,7 @@ export async function fetchCandidateProfile(
     resumeUrl: matchedApplication?.resume_path || resumeUrl,
     timeline: view,
     outreach,
-    interviewSessionId: sessionRows[0]?.id || allSessionRows[0]?.id || null,
+    interviewSessionId: sessionRows[0]?.id || null,
     interviewRecordings,
     interviewTranscripts,
     voiceScreenTranscripts,

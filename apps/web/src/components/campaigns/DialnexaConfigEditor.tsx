@@ -2082,8 +2082,8 @@ export function DialnexaConfigEditor({
                       <span className="text-[10px] text-muted-foreground uppercase">
                         Recommendation
                       </span>
-                      <p className="font-semibold text-emerald-600 dark:text-emerald-400">
-                        {simScorecard.overall_recommendation}
+                      <p className="font-semibold text-emerald-600 dark:text-emerald-400 capitalize">
+                        {String(simScorecard.overall_recommendation).replace(/_/g, " ")}
                       </p>
                     </div>
                     <div className="p-2 rounded bg-card/60 border border-border/60">
@@ -2222,7 +2222,7 @@ export function DialnexaConfigEditor({
                               : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
                           )}
                         >
-                          {testCallResult.status}
+                          {testCallResult.status.replace(/_/g, " ")}
                         </Badge>
                       ) : (
                         <Badge
@@ -2239,7 +2239,7 @@ export function DialnexaConfigEditor({
                       )}
                       {testCallResult?.sentiment && (
                         <Badge variant="outline" className="text-[10px] capitalize">
-                          Sentiment: {testCallResult.sentiment}
+                          Sentiment: {testCallResult.sentiment.replace(/_/g, " ")}
                         </Badge>
                       )}
                     </div>

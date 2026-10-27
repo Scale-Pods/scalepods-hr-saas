@@ -53,17 +53,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useAccount } from "@/features/account/hooks";
 import { useSession } from "@/features/auth/hooks";
 import { deleteCampaign, reviewCandidateRound, type ViewCandidate } from "@/features/campaigns/api";
@@ -152,8 +143,8 @@ export default function CampaignDetailPage() {
     return map;
   }, [rounds]);
 
-  const [bulkCutoff, setBulkCutoff] = useState<number>(60);
-  const [isBulkSending, setIsBulkSending] = useState(false);
+  const [bulkCutoff, _setBulkCutoff] = useState<number>(60);
+  const [_isBulkSending, setIsBulkSending] = useState(false);
 
   const [postRoundCutoff, setPostRoundCutoff] = useState<number>(70);
   const [isApplyingCutoff, setIsApplyingCutoff] = useState(false);
@@ -640,19 +631,22 @@ export default function CampaignDetailPage() {
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2.5">
           <Clock className="h-4 w-4 shrink-0" />
           <span>
-            <strong>Job Closed & Retention Active:</strong> Retention snapshot is{" "}
-            <strong>{campaign.retention_days_snapshot ?? 30} days</strong>. Purge scheduled for{" "}
+            <strong>Job Closed:</strong> Candidate records will be retained for{" "}
+            <strong>{campaign.retention_days_snapshot ?? 30} days</strong> (scheduled through{" "}
             <strong>
               {campaign.retention_purge_at
                 ? new Date(campaign.retention_purge_at).toLocaleDateString()
-                : "retention timer"}
+                : "retention period"}
             </strong>
-            . Reopening the job pauses the timer.
+            ). Reopening this job pauses the countdown.
           </span>
         </div>
       )}
 
-      <SectionCard title="Round pipeline" subtitle="Same cutoff-check engine for every round type">
+      <SectionCard
+        title="Round pipeline"
+        subtitle="Configure interview stages, evaluation formats, and passing criteria"
+      >
         <RoundStepper
           numberOfRounds={campaign.number_of_rounds}
           types={roundTypes}
@@ -678,7 +672,7 @@ export default function CampaignDetailPage() {
       {/* Recruiter Hiring Pipeline: Kanban & Table views */}
       <SectionCard
         title="Candidate Hiring Pipeline"
-        subtitle={`${candidates.length} application${candidates.length === 1 ? "" : "s"} across all hiring stages · Dragging never changes stage`}
+        subtitle={`${candidates.length} application${candidates.length === 1 ? "" : "s"} across all hiring stages`}
       >
         <PipelineBoard
           campaign={campaign}
@@ -692,7 +686,7 @@ export default function CampaignDetailPage() {
 
       {!hasVoiceConfig ? (
         <SectionCard
-          title="DialNexa AI Voice Screening Call"
+          title="AI Voice Screening"
           subtitle="Conversational AI voice screening was not enabled during campaign creation"
         >
           <div className="flex flex-col items-center justify-center py-8 text-center space-y-3 rounded-xl border border-dashed border-border/80 bg-muted/10 p-6">
@@ -713,8 +707,8 @@ export default function CampaignDetailPage() {
         </SectionCard>
       ) : (
         <SectionCard
-          title="DialNexa AI Voice Screening Call"
-          subtitle="Conversational AI voice agent configured during campaign creation"
+          title="AI Voice Screening"
+          subtitle="Conversational AI voice agent configured for this campaign"
           action={
             !isEditingVoiceConfig ? (
               <div className="flex items-center gap-2">
@@ -935,5 +929,5 @@ function DecisionBadge({ decision }: { decision: string | null }) {
         : decision === "no_show"
           ? "bg-warning/15 text-warning"
           : "bg-muted text-muted-foreground";
-  return <Badge className={cn("capitalize", className)}>{decision}</Badge>;
+  return <Badge className={cn("capitalize", className)}>{decision.replace(/_/g, " ")}</Badge>;
 }

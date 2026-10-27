@@ -103,7 +103,7 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
   }
 
   const supabase = supabaseBrowser();
-  const [c, r, appsRes, ris, statuses, sessionsRes, answersRes, scorecardsRes] = await Promise.all([
+  const [c, r, appsRes, ris, statuses] = await Promise.all([
     supabase.from("campaigns").select("*").eq("id", id).maybeSingle(),
     supabase.from("campaign_rounds").select("*").eq("campaign_id", id).order("round_number"),
     supabase
@@ -123,11 +123,6 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
       .select("round_number,status")
       .eq("campaign_id", id)
       .in("status", ["passed", "failed", "no_show"]),
-    supabase
-      .from("interview_sessions")
-      .select("id,candidate_id,round_instance_id,status,started_at,created_at"),
-    (supabase as any).from("interview_answers").select("id,session_id,round_instance_id"),
-    supabase.from("scorecards").select("id,session_id,overall_score"),
   ]);
   if (c.error) throw c.error;
 
@@ -148,28 +143,68 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
   }[];
 
   const applicationsList = (appsRes.data ?? []) as any[];
+  const roundInstanceIds = roundInstances.map((r) => r.id);
+  const appIds = applicationsList.map((a) => a.id);
+
+  const [sessionsRes, answersRes] = await Promise.all([
+    roundInstanceIds.length > 0
+      ? supabase
+          .from("interview_sessions")
+          .select("id,candidate_id,round_instance_id,status,started_at,created_at")
+          .in("round_instance_id", roundInstanceIds)
+      : Promise.resolve({ data: [] }),
+    roundInstanceIds.length > 0
+      ? (supabase as any)
+          .from("interview_answers")
+          .select("id,session_id,round_instance_id")
+          .in("round_instance_id", roundInstanceIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
   const allSessions = (sessionsRes.data ?? []) as any[];
+  const sessionIds = allSessions.map((s) => s.id);
+
+  const scFilters = [
+    roundInstanceIds.length > 0 ? `round_instance_id.in.(${roundInstanceIds.join(",")})` : null,
+    sessionIds.length > 0 ? `session_id.in.(${sessionIds.join(",")})` : null,
+  ].filter(Boolean);
+
+  const scorecardsRes =
+    scFilters.length > 0
+      ? await supabase
+          .from("scorecards")
+          .select("id,session_id,round_instance_id,overall_score")
+          .or(scFilters.join(","))
+      : { data: [] };
+
   const allAnswers = (answersRes.data ?? []) as any[];
   const allScorecards = (scorecardsRes.data ?? []) as any[];
 
   let candidates: ViewCandidate[] = [];
 
   if (applicationsList.length > 0) {
-    const appIds = applicationsList.map((a) => a.id);
-    const { data: dlData } = await supabase
-      .from("decision_ledger")
-      .select(
-        "application_id,candidate_id,round_instance_id,stage,score,score_type,rationale,decided_at,created_at",
-      )
-      .in("application_id", appIds)
-      .order("created_at", { ascending: false });
+    const dlFilters = [
+      appIds.length > 0 ? `application_id.in.(${appIds.join(",")})` : null,
+      roundInstanceIds.length > 0 ? `round_instance_id.in.(${roundInstanceIds.join(",")})` : null,
+    ].filter(Boolean);
+
+    const { data: dlData } =
+      dlFilters.length > 0
+        ? await supabase
+            .from("decision_ledger")
+            .select(
+              "application_id,candidate_id,round_instance_id,stage,score,score_type,rationale,decided_at,created_at",
+            )
+            .or(dlFilters.join(","))
+            .order("created_at", { ascending: false })
+        : { data: [] };
 
     const dlList = (dlData ?? []) as any[];
 
     candidates = applicationsList.map((app) => {
       const appResumeScoreRow = dlList.find(
         (d) =>
-          (d.application_id === app.id || d.candidate_id === app.candidate_id) &&
+          d.application_id === app.id &&
           (d.score_type === "resume" ||
             d.stage === "resume_screening" ||
             d.stage?.includes("resume")) &&
@@ -184,16 +219,18 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
       const appRoundScoreRow = dlList.find(
         (d) =>
           ((appRi && d.round_instance_id === appRi.id) ||
-            ((d.application_id === app.id || d.candidate_id === app.candidate_id) &&
+            (d.application_id === app.id &&
               d.score_type !== "resume" &&
               !d.stage?.includes("resume"))) &&
           d.score != null,
       );
 
-      const appSession = allSessions.find(
-        (s) => (appRi && s.round_instance_id === appRi.id) || s.candidate_id === app.candidate_id,
+      const appSession = appRi ? allSessions.find((s) => s.round_instance_id === appRi.id) : null;
+      const appCard = allScorecards.find(
+        (sc) =>
+          (appSession && sc.session_id === appSession.id) ||
+          (appRi && sc.round_instance_id === appRi.id),
       );
-      const appCard = allScorecards.find((sc) => appSession && sc.session_id === appSession.id);
       const appAnswers = allAnswers.filter(
         (a) =>
           (appSession && a.session_id === appSession.id) ||

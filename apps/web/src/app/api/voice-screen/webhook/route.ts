@@ -7,7 +7,30 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
-    let body: Record<string, any> = {};
+    interface WebhookData {
+      event_type?: string;
+      type?: string;
+      payload?: {
+        call?: Record<string, unknown>;
+        [key: string]: unknown;
+      };
+      data?: Record<string, unknown>;
+      metadata?: Record<string, unknown>;
+      notes?: Record<string, unknown>;
+      postcallanalysis?: Record<string, unknown>;
+      post_call_analysis?: Record<string, unknown>;
+      duration?: number | string;
+      status?: string;
+      end_reason?: string;
+      transcript?: string;
+      candidate_id?: string;
+      round_instance_id?: string;
+      account_id?: string;
+      application_id?: string;
+      [key: string]: unknown;
+    }
+
+    let body: WebhookData = {};
     try {
       body = JSON.parse(rawBody);
     } catch {
@@ -20,8 +43,14 @@ export async function POST(req: NextRequest) {
     }
 
     // DialNexa supports both flat and nested payloads
-    const payload = body.payload?.call || body.payload || body.data || body;
-    const meta = payload.metadata || payload.notes || body.metadata || body.notes || {};
+    const payload = (body.payload?.call || body.payload || body.data || body) as Record<
+      string,
+      unknown
+    >;
+    const meta = (payload.metadata || payload.notes || body.metadata || body.notes || {}) as Record<
+      string,
+      unknown
+    >;
 
     const candidateId = meta.candidate_id || payload.candidate_id || null;
     const roundInstanceId = meta.round_instance_id || payload.round_instance_id || null;
@@ -31,8 +60,10 @@ export async function POST(req: NextRequest) {
     const status = payload.status || body.status || "completed";
     const endReason = payload.end_reason || body.end_reason || "completed";
 
-    const postAnalysis =
-      payload.postcallanalysis || payload.post_call_analysis || body.postcallanalysis || {};
+    const postAnalysis = (payload.postcallanalysis ||
+      payload.post_call_analysis ||
+      body.postcallanalysis ||
+      {}) as Record<string, unknown>;
     const sentiment = String(postAnalysis.sentiment || "").toUpperCase();
     const isSuccessful =
       String(postAnalysis.call_successful || "").toLowerCase() === "successful" ||
@@ -102,7 +133,7 @@ export async function POST(req: NextRequest) {
 
     const rationale = isSuccessful
       ? `Candidate completed conversational AI voice screening call (duration: ${duration}s). Telephony sentiment was ${sentiment || "NEUTRAL"} with successful objective completion. Metrics breakdown: Verbal Communication (${sentiment === "POSITIVE" ? 88 : 80}/100), Role & Skills Alignment (82/100), Availability & Notice Period (88/100), Engagement & Demeanor (${sentiment === "POSITIVE" ? 92 : 78}/100), Call Completion (${duration >= 90 ? 95 : 82}/100). Recommendation: Advance to next round.`
-      : `AI voice screening call ended with status '${endReason}' after ${duration}s. Communication assessment yielded a partial evaluation score of ${score}/100. Recruiter review recommended.`;
+      : `AI voice screening call ended with status '${String(endReason || "incomplete").replace(/_/g, " ")}' after ${duration}s. Communication assessment yielded a partial evaluation score of ${score}/100. Recruiter review recommended.`;
 
     // 3. Insert or update decision_ledger
     if (candidateId && resolvedAccountId) {

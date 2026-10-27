@@ -30,7 +30,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
 import {
@@ -66,6 +66,7 @@ import {
 import { decideApplication, type ViewCandidate } from "@/features/campaigns/api";
 import { cn } from "@/lib/utils";
 import { PrepareOfferModal } from "./PrepareOfferModal";
+import { ViewOfferLetterModal } from "./ViewOfferLetterModal";
 
 const PREDEFINED_REJECTION_REASONS = [
   "Skills mismatch with job requirements",
@@ -95,8 +96,24 @@ export function PipelineBoard({
   onRefresh,
 }: PipelineBoardProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") as "active" | "on_hold" | "rejected" | "all" | null;
   const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
-  const [filterTab, setFilterTab] = useState<"active" | "on_hold" | "rejected" | "all">("active");
+  const [filterTab, setFilterTab] = useState<"active" | "on_hold" | "rejected" | "all">(() => {
+    if (initialTab && ["active", "on_hold", "rejected", "all"].includes(initialTab)) {
+      return initialTab;
+    }
+    return "active";
+  });
+
+  const handleTabChange = (tab: "active" | "on_hold" | "rejected" | "all") => {
+    setFilterTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tab);
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
   const [searchQuery, setSearchQuery] = useState("");
 
   // Rejection confirmation dialog state
@@ -107,6 +124,8 @@ export function PipelineBoard({
 
   // Offer modal state
   const [offerCandidate, setOfferCandidate] = useState<ViewCandidate | null>(null);
+  const [viewingOfferCandidate, setViewingOfferCandidate] = useState<ViewCandidate | null>(null);
+  const [viewingOfferData, setViewingOfferData] = useState<unknown | null>(null);
 
   // Busy state per candidate
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
@@ -306,7 +325,7 @@ export function PipelineBoard({
           <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-border/80 bg-muted/30 p-1">
             <button
               type="button"
-              onClick={() => setFilterTab("active")}
+              onClick={() => handleTabChange("active")}
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap",
                 filterTab === "active"
@@ -319,7 +338,7 @@ export function PipelineBoard({
             </button>
             <button
               type="button"
-              onClick={() => setFilterTab("on_hold")}
+              onClick={() => handleTabChange("on_hold")}
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap",
                 filterTab === "on_hold"
@@ -331,7 +350,7 @@ export function PipelineBoard({
             </button>
             <button
               type="button"
-              onClick={() => setFilterTab("rejected")}
+              onClick={() => handleTabChange("rejected")}
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap",
                 filterTab === "rejected"
@@ -343,7 +362,7 @@ export function PipelineBoard({
             </button>
             <button
               type="button"
-              onClick={() => setFilterTab("all")}
+              onClick={() => handleTabChange("all")}
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap",
                 filterTab === "all"
@@ -467,7 +486,7 @@ export function PipelineBoard({
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
                               <Link
-                                href={`/candidates/${cand.candidate_id}?campaignId=${campaign.id}`}
+                                href={`/candidates/${cand.candidate_id}?campaignId=${campaign.id}&tab=${filterTab}`}
                                 className="font-semibold text-xs text-foreground hover:text-primary transition-colors block truncate"
                               >
                                 {cand.name || "Unnamed Candidate"}
@@ -639,13 +658,19 @@ export function PipelineBoard({
                                 </Badge>
                               )}
                             {isOfferSent && (
-                              <Badge
-                                variant="outline"
-                                className="border-emerald-500/40 text-emerald-600 bg-emerald-500/10 text-[10px] gap-1 px-1.5 py-0"
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingOfferCandidate(cand);
+                                }}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-emerald-500/40 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 text-[10px] font-semibold transition-colors cursor-pointer group shadow-2xs"
+                                title="Click to view sent offer letter"
                               >
                                 <FileSignature className="h-2.5 w-2.5" />
-                                Offer Sent
-                              </Badge>
+                                <span>Offer Sent</span>
+                                <Eye className="h-2.5 w-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                              </button>
                             )}
                             {cand.decision === "no_show" && (
                               <Badge
@@ -666,7 +691,7 @@ export function PipelineBoard({
                           {/* Action Buttons Row */}
                           <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between gap-1.5">
                             <Link
-                              href={`/candidates/${cand.candidate_id}?campaignId=${campaign.id}`}
+                              href={`/candidates/${cand.candidate_id}?campaignId=${campaign.id}&tab=${filterTab}`}
                               className="text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
                             >
                               <Eye className="h-3 w-3" />
@@ -723,9 +748,15 @@ export function PipelineBoard({
                                       Send Offer
                                     </Button>
                                   ) : (
-                                    <span className="text-[10px] text-emerald-600 font-medium">
-                                      Sent
-                                    </span>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setViewingOfferCandidate(cand)}
+                                      className="h-6 px-2 text-[10px] font-semibold gap-1 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                                    >
+                                      <Eye className="h-3 w-3" />
+                                      View Offer
+                                    </Button>
                                   )
                                 ) : (
                                   <Button
@@ -789,7 +820,7 @@ export function PipelineBoard({
                     >
                       <TableCell>
                         <Link
-                          href={`/candidates/${cand.candidate_id}?campaignId=${campaign.id}`}
+                          href={`/candidates/${cand.candidate_id}?campaignId=${campaign.id}&tab=${filterTab}`}
                           className="font-medium text-xs text-foreground hover:text-primary transition-colors block"
                         >
                           {cand.name || "Unnamed"}
@@ -808,21 +839,35 @@ export function PipelineBoard({
                       </TableCell>
 
                       <TableCell className="text-center">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-[10px] capitalize font-medium px-2 py-0.5",
-                            cand.status === "on_hold"
-                              ? "border-amber-500/30 text-amber-600 bg-amber-500/10"
-                              : cand.status === "rejected"
-                                ? "border-rose-500/30 text-rose-600 bg-rose-500/10"
-                                : cand.status === "offer_sent"
-                                  ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/10"
+                        {cand.status === "offer_sent" ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingOfferCandidate(cand);
+                            }}
+                            className="border-emerald-500/30 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border cursor-pointer transition-colors"
+                            title="Click to view sent offer letter"
+                          >
+                            <FileSignature className="h-2.5 w-2.5" />
+                            <span>Offer Sent</span>
+                            <Eye className="h-2.5 w-2.5 opacity-70" />
+                          </button>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] capitalize font-medium px-2 py-0.5",
+                              cand.status === "on_hold"
+                                ? "border-amber-500/30 text-amber-600 bg-amber-500/10"
+                                : cand.status === "rejected"
+                                  ? "border-rose-500/30 text-rose-600 bg-rose-500/10"
                                   : "border-border text-foreground bg-muted/20",
-                          )}
-                        >
-                          {cand.status?.replace("_", " ") || "Active"}
-                        </Badge>
+                            )}
+                          >
+                            {cand.status?.replace(/_/g, " ") || "Active"}
+                          </Badge>
+                        )}
                       </TableCell>
 
                       <TableCell className="text-right">
@@ -854,15 +899,25 @@ export function PipelineBoard({
                           {cand.status !== "rejected" &&
                             cand.status !== "on_hold" &&
                             (isOfferStage ? (
-                              !isOfferSent && (
+                              !isOfferSent ? (
                                 <Button
                                   size="sm"
                                   disabled={isBusy || isJobClosed}
                                   onClick={() => setOfferCandidate(cand)}
-                                  className="h-7 px-2.5 text-xs font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  className="h-7 px-2.5 text-xs font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
                                 >
                                   <FileSignature className="h-3.5 w-3.5" />
                                   Send Offer
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setViewingOfferCandidate(cand)}
+                                  className="h-7 px-2.5 text-xs font-semibold gap-1 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 cursor-pointer"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                  View Offer
                                 </Button>
                               )
                             ) : (
@@ -969,6 +1024,26 @@ export function PipelineBoard({
           recruiterEmail={recruiterEmail}
           accessToken={accessToken}
           onComplete={onRefresh}
+          onViewOffer={(cand, offerData) => {
+            setViewingOfferCandidate(cand);
+            setViewingOfferData(offerData || null);
+          }}
+        />
+      )}
+
+      {/* View Sent Offer Letter Modal */}
+      {viewingOfferCandidate && (
+        <ViewOfferLetterModal
+          open={!!viewingOfferCandidate}
+          onOpenChange={(open) => {
+            if (!open) {
+              setViewingOfferCandidate(null);
+              setViewingOfferData(null);
+            }
+          }}
+          candidate={viewingOfferCandidate}
+          campaignId={campaign.id}
+          initialOffer={viewingOfferData as any}
         />
       )}
     </div>

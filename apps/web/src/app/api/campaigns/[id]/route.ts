@@ -55,7 +55,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (cRes.error) {
       return NextResponse.json({ error: cRes.error.message }, { status: 500 });
     }
-    if (!cRes.data || (cRes.data.cadence_config as any)?.is_deleted) {
+    if (!cRes.data || (cRes.data.cadence_config as { is_deleted?: boolean } | null)?.is_deleted) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
@@ -68,27 +68,27 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       byRound[s.round_number] = s.status;
     }
 
-    const candidateIds = applicationsList.map((a) => a.candidate_id).filter(Boolean);
     const roundInstanceIds = roundInstances.map((r) => r.id);
     const appIds = applicationsList.map((a) => a.id);
 
-    // 2. Fetch Sessions, Answers, Scorecards, Decision Ledger
-    const [sessionsRes, answersRes, scorecardsRes, dlRes] = await Promise.all([
-      candidateIds.length > 0
-        ? admin.from("interview_sessions").select("*").in("candidate_id", candidateIds)
+    // 2. Fetch Sessions, Answers, Scorecards, Decision Ledger strictly for this campaign
+    const [sessionsRes, answersRes, dlRes] = await Promise.all([
+      roundInstanceIds.length > 0
+        ? admin.from("interview_sessions").select("*").in("round_instance_id", roundInstanceIds)
         : Promise.resolve({ data: [] }),
       roundInstanceIds.length > 0
-        ? admin.from("interview_answers").select("id, session_id, round_instance_id, answer_text")
+        ? admin
+            .from("interview_answers")
+            .select("id, session_id, round_instance_id, answer_text")
+            .in("round_instance_id", roundInstanceIds)
         : Promise.resolve({ data: [] }),
-      admin.from("scorecards").select("*"),
-      appIds.length > 0 || candidateIds.length > 0
+      appIds.length > 0 || roundInstanceIds.length > 0
         ? admin
             .from("decision_ledger")
             .select("*")
             .or(
               [
                 appIds.length > 0 ? `application_id.in.(${appIds.join(",")})` : null,
-                candidateIds.length > 0 ? `candidate_id.in.(${candidateIds.join(",")})` : null,
                 roundInstanceIds.length > 0
                   ? `round_instance_id.in.(${roundInstanceIds.join(",")})`
                   : null,
@@ -100,10 +100,47 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         : Promise.resolve({ data: [] }),
     ]);
 
-    const allSessions = (sessionsRes.data ?? []) as any[];
-    const allAnswers = (answersRes.data ?? []) as any[];
-    const allScorecards = (scorecardsRes.data ?? []) as any[];
-    const dlList = (dlRes.data ?? []) as any[];
+    interface SessionItem {
+      id?: string;
+      round_instance_id?: string;
+      status?: string;
+      started_at?: string;
+    }
+
+    const allSessions = (sessionsRes.data ?? []) as SessionItem[];
+    const sessionIds = allSessions.map((s) => s.id);
+
+    const scFilters = [
+      roundInstanceIds.length > 0 ? `round_instance_id.in.(${roundInstanceIds.join(",")})` : null,
+      sessionIds.length > 0 ? `session_id.in.(${sessionIds.join(",")})` : null,
+    ].filter(Boolean);
+
+    const scorecardsRes =
+      scFilters.length > 0
+        ? await admin.from("scorecards").select("*").or(scFilters.join(","))
+        : { data: [] };
+
+    interface AnswerItem {
+      session_id?: string;
+      round_instance_id?: string;
+    }
+    interface ScorecardItem {
+      session_id?: string;
+      round_instance_id?: string;
+      overall_score?: number;
+    }
+    interface DecisionLedgerItem {
+      application_id?: string;
+      round_instance_id?: string;
+      score_type?: string;
+      stage?: string;
+      score?: number;
+      rationale?: string;
+    }
+
+    const allAnswers = (answersRes.data ?? []) as AnswerItem[];
+    const allScorecards = (scorecardsRes.data ?? []) as ScorecardItem[];
+    const dlList = (dlRes.data ?? []) as DecisionLedgerItem[];
 
     // 3. Map candidates
     const candidates = applicationsList.map((app) => {
@@ -116,7 +153,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
       const appResumeScoreRow = dlList.find(
         (d) =>
-          (d.application_id === app.id || d.candidate_id === app.candidate_id) &&
+          d.application_id === app.id &&
           (d.score_type === "resume" ||
             d.stage === "resume_screening" ||
             d.stage?.includes("resume")) &&
@@ -126,15 +163,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       const appRoundScoreRow = dlList.find(
         (d) =>
           ((appRi && d.round_instance_id === appRi.id) ||
-            ((d.application_id === app.id || d.candidate_id === app.candidate_id) &&
+            (d.application_id === app.id &&
               d.score_type !== "resume" &&
               !d.stage?.includes("resume"))) &&
           d.score != null,
       );
 
-      const appSession = allSessions.find(
-        (s) => (appRi && s.round_instance_id === appRi.id) || s.candidate_id === app.candidate_id,
-      );
+      const appSession = appRi ? allSessions.find((s) => s.round_instance_id === appRi.id) : null;
 
       const appCard = allScorecards.find(
         (sc) =>

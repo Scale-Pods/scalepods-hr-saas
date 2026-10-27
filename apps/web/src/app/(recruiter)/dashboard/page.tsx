@@ -52,6 +52,30 @@ function greeting(email?: string | null) {
   return { prefix, name: name.charAt(0).toUpperCase() + name.slice(1) };
 }
 
+function formatStageName(stage: string): string {
+  if (!stage) return "";
+  const map: Record<string, string> = {
+    applied: "Applied",
+    resume_screen: "Resume Screening",
+    resume_screening: "Resume Screening",
+    voice_screen: "Voice Screening",
+    voice_screening: "Voice Screening",
+    ai_interview: "AI Interview",
+    round_1: "Round 1 Interview",
+    round_2: "Round 2 Interview",
+    interview_1: "Round 1 Interview",
+    interview_2: "Round 2 Interview",
+    technical_assessment: "Technical Assessment",
+    offer: "Offer",
+    hired: "Hired",
+    rejected: "Rejected",
+    withdrawn: "Withdrawn",
+  };
+  const key = stage.toLowerCase().trim();
+  if (map[key]) return map[key];
+  return stage.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function stageMeta(stage: string) {
   const s = stage.toLowerCase();
   if (s.includes("reject") || s.includes("fail")) return { color: "#ef4444", label: "Rejected" };
@@ -750,7 +774,7 @@ export default function DashboardPage() {
                     <div key={row.stage} className="ref-conv-stat">
                       <span className="ref-conv-dot" style={{ background: color }} />
                       <span className="flex-1 text-xs text-muted-foreground">
-                        {funnelRows[i].stage} → {row.stage}
+                        {formatStageName(funnelRows[i].stage)} → {formatStageName(row.stage)}
                       </span>
                       <span className="font-semibold text-xs text-foreground">{rate}%</span>
                     </div>
@@ -867,7 +891,7 @@ export default function DashboardPage() {
                     <div className="ref-activity-info">
                       <div className="ref-activity-text">
                         <strong>{nameMap[row.candidate_id] ?? "Candidate"}</strong> moved to{" "}
-                        <strong>{row.stage}</strong>
+                        <strong>{formatStageName(row.stage)}</strong>
                       </div>
                       <div className="ref-activity-time">{timeAgo(row.decided_at)}</div>
                     </div>
@@ -898,7 +922,7 @@ export default function DashboardPage() {
                       <strong>{nameMap[row.candidate_id] ?? "Candidate"}</strong>
                       {" — "}
                       <span className="text-muted-foreground capitalize">
-                        {row.round_type?.replace("_", " ")}
+                        {row.round_type?.replace(/_/g, " ")}
                       </span>
                     </div>
                     <div className="ref-activity-time">{formatDateTime(row.scheduled_at)}</div>

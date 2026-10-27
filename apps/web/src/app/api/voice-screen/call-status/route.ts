@@ -500,7 +500,7 @@ async function recordVoiceScreenScoreIfMissing(params: {
 
     const rationale = isSuccess
       ? `Candidate completed the conversational AI voice screening call (duration: ${duration}s). Telephony sentiment was ${sent || "NEUTRAL"} with successful objective completion. Metrics breakdown: Verbal Communication (${sent === "POSITIVE" ? 88 : 80}/100), Role & Skills Alignment (82/100), Availability & Notice Period (88/100), Engagement & Demeanor (${sent === "POSITIVE" ? 92 : 78}/100), Call Completion (${duration >= 90 ? 95 : 82}/100). Recommendation: Advance to next round.`
-      : `AI voice screening call ended with status '${endReason || "incomplete"}' after ${duration}s. Communication assessment yielded a partial evaluation score of ${score}/100. Recruiter review recommended.`;
+      : `AI voice screening call ended with status '${(endReason || "incomplete").replace(/_/g, " ")}' after ${duration}s. Communication assessment yielded a partial evaluation score of ${score}/100. Recruiter review recommended.`;
 
     const rawText =
       transcript || `DialNexa call ${callId}: duration ${duration}s, status: ${status}.`;

@@ -95,32 +95,47 @@ function formatDateString(val?: string): string {
   return String(val);
 }
 
+function hideTjText(s: string, target: string): string {
+  return s.split(`(${target}) Tj`).join("() Tj");
+}
+
 function cleanGeneralTemplateArtifacts(s: string): string {
-  // Strip yellow top guidance banner
-  s = s.replace(
-    /q\s*\r?\n\s*1 \.952941 \.803922 rg\s*\r?\n\s*n 0 25 511\.2756 -25 re f\*[\s\S]*?n 511\.2756 0 m 511\.2756 25 l S\s*Q\s*Q\s*Q/g,
-    "",
+  // Neutralize yellow, blue, and gray banner fills by replacing 're f*' with no-op 're n'
+  s = s.replace(/1 \.952941 \.803922 rg\s*n [0-9. -]+ re f\*/g, "n 0 0 0 0 re");
+  s = s.replace(/\.933333 \.956863 1 rg\s*n [0-9. -]+ re f\*/g, "n 0 0 0 0 re");
+  s = s.replace(/\.941176 \.941176 \.941176 rg\s*n [0-9. -]+ re f\*/g, "n 0 0 0 0 re");
+
+  // Neutralize banner border strokes by replacing the stroke commands with no-op 'n'
+  s = s.replace(/1 \.756863 \.027451 RG[\s\S]*?n 511\.2756 0 m 511\.2756 25 l S/g, "n");
+  s = s.replace(/\.101961 \.235294 \.431373 RG[\s\S]*?n 511\.2756 0 m 511\.2756 40 l S/g, "n");
+  s = s.replace(/\.666667 \.666667 \.666667 RG[\s\S]*?n 511\.2756 0 m 511\.2756 21 l S/g, "n");
+
+  // Blank all guidance / instruction banner texts
+  s = hideTjText(s, "{{VARIABLE}} ");
+  s = hideTjText(
+    s,
+    "= dynamic field \\227 replace at generation time. All highlighted fields are required inputs in the form/API.",
   );
-  // Strip blue letterhead guidance banner
-  s = s.replace(
-    /q\s*\r?\n\s*\.933333 \.956863 1 rg\s*\r?\n\s*n 0 40 511\.2756 -40 re f\*[\s\S]*?n 511\.2756 0 m 511\.2756 40 l S\s*Q\s*Q\s*Q/g,
-    "",
+  s = hideTjText(s, "LETTERHEAD / LOGO AREA");
+  s = hideTjText(
+    s,
+    "Attach client letterhead as background image \\(A4 JPG/PNG\\), or place company logo here. Variable:",
   );
-  // Strip all gray instruction/condition banners and their stroke borders
-  s = s.replace(
-    /q\s*\r?\n\s*\.941176 \.941176 \.941176 rg[\s\S]*?n 511\.2756 0 m 511\.2756 21 l S\s*Q\s*Q(\s*Q)?/g,
-    "",
-  );
-  // Strip all 62 yellow highlight rectangles behind dynamic variables
-  s = s.replace(/1 \.952941 \.803922 rg\s*n [0-9. -]+ re f\*/g, "");
+  s = hideTjText(s, "{{COMPANY_LOGO_PATH}}");
+  s = hideTjText(s, "Show this section only when: ");
+  s = hideTjText(s, "LETTER_TYPE = fulltime ");
+  s = hideTjText(s, "LETTER_TYPE = fulltime");
+  s = hideTjText(s, "LETTER_TYPE = intern ");
+  s = hideTjText(s, "LETTER_TYPE = intern");
+  s = hideTjText(s, "\\256");
+  s = s.replace(/\( show '[^']*'\) Tj/g, "() Tj");
+  s = hideTjText(s, "Show incentive line only when INCENTIVE_NOTE is non-empty");
+
+  // Reset justified word spacing Tw to 0 Tw
+  s = s.replace(/([0-9.-]+)\s+Tw/g, "0 Tw");
   // Replace template brown/yellow text color with crisp black text
   s = s.replace(/\.490196 \.290196 0 rg/g, "0 0 0 rg");
-  // Reset justified word spacing Tw to 0 Tw to eliminate awkward stretching/bunching
-  s = s.replace(/([0-9.-]+)\s+Tw/g, "0 Tw");
-  // Blank remaining template instruction texts if any
-  s = s.replace(/\(Show this section only when: [^)]*\) Tj/g, "() Tj");
-  s = s.replace(/\(LETTER_TYPE = [^)]*\) Tj/g, "() Tj");
-  s = s.replace(/\(LETTERHEAD \/ LOGO AREA\) Tj/g, "() Tj");
+
   return s;
 }
 
@@ -254,57 +269,65 @@ export function generateBrandedOfferPdf(data: OfferPdfData): Buffer {
 
     if (isIntern) {
       // Hide fulltime title & opening paragraph
-      s = s.replace(
-        /q\s*1 0 0 1 42 602\.8898 cm[\s\S]*?\(APPOINTMENT LETTER\) Tj[\s\S]*?Q\s*Q/g,
-        "",
+      s = hideTjText(s, "APPOINTMENT LETTER");
+      s = hideTjText(s, "We are pleased to offer you the position of ");
+      s = hideTjText(s, "at ");
+      s = hideTjText(
+        s,
+        "This offer reflects our confidence in your abilities and your potential to contribute to our growth.",
       );
-      s = s.replace(
-        /q\s*1 0 0 1 42 463\.4898 cm[\s\S]*?\(This offer reflects our confidence in your abilities and your potential to contribute to our growth\.\) Tj T\* ET\s*Q\s*Q/g,
-        "",
-      );
+
       // Hide entire Section 2 compensation table on Page 1
-      s = s.replace(
-        /q\s*1 0 0 1 42 219\.0898 cm[\s\S]*?n 411\.2756 0 m 411\.2756 137 l S\s*Q\s*Q\s*Q/g,
-        "",
-      );
+      s = hideTjText(s, "2. Compensation & Benefits");
+      s = hideTjText(s, "#");
+      s = hideTjText(s, "Component");
+      s = hideTjText(s, "Monthly \\(INR\\)");
+      s = hideTjText(s, "Annual \\(INR\\)");
+      s = hideTjText(s, "1");
+      s = hideTjText(s, "Basic Salary");
+      s = hideTjText(s, "2");
+      s = hideTjText(s, "House Rent Allowance \\(HRA\\)");
+      s = hideTjText(s, "3");
+      s = hideTjText(s, "Special Allowance");
+      s = hideTjText(s, "{{BASIC_SALARY}");
+      s = hideTjText(s, "{{BASIC_SALARY_");
+      s = hideTjText(s, "ANNUAL}}");
+      s = hideTjText(s, "{{HRA}}");
+      s = hideTjText(s, "{{HRA_ANNUAL}}");
+      s = hideTjText(s, "{{SPECIAL_ALLO");
+      s = hideTjText(s, "WANCE}}");
+      s = hideTjText(s, "WANCE_ANNUAL}");
+
+      // Neutralize table grid lines on page 1 without removing q/Q
+      s = s.replace(/n 411\.2756 0 m 411\.2756 137 l S/g, "n");
+      s = s.replace(/n [0-9.]+ 0 m [0-9.]+ 137 l S/g, "n");
     } else {
       // Hide intern title & opening paragraph
-      s = s.replace(
-        /q\s*1 0 0 1 42 561\.8898 cm[\s\S]*?\(INTERNSHIP APPOINTMENT LETTER\) Tj[\s\S]*?Q\s*Q/g,
-        "",
+      s = hideTjText(s, "INTERNSHIP APPOINTMENT LETTER");
+      s = hideTjText(s, "We are pleased to offer you a ");
+      s = hideTjText(s, "internship");
+      s = hideTjText(s, " position with ");
+      s = hideTjText(s, "in the capacity of ");
+      s = hideTjText(
+        s,
+        ". This offer is extended with confidence in your skills and enthusiasm to",
       );
-      s = s.replace(
-        /q\s*1 0 0 1 42 388\.4898 cm[\s\S]*?\(contribute meaningfully to our initiatives\.\) Tj T\* ET\s*Q\s*Q/g,
-        "",
-      );
+      s = hideTjText(s, "contribute meaningfully to our initiatives.");
 
-      // Populate table cells with perfectly aligned single-line text
-      s = s.replace(
-        /q\s*1 0 0 1 317\.2756 80 cm[\s\S]*?Q\s*Q/,
-        `q\n1 0 0 1 317.2756 80 cm\nq\nBT 1 0 0 1 0 13 Tm 15 TL /F2 9.5 Tf 0 0 0 rg (${basicMonthlyStr}) Tj T* ET\nQ\nQ`,
-      );
-      s = s.replace(
-        /q\s*1 0 0 1 417\.2756 80 cm[\s\S]*?Q\s*Q/,
-        `q\n1 0 0 1 417.2756 80 cm\nq\nBT 1 0 0 1 0 13 Tm 15 TL /F2 9.5 Tf 0 0 0 rg (${basicAnnualStr}) Tj T* ET\nQ\nQ`,
-      );
-      s = s.replace(
-        /q\s*1 0 0 1 317\.2756 57 cm[\s\S]*?Q\s*Q/,
-        `q\n1 0 0 1 317.2756 57 cm\nq\nBT 1 0 0 1 0 5.5 Tm 15 TL /F2 9.5 Tf 0 0 0 rg (${hraMonthlyStr}) Tj T* ET\nQ\nQ`,
-      );
-      s = s.replace(
-        /q\s*1 0 0 1 417\.2756 57 cm[\s\S]*?Q\s*Q/,
-        `q\n1 0 0 1 417.2756 57 cm\nq\nBT 1 0 0 1 0 5.5 Tm 15 TL /F2 9.5 Tf 0 0 0 rg (${hraAnnualStr}) Tj T* ET\nQ\nQ`,
-      );
-      s = s.replace(
-        /q\s*1 0 0 1 317\.2756 11\.5 cm[\s\S]*?Q\s*Q/,
-        `q\n1 0 0 1 317.2756 11.5 cm\nq\nBT 1 0 0 1 0 13 Tm 15 TL /F2 9.5 Tf 0 0 0 rg (${specialMonthlyStr}) Tj T* ET\nQ\nQ`,
-      );
-      s = s.replace(
-        /q\s*1 0 0 1 417\.2756 4 cm[\s\S]*?Q\s*Q/,
-        `q\n1 0 0 1 417.2756 4 cm\nq\nBT 1 0 0 1 0 20.5 Tm 15 TL /F2 9.5 Tf 0 0 0 rg (${specialAnnualStr}) Tj T* ET\nQ\nQ`,
-      );
+      // Populate table cells
+      s = s.replace(/\(\{\{BASIC_SALARY\}\}\) Tj/g, `(${basicMonthlyStr}) Tj`);
+      s = s.replace(/\(\{\{BASIC_SALARY\}\) Tj/g, `(${basicMonthlyStr}) Tj`);
+      s = s.replace(/\(\{\{BASIC_SALARY_\) Tj/g, `(${basicAnnualStr}) Tj`);
+      s = hideTjText(s, "ANNUAL}}");
+      s = s.replace(/\(\{\{HRA\}\}\) Tj/g, `(${hraMonthlyStr}) Tj`);
+      s = s.replace(/\(\{\{HRA_ANNUAL\}\}\) Tj/g, `(${hraAnnualStr}) Tj`);
+      s = s.replace(/\(\{\{SPECIAL_ALLO\) Tj/, `(${specialMonthlyStr}) Tj`);
+      s = hideTjText(s, "WANCE}}");
+      s = s.replace(/\(\{\{SPECIAL_ALLO\) Tj/, `(${specialAnnualStr}) Tj`);
+      s = hideTjText(s, "WANCE_ANNUAL}");
     }
 
+    s = s.split("(}) Tj").join("() Tj");
     s = cleanGeneralTemplateArtifacts(s);
     return s;
   }
@@ -321,54 +344,71 @@ export function generateBrandedOfferPdf(data: OfferPdfData): Buffer {
 
     if (isIntern) {
       // Strip Total CTC table row
-      s = s.replace(
-        /q\s*1 0 0 1 42 713\.8898 cm[\s\S]*?n 411\.2756 0 m 411\.2756 38 l S\s*Q\s*Q\s*Q/g,
-        "",
+      s = hideTjText(s, "Total");
+      s = hideTjText(s, "CTC");
+      s = hideTjText(s, "{{GROSS_MONTHL");
+      s = hideTjText(s, "Y}}");
+      s = hideTjText(s, "{{GROSS_ANNUAL");
+      s = hideTjText(s, "}}");
+      s = hideTjText(s, "* Gross Annual CTC: ");
+      s = hideTjText(s, "INR ");
+      s = hideTjText(s, "{{GROSS_ANNUAL}} ");
+      s = hideTjText(s, "/- \\(");
+      s = hideTjText(s, " {{GROSS_ANNUAL_WORDS}} ");
+      s = hideTjText(s, "\\)");
+      s = hideTjText(s, "* Incentive / Variable Pay: ");
+      s = hideTjText(s, "{{INCENTIVE_NOTE}}");
+      s = hideTjText(s, "3. Employment Status");
+      s = hideTjText(s, "* This is a ");
+      s = hideTjText(s, "full-time");
+      s = hideTjText(s, " position.");
+      s = hideTjText(s, "* The first ");
+      s = hideTjText(
+        s,
+        "will be a probationary period. Either party may terminate during probation with",
       );
-      // Strip Gross Annual CTC line
-      s = s.replace(
-        /q\s*1 0 0 1 42 694\.8898 cm[\s\S]*?\(\* Gross Annual CTC: \) Tj[\s\S]*?Q\s*Q/g,
-        "",
-      );
-      // Strip Incentive line
-      s = s.replace(
-        /q\s*1 0 0 1 42 658\.8898 cm[\s\S]*?\(\* Incentive \/ Variable Pay: \) Tj[\s\S]*?Q\s*Q/g,
-        "",
-      );
-      // Strip full-time Employment Status
-      s = s.replace(/q\s*1 0 0 1 42 525\.8898 cm[\s\S]*?\(applies\.\) Tj T\* ET\s*Q\s*Q/g, "");
+      s = hideTjText(s, "written notice.");
+      s = hideTjText(s, "* On confirmation, standard notice period of ");
+      s = hideTjText(s, "applies.");
+      s = s.replace(/n 411\.2756 0 m 411\.2756 38 l S/g, "n");
+
       // Fill stipend
       s = s.split("{{STIPEND_AMOUNT}}").join(stipendAmountStr);
       s = s.split("{{STIPEND_WORDS}}").join(stipendWordsStr);
     } else {
-      // Fill Total CTC row cells with cleanly aligned values
-      s = s.replace(
-        /q\s*1 0 0 1 317\.2756 4 cm[\s\S]*?Q\s*Q/,
-        `q\n1 0 0 1 317.2756 4 cm\nq\nBT 1 0 0 1 0 13 Tm 15 TL /F2 9.5 Tf 0 0 0 rg (${grossMonthlyStr}) Tj T* ET\nQ\nQ`,
-      );
-      s = s.replace(
-        /q\s*1 0 0 1 417\.2756 4 cm[\s\S]*?Q\s*Q/,
-        `q\n1 0 0 1 417.2756 4 cm\nq\nBT 1 0 0 1 0 13 Tm 15 TL /F2 9.5 Tf 0 0 0 rg (${grossAnnualStr}) Tj T* ET\nQ\nQ`,
-      );
+      // Full time: populate Total CTC row
+      s = s.replace(/\(\{\{GROSS_MONTHL\) Tj/, `(${grossMonthlyStr}) Tj`);
+      s = hideTjText(s, "Y}}");
+      s = s.replace(/\(\{\{GROSS_ANNUAL\) Tj/, `(${grossAnnualStr}) Tj`);
+      s = hideTjText(s, "}}");
       s = s.split("{{GROSS_ANNUAL}}").join(grossAnnualStr);
       s = s.split("{{GROSS_ANNUAL_WORDS}}").join(grossAnnualWordsStr);
       if (incentiveNote) {
         s = s.split("{{INCENTIVE_NOTE}}").join(incentiveNote);
       } else {
-        s = s.replace(
-          /q\s*1 0 0 1 42 658\.8898 cm[\s\S]*?\(\* Incentive \/ Variable Pay: \) Tj[\s\S]*?Q\s*Q/g,
-          "",
-        );
+        s = hideTjText(s, "* Incentive / Variable Pay: ");
+        s = hideTjText(s, "{{INCENTIVE_NOTE}}");
       }
-      // Strip intern compensation (stipend)
-      s = s.replace(/q\s*1 0 0 1 42 609\.8898 cm[\s\S]*?\(month\.\) Tj T\* ET\s*Q\s*Q/g, "");
-      // Strip intern engagement details
-      s = s.replace(
-        /q\s*1 0 0 1 42 411\.8898 cm[\s\S]*?\(successful completion of the internship\.\) Tj T\* ET\s*Q\s*Q/g,
-        "",
-      );
+
+      // Hide intern compensation (stipend) & intern engagement details
+      s = hideTjText(s, "2. Compensation");
+      s = hideTjText(s, "* Monthly Stipend: ");
+      s = hideTjText(s, "{{STIPEND_AMOUNT}} ");
+      s = hideTjText(s, "{{STIPEND_WORDS}} ");
+      s = hideTjText(s, ", paid between the 1st to 3rd of each");
+      s = hideTjText(s, "month.");
+      s = hideTjText(s, "3. Internship Status");
+      s = hideTjText(s, "* This is a ");
+      s = hideTjText(s, "full-time internship");
+      s = hideTjText(s, " engagement for a fixed duration of ");
+      s = hideTjText(s, "* You are expected to dedicate your full working capacity to ");
+      s = hideTjText(s, "during this period.");
+      s = hideTjText(s, "* Based on your performance, ");
+      s = s.replace(/\(may offer a full-time role at the Company's discretion upon\) Tj/g, "() Tj");
+      s = hideTjText(s, "successful completion of the internship.");
     }
 
+    s = s.split("(}) Tj").join("() Tj");
     s = cleanGeneralTemplateArtifacts(s);
     return s;
   }
@@ -386,15 +426,11 @@ export function generateBrandedOfferPdf(data: OfferPdfData): Buffer {
     s = applyCustomDynamicReplacements(s);
 
     if (isIntern) {
-      s = s.replace(
-        /q\s*1 0 0 1 42 652\.8898 cm[\s\S]*?\(reserves the right to terminate immediately without notice in cases of misconduct or breach of confidentiality\.\) Tj T\* ET\s*Q\s*Q/g,
-        "",
-      );
+      s = hideTjText(s, "Either party may terminate this engagement with ");
+      s = hideTjText(s, "prior written notice");
     } else {
-      s = s.replace(
-        /q\s*1 0 0 1 42 596\.8898 cm[\s\S]*?\(terminate immediately without notice in cases of misconduct or breach of confidentiality\.\) Tj T\* ET\s*Q\s*Q/g,
-        "",
-      );
+      s = hideTjText(s, "Either party may terminate this internship with ");
+      s = hideTjText(s, "15 days' prior written notice");
     }
 
     s = cleanGeneralTemplateArtifacts(s);
@@ -466,11 +502,11 @@ export function generateBrandedOfferPdf(data: OfferPdfData): Buffer {
 
   let newXref = `xref\n0 17\n`;
   for (let i = 0; i < 14; i++) {
-    newXref += xrefLines[i] + "\n";
+    newXref += `${xrefLines[i]}\n`;
   }
-  newXref += String(offset14).padStart(10, "0") + " 00000 n \n";
-  newXref += String(offset15).padStart(10, "0") + " 00000 n \n";
-  newXref += String(offset16).padStart(10, "0") + " 00000 n \n";
+  newXref += `${String(offset14).padStart(10, "0")} 00000 n \n`;
+  newXref += `${String(offset15).padStart(10, "0")} 00000 n \n`;
+  newXref += `${String(offset16).padStart(10, "0")} 00000 n \n`;
 
   const trailerIdx = str.indexOf("trailer", xrefIdx);
   const trailerBlock = str.slice(trailerIdx, str.indexOf("startxref", trailerIdx));

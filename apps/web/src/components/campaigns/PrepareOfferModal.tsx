@@ -44,6 +44,7 @@ export interface PrepareOfferModalProps {
   recruiterEmail: string;
   accessToken?: string;
   onComplete: () => void;
+  onViewOffer?: (candidate: ViewCandidate, offer?: unknown) => void;
 }
 
 const STANDARD_FORM_KEYS = new Set([
@@ -96,6 +97,7 @@ export function PrepareOfferModal({
   recruiterEmail,
   accessToken,
   onComplete,
+  onViewOffer,
 }: PrepareOfferModalProps) {
   const [positionTitle, setPositionTitle] = useState(campaign.name || "");
   const [salary, setSalary] = useState(campaign.salary_min ? String(campaign.salary_min) : "");
@@ -161,7 +163,7 @@ export function PrepareOfferModal({
     return defaults;
   });
 
-  if (!candidate || !candidate.application_id) return null;
+  if (!candidate?.application_id) return null;
 
   const handleSendOffer = async () => {
     if (!positionTitle.trim()) {
@@ -225,6 +227,9 @@ export function PrepareOfferModal({
 
       onOpenChange(false);
       onComplete();
+      if (onViewOffer) {
+        onViewOffer(candidate, data.offer);
+      }
     } catch (err) {
       showErrorToast(err);
     } finally {
