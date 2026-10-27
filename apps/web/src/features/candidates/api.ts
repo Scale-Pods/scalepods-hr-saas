@@ -640,7 +640,12 @@ export async function fetchCandidateProfile(
       const isVoice =
         row.stage === "voice_screen" ||
         (typeof row.stage === "string" && row.stage.toLowerCase().includes("voice"));
-      return isVoice && row.account_id === cand.account_id;
+      if (!isVoice || row.account_id !== cand.account_id) return false;
+      if (row.round_instance_id) return roundIds.includes(row.round_instance_id);
+      if (row.application_id && matchedApplication) {
+        return row.application_id === matchedApplication.id;
+      }
+      return candidateCampaigns.length <= 1;
     })
     .map((row) => {
       const score = row.score != null ? Number(row.score) : 75;

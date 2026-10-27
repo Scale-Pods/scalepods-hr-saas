@@ -443,23 +443,37 @@ export default function CandidateProfilePage() {
   >([]);
   const [loadingCalls, setLoadingCalls] = useState(false);
 
+  const effectiveCampaignId =
+    selectedCampaignId || application?.campaign_id || campaign?.id || null;
+
   useEffect(() => {
-    if (!candidate?.phone) return;
+    if (!candidate?.phone) {
+      setDialnexaCalls([]);
+      return;
+    }
     setLoadingCalls(true);
+    setDialnexaCalls([]);
     const params = new URLSearchParams();
     params.set("phone", candidate.phone);
     if (account?.id) params.set("account_id", account.id);
-    if (selectedCampaignId) params.set("campaign_id", selectedCampaignId);
+    if (effectiveCampaignId) params.set("campaign_id", effectiveCampaignId);
     if (id) params.set("candidate_id", id);
 
     fetch(`/api/voice-screen/call-status?${params.toString()}`)
       .then((res) => res.json())
       .then((json) => {
-        if (json.calls) setDialnexaCalls(json.calls);
+        if (json.calls && Array.isArray(json.calls)) {
+          setDialnexaCalls(json.calls);
+        } else {
+          setDialnexaCalls([]);
+        }
       })
-      .catch((err) => console.warn("Failed to load call status:", err))
+      .catch((err) => {
+        console.warn("Failed to load call status:", err);
+        setDialnexaCalls([]);
+      })
       .finally(() => setLoadingCalls(false));
-  }, [candidate?.phone, account?.id, selectedCampaignId, id]);
+  }, [candidate?.phone, account?.id, effectiveCampaignId, id]);
 
   const [overrideTarget, setOverrideTarget] = useState("");
   const [overrideScore, setOverrideScore] = useState(0);

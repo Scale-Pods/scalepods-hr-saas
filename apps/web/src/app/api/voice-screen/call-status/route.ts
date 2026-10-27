@@ -180,10 +180,19 @@ export async function GET(req: Request) {
           }
         }
 
+        let targetAppId: string | null = null;
         if (campaignId && candidateId) {
+          const { data: appData } = await supabase
+            .from("applications")
+            .select("id")
+            .eq("candidate_id", candidateId)
+            .eq("campaign_id", campaignId)
+            .maybeSingle();
+          targetAppId = appData?.id || null;
+
           const { data: ris } = await supabase
             .from("round_instances")
-            .select("id")
+            .select("id, round_type")
             .eq("candidate_id", candidateId)
             .eq("campaign_id", campaignId);
           allowedRoundInstanceIds = (ris ?? []).map((r) => r.id);
@@ -191,22 +200,38 @@ export async function GET(req: Request) {
 
         let olQuery = supabase
           .from("outreach_log")
-          .select("id, round_instance_id, sent_at")
+          .select("id, round_instance_id, application_id, sent_at")
           .eq("channel", "voice_call");
         if (accountId) olQuery = olQuery.eq("account_id", accountId);
         if (candidateId) olQuery = olQuery.eq("candidate_id", candidateId);
 
         const { data: ols } = await olQuery;
         const matchingOls = (ols ?? []).filter((ol) => {
-          if (allowedRoundInstanceIds && allowedRoundInstanceIds.length > 0) {
-            return ol.round_instance_id && allowedRoundInstanceIds.includes(ol.round_instance_id);
+          if (campaignId) {
+            const matchesRi =
+              ol.round_instance_id &&
+              allowedRoundInstanceIds &&
+              allowedRoundInstanceIds.includes(ol.round_instance_id);
+            const matchesApp = targetAppId && ol.application_id === targetAppId;
+            return Boolean(matchesRi || matchesApp);
+          }
+          if (allowedRoundInstanceIds) {
+            return (
+              allowedRoundInstanceIds.length > 0 &&
+              ol.round_instance_id &&
+              allowedRoundInstanceIds.includes(ol.round_instance_id)
+            );
           }
           return true;
         });
 
-        if (matchingOls.length === 0 && (accountId || campaignId)) {
-          // If this campaign or account never initiated a voice call for this candidate,
+        if (campaignId && matchingOls.length === 0) {
+          // If this campaign never initiated a voice call for this candidate,
           // strictly return empty calls list (prevent leaking foreign calls)
+          return NextResponse.json({ calls: [], message: "No voice calls in this campaign" });
+        }
+
+        if (matchingOls.length === 0 && accountId) {
           return NextResponse.json({ calls: [] });
         }
 
@@ -246,17 +271,29 @@ export async function GET(req: Request) {
       if (candidateId && meta.candidate_id && meta.candidate_id !== candidateId) {
         return false;
       }
-      if (
-        allowedRoundInstanceIds &&
-        allowedRoundInstanceIds.length > 0 &&
-        meta.round_instance_id &&
-        !allowedRoundInstanceIds.includes(String(meta.round_instance_id))
-      ) {
-        return false;
-      }
 
-      // Check timing against outreach_log to ensure call belongs to this candidate's outreach
-      if (validOutreachTimes && validOutreachTimes.length > 0) {
+      if (campaignId) {
+        if (!validOutreachTimes || validOutreachTimes.length === 0) {
+          return false;
+        }
+        const callTime = new Date((c.called_time || c.initiated_time) as string).getTime();
+        const matchesWindow = validOutreachTimes.some(
+          (ot) => Math.abs(callTime - ot) < 45 * 60 * 1000,
+        );
+        if (!matchesWindow) return false;
+
+        if (
+          meta.round_instance_id &&
+          allowedRoundInstanceIds &&
+          !allowedRoundInstanceIds.includes(String(meta.round_instance_id))
+        ) {
+          return false;
+        }
+
+        if (meta.campaign_id && meta.campaign_id !== campaignId) {
+          return false;
+        }
+      } else if (validOutreachTimes && validOutreachTimes.length > 0) {
         const callTime = new Date((c.called_time || c.initiated_time) as string).getTime();
         const matchesWindow = validOutreachTimes.some(
           (ot) => Math.abs(callTime - ot) < 45 * 60 * 1000,
