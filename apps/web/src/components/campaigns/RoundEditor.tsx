@@ -210,7 +210,7 @@ export function RoundEditor({
                 Assigned Team Interviewer *
               </label>
               <Link
-                href="/settings"
+                href="/settings?from=campaign_wizard"
                 target="_blank"
                 className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
               >
@@ -279,7 +279,7 @@ export function RoundEditor({
                   your teammates in Settings to enable this round.
                 </p>
                 <Link
-                  href="/settings"
+                  href="/settings?from=campaign_wizard"
                   target="_blank"
                   className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
                 >

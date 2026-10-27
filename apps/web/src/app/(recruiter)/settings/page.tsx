@@ -1,7 +1,8 @@
 "use client";
 
 import { type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
-import { Mail, MessageSquare, Phone } from "lucide-react";
+import { ArrowLeft, Mail, MessageSquare, Phone } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -36,6 +37,18 @@ function SettingsPageInner() {
   const params = useSearchParams();
   const tier = (account?.tier ?? "free") as keyof typeof TIER_LIMITS;
   const t = TIER_LIMITS[tier];
+
+  const fromCampaign = params.get("from") === "campaign_wizard" || params.get("from") === "campaign";
+  const [hasDraft, setHasDraft] = useState(false);
+
+  useEffect(() => {
+    try {
+      const draft =
+        localStorage.getItem("scalepods_campaign_wizard_draft") ||
+        sessionStorage.getItem("scalepods_campaign_wizard_draft");
+      if (draft) setHasDraft(true);
+    } catch {}
+  }, []);
 
   const [calendarByMember, setCalendarByMember] = useState<
     Record<string, { status: string; google_email: string | null }>
@@ -427,6 +440,33 @@ function SettingsPageInner() {
           Teammates can be assigned as interviewers for live candidate rounds.
         </p>
       </SectionCard>
+
+      {(fromCampaign || hasDraft) && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-2xl bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-primary/10 border border-primary/30 p-4 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-primary">
+              <ArrowLeft className="h-4 w-4" />
+            </div>
+            <div>
+              <h4 className="text-xs sm:text-sm font-semibold text-foreground">
+                Campaign Creation in Progress
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Your campaign draft is auto-saved. Add teammates and connect their Google Calendar above, then return to your campaign.
+              </p>
+            </div>
+          </div>
+          <Link href="/campaigns?tab=new" className="shrink-0">
+            <Button
+              size="sm"
+              className="w-full sm:w-auto rounded-xl gap-1.5 px-4 font-semibold bg-primary hover:bg-primary/90 text-white shadow-xs"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Back to Campaign</span>
+            </Button>
+          </Link>
+        </div>
+      )}
 
       <SectionCard
         title="Sending identity"

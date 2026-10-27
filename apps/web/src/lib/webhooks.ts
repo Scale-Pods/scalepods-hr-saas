@@ -84,7 +84,10 @@ export async function callWorkflow<T>(
   }
 
   const body = (isRecord(payload) ? payload : {}) as Record<string, unknown>;
-  const message = typeof body.error === "string" ? body.error : response.statusText;
+  const message =
+    (typeof body.error === "string" && body.error) ||
+    (typeof body.message === "string" && body.message) ||
+    response.statusText;
   const detail = typeof body.detail === "string" ? body.detail : undefined;
   const reason = typeof body.reason === "string" ? body.reason : undefined;
 

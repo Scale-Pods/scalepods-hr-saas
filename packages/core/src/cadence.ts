@@ -38,10 +38,26 @@ export const CADENCE_STAGES = [
     appliesTo: [],
   },
   {
+    key: "reminder_day2",
+    label: "Reminder",
+    dayLabel: "Day 2",
+    description: "Follow-up reminder ahead of the interview window.",
+    channels: ["email", "whatsapp"],
+    appliesTo: [],
+  },
+  {
     key: "reminder_day3",
     label: "Reminder",
     dayLabel: "Day 3",
     description: "Second nudge ahead of the interview window.",
+    channels: ["email", "whatsapp"],
+    appliesTo: [],
+  },
+  {
+    key: "reminder_day4",
+    label: "Reminder",
+    dayLabel: "Day 4",
+    description: "Follow-up reminder before the interview day.",
     channels: ["email", "whatsapp"],
     appliesTo: [],
   },
@@ -143,14 +159,16 @@ export function voiceScreeningEnabledForTier(tier: Tier): boolean {
 export const STAGE_DAY_OFFSETS: Record<string, number> = {
   shortlist: 0,
   reminder_day1: 1,
+  reminder_day2: 2,
   reminder_day3: 3,
+  reminder_day4: 4,
   reminder_day5: 5,
 };
 
 /**
  * Filters cadence rows according to the total duration of the campaign in days.
  * Stages with fixed day offsets strictly greater than or equal to the duration are excluded,
- * preventing reminders (e.g. Day 3 or Day 5) from appearing when the campaign duration is only 2 days.
+ * preventing reminders (e.g. Day 3 or Day 4) from appearing when the campaign duration is only 2 days.
  */
 export function filterCadenceByDuration(
   rows: CadenceRenderRow[],
@@ -173,7 +191,7 @@ export interface CadenceConfigStage {
   hoursBefore?: number;
   /** Interview-day link dispatch hour (legacy). Clamped to 0–23. Growth+ only. */
   sendHour?: number;
-  /** Milestone day offset (e.g. 0, 1, 3, 5). Clamped to 0–30. */
+  /** Milestone day offset (e.g. 0, 1, 2, 3, 4). Clamped to 0–30. */
   dayOffset?: number;
   /**
    * Exact local time to send this notification, in "HH:MM" 24-hour format.
@@ -196,7 +214,9 @@ export interface CadenceConfig {
  */
 export const STAGE_SEND_TIME_KEYS = new Set<string>([
   "reminder_day1",
+  "reminder_day2",
   "reminder_day3",
+  "reminder_day4",
   "reminder_day5",
   "pre_interview_reminder",
   "interview_day",
@@ -211,7 +231,7 @@ export function isValidSendTime(s: string): boolean {
 /**
  * Returns sensible defaults for timing-aware stages scaled to the campaign window.
  * - durationHours: total campaign length in hours (e.g. 24 for a 1-day campaign).
- *   When omitted or null, the classic multi-day defaults (24 h, Day 1/3/5) are used.
+ *   When omitted or null, the classic multi-day defaults (24 h, Day 1/2/3/4) are used.
  * - For short campaigns (≤ 24 h) reminder follow-ups are collapsed to hour-based
  *   values that actually fit in the window, and day-offset reminders are removed.
  */
@@ -223,7 +243,9 @@ export function scaledCadenceDefaults(
     return {
       shortlist: { dayOffset: 0 },
       reminder_day1: { dayOffset: 0, sendTime: "09:00" },
+      reminder_day2: { dayOffset: 0, sendTime: "09:00" },
       reminder_day3: { dayOffset: 0, sendTime: "09:00" },
+      reminder_day4: { dayOffset: 0, sendTime: "09:00" },
       reminder_day5: { dayOffset: 0, sendTime: "09:00" },
       pre_interview_reminder: { hoursBefore: Math.min(2, durationHours), sendTime: "09:00" },
       interview_day: { sendHour: 9, sendTime: "09:00" },
@@ -236,7 +258,9 @@ export function scaledCadenceDefaults(
     return {
       shortlist: { dayOffset: 0 },
       reminder_day1: { dayOffset: 1, sendTime: "09:00" },
+      reminder_day2: { dayOffset: 2, sendTime: "09:00" },
       reminder_day3: { dayOffset: 0, sendTime: "09:00" },
+      reminder_day4: { dayOffset: 0, sendTime: "09:00" },
       reminder_day5: { dayOffset: 0, sendTime: "09:00" },
       pre_interview_reminder: { hoursBefore: Math.min(4, durationHours), sendTime: "09:00" },
       interview_day: { sendHour: 9, sendTime: "09:00" },
@@ -248,7 +272,9 @@ export function scaledCadenceDefaults(
   return {
     shortlist: { dayOffset: 0 },
     reminder_day1: { dayOffset: 1, sendTime: "09:00" },
+    reminder_day2: { dayOffset: 2, sendTime: "09:00" },
     reminder_day3: { dayOffset: 3, sendTime: "09:00" },
+    reminder_day4: { dayOffset: 4, sendTime: "09:00" },
     reminder_day5: { dayOffset: 5, sendTime: "09:00" },
     pre_interview_reminder: { hoursBefore: 24, sendTime: "09:00" },
     interview_day: { sendHour: 9, sendTime: "09:00" },

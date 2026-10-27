@@ -39,4 +39,5 @@ n8n/*
 !n8n/1 - Intake & Screening.json
 !n8n/8 - Offer Letter Generation.json
 scratch/
+powershell.cmd
 

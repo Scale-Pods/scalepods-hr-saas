@@ -103,29 +103,39 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     return 0;
   });
 
-  // Sync step changes to URL
-  useEffect(() => {
+  const goToStep = (targetStep: number, isPush = true) => {
+    const nextVal = Math.min(Math.max(0, targetStep), STEPS.length - 1);
+    setStep(nextVal);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      if (url.searchParams.get("step") !== String(step)) {
-        url.searchParams.set("step", String(step));
-        window.history.replaceState(null, "", url.toString());
+      url.searchParams.set("tab", "new");
+      url.searchParams.set("step", String(nextVal));
+      if (isPush) {
+        window.history.pushState({ step: nextVal }, "", url.toString());
+      } else {
+        window.history.replaceState({ step: nextVal }, "", url.toString());
       }
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  }, [step]);
+  };
 
   // Sync browser back/forward button navigation
   useEffect(() => {
-    const handlePopState = () => {
-      const sp = new URLSearchParams(window.location.search).get("step");
-      if (sp) {
-        const parsed = parseInt(sp, 10);
+    const handlePopState = (e: PopStateEvent) => {
+      const sp = new URLSearchParams(window.location.search);
+      const stepParam = sp.get("step");
+      if (stepParam !== null) {
+        const parsed = parseInt(stepParam, 10);
         if (!Number.isNaN(parsed)) {
           setStep(Math.min(Math.max(0, parsed), STEPS.length - 1));
+          return;
         }
-      } else {
-        setStep(0);
       }
+      if (e.state && typeof e.state.step === "number") {
+        setStep(Math.min(Math.max(0, e.state.step), STEPS.length - 1));
+        return;
+      }
+      setStep(0);
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -143,7 +153,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     d.setDate(d.getDate() + 30);
     return d.toISOString().split("T")[0];
   });
-  const [numberOfOpenings, setNumberOfOpenings] = useState(1);
+  const [numberOfOpenings, setNumberOfOpenings] = useState<number | string>("0");
   const [salaryMin, setSalaryMin] = useState("");
   const [salaryMax, setSalaryMax] = useState("");
   const [salaryCurrency, setSalaryCurrency] = useState("USD");
@@ -186,21 +196,24 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     >
   >({});
   const [userAddedStages, setUserAddedStages] = useState<CadenceRenderRow[]>([]);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  // Restore draft on refresh
+  // Restore draft on refresh / mount
   // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to restore draft
   useEffect(() => {
     try {
-      const draft = sessionStorage.getItem("scalepods_campaign_wizard_draft");
-      if (draft) {
-        const parsed = JSON.parse(draft);
+      const raw =
+        localStorage.getItem("scalepods_campaign_wizard_draft") ||
+        sessionStorage.getItem("scalepods_campaign_wizard_draft");
+      if (raw) {
+        const parsed = JSON.parse(raw);
         if (parsed.name && !name) setName(parsed.name);
         if (parsed.jdText && !jdText) setJdText(parsed.jdText);
         if (parsed.location) setLocation(parsed.location);
         if (parsed.workArrangement) setWorkArrangement(parsed.workArrangement);
         if (parsed.openingDate) setOpeningDate(parsed.openingDate);
         if (parsed.closingDate) setClosingDate(parsed.closingDate);
-        if (parsed.numberOfOpenings) setNumberOfOpenings(parsed.numberOfOpenings);
+        if (parsed.numberOfOpenings !== undefined) setNumberOfOpenings(parsed.numberOfOpenings);
         if (parsed.salaryMin) setSalaryMin(parsed.salaryMin);
         if (parsed.salaryMax) setSalaryMax(parsed.salaryMax);
         if (parsed.salaryCurrency) setSalaryCurrency(parsed.salaryCurrency);
@@ -213,39 +226,75 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         if (Array.isArray(parsed.offerTemplateVariables)) {
           setOfferTemplateVariables(parsed.offerTemplateVariables);
         }
+        if (Array.isArray(parsed.rounds) && parsed.rounds.length > 0) {
+          setRounds(parsed.rounds);
+        }
+        if (parsed.whatsappOn !== undefined) setWhatsappOn(parsed.whatsappOn);
+        if (parsed.voiceOn !== undefined) setVoiceOn(parsed.voiceOn);
+        if (parsed.dialnexaConfig) setDialnexaConfig(parsed.dialnexaConfig);
+        if (parsed.customCadence) setCustomCadence(parsed.customCadence);
+        if (
+          typeof parsed.step === "number" &&
+          !new URLSearchParams(window.location.search).get("step")
+        ) {
+          const restoredStep = Math.min(Math.max(0, parsed.step), STEPS.length - 1);
+          setStep(restoredStep);
+          if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.set("step", String(restoredStep));
+            window.history.replaceState({ step: restoredStep }, "", url.toString());
+          }
+        }
+        setLastSaved(new Date());
       }
     } catch {}
   }, []);
 
-  // Save draft on change
+  // Save draft on change to localStorage + sessionStorage
   useEffect(() => {
     try {
-      if (name || jdText) {
-        sessionStorage.setItem(
-          "scalepods_campaign_wizard_draft",
-          JSON.stringify({
-            name,
-            jdText,
-            location,
-            workArrangement,
-            openingDate,
-            closingDate,
-            numberOfOpenings,
-            salaryMin,
-            salaryMax,
-            salaryCurrency,
-            salaryPeriod,
-            numberOfRounds,
-            startDate,
-            endDate,
-            offerTemplateText,
-            offerTemplateFileName,
-            offerTemplateVariables,
-          }),
-        );
+      const hasContent = Boolean(
+        name ||
+          jdText ||
+          (numberOfOpenings && numberOfOpenings !== "0" && numberOfOpenings !== 0) ||
+          salaryMin ||
+          salaryMax ||
+          offerTemplateText ||
+          rounds.length > 1,
+      );
+      if (hasContent) {
+        const payload = JSON.stringify({
+          step,
+          name,
+          jdText,
+          location,
+          workArrangement,
+          openingDate,
+          closingDate,
+          numberOfOpenings,
+          salaryMin,
+          salaryMax,
+          salaryCurrency,
+          salaryPeriod,
+          numberOfRounds,
+          startDate,
+          endDate,
+          offerTemplateText,
+          offerTemplateFileName,
+          offerTemplateVariables,
+          rounds,
+          whatsappOn,
+          voiceOn,
+          dialnexaConfig,
+          customCadence,
+        });
+        localStorage.setItem("scalepods_campaign_wizard_draft", payload);
+        sessionStorage.setItem("scalepods_campaign_wizard_draft", payload);
+        setLastSaved(new Date());
       }
     } catch {}
   }, [
+    step,
     name,
     jdText,
     location,
@@ -263,7 +312,34 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     offerTemplateText,
     offerTemplateFileName,
     offerTemplateVariables,
+    rounds,
+    whatsappOn,
+    voiceOn,
+    dialnexaConfig,
+    customCadence,
   ]);
+
+  const handleClearDraft = () => {
+    try {
+      localStorage.removeItem("scalepods_campaign_wizard_draft");
+      sessionStorage.removeItem("scalepods_campaign_wizard_draft");
+    } catch {}
+    setName("");
+    setJdText("");
+    setLocation("Remote");
+    setWorkArrangement("remote");
+    setNumberOfOpenings("0");
+    setSalaryMin("");
+    setSalaryMax("");
+    setNumberOfRounds(1);
+    setRounds([DEFAULT_ROUND]);
+    setCustomCadence({});
+    setOfferTemplateText("");
+    setOfferTemplateFileName("");
+    setLastSaved(null);
+    goToStep(0, false);
+    toast.success("Draft cleared.");
+  };
 
   useEffect(() => {
     setRounds((prev) => syncRoundCount(prev, numberOfRounds));
@@ -292,7 +368,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         google_email: calMap.get(m.id)?.google_email,
       }));
     },
-    staleTime: 60_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
   });
 
   const [uploadingDoc, setUploadingDoc] = useState(false);
@@ -625,7 +702,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     if (!closingDate) return "Please specify a closing date.";
     if (closingDate < openingDate)
       return "Target closing date must be scheduled after the opening date.";
-    if (!numberOfOpenings || numberOfOpenings < 1) return "Please specify at least 1 opening.";
+    if (numberOfOpenings === "" || Number(numberOfOpenings) < 0)
+      return "Please specify the number of openings (0 or more).";
     if ((salaryMin && !salaryMax) || (!salaryMin && salaryMax))
       return "Both minimum and maximum salary must be provided if specifying a salary range.";
     if (salaryMin && salaryMax && Number(salaryMin) > Number(salaryMax))
@@ -674,7 +752,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       work_arrangement: workArrangement,
       opening_date: openingDate,
       closing_date: closingDate,
-      number_of_openings: numberOfOpenings,
+      number_of_openings: Math.max(1, Number(numberOfOpenings) || 1),
       salary_min: salaryMin ? Number(salaryMin) : undefined,
       salary_max: salaryMax ? Number(salaryMax) : undefined,
       salary_currency: salaryMin && salaryMax ? salaryCurrency : undefined,
@@ -784,7 +862,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           work_arrangement: workArrangement,
           opening_date: openingDate,
           closing_date: closingDate,
-          number_of_openings: numberOfOpenings,
+          number_of_openings: Math.max(1, Number(numberOfOpenings) || 1),
         };
         if (salaryMin && salaryMax) {
           updateFields.salary_min = Number(salaryMin);
@@ -806,6 +884,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       await queryClient.invalidateQueries({ queryKey: campaignsKey });
 
       try {
+        localStorage.removeItem("scalepods_campaign_wizard_draft");
         sessionStorage.removeItem("scalepods_campaign_wizard_draft");
       } catch {}
 
@@ -838,9 +917,15 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         return;
       }
     }
-    setStep((s) => Math.min(s + 1, STEPS.length - 1));
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+    goToStep(step + 1, true);
+  };
+
+  const prev = () => {
+    if (step > 0) {
+      goToStep(step - 1, false);
+    } else {
+      if (onCancel) onCancel();
+      else router.push("/campaigns");
     }
   };
 
@@ -849,9 +934,17 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       {/* Wizard Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-xs">
         <div>
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-            <Sparkles className="h-3.5 w-3.5" />
-            AI Campaign Creation Studio
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+              <Sparkles className="h-3.5 w-3.5" />
+              AI Campaign Creation Studio
+            </div>
+            {lastSaved && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
+                <CheckCircle2 className="h-3 w-3" />
+                Draft auto-saved
+              </span>
+            )}
           </div>
           <h2 className="mt-2 text-xl sm:text-2xl font-bold tracking-tight text-foreground">
             Launch a New Hiring Campaign
@@ -864,6 +957,16 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto shrink-0">
           <HowToCreateButton target="_blank" />
+          {lastSaved && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearDraft}
+              className="h-9 gap-1 rounded-full text-xs font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            >
+              Clear Draft
+            </Button>
+          )}
           {onCancel && (
             <Button
               variant="ghost"
@@ -1022,11 +1125,25 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 <Input
                   id="number-of-openings"
                   type="number"
-                  min={1}
+                  min={0}
                   value={numberOfOpenings}
-                  onChange={(e) =>
-                    setNumberOfOpenings(Math.max(1, parseInt(e.target.value, 10) || 1))
-                  }
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === "0" && (numberOfOpenings === "1" || numberOfOpenings === 1)) {
+                      e.preventDefault();
+                      setNumberOfOpenings("0");
+                    }
+                  }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "") {
+                      setNumberOfOpenings("0");
+                    } else {
+                      setNumberOfOpenings(
+                        val.length > 1 && val.startsWith("0") ? val.replace(/^0+/, "") || "0" : val,
+                      );
+                    }
+                  }}
                   className="rounded-xl text-foreground"
                 />
                 <span className="mt-1 block text-[11px] text-muted-foreground">
@@ -1561,11 +1678,11 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         <div className="mt-8 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 border-t border-border pt-5">
           <Button
             variant="ghost"
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            disabled={step === 0}
+            onClick={prev}
             className="w-full sm:w-auto rounded-xl gap-1.5 text-xs font-semibold text-foreground hover:bg-muted justify-center"
           >
-            <ChevronLeft className="h-4 w-4" aria-hidden /> Previous Step
+            <ChevronLeft className="h-4 w-4" aria-hidden />
+            {step === 0 ? "Cancel & Return to Campaigns" : "Previous Step"}
           </Button>
 
           {step < STEPS.length - 1 ? (

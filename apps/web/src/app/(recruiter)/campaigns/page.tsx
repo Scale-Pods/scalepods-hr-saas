@@ -2,9 +2,11 @@
 
 import { formatDateTime, TIER_LIMITS, type Tier } from "@scalepods/core";
 import {
+  ArrowRight,
   Brain,
   Calendar,
   CheckCircle2,
+  FileSignature,
   FolderKanban,
   GitBranch,
   Grid,
@@ -63,7 +65,11 @@ function CampaignsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab =
-    searchParams.get("tab") === "new" || searchParams.get("create") === "true" ? "new" : "list";
+    searchParams.get("tab") === "new" ||
+    searchParams.get("create") === "true" ||
+    searchParams.has("step")
+      ? "new"
+      : "list";
   const [activeTab, setActiveTab] = useState<"list" | "new">("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
@@ -74,6 +80,26 @@ function CampaignsContent() {
 
   const { data: campaigns, isPending, refetch, isRefetching } = useCampaigns();
   const { account } = useAccount();
+
+  const [savedDraft, setSavedDraft] = useState<{ name?: string; jdText?: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw =
+        localStorage.getItem("scalepods_campaign_wizard_draft") ||
+        sessionStorage.getItem("scalepods_campaign_wizard_draft");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.name || parsed.jdText || parsed.location || parsed.numberOfOpenings) {
+          setSavedDraft(parsed);
+          return;
+        }
+      }
+      setSavedDraft(null);
+    } catch {
+      setSavedDraft(null);
+    }
+  }, [activeTab]);
 
   const rows = campaigns ?? [];
 
@@ -106,14 +132,19 @@ function CampaignsContent() {
     }
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: initial check
   useEffect(() => {
-    if (initialTab === "new" && !isPending && activeTab === "list") {
+    const isNew =
+      searchParams.get("tab") === "new" ||
+      searchParams.get("create") === "true" ||
+      searchParams.has("step");
+    if (isNew && activeTab !== "new" && !isPending) {
       if (checkCampaignLimit()) {
         setActiveTab("new");
       }
+    } else if (!isNew && activeTab === "new") {
+      setActiveTab("list");
     }
-  }, [initialTab, isPending]);
+  }, [searchParams, isPending]);
 
   const filtered = useMemo(() => {
     return rows.filter((c) => {
@@ -268,6 +299,59 @@ function CampaignsContent() {
         />
       ) : (
         <>
+          {savedDraft && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-2xl bg-gradient-to-r from-blue-600/15 via-indigo-600/15 to-purple-600/15 border border-primary/30 p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-primary">
+                  <FileSignature className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-semibold text-foreground">
+                      Unfinished Campaign Draft{savedDraft.name ? `: ${savedDraft.name}` : ""}
+                    </h4>
+                    <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                      Auto-saved in browser
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Your campaign draft is preserved. Click Resume to continue where you left off.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    localStorage.removeItem("scalepods_campaign_wizard_draft");
+                    sessionStorage.removeItem("scalepods_campaign_wizard_draft");
+                    setSavedDraft(null);
+                    showToast("Draft discarded.");
+                  }}
+                  className="h-8 rounded-xl text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                >
+                  Discard Draft
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (checkCampaignLimit()) {
+                      setActiveTab("new");
+                      const stepTarget =
+                        typeof savedDraft?.step === "number" ? savedDraft.step : 0;
+                      router.push(`/campaigns?tab=new&step=${stepTarget}`);
+                    }
+                  }}
+                  className="h-8 gap-1.5 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-white shadow-xs"
+                >
+                  <span>Resume Draft</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Header & Controls */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -385,7 +469,7 @@ function CampaignsContent() {
               action={
                 <Button onClick={handleNewCampaign} className="gap-1.5 rounded-full">
                   <Plus className="h-4 w-4" />
-                  Create campaign
+                  {savedDraft ? "Resume draft campaign" : "Create campaign"}
                 </Button>
               }
             />
