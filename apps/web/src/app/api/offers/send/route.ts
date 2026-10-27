@@ -1,9 +1,10 @@
 import { offerRequestSchema } from "@scalepods/core";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
 import { generateBrandedOfferPdf } from "@/lib/generate-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
+import { supabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ function getAuthClient(accessToken?: string) {
 
 /**
  * Next.js API Route for Offer Dispatch
- * Acts as an authenticated gateway verifying the recruiter's JWT,
+ * Acts as an authenticated gateway verifying the recruiter's JWT or session cookie,
  * then forwarding the offer generation & email request directly to n8n backend.
  */
 export async function POST(req: NextRequest) {
@@ -29,15 +30,34 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  let user: User | null = null;
 
-  const authClient = getAuthClient(token);
-  const {
-    data: { user },
-    error: authError,
-  } = await authClient.auth.getUser(token);
-  if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (token) {
+    const authClient = getAuthClient(token);
+    const {
+      data: { user: tokenUser },
+    } = await authClient.auth.getUser(token);
+    user = tokenUser;
+  } else {
+    try {
+      const serverClient = await supabaseServer();
+      const {
+        data: { user: cookieUser },
+      } = await serverClient.auth.getUser();
+      user = cookieUser;
+      if (user) {
+        const {
+          data: { session },
+        } = await serverClient.auth.getSession();
+        token = session?.access_token || "";
+      }
+    } catch {
+      // Cookie parsing error in non-cookie environments
+    }
+  }
+
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // Delegate workflow execution to n8n backend, with autonomous database state guarantee
   const env = getEnv();
@@ -115,7 +135,7 @@ export async function POST(req: NextRequest) {
     let n8nStatus = 200;
 
     try {
-      const { response, payload } = await callN8nGateway("hiring/offer-send", token, {
+      const { response, payload } = await callN8nGateway("hiring/offer-send", token || "", {
         ...parsed.data,
         recruiter_email: user.email,
         recruiter_id: user.id,

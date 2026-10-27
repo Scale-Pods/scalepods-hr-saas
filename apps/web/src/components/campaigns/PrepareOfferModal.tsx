@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
+import { accessToken as getAccessToken } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -185,11 +186,12 @@ export function PrepareOfferModal({
     setCapacityWarning(null);
 
     try {
+      const token = accessToken || (await getAccessToken());
       const res = await fetch("/api/offers/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           campaign_id: campaign.id,
