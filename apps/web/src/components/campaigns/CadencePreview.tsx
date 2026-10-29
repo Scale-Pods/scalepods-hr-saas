@@ -15,6 +15,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -113,24 +120,36 @@ export function CadencePreview({
       const defaultDay = stageKey === "reminder_day1" ? 1 : stageKey === "reminder_day3" ? 3 : 5;
       const val = timing.dayOffset ?? defaultDay;
       const sendTimeVal = timing.sendTime ?? "09:00";
+      const maxDays = Math.max(val, Math.min(maxDayOffset, 30), 7);
+      const dayOptions = Array.from({ length: maxDays }, (_, i) => i + 1);
 
       if (canEditTiming && editable && enabled) {
         return (
           <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs text-center">
             <div className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border/70 bg-background/50 px-2 py-1">
-              <span className="text-muted-foreground text-xs font-medium">Day</span>
-              <Input
-                type="number"
-                min={0}
-                max={maxDayOffset}
-                value={val}
-                onChange={(e) =>
-                  onChangeTiming?.(stageKey, {
-                    dayOffset: Math.max(0, Math.min(maxDayOffset, Number(e.target.value))),
-                  })
-                }
-                className="h-7 w-14 text-xs text-center font-mono px-1"
-              />
+              <Select
+                value={String(val)}
+                onValueChange={(newVal) => {
+                  const d = Number(newVal);
+                  onChangeTiming?.(stageKey, { dayOffset: d });
+                  onChangeDayLabel?.(stageKey, `Day ${d}`);
+                }}
+              >
+                <SelectTrigger
+                  aria-label={`Select day for ${stageKey}`}
+                  data-testid={`select-day-${stageKey}`}
+                  className="h-7 w-24 text-xs font-mono border-border/80 bg-background px-2 py-1 shadow-none"
+                >
+                  <SelectValue placeholder={`Day ${val}`} />
+                </SelectTrigger>
+                <SelectContent className="border-border bg-card">
+                  {dayOptions.map((d) => (
+                    <SelectItem key={d} value={String(d)} className="text-xs font-mono">
+                      Day {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <span className="text-muted-foreground text-xs font-medium">at</span>
               <Input
                 type="time"
@@ -151,7 +170,7 @@ export function CadencePreview({
       return (
         <div className="flex flex-wrap items-center justify-center gap-1.5 text-center">
           <span className="text-xs text-foreground/90 font-mono text-center">
-            {val} day{val === 1 ? "" : "s"} after invite at {sendTimeVal}
+            Day {val} ({val} day{val === 1 ? "" : "s"} after invite) at {sendTimeVal}
           </span>
           {renderWarning(stageKey, "dayOffset")}
           {renderWarning(stageKey, "sendTime")}

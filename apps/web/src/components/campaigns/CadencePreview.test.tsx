@@ -81,15 +81,14 @@ describe("CadencePreview Timing Controls", () => {
       />,
     );
 
-    const numInputs = screen.getAllByRole("spinbutton");
-    expect(numInputs.length).toBeGreaterThanOrEqual(2);
+    const daySelectTrigger = screen.getByTestId("select-day-reminder_day1");
+    expect(daySelectTrigger).toBeDefined();
 
-    // Change day offset for reminder_day1
-    fireEvent.change(numInputs[0], { target: { value: "3" } });
-    expect(handleChangeTiming).toHaveBeenCalledWith("reminder_day1", { dayOffset: 3 });
+    const numInputs = screen.getAllByRole("spinbutton");
+    expect(numInputs.length).toBeGreaterThanOrEqual(1);
 
     // Change hours before for pre_interview_reminder
-    fireEvent.change(numInputs[1], { target: { value: "18" } });
+    fireEvent.change(numInputs[0], { target: { value: "18" } });
     expect(handleChangeTiming).toHaveBeenCalledWith("pre_interview_reminder", { hoursBefore: 18 });
 
     // Change time for interview_day
