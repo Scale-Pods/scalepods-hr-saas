@@ -126,13 +126,18 @@ function guessName(text: string): string | undefined {
   if (buffer.length > 0) mergedLines.push(...buffer);
 
   for (const raw of mergedLines) {
-    const line = raw.replace(/\s*[|,\-—]\s*.*$/, "");
+    let line = raw.replace(/\s*[|,\-—]\s*.*$/, "");
+    // Strip common labels such as "Name:", "Candidate Name:", "Full Name:"
+    line = line.replace(/^(?:candidate\s+name|full\s+name|name)\s*[:-]\s*/i, "");
+    // Strip parenthetical notes like (He/Him) or (Engineer)
+    line = line.replace(/\([^)]*\)/g, "").trim();
 
     if (!line || line.length > 60) continue;
     if (SKIP_LINE_RE.test(line)) continue;
 
     const words = line.split(/\s+/).filter(Boolean);
-    if (words.length < 2 || words.length > 4) continue;
+    if (words.length < 1 || words.length > 5) continue;
+    if (words.length === 1 && (words[0].length < 3 || !/^[A-Z][a-zA-Z]+$/.test(words[0]))) continue;
     if (!words.every((w) => /^[A-Za-z][\w'.-]*$/.test(w))) continue;
     if (!words.every((w) => /^[A-Z]/.test(w))) continue;
     if (JOB_WORDS.test(line) || COMPANY_WORDS.test(line)) continue;

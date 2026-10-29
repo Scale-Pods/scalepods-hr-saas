@@ -1,0 +1,993 @@
+{
+  "name": "4 - Notification Dispatch (sub-workflow)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "account_id"
+            },
+            {
+              "name": "candidate_id"
+            },
+            {
+              "name": "round_instance_id"
+            },
+            {
+              "name": "stage"
+            },
+            {
+              "name": "preferred_channel"
+            },
+            {
+              "name": "role_title"
+            }
+          ]
+        }
+      },
+      "id": "0f94ea30-163d-4d32-96d2-ae027afe785b",
+      "name": "When Called by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -28256,
+        5232
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/candidates",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "=eq.{{$json.candidate_id}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "771cf9e1-80bf-4d05-968f-037244bf73a8",
+      "name": "Supabase - Get Candidate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -28032,
+        5120
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/accounts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "=eq.{{$node[\"When Called by Another Workflow\"].json.account_id}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7652d91a-d48e-4782-9f29-f2521a4bc05f",
+      "name": "Supabase - Get Account (tier)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -28032,
+        5344
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Checks 1 & 2 of Section 6 / doc Section 3.4 (suppression + entitlement) only.\nconst ctx = $node[\"When Called by Another Workflow\"].json;\n\n// Safe retrieval handling both object and array formats\nconst candidate = $node[\"Supabase - Get Candidate\"]?.json[0] || $node[\"Supabase - Get Candidate\"]?.json;\nconst account = $node[\"Supabase - Get Account (tier)\"]?.json[0] || $node[\"Supabase - Get Account (tier)\"]?.json;\nconst roundData = $node[\"Supabase - Get Round Instance & Campaign\"]?.json;\nconst roundInstance = Array.isArray(roundData) ? roundData[0] : roundData;\n\n// 1. Suppression\nif (!candidate || candidate.status === 'rejected' || candidate.opted_out) {\n  return [{ json: { ...ctx, decision: 'suppressed', reason: 'candidate_rejected_or_opted_out' } }];\n}\n\n// 2. Entitlement (tier -> channel map)\nconst tier = account?.tier || 'free';\nconst TIER_CHANNELS = {\n  free: ['email'],\n  basic: ['email', 'whatsapp', 'voice_call'],\n  growth: ['email', 'whatsapp', 'voice_call'],\n  enterprise: ['email', 'whatsapp', 'voice_call', 'sms']\n};\nconst allowedChannels = TIER_CHANNELS[tier] || ['email'];\n\n// Normalize phone to E.164 without leading +\nlet rawPhone = String(candidate.phone || '').replace(/\\D/g, '');\nlet phone = rawPhone;\nif (phone.length === 10) {\n  phone = '91' + phone;\n} else if (phone.startsWith('0')) {\n  phone = '91' + phone.slice(1);\n}\n\n// Dual-dispatch: Send both Email and WhatsApp when available\nconst isEmailOnly = ctx.preferred_channel === 'email' || ctx.preferred_channel === 'email_only';\nconst isWaOnly = ctx.preferred_channel === 'whatsapp_only';\n\nconst sendEmail = !!candidate.email && !isWaOnly;\nconst sendWhatsApp = !!phone && allowedChannels.includes('whatsapp') && !isEmailOnly;\n\nconst candName = candidate.name || ctx.candidate_name || 'Candidate';\nconst firstName = candName.trim().split(' ')[0] || 'there';\nconst companyName = account?.company_name || 'ScalePods';\n\n// Resolve Role from campaign name (linked via round_instance), context, or candidate\nconst campaignObj = Array.isArray(roundInstance?.campaigns) ? roundInstance?.campaigns[0] : roundInstance?.campaigns;\nconst roleFromCampaign = campaignObj?.name || '';\nconst roleTitle = ctx.role_title || ctx.job_title || roleFromCampaign || candidate?.role_title || 'Candidate Role';\n\nreturn [{\n  json: {\n    ...ctx,\n    decision: 'proceed',\n    send_email: sendEmail,\n    send_whatsapp: sendWhatsApp,\n    channel: (sendEmail && sendWhatsApp) ? 'both' : (sendWhatsApp ? 'whatsapp' : 'email'),\n    tier,\n    candidate_name: candName,\n    candidate_first_name: firstName,\n    candidate_email: candidate.email,\n    candidate_phone: phone,\n    company_name: companyName,\n    role_title: roleTitle,\n    job_title: roleTitle\n  }\n}];"
+      },
+      "id": "ea331056-63ff-453f-aa2f-5cb3fd500323",
+      "name": "Suppression & Entitlement Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -27312,
+        5232
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.decision}}",
+              "rightValue": "suppressed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "47e3b65d-e8a1-4ea1-a659-afd5059de6d5",
+      "name": "IF Suppressed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -26640,
+        5232
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/rpc/can_send_now",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_account_id: $json.account_id, p_candidate_id: $json.candidate_id }) }}",
+        "options": {}
+      },
+      "id": "78dd2613-25f0-4f07-9a80-e167e510ec26",
+      "name": "Supabase - Can Send Now",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -25840,
+        4640
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.allowed}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "id": "abff0533-85e4-4955-ab62-bbbcf800d16a"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "01769198-7c80-4638-8631-629d3ede6646",
+      "name": "IF Allowed (can_send_now)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -25648,
+        4640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/outreach_log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"account_id\": $node[\"Suppression & Entitlement Check\"].json.account_id, \"candidate_id\": $node[\"Suppression & Entitlement Check\"].json.candidate_id, \"round_instance_id\": $node[\"Suppression & Entitlement Check\"].json.round_instance_id, \"stage\": $node[\"Suppression & Entitlement Check\"].json.stage, \"channel\": (['email','whatsapp','sms','voice_call'].includes($node[\"Suppression & Entitlement Check\"].json.channel) ? $node[\"Suppression & Entitlement Check\"].json.channel : ($node[\"Suppression & Entitlement Check\"].json.preferred_channel === 'whatsapp' ? 'whatsapp' : 'email')), \"delivery_state\": $json[0]?.reason || 'held_for_window', \"fallback_used\": false } }}",
+        "options": {}
+      },
+      "id": "00d091cf-fda6-4131-95f1-44aa6fc8fe63",
+      "name": "Supabase - Write outreach_log (held_for_window/cap)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -25376,
+        4800
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/notification_templates",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "stage",
+              "value": "=eq.{{ $node[\"Suppression & Entitlement Check\"].json.stage === 'candidate_rejected' ? 'result_not_selected' : $node[\"Suppression & Entitlement Check\"].json.stage }}"
+            },
+            {
+              "name": "channel",
+              "value": "eq.email"
+            },
+            {
+              "name": "approval_state",
+              "value": "eq.approved"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c25cf625-edfa-4e39-85d2-ce3ce20d647f",
+      "name": "Supabase - Resolve Email Template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -26240,
+        5392
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.approval_state}}",
+              "rightValue": "approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "24e318e7-712d-4845-9c00-4711ba3cb4cd"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dcf1e194-f185-4dae-ac35-d786958f6ade",
+      "name": "IF Template Approved (WhatsApp)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -25104,
+        4432
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v20.0/1080270115170890/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  (() => {\n    const cand = $node[\"Suppression & Entitlement Check\"].json;\n    const tmpl = ($node[\"Supabase - Resolve WhatsApp Template\"].json?.[0] || $node[\"Supabase - Resolve WhatsApp Template\"].json || $json[0] || $json || {});\n    const templateName = tmpl.meta_template_name || 'interview_invite_v1';\n    const firstName = cand.candidate_first_name || (cand.candidate_name ? cand.candidate_name.split(' ')[0] : 'there');\n    const company = cand.company_name || 'ScalePods';\n    const role = cand.role_title || cand.job_title || 'Role';\n    const roundId = cand.round_instance_id || '';\n    const appBase = ($vars.APP_BASE_URL || $vars.FRONTEND_URL || 'https://scalepods.tech').replace(/\\/+$/, '');\n    const accessToken = $node['Code - Generate Candidate Access Token'].json.access_token || '';\n    const bookingUrl = appBase + '/book/' + roundId + '?tok=' + accessToken;\n    const meetingUrl = cand.meeting_link || 'https://meet.google.com';\n    const assignUrl = appBase + '/assignment/' + roundId + '?tok=' + accessToken;\n    const schedTime = cand.scheduled_at || 'tomorrow';\n\n    let params = [];\n    if (['interview_invite_v1', 'booking_reminder_day1', 'booking_reminder_day3', 'booking_final_notice'].includes(templateName)) {\n      params = [\n        { type: 'text', text: String(firstName) },\n        { type: 'text', text: String(role) },\n        { type: 'text', text: String(company) },\n        { type: 'text', text: String(bookingUrl) }\n      ];\n    } else if (templateName === 'pre_interview_24h') {\n      params = [\n        { type: 'text', text: String(firstName) },\n        { type: 'text', text: String(role) },\n        { type: 'text', text: String(company) },\n        { type: 'text', text: String(schedTime) }\n      ];\n    } else if (templateName === 'interview_link_today') {\n      params = [\n        { type: 'text', text: String(firstName) },\n        { type: 'text', text: String(role) },\n        { type: 'text', text: String(company) },\n        { type: 'text', text: String(meetingUrl) }\n      ];\n    } else if (templateName === 'assignment_reminder_24h') {\n      params = [\n        { type: 'text', text: String(firstName) },\n        { type: 'text', text: String(role) },\n        { type: 'text', text: String(company) },\n        { type: 'text', text: String(assignUrl) }\n      ];\n    } else {\n      params = [\n        { type: 'text', text: String(firstName) },\n        { type: 'text', text: String(role) },\n        { type: 'text', text: String(company) }\n      ];\n    }\n\n    return {\n      messaging_product: 'whatsapp',\n      to: cand.candidate_phone,\n      type: 'template',\n      template: {\n        name: templateName,\n        language: { code: tmpl.locale || 'en' },\n        components: [\n          {\n            type: 'body',\n            parameters: params\n          }\n        ]\n      }\n    };\n  })()\n}}",
+        "options": {}
+      },
+      "id": "9d45f5ed-de7f-4fa2-98b3-c6855a40d5ec",
+      "name": "Meta WhatsApp - Send Template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -24768,
+        4416
+      ],
+      "credentials": {
+        "whatsAppApi": {
+          "id": "zeeqOhcUtHXx7A8r",
+          "name": "ScalePods +91 77385 58481"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.error !== undefined && $json.error !== null }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "616bd1d5-17cf-444d-a711-b064763f00c7",
+      "name": "IF WhatsApp Send Failed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -24544,
+        4416
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "=info@scalepods.tech",
+        "toEmail": "={{$node[\"Suppression & Entitlement Check\"].json.candidate_email}}",
+        "subject": "={{\n  (() => {\n    const cand = $node[\"Suppression & Entitlement Check\"].json;\n    const candName = cand.candidate_name || 'Candidate';\n    const firstName = cand.candidate_first_name || 'there';\n    const role = cand.role_title || cand.job_title || 'Role';\n    const company = cand.company_name || 'ScalePods';\n    const stage = String(cand.stage || '').toLowerCase();\n    const rawSub = ($node[\"Supabase - Resolve Email Template\"]?.json?.subject || $node[\"Supabase - Resolve Email Template\"]?.json?.[0]?.subject || '');\n\n    if (rawSub && rawSub.trim()) {\n      return rawSub\n        .replace(/\\{\\{\\s*(?:candidate_name|name|1)\\s*\\}\\}/gi, candName)\n        .replace(/\\{\\{\\s*candidate_first_name\\s*\\}\\}/gi, firstName)\n        .replace(/\\{\\{\\s*(?:job_title|role|role_title|2)\\s*\\}\\}/gi, role)\n        .replace(/\\{\\{\\s*(?:company_name|company|account_name|3)\\s*\\}\\}/gi, company);\n    }\n\n    if (stage === 'interview_invite') {\n      return `Interview Invitation: ${role} - ${candName} | ${company}`;\n    }\n    if (stage === 'booking_confirmed') {\n      return `Interview Confirmed: ${role} - ${candName} | ${company}`;\n    }\n    if (['booking_reminder_day1', 'booking_reminder_1'].includes(stage)) {\n      return `Reminder: Schedule your ${role} interview - ${candName} | ${company}`;\n    }\n    if (['booking_reminder_day3', 'booking_reminder_2'].includes(stage)) {\n      return `Action Required: Select your interview slot for ${role} - ${candName} | ${company}`;\n    }\n    if (['booking_final_notice', 'booking_reminder_day5'].includes(stage)) {\n      return `Final Notice: Interview scheduling for ${role} - ${candName} | ${company}`;\n    }\n    if (stage === 'booking_rescheduled') {\n      return `Interview Rescheduled: ${role} - ${candName} | ${company}`;\n    }\n    if (stage === 'pre_interview_24h') {\n      return `Interview Reminder (Tomorrow): ${role} - ${candName} | ${company}`;\n    }\n    if (stage === 'interview_link_today') {\n      return `Interview Access Link Today: ${role} - ${candName} | ${company}`;\n    }\n    if (stage === 'assignment_issued' || stage === 'assignment_invite') {\n      return `Practical Assignment: ${role} - ${candName} | ${company}`;\n    }\n    if (stage === 'assignment_reminder_24h') {\n      return `Assignment Deadline Reminder: ${role} - ${candName} | ${company}`;\n    }\n\n    return `Interview Update: ${role} - ${candName} | ${company}`;\n  })()\n}}",
+        "html": "={{\n  (() => {\n    const cand = $node[\"Suppression & Entitlement Check\"].json;\n    const tmpl = $node[\"Supabase - Resolve Email Template\"]?.json || $node[\"Supabase - Resolve Email Template\"]?.json?.[0] || {};\n    let rawHtml = tmpl.body_html || '';\n    const firstName = cand.candidate_first_name || 'there';\n    const candName = cand.candidate_name || 'Candidate';\n    const company = cand.company_name || 'ScalePods';\n    const role = cand.role_title || cand.job_title || 'the role';\n    const appBase = ($vars.APP_BASE_URL || $vars.FRONTEND_URL || 'https://scalepods.tech').replace(/\\/+$/, '');\n    const accessToken = $node['Code - Generate Candidate Access Token'].json.access_token || '';\n    const bookingUrl = appBase + '/book/' + (cand.round_instance_id || '') + '?tok=' + accessToken;\n    const assignUrl = appBase + '/assignment/' + (cand.round_instance_id || '') + '?tok=' + accessToken;\n\n    if (!rawHtml) {\n      return '<p>Hi ' + firstName + ',</p><p>Congratulations on moving forward for the ' + role + ' position at ' + company + '!</p><p>Please book your interview slot using this link: <a href=\"' + bookingUrl + '\">' + bookingUrl + '</a></p>';\n    }\n\n    return rawHtml\n      .replace(/\\{\\{1\\}\\}/g, firstName)\n      .replace(/\\{\\{2\\}\\}/g, role)\n      .replace(/\\{\\{3\\}\\}/g, company)\n      .replace(/\\{\\{4\\}\\}/g, '<a href=\"' + bookingUrl + '\">' + bookingUrl + '</a>')\n      .replace(/\\{\\{booking_link\\}\\}/g, bookingUrl)\n      .replace(/\\{\\{assignment_link\\}\\}/g, assignUrl)\n      .replace(/\\{\\{job_title\\}\\}/g, role)\n      .replace(/\\{\\{role\\}\\}/g, role)\n      .replace(/\\{\\{role_title\\}\\}/g, role)\n      .replace(/\\{\\{candidate_first_name\\}\\}/g, firstName)\n      .replace(/\\{\\{candidate_name\\}\\}/g, candName)\n      .replace(/\\{\\{account_name\\}\\}/g, company)\n      .replace(/\\{\\{company_name\\}\\}/g, company)\n      .replace(/\\{\\{[^}]*candidate[^}]*\\}\\}/gi, firstName)\n      .replace(/\\{\\{[^}]*account[^}]*\\}\\}/gi, company);\n  })()\n}}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "c4d51434-12ac-4559-a6ad-a3901b142e4e",
+      "name": "Send Email (primary)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -26000,
+        5392
+      ],
+      "webhookId": "bdd8f99e-0cc7-4d9b-adc6-8d3cc88589e2",
+      "credentials": {
+        "smtp": {
+          "id": "sOjQCdt6jZVt2pCD",
+          "name": "AMAZON SES"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/outreach_log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ \n  { \n    \"account_id\": $node[\"Suppression & Entitlement Check\"].json.account_id, \n    \"candidate_id\": $node[\"Suppression & Entitlement Check\"].json.candidate_id, \n    \"round_instance_id\": $node[\"Suppression & Entitlement Check\"].json.round_instance_id, \n    \"stage\": $node[\"Suppression & Entitlement Check\"].json.stage, \n    \"channel\": \"email\", \n    \"delivery_state\": \"sent\", \n    \"fallback_used\": false \n  } \n}}",
+        "options": {}
+      },
+      "id": "49560439-bcb2-4948-8f9a-69a66d137ebb",
+      "name": "Supabase - Write outreach_log (email sent)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -25744,
+        5392
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/outreach_log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"account_id\": $json.account_id,\n  \"candidate_id\": $json.candidate_id,\n  \"round_instance_id\": $json.round_instance_id,\n  \"stage\": $json.stage,\n  \"channel\": (['email','whatsapp','sms','voice_call'].includes($json.channel) ? $json.channel : (['email','whatsapp','sms','voice_call'].includes($json.preferred_channel) ? $json.preferred_channel : 'email')),\n  \"delivery_state\": $json.decision,\n  \"fallback_used\": false\n} }}",
+        "options": {}
+      },
+      "id": "f1fd1e12-a86d-415e-9230-32ef4b20fc1b",
+      "name": "Supabase - Write outreach_log (suppressed/held)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -26080,
+        4816
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -27696,
+        5232
+      ],
+      "id": "31ab95fb-ca4a-4546-ad4f-72375a536ec5",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/round_instances",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "=eq.{{$node[\"When Called by Another Workflow\"].json.round_instance_id}}"
+            },
+            {
+              "name": "select",
+              "value": "id,campaign_id,campaigns(name)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a29a987b-c664-43a7-90e8-15fbefc00254",
+      "name": "Supabase - Get Round Instance & Campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -27504,
+        5232
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$node[\"Suppression & Entitlement Check\"].json.send_whatsapp}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bf07fb11-532b-4eaf-9e29-09ecc698888f",
+      "name": "IF Send WhatsApp",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -26080,
+        4656
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/notification_templates",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "stage",
+              "value": "=eq.{{ $node[\"Suppression & Entitlement Check\"].json.stage === 'candidate_rejected' ? 'result_not_selected' : $node[\"Suppression & Entitlement Check\"].json.stage }}"
+            },
+            {
+              "name": "channel",
+              "value": "eq.whatsapp"
+            },
+            {
+              "name": "approval_state",
+              "value": "eq.approved"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a3dfbce6-f5c7-42c4-b64f-33bdb0870f2d",
+      "name": "Supabase - Resolve WhatsApp Template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -25376,
+        4432
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/outreach_log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"account_id\": $node[\"Suppression & Entitlement Check\"].json.account_id,\n  \"candidate_id\": $node[\"Suppression & Entitlement Check\"].json.candidate_id,\n  \"round_instance_id\": $node[\"Suppression & Entitlement Check\"].json.round_instance_id || null,\n  \"stage\": $node[\"Suppression & Entitlement Check\"].json.stage,\n  \"channel\": \"whatsapp\",\n  \"delivery_state\": \"sent\",\n  \"fallback_used\": false\n} }}",
+        "options": {}
+      },
+      "id": "c862d8e9-d991-4789-8e2a-79282041b2d7",
+      "name": "Supabase - Write outreach_log (whatsapp sent)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -24144,
+        4528
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/outreach_log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ \n  { \n    \"account_id\": $node[\"Suppression & Entitlement Check\"].json.account_id, \n    \"candidate_id\": $node[\"Suppression & Entitlement Check\"].json.candidate_id, \n    \"round_instance_id\": $node[\"Suppression & Entitlement Check\"].json.round_instance_id, \n    \"stage\": $node[\"Suppression & Entitlement Check\"].json.stage, \n    \"channel\": \"whatsapp\", \n    \"delivery_state\": \"failed\", \n    \"fallback_used\": false \n  } \n}}",
+        "options": {}
+      },
+      "id": "82802a10-afe6-431c-9f59-2cd911ca12de",
+      "name": "Supabase - Write outreach_log (whatsapp failed)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -24144,
+        4320
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $node['Suppression & Entitlement Check'].json;\nconst data = $node['Supabase - Get Round Instance & Campaign'].json;\nconst round = Array.isArray(data) ? data[0] : data;\n\nconst stage = String(ctx.stage || '').toLowerCase();\n\n// Determine access token type (including rejection)\nlet type = null;\nif (round?.round_type === 'assignment' || stage.startsWith('assignment')) {\n  type = 'assignment';\n} else if (round?.round_type === 'human_interview' || stage.includes('interview')) {\n  type = 'booking';\n} else if (stage.includes('reject')) {\n  type = 'rejection';\n}\n\nlet token = null;\nlet tokenHash = null;\n\n// Removed `ctx.round_instance_id` requirement so tokens generate even if round_instance_id is empty (\"\")\nif (type) {\n  // Pure JS random 32-byte (64 hex characters) token generation\n  let chars = '';\n  for (let i = 0; i < 64; i++) {\n    chars += Math.floor(Math.random() * 16).toString(16);\n  }\n  token = chars;\n\n  // Pure JS SHA-256 Hash implementation\n  function sha256(ascii) {\n    const mathPow = Math.pow;\n    const maxWord = mathPow(2, 32);\n    const lengthProperty = 'length';\n    let i, j;\n    let result = '';\n\n    const words = [];\n    const asciiBitLength = ascii[lengthProperty] * 8;\n    \n    let hash = sha256.h = sha256.h || [];\n    let k = sha256.k = sha256.k || [];\n    let primeCounter = k[lengthProperty];\n\n    const isPrime = function(candidate) {\n      for (let factor = 2; factor * factor <= candidate; factor++) {\n        if (candidate % factor === 0) return false;\n      }\n      return true;\n    };\n\n    let candidate = 2;\n    while (primeCounter < 64) {\n      if (isPrime(candidate)) {\n        if (primeCounter < 8) {\n          hash[primeCounter] = (mathPow(candidate, 1/2) * maxWord) | 0;\n        }\n        k[primeCounter] = (mathPow(candidate, 1/3) * maxWord) | 0;\n        primeCounter++;\n      }\n      candidate++;\n    }\n    \n    hash = hash.slice(0);\n    ascii += '\\x80';\n    while (ascii[lengthProperty] % 64 - 56) ascii += '\\x00';\n    for (i = 0; i < ascii[lengthProperty]; i++) {\n      j = ascii.charCodeAt(i);\n      if (j >> 8) return;\n      words[i >> 2] |= j << ((3 - i % 4) * 8);\n    }\n    words[words[lengthProperty]] = ((asciiBitLength / maxWord) | 0);\n    words[words[lengthProperty]] = (asciiBitLength);\n    \n    for (j = 0; j < words[lengthProperty];) {\n      const w = words.slice(j, j += 16);\n      const oldHash = hash;\n      hash = hash.slice(0, 8);\n      \n      for (i = 0; i < 64; i++) {\n        const w15 = w[i - 15], w2 = w[i - 2];\n        const a = hash[0], e = hash[4];\n        const temp1 = hash[7]\n          + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))\n          + ((e & hash[5]) ^ ((~e) & hash[6]))\n          + k[i]\n          + (w[i] = (i < 16) ? w[i] : (\n              w[i - 16]\n              + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))\n              + w[i - 7]\n              + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))\n            ) | 0\n          );\n        const temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))\n          + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));\n        \n        hash = [(temp1 + temp2) | 0].concat(hash);\n        hash[4] = (hash[4] + temp1) | 0;\n      }\n      \n      for (i = 0; i < 8; i++) {\n        hash[i] = (hash[i] + oldHash[i]) | 0;\n      }\n    }\n    \n    for (i = 0; i < 8; i++) {\n      for (j = 3; j >= 0; j--) {\n        const b = (hash[i] >> (j * 8)) & 255;\n        result += (b < 16 ? 0 : '') + b.toString(16);\n      }\n    }\n    return result;\n\n    function rightRotate(value, amount) {\n      return (value >>> amount) | (value << (32 - amount));\n    }\n  }\n\n  tokenHash = sha256(token);\n}\n\nreturn [{\n  json: {\n    ...ctx,\n    access_token: token,\n    access_token_hash: tokenHash,\n    access_token_type: type,\n    access_token_expiry: new Date(Date.now() + 30 * 86400000).toISOString()\n  }\n}];"
+      },
+      "id": "a751c7f8-c162-4775-a66a-d24ff098cdad",
+      "name": "Code - Generate Candidate Access Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -27072,
+        5232
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/rpc/store_candidate_access_token",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  p_account_id: $json.account_id,\n  p_resource_type: $json.access_token_type,\n  p_resource_id: $json.round_instance_id || null,\n  p_token_hash: $json.access_token_hash,\n  p_expires_at: $json.access_token_expiry\n} }}",
+        "options": {}
+      },
+      "id": "2042eb7c-cca1-48e7-a68b-6770718b94b9",
+      "name": "Supabase RPC - Store Candidate Access Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -26864,
+        5232
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "When Called by Another Workflow": [
+      {
+        "json": {
+          "account_id": "ce0a8919-6cc7-4cef-b591-32e35e4edaa7",
+          "candidate_id": "d6e4b43d-1da9-4c28-9d61-be44029c6c3c",
+          "round_instance_id": "",
+          "stage": "candidate_rejected",
+          "preferred_channel": "both",
+          "role_title": "Ai Automation Intern"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Called by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Get Candidate",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase - Get Account (tier)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Get Candidate": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Get Account (tier)": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Get Round Instance & Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Get Round Instance & Campaign": {
+      "main": [
+        [
+          {
+            "node": "Suppression & Entitlement Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Suppression & Entitlement Check": {
+      "main": [
+        [
+          {
+            "node": "Code - Generate Candidate Access Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Suppressed": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Write outreach_log (suppressed/held)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase - Resolve Email Template",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Send WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Resolve Email Template": {
+      "main": [
+        [
+          {
+            "node": "Send Email (primary)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email (primary)": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Write outreach_log (email sent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Send WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Can Send Now",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Can Send Now": {
+      "main": [
+        [
+          {
+            "node": "IF Allowed (can_send_now)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Allowed (can_send_now)": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Resolve WhatsApp Template",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase - Write outreach_log (held_for_window/cap)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Resolve WhatsApp Template": {
+      "main": [
+        [
+          {
+            "node": "IF Template Approved (WhatsApp)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Template Approved (WhatsApp)": {
+      "main": [
+        [
+          {
+            "node": "Meta WhatsApp - Send Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta WhatsApp - Send Template": {
+      "main": [
+        [
+          {
+            "node": "IF WhatsApp Send Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF WhatsApp Send Failed": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Write outreach_log (whatsapp failed)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase - Write outreach_log (whatsapp sent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generate Candidate Access Token": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC - Store Candidate Access Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC - Store Candidate Access Token": {
+      "main": [
+        [
+          {
+            "node": "IF Suppressed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "8182a2d1-65c0-4fef-a268-ecd84351c7a6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "11e350345aae172743fe2665ba36f76304fbd6b68282474d7d08206f6a010061"
+  },
+  "nodeGroups": [],
+  "id": "wHhdD6RZsXyyCoVX",
+  "tags": []
+}

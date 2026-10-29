@@ -1,0 +1,837 @@
+{
+  "name": "9 - Campaign Admin",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "campaigns",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c4e7dc20-60c4-4114-9bd0-52470931adcd",
+      "name": "Webhook - /campaigns",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -3280,
+        2752
+      ],
+      "webhookId": "campaigns"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.body.action}}",
+                    "rightValue": "create",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.body.action}}",
+                    "rightValue": "update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.body.action}}",
+                    "rightValue": "list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                }
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a65d3b05-9de8-4902-a39d-48ff2c60303c",
+      "name": "Switch on action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -3040,
+        2736
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/campaigns",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "account_id",
+              "value": "=eq.{{$json.body.account_id}}"
+            },
+            {
+              "name": "status",
+              "value": "eq.open"
+            },
+            {
+              "name": "select",
+              "value": "id"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlua2ZqZ21ueGtmaXRuZWdwaWVqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTc0NDk0OSwiZXhwIjoyMTA1MzIwOTQ5fQ.QRGlz9U_n1wo7MfXTYobhK15sfRVcWOYXONaO6Zrd54"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlua2ZqZ21ueGtmaXRuZWdwaWVqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTc0NDk0OSwiZXhwIjoyMTA1MzIwOTQ5fQ.QRGlz9U_n1wo7MfXTYobhK15sfRVcWOYXONaO6Zrd54"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ed7c1196-9a99-4834-9742-53d078778e22",
+      "name": "Supabase - Count Active Campaigns",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2832,
+        2432
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Count idiom: array length from the filtered REST query response.\n// When alwaysOutputData is true and Supabase returns an empty array [], n8n emits a fallback item [{ json: {} }].\n// We filter for items with an id so empty results evaluate to 0 instead of 1.\nconst items = $input.all().filter(item => item.json && item.json.id);\nconst count = items.length;\nconst body = $node[\"Webhook - /campaigns\"].json.body;\nreturn [{ json: { account_id: body.account_id, count } }];"
+      },
+      "id": "99596ab6-fd24-46b7-b645-271daa8f7ded",
+      "name": "Count Active Campaigns",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2608,
+        2432
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/rpc/check_tier_limit",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"p_account_id\": $json.account_id, \"p_limit_key\": \"active_campaigns\", \"p_current_count\": $json.count } }}",
+        "options": {}
+      },
+      "id": "45b75da6-caff-4276-845a-fb41fb008d22",
+      "name": "Supabase - Check Tier Limit — Active Campaigns",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2384,
+        2432
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/tier_limits",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "=eq.{{$json.tier}}"
+            },
+            {
+              "name": "select",
+              "value": "overage_behavior"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "72baade0-a0e5-495b-9195-5b213a91e8ef",
+      "name": "Supabase - Get Overage Behavior",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2160,
+        2432
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine check_tier_limit's `allowed` with the tier's overage_behavior.\n// Growth's overage_behavior = 'metered': an over-limit campaign is still ALLOWED, but logged\n// as a usage_events row for billing. Free/Basic overage_behavior = 'hard_stop': block outright.\nconst tierLimit = $node[\"Supabase - Check Tier Limit — Active Campaigns\"].json;\nconst overageRow = ($input.all()[0] && $input.all()[0].json) || {};\nconst overageBehavior = overageRow.overage_behavior || 'hard_stop';\nconst allowed = tierLimit.allowed === true;\nconst overLimit = !allowed;\nconst proceed = allowed || overageBehavior === 'metered';\nconst body = $node[\"Webhook - /campaigns\"].json.body;\nreturn [{\n  json: {\n    proceed,\n    over_limit: overLimit,\n    allowed,\n    overage_behavior: overageBehavior,\n    tier: tierLimit.tier,\n    limit_value: tierLimit.limit_value,\n    current_count: tierLimit.current_count,\n    account_id: body.account_id\n  }\n}];"
+      },
+      "id": "1eafbc73-a16f-442a-9c4d-6db1339526d3",
+      "name": "Decide Tier Limit Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1952,
+        2432
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-proceed",
+              "leftValue": "={{$json.proceed}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d9d6b7b5-02de-4e74-9938-d20f75be024e",
+      "name": "IF - Tier Limit Allows Or Metered",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1728,
+        2432
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/audit_log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"account_id\": $json.account_id,\n  \"action\": \"campaign_blocked_tier_limit\",\n  \"actor_type\": \"system\",\n  \"resource_type\": \"campaign\",\n  \"details\": {\n    \"tier\": $json.tier,\n    \"limit_value\": $json.limit_value,\n    \"current_count\": $json.current_count\n  }\n} }}",
+        "options": {}
+      },
+      "id": "348206a2-a43c-4c19-8f82-ed2fdd12fc21",
+      "name": "Supabase - Audit Log (Blocked)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1504,
+        2304
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"error\", \"message\": \"Active campaign limit reached for your plan (see tier_limits).\" } }}",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "id": "e523cc26-6725-4a46-a05f-2844bcdb1192",
+      "name": "Respond Blocked - Tier Limit",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1280,
+        2304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-over-limit",
+              "leftValue": "={{$json.over_limit}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "81f8d521-9be7-46a0-adbc-5594efec7150",
+      "name": "IF - Over Limit (Metered)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1504,
+        2544
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/usage_events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"account_id\": $json.account_id, \"event_type\": \"active_campaigns_overage\", \"quantity\": 1, \"metadata\": { \"tier\": $json.tier, \"limit_value\": $json.limit_value, \"current_count\": $json.current_count } } }}",
+        "options": {}
+      },
+      "id": "b1b26b4a-d857-4351-9536-143780ade2d2",
+      "name": "Supabase - Log Usage Event (Metered Overage)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1280,
+        2464
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/campaigns",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"account_id\": $node[\"Webhook - /campaigns\"].json.body.account_id, \"name\": $node[\"Webhook - /campaigns\"].json.body.name, \"jd_text\": $node[\"Webhook - /campaigns\"].json.body.jd_text, \"location\": $node[\"Webhook - /campaigns\"].json.body.location, \"work_arrangement\": $node[\"Webhook - /campaigns\"].json.body.work_arrangement, \"opening_date\": $node[\"Webhook - /campaigns\"].json.body.opening_date, \"closing_date\": $node[\"Webhook - /campaigns\"].json.body.closing_date, \"number_of_openings\": $node[\"Webhook - /campaigns\"].json.body.number_of_openings, \"salary_min\": $node[\"Webhook - /campaigns\"].json.body.salary_min ?? null, \"salary_max\": $node[\"Webhook - /campaigns\"].json.body.salary_max ?? null, \"salary_currency\": $node[\"Webhook - /campaigns\"].json.body.salary_currency ?? null, \"salary_period\": $node[\"Webhook - /campaigns\"].json.body.salary_period ?? null, \"number_of_rounds\": $node[\"Webhook - /campaigns\"].json.body.number_of_rounds, \"status\": \"open\", \"cadence_config\": $node[\"Webhook - /campaigns\"].json.body.cadence_config ?? null, \"voice_call_config\": $node[\"Webhook - /campaigns\"].json.body.voice_call_config ?? null } }}",
+        "options": {}
+      },
+      "id": "6afe6896-99b3-48a2-9b35-e2fc961acfef",
+      "name": "Supabase - Create campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1056,
+        2560
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// One row per round, from the body's rounds array: [{round_number, round_type, interviewer_email, cutoff_score}]\nconst campaignId = $json.id;\nconst rounds = $node[\"Webhook - /campaigns\"].json.body.rounds || [];\nreturn rounds.map(r => ({ json: { campaign_id: campaignId, ...r } }));"
+      },
+      "id": "7ea1cc17-1c48-420d-81d3-7e49457157bb",
+      "name": "Build campaign_rounds rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -832,
+        2560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/campaign_rounds",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "9d142132-be6c-4a04-9672-fa20e64c3f1a",
+      "name": "Supabase - Write campaign_rounds",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -608,
+        2560
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"created\" } }}",
+        "options": {}
+      },
+      "id": "91a87871-caf8-43f2-9a35-53ce32e0d12e",
+      "name": "Respond Created",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -352,
+        2560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/campaigns?id=eq.{{$json.body.campaign_id}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"name\": $json.body.name, \"status\": $json.body.status, ...($json.body.voice_call_config ? { \"voice_call_config\": $json.body.voice_call_config } : {}) } }}",
+        "options": {}
+      },
+      "id": "b03aad2d-898e-4ed3-8855-b834db2fc623",
+      "name": "Supabase - Update campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2816,
+        2752
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"updated\" } }}",
+        "options": {}
+      },
+      "id": "b19bdf8f-8b9d-4899-932d-ecaa294b966d",
+      "name": "Respond Updated",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -2544,
+        2752
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://fvjsaourhzzyvvzrgwan.supabase.co/rest/v1/campaigns",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "account_id",
+              "value": "=eq.{{$json.body.account_id}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5f9bc0f9-2829-4438-ae58-604e68e9cb96",
+      "name": "Supabase - List campaigns (RLS-scoped)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2800,
+        2912
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "VyZ0GkAXbrLS5onZ",
+          "name": "ScalePods(HR SaaS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "363c4d1c-3921-4892-bcb0-86f3c67b9f70",
+      "name": "Respond List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -2528,
+        2912
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - /campaigns": {
+      "main": [
+        [
+          {
+            "node": "Switch on action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch on action": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Count Active Campaigns",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase - Update campaign",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase - List campaigns (RLS-scoped)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Count Active Campaigns": {
+      "main": [
+        [
+          {
+            "node": "Count Active Campaigns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Active Campaigns": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Check Tier Limit — Active Campaigns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Check Tier Limit — Active Campaigns": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Get Overage Behavior",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Get Overage Behavior": {
+      "main": [
+        [
+          {
+            "node": "Decide Tier Limit Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide Tier Limit Outcome": {
+      "main": [
+        [
+          {
+            "node": "IF - Tier Limit Allows Or Metered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Tier Limit Allows Or Metered": {
+      "main": [
+        [
+          {
+            "node": "IF - Over Limit (Metered)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase - Audit Log (Blocked)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Audit Log (Blocked)": {
+      "main": [
+        [
+          {
+            "node": "Respond Blocked - Tier Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Over Limit (Metered)": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Log Usage Event (Metered Overage)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase - Create campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Log Usage Event (Metered Overage)": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Create campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Create campaign": {
+      "main": [
+        [
+          {
+            "node": "Build campaign_rounds rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build campaign_rounds rows": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Write campaign_rounds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Write campaign_rounds": {
+      "main": [
+        [
+          {
+            "node": "Respond Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Update campaign": {
+      "main": [
+        [
+          {
+            "node": "Respond Updated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - List campaigns (RLS-scoped)": {
+      "main": [
+        [
+          {
+            "node": "Respond List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "46d1d05b-dd45-4cda-8c84-363252cbe79d",
+  "meta": {
+    "instanceId": "11e350345aae172743fe2665ba36f76304fbd6b68282474d7d08206f6a010061"
+  },
+  "nodeGroups": [],
+  "id": "if3D2TH6OQCwJEiL",
+  "tags": []
+}
