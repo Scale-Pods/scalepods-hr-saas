@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { TimePicker } from "@/components/ui/time-picker";
 
 export interface TeamMemberOption {
   id: string;
@@ -308,11 +309,10 @@ export function RoundEditor({
               >
                 Daily Window: Available From
               </label>
-              <Input
+              <TimePicker
                 id={`ts-${index}`}
-                type="time"
                 value={round.daily_start_time}
-                onChange={(e) => onChange({ daily_start_time: e.target.value })}
+                onChange={(val) => onChange({ daily_start_time: val })}
                 className="bg-card"
               />
               <span className="mt-1 block text-[11px] text-muted-foreground">
@@ -326,11 +326,10 @@ export function RoundEditor({
               >
                 Daily Window: Available Until
               </label>
-              <Input
+              <TimePicker
                 id={`te-${index}`}
-                type="time"
                 value={round.daily_end_time}
-                onChange={(e) => onChange({ daily_end_time: e.target.value })}
+                onChange={(val) => onChange({ daily_end_time: val })}
                 className="bg-card"
               />
               <span className="mt-1 block text-[11px] text-muted-foreground">
