@@ -800,6 +800,12 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         round_type: r.round_type,
         interviewer_email:
           r.round_type === "human_interview" ? r.interviewer_email || null : undefined,
+        assigned_team_member_id:
+          r.round_type === "human_interview"
+            ? teamMembers.find(
+                (m) => m.email.toLowerCase() === (r.interviewer_email || "").trim().toLowerCase(),
+              )?.id || null
+            : undefined,
         cutoff_score: r.cutoff_score,
         daily_start_time:
           r.round_type === "ai_interview" ||
