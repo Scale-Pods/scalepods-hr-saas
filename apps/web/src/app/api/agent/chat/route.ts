@@ -11,19 +11,16 @@ export async function POST(request: NextRequest) {
     const message = typeof body.message === "string" ? body.message.trim() : "";
 
     if (!message) {
-      return NextResponse.json(
-        { error: "Message is required." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Message is required." }, { status: 400 });
     }
 
     // Detect off-topic questions (e.g. general coding, Python scripts, algorithms, trivia, homework, recipes)
     const isOffTopic =
       /\b(python|javascript|typescript|java|c\+\+|html|css|sql|script|code|palindrome|plaindrome|fibonacci|algorithm|leetcode|homework|weather|recipe|poem|song|essay|joke)\b/i.test(
-        message
+        message,
       ) &&
       !/\b(scalepods|resume|candidate|hiring|interview|pricing|campaign|vapi|screen|jd|job description)\b/i.test(
-        message
+        message,
       );
 
     if (isOffTopic) {
@@ -66,9 +63,9 @@ This Tool (ScalePods HR SaaS & Talent Intelligence Platform):
 - Description: ${SCALEPODS_HR_TOOL.description}
 - Plans (STRICT PRODUCTION PRICING ONLY - NEVER mention test mode, test prices, or INR test amounts like ₹1/₹2/₹3):
   1. Free Tier: $0/month - 10 resume screens/month, 1 active campaign, standard candidate tracking.
-  2. Basic Plan: $149/month - 250 resume screens, 50 AI interviews, WhatsApp notifications, AI voice phone screening, 2 interview stages.
-  3. Growth Plan: $299/month - 1,000 resume screens, 200 AI interviews, take-home assignments, Google Calendar sync, up to 4 interview stages.
-  4. Enterprise Plan: $599/month or custom - Unlimited resume screens, 6+ custom stages, dedicated RBAC workspaces, custom scoring rubrics, priority 24/7 SLA.
+  2. Basic Plan: $149/month - 250 resume screens, 50 AI interviews, 20 AI voice screening calls, WhatsApp notifications, up to 4 interview stages.
+  3. Growth Plan: $349/month - Unlimited resume screens, 200 AI interviews, 100 AI voice screening calls, take-home assignments, Google Calendar sync, up to 6 interview stages, metered overage.
+  4. Enterprise Plan: $1,099/month or custom - Unlimited resume screens, 6+ custom stages, full SMS cadence, dedicated RBAC workspaces, custom scoring rubrics, priority 24/7 SLA.
 - Core Features: AI Resume Screening (PDF/Word extraction, 0-100% JD alignment score), AI Voice Phone Screening (conversational pre-screening calls via proprietary Voice AI engine), Interactive Live Video Assessments (Vision AI Proctoring), Self-Serve Google Calendar Booking, Automated WhatsApp reach-out, Decision Ledger.
 - Security: SOC-2 protocols, TLS 1.3, AES-256, strict Zero Data Training policy on candidate resumes.
 
@@ -139,7 +136,7 @@ Format: Clean markdown.`;
           "I'm sorry, I encountered a temporary hiccup. How can I help you explore ScalePods or answer questions about our hiring automation tools?",
         suggestions: ["What is ScalePods?", "What are the pricing plans?"],
       },
-      { status: 200 }
+      { status: 200 },
     );
   }
 }

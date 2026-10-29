@@ -1,6 +1,6 @@
 "use client";
 
-import type { CampaignsRow } from "@scalepods/core";
+import { type CampaignsRow, TierLimitError } from "@scalepods/core";
 import { useState } from "react";
 import { showErrorToast } from "@/components/shared/TierLimitToast";
 import { Button } from "@/components/ui/button";
@@ -118,6 +118,19 @@ export function ResumeUploader({
             if (!intakeRes.ok) {
               const errJson = await intakeRes.json().catch(() => ({}));
               await supabase.storage.from("resumes").remove([filePath]);
+              if (intakeRes.status === 402 || intakeRes.status === 403) {
+                showErrorToast(
+                  new TierLimitError(
+                    "/api/applications/intake",
+                    errJson.error || "Plan limit reached",
+                    errJson.detail ||
+                      "You have reached your monthly resume screening limit. Please upgrade your plan in Billing to screen more candidates.",
+                    errJson.reason || "resumes_screened_limit",
+                    intakeRes.status,
+                  ),
+                );
+                throw new Error("Plan limit reached: upgrade in Billing to continue screening");
+              }
               throw new Error(errJson.error || "Failed to create application");
             }
 

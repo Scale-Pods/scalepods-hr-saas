@@ -40,4 +40,9 @@ n8n/*
 !n8n/8 - Offer Letter Generation.json
 scratch/
 powershell.cmd
+test_*.js
+check_*.js
+pnpm-workspace.yaml
+
+
 

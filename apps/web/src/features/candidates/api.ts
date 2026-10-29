@@ -84,6 +84,11 @@ export interface CandidateProfile {
   assignments?: AssignmentsRow[];
   interviewerFeedback?: InterviewerFeedbackRow[];
   offers?: OffersRow[];
+  retentionInfo?: {
+    limitDays: number;
+    hasArchivedRecords: boolean;
+    tier: string;
+  };
 }
 
 function roundNumberFromStage(stage: string): number | null {
@@ -288,10 +293,14 @@ export async function fetchCandidateProfile(
   const view: LedgerView[] = [];
   const limitDays = TIER_LIMITS[tier as keyof typeof TIER_LIMITS]?.retentionDays ?? 90;
   const now = Date.now();
+  let hasArchivedRecords = false;
 
   for (const row of ledgerRows) {
     const ageDays = (now - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24);
-    if (ageDays > limitDays) continue;
+    if (ageDays > limitDays) {
+      hasArchivedRecords = true;
+      continue;
+    }
 
     const roundNum = roundNumberFromStage(row.stage);
     let forRound: RoundInstancesRow | undefined;
@@ -804,6 +813,11 @@ export async function fetchCandidateProfile(
     assignments,
     interviewerFeedback,
     offers,
+    retentionInfo: {
+      limitDays,
+      hasArchivedRecords,
+      tier,
+    },
   };
 }
 

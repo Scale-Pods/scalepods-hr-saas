@@ -208,7 +208,8 @@ export const SCALEPODS_COMPANY = {
   contactEmail: "info@scalepods.co",
   supportEmail: "support@scalepods.co",
   whatsAppPhone: "+91 98672 71848",
-  whatsAppLink: "https://wa.me/919867271848?text=Hi%20ScalePods!%20I'm%20interested%20in%20discussing%20custom%20workflow%20automation%20solutions.",
+  whatsAppLink:
+    "https://wa.me/919867271848?text=Hi%20ScalePods!%20I'm%20interested%20in%20discussing%20custom%20workflow%20automation%20solutions.",
   linkedIn: "https://www.linkedin.com/company/scalepods-co/",
   instagram: "https://www.instagram.com/scalepods.co/",
   mission:
@@ -225,10 +226,28 @@ export const SCALEPODS_COMPANY = {
     ],
   },
   aiEmployees: [
-    { name: "Alex", role: "AI Sales Representative", focus: "B2B prospecting, lead enrichment, personalized multichannel outreach, and CRM sync." },
-    { name: "Maya", role: "AI Marketing Strategist", focus: "Automated campaign generation, audience segmentation, content, and cross-channel distribution." },
-    { name: "Harper", role: "AI HR Specialist", focus: "Resume parsing, JD match scoring, voice screening calls, and zero-chase interview scheduling." },
-    { name: "Orion", role: "AI Operations Director", focus: "3-way logistics invoice reconciliation, procurement audit automation, and ERP sync." },
+    {
+      name: "Alex",
+      role: "AI Sales Representative",
+      focus: "B2B prospecting, lead enrichment, personalized multichannel outreach, and CRM sync.",
+    },
+    {
+      name: "Maya",
+      role: "AI Marketing Strategist",
+      focus:
+        "Automated campaign generation, audience segmentation, content, and cross-channel distribution.",
+    },
+    {
+      name: "Harper",
+      role: "AI HR Specialist",
+      focus:
+        "Resume parsing, JD match scoring, voice screening calls, and zero-chase interview scheduling.",
+    },
+    {
+      name: "Orion",
+      role: "AI Operations Director",
+      focus: "3-way logistics invoice reconciliation, procurement audit automation, and ERP sync.",
+    },
   ],
   podSolutions: [
     {
@@ -287,17 +306,20 @@ export const SCALEPODS_HR_TOOL = {
     {
       name: "Basic Plan",
       price: "$149 / month",
-      highlights: "250 resume screens/mo, 50 AI interviews, WhatsApp updates, AI voice phone screening, up to 2 interview rounds.",
+      highlights:
+        "250 resume screens/mo, 50 AI interviews, WhatsApp updates, AI voice phone screening, up to 2 interview rounds.",
     },
     {
       name: "Growth Plan",
       price: "$299 / month",
-      highlights: "1,000 resume screens/mo, 200 AI interviews, assignment rounds, Google Calendar sync, up to 4 interview rounds.",
+      highlights:
+        "1,000 resume screens/mo, 200 AI interviews, assignment rounds, Google Calendar sync, up to 4 interview rounds.",
     },
     {
       name: "Enterprise Plan",
       price: "$599 / month or custom",
-      highlights: "Unlimited resume screens, up to 6+ custom stages, dedicated RBAC team workspaces, custom cutoffs, priority 24/7 SLA.",
+      highlights:
+        "Unlimited resume screens, up to 6+ custom stages, dedicated RBAC team workspaces, custom cutoffs, priority 24/7 SLA.",
     },
   ],
 };
@@ -337,7 +359,7 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
     const itemsText = pageItems
       .map(
         (b, i) =>
-          `${i + 1}. **[${b.title}](${b.url})**\n   *${b.category} • ${b.date}*\n   ${b.summary}`
+          `${i + 1}. **[${b.title}](${b.url})**\n   *${b.category} • ${b.date}*\n   ${b.summary}`,
       )
       .join("\n\n");
 
@@ -383,7 +405,11 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
         "What are the pricing plans?",
       ],
       actionButtons: [
-        { label: "Read AI Employees Guide", href: "https://www.scalepods.co/blog/ai-employees-digital-workforce-guide", isExternal: true },
+        {
+          label: "Read AI Employees Guide",
+          href: "https://www.scalepods.co/blog/ai-employees-digital-workforce-guide",
+          isExternal: true,
+        },
         { label: "Try HR Screening Free", href: "/auth?mode=signup" },
       ],
     };
@@ -410,7 +436,11 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
           cs.metrics.map((m) => `- **${m}**`).join("\n") +
           `\n\n` +
           `ScalePods replaced manual bottlenecks with custom Claude-powered CV evaluations and autonomous outreach.`,
-        suggestions: ["Show Lotus Manor Case Study", "Show All Case Studies", "Try HR Screening Tool"],
+        suggestions: [
+          "Show Lotus Manor Case Study",
+          "Show All Case Studies",
+          "Try HR Screening Tool",
+        ],
         actionButtons: [
           { label: "Read Full ZV Steels Story", href: cs.url, isExternal: true },
           { label: "Create Free Account", href: "/auth?mode=signup" },
@@ -438,7 +468,7 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
 
     const allCs = CRAWLED_CASE_STUDIES.map(
       (c, idx) =>
-        `${idx + 1}. **[${c.client} (${c.location})](${c.url})**\n   *${c.scope}*\n   - ${c.metrics[0]}\n   - ${c.metrics[1]}`
+        `${idx + 1}. **[${c.client} (${c.location})](${c.url})**\n   *${c.scope}*\n   - ${c.metrics[0]}\n   - ${c.metrics[1]}`,
     ).join("\n\n");
 
     return {
@@ -527,11 +557,7 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
         "   - Marketing automation and campaign execution (AI agent Maya)\n" +
         "   - Custom Claude-powered enterprise workflows for specialized industries\n\n" +
         "Which tool would you like to explore?",
-      suggestions: [
-        "This HR tool",
-        "Other ScalePods tools",
-        "What are the pricing plans?",
-      ],
+      suggestions: ["This HR tool", "Other ScalePods tools", "What are the pricing plans?"],
       actionButtons: [
         { label: "Try HR Tool Free", href: "/auth?mode=signup" },
         { label: "Explore ScalePods.co", href: "https://www.scalepods.co", isExternal: true },
@@ -565,11 +591,7 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
         "4. **Custom Claude Enterprise Deployments**:\n" +
         "   - As an official Claude Partner Network Services Partner, ScalePods designs secure, production-grade AI architectures tailored to your stack.\n\n" +
         "You can deploy dedicated pods or integrate them into your existing CRM, ERP, and communication channels.",
-      suggestions: [
-        "This HR tool",
-        "Show Client Case Studies",
-        "Talk to a sales expert",
-      ],
+      suggestions: ["This HR tool", "Show Client Case Studies", "Talk to a sales expert"],
       actionButtons: [
         { label: "Explore ScalePods.co", href: "https://www.scalepods.co", isExternal: true },
         { label: "Book Strategy Call", href: "https://www.scalepods.co/contact", isExternal: true },
@@ -626,11 +648,7 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
         "4. **Claude Partner Network**: Official Services Partner delivering state-of-the-art Claude deployments.\n" +
         "5. **Global Enterprise Reach**: Operations across India, Dubai / GCC, and global clients.\n\n" +
         "We help companies eliminate 80%+ of repetitive busywork and scale without headcount bloat.",
-      suggestions: [
-        "This HR tool",
-        "Other ScalePods tools",
-        "What are the pricing plans?",
-      ],
+      suggestions: ["This HR tool", "Other ScalePods tools", "What are the pricing plans?"],
       actionButtons: [
         { label: "Start Free Screening", href: "/auth?mode=signup" },
         { label: "Official ScalePods Website", href: "https://www.scalepods.co", isExternal: true },
@@ -734,7 +752,7 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
         "1. Click **[Start Free Now](/auth?mode=signup)** and sign up with your email.\n" +
         "2. Create your first campaign and paste your Job Description.\n" +
         "3. Upload resumes to see live AI competency scoring in real time!\n\n" +
-        "When you're ready to unlock automated phone voice screening, Google Calendar booking, and multi-round video assessments, you can upgrade to Basic ($149/mo) or Growth ($299/mo) anytime.",
+        "When you're ready to unlock automated phone voice screening, Google Calendar booking, and multi-round video assessments, you can upgrade to Basic ($149/mo) or Growth ($349/mo) anytime.",
       suggestions: [
         "What are the pricing plans?",
         "How does Resume Scoring work?",
@@ -793,11 +811,11 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
         "1. **Free Tier ($0/month)**\n" +
         "   - 10 resume screens/month, 1 active campaign, standard candidate tracking.\n\n" +
         "2. **Basic Plan ($149/month)**\n" +
-        "   - 250 resume screens, 50 AI interviews, WhatsApp notifications, AI voice phone screening, 2 interview stages.\n\n" +
-        "3. **Growth Plan ($299/month)**\n" +
-        "   - 1,000 resume screens, 200 AI interviews, take-home assignments, Google Calendar sync, up to 4 interview stages.\n\n" +
-        "4. **Enterprise Plan ($599/month or custom)**\n" +
-        "   - Unlimited resume screens, 6+ custom stages, dedicated RBAC workspaces, custom scoring rubrics, priority 24/7 SLA.\n\n" +
+        "   - 250 resume screens, 50 AI interviews, 20 AI voice screening calls, WhatsApp notifications, up to 4 interview stages.\n\n" +
+        "3. **Growth Plan ($349/month)**\n" +
+        "   - Unlimited resume screens, 200 AI interviews, 100 AI voice screening calls, take-home assignments, Google Calendar sync, up to 6 interview stages, metered overage.\n\n" +
+        "4. **Enterprise Plan ($1,099/month or custom)**\n" +
+        "   - Unlimited resume screens, 6+ custom stages, full SMS cadence, dedicated RBAC workspaces, custom scoring rubrics, priority 24/7 SLA.\n\n" +
         "*Payments are processed securely with enterprise-grade encryption and instant invoice generation.*",
       suggestions: [
         "Can I try for free first?",
@@ -842,11 +860,7 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
   }
 
   // ── Voice Screening / Phone Call ──
-  if (
-    query.includes("voice") ||
-    query.includes("phone") ||
-    query.includes("call")
-  ) {
+  if (query.includes("voice") || query.includes("phone") || query.includes("call")) {
     return {
       reply:
         "### AI Voice Phone Screening\n\n" +
@@ -884,9 +898,7 @@ export function getScalePodsAnswer(userInput: string): AgentResponse {
         "Can I try for free first?",
         "What are the pricing plans?",
       ],
-      actionButtons: [
-        { label: "Try Free Screening", href: "/auth?mode=signup" },
-      ],
+      actionButtons: [{ label: "Try Free Screening", href: "/auth?mode=signup" }],
     };
   }
 

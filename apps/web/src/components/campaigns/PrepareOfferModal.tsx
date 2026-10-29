@@ -1,6 +1,6 @@
 "use client";
 
-import type { CampaignsRow } from "@scalepods/core";
+import { type CampaignsRow, TierLimitError } from "@scalepods/core";
 import {
   AlertCircle,
   CheckCircle2,
@@ -11,9 +11,9 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
-import { accessToken as getAccessToken } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -34,7 +34,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useAccount } from "@/features/account/hooks";
 import type { ViewCandidate } from "@/features/campaigns/api";
+import { accessToken as getAccessToken } from "@/lib/supabase/client";
 
 export interface PrepareOfferModalProps {
   open: boolean;
@@ -99,6 +101,8 @@ export function PrepareOfferModal({
   onComplete,
   onViewOffer,
 }: PrepareOfferModalProps) {
+  const { account } = useAccount();
+  const isFreeTier = (account?.tier ?? "free") === "free";
   const [positionTitle, setPositionTitle] = useState(campaign.name || "");
   const [salary, setSalary] = useState(campaign.salary_min ? String(campaign.salary_min) : "");
   const [currency, setCurrency] = useState(campaign.salary_currency || "USD");
@@ -184,6 +188,19 @@ export function PrepareOfferModal({
       return;
     }
 
+    if (isFreeTier) {
+      showErrorToast(
+        new TierLimitError(
+          "/api/offers/send",
+          "Plan limit reached",
+          "The Free plan does not include offer letters (0 included). Please upgrade your plan in Billing to extend official offers.",
+          "offers_per_month_exceeded",
+          403,
+        ),
+      );
+      return;
+    }
+
     setSending(true);
     setCapacityWarning(null);
 
@@ -212,6 +229,18 @@ export function PrepareOfferModal({
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 402 || res.status === 403) {
+          showErrorToast(
+            new TierLimitError(
+              "/api/offers/send",
+              data.error || "Plan limit reached",
+              data.detail,
+              data.reason,
+              res.status,
+            ),
+          );
+          return;
+        }
         throw new Error(data.error || "Failed to send offer letter");
       }
 
@@ -265,6 +294,24 @@ export function PrepareOfferModal({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {isFreeTier && (
+            <div className="flex items-center justify-between rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>
+                  The Free plan does not include official offer letters. Upgrade to Basic or Growth
+                  to extend offers.
+                </span>
+              </div>
+              <Link
+                href="/billing"
+                className="rounded-md bg-destructive px-2.5 py-1 text-xs font-semibold text-destructive-foreground hover:bg-destructive/90 shrink-0 ml-2"
+              >
+                Upgrade Plan
+              </Link>
+            </div>
+          )}
+
           {campaignTemplate?.file_name ? (
             <div className="flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 p-2.5 text-xs text-primary">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
@@ -498,7 +545,7 @@ export function PrepareOfferModal({
           <Button variant="ghost" disabled={sending} onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSendOffer} disabled={sending} className="gap-1.5">
+          <Button onClick={handleSendOffer} disabled={sending || isFreeTier} className="gap-1.5">
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             {sending ? "Generating & Emailing Offer..." : "Generate & Email Offer Letter"}
           </Button>

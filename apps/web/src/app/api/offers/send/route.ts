@@ -70,6 +70,63 @@ export async function POST(req: NextRequest) {
   });
 
   try {
+    // Pre-flight: Verify account tier limit for offer letters
+    try {
+      const { data: acc } = await adminSupabase
+        .from("accounts")
+        .select("tier")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const userTier = acc?.tier || "free";
+      if (userTier === "free") {
+        return NextResponse.json(
+          {
+            error: "Plan limit reached",
+            detail:
+              "The Free plan does not include offer letters (0 included). Please upgrade your plan in Billing to extend official offers.",
+            reason: "offers_per_month_exceeded",
+          },
+          { status: 403 },
+        );
+      }
+
+      const startOfMonth = new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        1,
+      ).toISOString();
+      const { count: offersCount } = await adminSupabase
+        .from("offers")
+        .select("id", { count: "exact", head: true })
+        .eq("account_id", user.id)
+        .gte("created_at", startOfMonth);
+
+      const { data: tierCheck } = await adminSupabase.rpc("check_tier_limit", {
+        p_account_id: user.id,
+        p_limit_key: "offers_per_month",
+        p_current_count: offersCount || 0,
+      });
+
+      if (
+        tierCheck &&
+        typeof tierCheck === "object" &&
+        (tierCheck as { allowed?: boolean }).allowed === false
+      ) {
+        const tc = tierCheck as { tier?: string; limit_value?: number };
+        return NextResponse.json(
+          {
+            error: "Plan limit reached",
+            detail: `Your ${tc.tier || userTier} plan includes ${tc.limit_value ?? 0} offer letters per month. Please upgrade your plan in Billing to extend more offers.`,
+            reason: "offers_per_month_exceeded",
+          },
+          { status: 403 },
+        );
+      }
+    } catch (tierErr) {
+      console.warn("[api/offers/send] Tier limit check warning:", tierErr);
+    }
+
     // Pre-flight: mark open rounds as completed and ensure application is in offer stage
     try {
       await adminSupabase

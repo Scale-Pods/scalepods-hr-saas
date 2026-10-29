@@ -27,6 +27,7 @@ import {
   FileSignature,
   FileText,
   Headphones,
+  Info,
   Layers,
   Loader2,
   Mail,
@@ -252,6 +253,7 @@ export default function CandidateProfilePage() {
   const interviewTranscripts = data?.interviewTranscripts ?? [];
   const voiceScreenTranscripts = data?.voiceScreenTranscripts ?? [];
   const latestScorecard = data?.latestScorecard;
+  const retentionInfo = data?.retentionInfo;
 
   // Application Decision & Action States
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -775,6 +777,23 @@ export default function CandidateProfilePage() {
         title="Candidate timeline"
         subtitle="Chronological record of round evaluations, assessments, and status updates."
       >
+        {retentionInfo?.hasArchivedRecords && (
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-border/80 bg-muted/40 p-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Info className="h-4 w-4 text-primary shrink-0" />
+              <span>
+                Older timeline records are archived under your {retentionInfo.tier.toUpperCase()}{" "}
+                plan's {retentionInfo.limitDays}-day retention policy.
+              </span>
+            </div>
+            <Link
+              href="/billing"
+              className="ml-2 rounded-md bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 shrink-0"
+            >
+              Extend Retention
+            </Link>
+          </div>
+        )}
         <Timeline rows={timeline} />
       </SectionCard>
 
