@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
       redirect_uri: redirectUri,
       response_type: "code",
       scope:
-        "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.email",
       access_type: "offline",
       prompt: "consent",
       state,
