@@ -101,6 +101,69 @@ export function CadencePreview({
     );
   };
 
+  /** Generates contextual dropdown options for the Timeline column. */
+  const getTimelineOptions = (stageKey: string, currentLabel: string) => {
+    if (
+      stageKey.startsWith("reminder_day") ||
+      stageKey === "shortlist" ||
+      /^Day\s+\d+$/i.test(currentLabel)
+    ) {
+      const maxDays = Math.max(30, Math.min(maxDayOffset, 60));
+      return [
+        { label: "Day 0", value: "Day 0" },
+        ...Array.from({ length: maxDays }, (_, i) => ({
+          label: `Day ${i + 1}`,
+          value: `Day ${i + 1}`,
+        })),
+      ];
+    }
+
+    if (stageKey === "pre_interview_reminder") {
+      return [
+        { label: "12h before", value: "12h before" },
+        { label: "24h before", value: "24h before" },
+        { label: "48h before", value: "48h before" },
+        { label: "72h before", value: "72h before" },
+      ];
+    }
+
+    if (stageKey === "interview_day") {
+      return [
+        { label: "Interview day", value: "Interview day" },
+        { label: "Morning of interview", value: "Morning of interview" },
+      ];
+    }
+
+    if (stageKey === "assignment_deadline_24h") {
+      return [
+        { label: "12h before deadline", value: "12h before deadline" },
+        { label: "24h before deadline", value: "24h before deadline" },
+        { label: "48h before deadline", value: "48h before deadline" },
+      ];
+    }
+
+    if (stageKey === "voice_screen") {
+      return [
+        { label: "Before round 1", value: "Before round 1" },
+        { label: "Day 0", value: "Day 0" },
+        { label: "Day 1", value: "Day 1" },
+      ];
+    }
+
+    if (stageKey === "result") {
+      return [
+        { label: "After cutoff check", value: "After cutoff check" },
+        { label: "Immediate upon completion", value: "Immediate upon completion" },
+        { label: "24h after completion", value: "24h after completion" },
+      ];
+    }
+
+    return Array.from({ length: 30 }, (_, i) => ({
+      label: `Day ${i}`,
+      value: `Day ${i}`,
+    }));
+  };
+
   const renderTimingCell = (stageKey: string, enabled: boolean) => {
     const timing = timingConfig[stageKey] || {};
 
@@ -112,12 +175,9 @@ export function CadencePreview({
       );
     }
 
-    if (
-      stageKey === "reminder_day1" ||
-      stageKey === "reminder_day3" ||
-      stageKey === "reminder_day5"
-    ) {
-      const defaultDay = stageKey === "reminder_day1" ? 1 : stageKey === "reminder_day3" ? 3 : 5;
+    if (stageKey.startsWith("reminder_day")) {
+      const match = stageKey.match(/\d+$/);
+      const defaultDay = match ? parseInt(match[0], 10) : 1;
       const val = timing.dayOffset ?? defaultDay;
       const sendTimeVal = timing.sendTime ?? "09:00";
       const maxDays = Math.max(val, Math.min(maxDayOffset, 30), 7);
@@ -357,11 +417,45 @@ export function CadencePreview({
               >
                 <TableCell className="w-52 min-w-[200px] whitespace-normal py-3 align-middle text-center">
                   {editable ? (
-                    <Input
-                      value={stage.dayLabel}
-                      onChange={(e) => onChangeDayLabel?.(stage.key, e.target.value)}
-                      className="h-8 w-[185px] rounded-full text-xs font-mono px-3 text-center mx-auto bg-muted/25 border-border/80 hover:border-primary/60 focus:border-primary focus:bg-background transition-colors"
-                    />
+                    (() => {
+                      const options = getTimelineOptions(stage.key, stage.dayLabel);
+                      const hasCurrent = options.some((o) => o.value === stage.dayLabel);
+                      const allOptions = hasCurrent
+                        ? options
+                        : [{ label: stage.dayLabel, value: stage.dayLabel }, ...options];
+
+                      return (
+                        <Select
+                          value={stage.dayLabel}
+                          onValueChange={(newLabel) => {
+                            onChangeDayLabel?.(stage.key, newLabel);
+                            const match = newLabel.match(/^Day\s+(\d+)$/i);
+                            if (match && stage.key.startsWith("reminder_day")) {
+                              onChangeTiming?.(stage.key, { dayOffset: parseInt(match[1], 10) });
+                            }
+                          }}
+                        >
+                          <SelectTrigger
+                            aria-label={`Select timeline for ${stage.key}`}
+                            data-testid={`select-timeline-${stage.key}`}
+                            className="h-8 w-[185px] rounded-full text-xs font-mono px-3.5 text-center mx-auto bg-muted/25 border-border/80 hover:border-primary/60 focus:border-primary focus:bg-background transition-colors shadow-none cursor-pointer flex items-center justify-between"
+                          >
+                            <SelectValue placeholder={stage.dayLabel} />
+                          </SelectTrigger>
+                          <SelectContent className="border-border bg-card max-h-64">
+                            {allOptions.map((opt) => (
+                              <SelectItem
+                                key={opt.value}
+                                value={opt.value}
+                                className="text-xs font-mono"
+                              >
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      );
+                    })()
                   ) : (
                     <span className="inline-flex items-center justify-center rounded-full bg-muted/50 px-3.5 py-1 text-xs font-mono font-medium text-foreground/90 border border-border/60 whitespace-nowrap min-w-[90px] mx-auto">
                       {stage.dayLabel}
