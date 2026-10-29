@@ -457,8 +457,6 @@ function TierCompareModal({
         subscription_id: data.subscription_id,
         name: "ScalePods HR SaaS",
         description: `${limits.label} Plan Subscription (${formattedPrice}/mo)`,
-        currency: data.currency || "INR",
-        amount: data.amount,
         prefill: {
           name: data.customer_name || "",
           email: data.customer_email || "",
