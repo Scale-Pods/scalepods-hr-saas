@@ -165,8 +165,9 @@ export function CadencePreview({
     }));
   };
 
-  const renderTimingCell = (stageKey: string, enabled: boolean) => {
+  const renderTimingCell = (stageKey: string, enabled: boolean, stage?: CadenceStageDef) => {
     const timing = timingConfig[stageKey] || {};
+    const dayLabel = stage?.dayLabel;
 
     if (stageKey === "shortlist") {
       return (
@@ -176,10 +177,15 @@ export function CadencePreview({
       );
     }
 
-    if (stageKey.startsWith("reminder_day")) {
+    if (
+      stageKey.startsWith("reminder_day") ||
+      stageKey.startsWith("custom_") ||
+      (dayLabel && /^Day\s+\d+$/i.test(dayLabel))
+    ) {
       const match = stageKey.match(/\d+$/);
       const defaultDay = match ? parseInt(match[0], 10) : 1;
-      const val = timing.dayOffset ?? defaultDay;
+      const dayFromLabel = dayLabel?.match(/^Day\s+(\d+)$/i)?.[1];
+      const val = timing.dayOffset ?? (dayFromLabel ? parseInt(dayFromLabel, 10) : defaultDay);
       const sendTimeVal = timing.sendTime ?? "09:00";
       const maxDays = Math.max(val, Math.min(maxDayOffset, 30), 7);
       const dayOptions = Array.from({ length: maxDays }, (_, i) => i + 1);
@@ -240,7 +246,8 @@ export function CadencePreview({
     }
 
     if (stageKey === "pre_interview_reminder") {
-      const val = timing.hoursBefore ?? 24;
+      const hoursFromLabel = dayLabel?.match(/^(\d+)h\b/i)?.[1];
+      const val = timing.hoursBefore ?? (hoursFromLabel ? parseInt(hoursFromLabel, 10) : 24);
       const sendTimeVal = timing.sendTime ?? "09:00";
       if (canEditTiming && editable && enabled) {
         return (
@@ -251,11 +258,11 @@ export function CadencePreview({
                 min={1}
                 max={maxHoursBefore}
                 value={val}
-                onChange={(e) =>
-                  onChangeTiming?.(stageKey, {
-                    hoursBefore: Math.max(1, Math.min(maxHoursBefore, Number(e.target.value))),
-                  })
-                }
+                onChange={(e) => {
+                  const h = Math.max(1, Math.min(maxHoursBefore, Number(e.target.value) || 1));
+                  onChangeTiming?.(stageKey, { hoursBefore: h });
+                  onChangeDayLabel?.(stageKey, `${h}h before`);
+                }}
                 className="h-7 w-14 text-xs text-center font-mono px-1"
               />
               <span className="text-muted-foreground text-xs font-medium whitespace-nowrap">
@@ -296,7 +303,9 @@ export function CadencePreview({
         return (
           <div className="flex items-center justify-center gap-1.5 text-xs text-center">
             <div className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border/70 bg-background/50 px-2 py-1">
-              <span className="text-muted-foreground text-xs font-medium">At</span>
+              <span className="text-muted-foreground text-xs font-medium">
+                {dayLabel === "Morning of interview" ? "Morning at" : "At"}
+              </span>
               <TimePicker
                 value={sendTimeVal}
                 onChange={(time) => {
@@ -318,6 +327,7 @@ export function CadencePreview({
       return (
         <div className="flex items-center justify-center gap-1.5 text-center">
           <span className="text-xs text-foreground/90 font-mono text-center">
+            {dayLabel === "Morning of interview" ? "Morning at " : ""}
             {sendTimeVal} local
           </span>
           {renderWarning(stageKey, "sendTime")}
@@ -326,7 +336,8 @@ export function CadencePreview({
     }
 
     if (stageKey === "assignment_deadline_24h") {
-      const val = timing.hoursBefore ?? 24;
+      const hoursFromLabel = dayLabel?.match(/^(\d+)h\b/i)?.[1];
+      const val = timing.hoursBefore ?? (hoursFromLabel ? parseInt(hoursFromLabel, 10) : 24);
       const sendTimeVal = timing.sendTime ?? "09:00";
       if (canEditTiming && editable && enabled) {
         return (
@@ -337,11 +348,11 @@ export function CadencePreview({
                 min={1}
                 max={maxHoursBefore}
                 value={val}
-                onChange={(e) =>
-                  onChangeTiming?.(stageKey, {
-                    hoursBefore: Math.max(1, Math.min(maxHoursBefore, Number(e.target.value))),
-                  })
-                }
+                onChange={(e) => {
+                  const h = Math.max(1, Math.min(maxHoursBefore, Number(e.target.value) || 1));
+                  onChangeTiming?.(stageKey, { hoursBefore: h });
+                  onChangeDayLabel?.(stageKey, `${h}h before deadline`);
+                }}
                 className="h-7 w-14 text-xs text-center font-mono px-1"
               />
               <span className="text-muted-foreground text-xs font-medium whitespace-nowrap">
@@ -375,9 +386,35 @@ export function CadencePreview({
       );
     }
 
+    if (stageKey === "voice_screen") {
+      return (
+        <div className="flex items-center justify-center gap-1.5 text-xs text-center text-muted-foreground">
+          <span>
+            {dayLabel === "Before round 1"
+              ? "Automated screening call before round 1"
+              : `Automated call scheduled for ${dayLabel}`}
+          </span>
+        </div>
+      );
+    }
+
+    if (stageKey === "result") {
+      return (
+        <div className="flex items-center justify-center gap-1.5 text-xs text-center text-muted-foreground">
+          <span>
+            {dayLabel === "Immediate upon completion"
+              ? "Dispatched immediately upon completion"
+              : dayLabel === "24h after completion"
+                ? "Dispatched 24h after completion"
+                : "Dispatched after cutoff score evaluation"}
+          </span>
+        </div>
+      );
+    }
+
     return (
       <span className="text-xs text-muted-foreground/80 italic text-center block">
-        Default event trigger
+        {dayLabel ? `Triggers on ${dayLabel}` : "Default event trigger"}
       </span>
     );
   };
@@ -427,9 +464,27 @@ export function CadencePreview({
                           value={stage.dayLabel}
                           onValueChange={(newLabel) => {
                             onChangeDayLabel?.(stage.key, newLabel);
-                            const match = newLabel.match(/^Day\s+(\d+)$/i);
-                            if (match && stage.key.startsWith("reminder_day")) {
-                              onChangeTiming?.(stage.key, { dayOffset: parseInt(match[1], 10) });
+
+                            // 1. Day-based offset (e.g. "Day 3")
+                            const dayMatch = newLabel.match(/^Day\s+(\d+)$/i);
+                            if (dayMatch) {
+                              onChangeTiming?.(stage.key, { dayOffset: parseInt(dayMatch[1], 10) });
+                            }
+
+                            // 2. Pre-interview or assignment hours before (e.g. "12h before", "48h before", "24h before deadline")
+                            const hoursMatch = newLabel.match(/^(\d+)h\b/i);
+                            if (hoursMatch) {
+                              const h = parseInt(hoursMatch[1], 10);
+                              onChangeTiming?.(stage.key, { hoursBefore: h });
+                            }
+
+                            // 3. Interview day ("Interview day", "Morning of interview")
+                            if (stage.key === "interview_day") {
+                              if (newLabel === "Morning of interview") {
+                                onChangeTiming?.(stage.key, { sendTime: "08:00", sendHour: 8 });
+                              } else {
+                                onChangeTiming?.(stage.key, { sendTime: "09:00", sendHour: 9 });
+                              }
                             }
                           }}
                         >
@@ -505,7 +560,7 @@ export function CadencePreview({
                   </div>
                 </TableCell>
                 <TableCell className="w-72 min-w-[260px] whitespace-normal py-3 align-middle text-center">
-                  {renderTimingCell(stage.key, enabled)}
+                  {renderTimingCell(stage.key, enabled, stage)}
                 </TableCell>
                 <TableCell className="min-w-[190px] whitespace-normal py-3 align-middle text-center">
                   <div className="flex flex-wrap items-center justify-center gap-1.5">
