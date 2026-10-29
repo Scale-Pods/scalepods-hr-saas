@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { CampaignCreateWizard } from "@/components/campaigns/CampaignCreateWizard";
 import HowToCreateButton from "@/components/HowToCreateButton";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -89,7 +89,28 @@ function CampaignsContent() {
     numberOfOpenings?: number | string;
   } | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read draft when activeTab changes
+  const rows = campaigns ?? [];
+
+  const openCount = rows.filter((c) => c.status === "open").length;
+  const closedCount = rows.filter((c) => c.status === "closed").length;
+
+  const tier = (account?.tier ?? "free") as Tier;
+  const tierConfig = TIER_LIMITS[tier] ?? TIER_LIMITS.free;
+
+  const canCreateMore =
+    tierConfig.activeCampaigns === null ||
+    tierConfig.overageBehavior === "metered" ||
+    openCount < tierConfig.activeCampaigns;
+
+  const clearDraft = useCallback(() => {
+    try {
+      localStorage.removeItem("scalepods_campaign_wizard_draft");
+      sessionStorage.removeItem("scalepods_campaign_wizard_draft");
+    } catch {}
+    setSavedDraft(null);
+  }, []);
+
+  // Sync / validate saved draft. Discard if it already matches an existing campaign.
   useEffect(() => {
     try {
       const raw =
@@ -98,6 +119,13 @@ function CampaignsContent() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.name || parsed.jdText || parsed.location || parsed.numberOfOpenings) {
+          const draftName = parsed.name?.trim().toLowerCase();
+          const alreadyExists =
+            Boolean(draftName) && rows.some((c) => c.name?.trim().toLowerCase() === draftName);
+          if (alreadyExists) {
+            clearDraft();
+            return;
+          }
           setSavedDraft(parsed);
           return;
         }
@@ -106,15 +134,7 @@ function CampaignsContent() {
     } catch {
       setSavedDraft(null);
     }
-  }, [activeTab]);
-
-  const rows = campaigns ?? [];
-
-  const openCount = rows.filter((c) => c.status === "open").length;
-  const closedCount = rows.filter((c) => c.status === "closed").length;
-
-  const tier = (account?.tier ?? "free") as Tier;
-  const tierConfig = TIER_LIMITS[tier] ?? TIER_LIMITS.free;
+  }, [rows, clearDraft]);
 
   const checkCampaignLimit = (): boolean => {
     const limit = tierConfig.activeCampaigns;
@@ -178,6 +198,17 @@ function CampaignsContent() {
     e?.stopPropagation();
     const newStatus = currentStatus === "open" ? "closed" : "open";
     if (newStatus === "open" && !checkCampaignLimit()) return;
+
+    const target = rows.find((c) => c.id === campaignId);
+    if (
+      newStatus === "open" &&
+      target?.name &&
+      savedDraft?.name &&
+      target.name.trim().toLowerCase() === savedDraft.name.trim().toLowerCase()
+    ) {
+      clearDraft();
+    }
+
     setTogglingId(campaignId);
     try {
       const token = supabaseBrowser()
@@ -307,7 +338,7 @@ function CampaignsContent() {
         />
       ) : (
         <>
-          {savedDraft && (
+          {savedDraft && canCreateMore && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-2xl bg-gradient-to-r from-blue-600/15 via-indigo-600/15 to-purple-600/15 border border-primary/30 p-4 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-primary">
@@ -332,9 +363,7 @@ function CampaignsContent() {
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    localStorage.removeItem("scalepods_campaign_wizard_draft");
-                    sessionStorage.removeItem("scalepods_campaign_wizard_draft");
-                    setSavedDraft(null);
+                    clearDraft();
                     showToast("Draft discarded.");
                   }}
                   className="h-8 rounded-xl text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"

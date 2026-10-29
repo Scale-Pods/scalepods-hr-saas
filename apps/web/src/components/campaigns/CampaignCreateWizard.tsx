@@ -14,7 +14,6 @@ import {
   filterCadenceByDuration,
   type Json,
   type RoundType,
-  type TeamMemberRow,
   TIER_LIMITS,
   validateCadenceTiming,
 } from "@scalepods/core";
@@ -35,7 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CadencePreview } from "@/components/campaigns/CadencePreview";
 import { ChannelToggle } from "@/components/campaigns/ChannelToggle";
@@ -197,6 +196,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   >({});
   const [userAddedStages, setUserAddedStages] = useState<CadenceRenderRow[]>([]);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const isSubmittedRef = useRef(false);
 
   // Restore draft on refresh / mount
   // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to restore draft
@@ -254,6 +254,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
 
   // Save draft on change to localStorage + sessionStorage
   useEffect(() => {
+    if (isSubmittedRef.current) return;
     try {
       const hasContent = Boolean(
         name ||
@@ -386,7 +387,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       const res = await extractTextFromFile(file);
       if ("error" in res) {
         toast.error(res.error, { id: "doc-upload" });
-      } else if (res.text && res.text.trim()) {
+      } else if (res.text?.trim()) {
         setJdText(res.text.trim());
         toast.success(`Loaded Job Description from ${file.name}!`, { id: "doc-upload" });
       } else {
@@ -411,7 +412,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       const res = await extractTextFromFile(file);
       if ("error" in res) {
         toast.error(res.error, { id: "offer-doc-upload" });
-      } else if (res.text && res.text.trim()) {
+      } else if (res.text?.trim()) {
         const text = res.text.trim();
         setOfferTemplateText(text);
         setOfferTemplateFileName(file.name);
@@ -890,6 +891,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
 
       await queryClient.invalidateQueries({ queryKey: campaignsKey });
 
+      isSubmittedRef.current = true;
       try {
         localStorage.removeItem("scalepods_campaign_wizard_draft");
         sessionStorage.removeItem("scalepods_campaign_wizard_draft");

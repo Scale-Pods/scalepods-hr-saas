@@ -8,9 +8,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
+let mockTier = "pro";
 vi.mock("@/features/account/hooks", () => ({
   useAccount: () => ({
-    account: { id: "acc_1", tier: "pro" },
+    account: { id: "acc_1", tier: mockTier },
   }),
 }));
 
@@ -47,6 +48,8 @@ const mockCampaigns = [
   },
 ];
 
+let currentCampaigns = mockCampaigns;
+
 const mockDeleteCampaign = vi.fn().mockResolvedValue(undefined);
 const mockUpdateCampaignStatus = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/features/campaigns/api", () => ({
@@ -56,7 +59,7 @@ vi.mock("@/features/campaigns/api", () => ({
 
 vi.mock("@/features/campaigns/hooks", () => ({
   useCampaigns: () => ({
-    data: mockCampaigns,
+    data: currentCampaigns,
     isPending: false,
     refetch: vi.fn(),
     isRefetching: false,
@@ -114,5 +117,71 @@ describe("CampaignsPage List and Delete", () => {
     // Cancel closes dialog
     const cancelBtn = screen.getByRole("button", { name: /^Cancel$/i });
     fireEvent.click(cancelBtn);
+  });
+
+  it("automatically purges draft if it matches an existing campaign name", () => {
+    localStorage.setItem(
+      "scalepods_campaign_wizard_draft",
+      JSON.stringify({ name: "Full Stack Lead", jdText: "Some JD" }),
+    );
+
+    renderWithClient(<CampaignsPage />);
+
+    // Draft banner should not appear for already created campaign
+    expect(screen.queryByText(/Unfinished Campaign Draft/i)).not.toBeInTheDocument();
+    expect(localStorage.getItem("scalepods_campaign_wizard_draft")).toBeNull();
+  });
+
+  it("hides draft banner when open campaign limit is reached on Free plan", () => {
+    mockTier = "free";
+    currentCampaigns = [
+      {
+        id: "camp_1",
+        account_id: "acc_1",
+        name: "Backend",
+        jd_text: "Go / Node",
+        status: "open",
+        number_of_rounds: 2,
+        candidates: 0,
+        created_at: "2026-10-29T10:00:00Z",
+      },
+    ];
+
+    localStorage.setItem(
+      "scalepods_campaign_wizard_draft",
+      JSON.stringify({ name: "Frontend Engineer", jdText: "React" }),
+    );
+
+    renderWithClient(<CampaignsPage />);
+
+    // Because Backend is open (1 open campaign on free tier = limit reached), draft banner must not be shown
+    expect(screen.queryByText(/Unfinished Campaign Draft/i)).not.toBeInTheDocument();
+  });
+
+  it("displays draft banner when existing campaigns are closed (limit not reached)", () => {
+    mockTier = "free";
+    currentCampaigns = [
+      {
+        id: "camp_1",
+        account_id: "acc_1",
+        name: "Backend",
+        jd_text: "Go / Node",
+        status: "closed",
+        number_of_rounds: 2,
+        candidates: 0,
+        created_at: "2026-10-29T10:00:00Z",
+      },
+    ];
+
+    localStorage.setItem(
+      "scalepods_campaign_wizard_draft",
+      JSON.stringify({ name: "Frontend Engineer", jdText: "React" }),
+    );
+
+    renderWithClient(<CampaignsPage />);
+
+    // Campaign is closed (0 open), so user can draft / create new campaign
+    expect(screen.getByText(/Unfinished Campaign Draft: Frontend Engineer/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Resume Draft/i })).toBeInTheDocument();
   });
 });
