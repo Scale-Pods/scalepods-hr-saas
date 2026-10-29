@@ -160,7 +160,7 @@ export const campaignCreateSchema = z.object({
   work_arrangement: z.enum(["remote", "hybrid", "onsite"]).optional().default("remote"),
   opening_date: z.string().optional(),
   closing_date: z.string().optional(),
-  number_of_openings: z.number().int().min(1).optional().default(1),
+  number_of_openings: z.number().int().min(0).optional().default(1),
   salary_min: z.number().optional().nullable(),
   salary_max: z.number().optional().nullable(),
   salary_currency: z.string().optional().nullable(),

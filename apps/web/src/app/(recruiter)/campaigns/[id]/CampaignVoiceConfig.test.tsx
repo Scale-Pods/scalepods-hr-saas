@@ -7,11 +7,14 @@ import CampaignDetailPage from "./page";
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "camp_123" }),
   useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
+
+let mockAccount = { id: "acc_1", tier: "growth", billing_status: "active" };
 
 vi.mock("@/features/account/hooks", () => ({
   useAccount: () => ({
-    account: { id: "acc_1", tier: "pro", billing_status: "active" },
+    account: mockAccount,
   }),
 }));
 
@@ -87,6 +90,36 @@ function renderWithClient(ui: React.ReactElement) {
 describe("CampaignDetailPage Voice Agent Configuration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAccount = { id: "acc_1", tier: "growth", billing_status: "active" };
+  });
+
+  it("displays tier upgrade card with billing link when user is on free tier", () => {
+    mockAccount = { id: "acc_1", tier: "free", billing_status: "active" };
+    currentDetailData = {
+      ...mockCampaignDetail,
+      campaign: {
+        ...mockCampaignDetail.campaign,
+        voice_call_config: null,
+      },
+    };
+
+    renderWithClient(<CampaignDetailPage />);
+
+    // Should NOT say Voice Agent Not Configured
+    expect(screen.queryByText("Voice Agent Not Configured")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Voice agent configuration is only available while creating the campaign/),
+    ).not.toBeInTheDocument();
+
+    // Should display upgrade card with explanation and upgrade button
+    expect(screen.getByText("Available on Basic, Growth & Enterprise Plans")).toBeInTheDocument();
+    expect(
+      screen.getByText(/AI Voice Screening is not available on the Free tier/),
+    ).toBeInTheDocument();
+
+    const upgradeLinks = screen.getAllByRole("link", { name: /Upgrade/i });
+    expect(upgradeLinks.length).toBeGreaterThan(0);
+    expect(upgradeLinks[0]).toHaveAttribute("href", "/billing");
   });
 
   it("displays Voice Agent Not Configured when campaign was launched without voice screening", () => {

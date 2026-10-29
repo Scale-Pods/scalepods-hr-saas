@@ -70,7 +70,7 @@ function CampaignsContent() {
     searchParams.has("step")
       ? "new"
       : "list";
-  const [activeTab, setActiveTab] = useState<"list" | "new">("list");
+  const [activeTab, setActiveTab] = useState<"list" | "new">(initialTab);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -81,8 +81,15 @@ function CampaignsContent() {
   const { data: campaigns, isPending, refetch, isRefetching } = useCampaigns();
   const { account } = useAccount();
 
-  const [savedDraft, setSavedDraft] = useState<{ name?: string; jdText?: string } | null>(null);
+  const [savedDraft, setSavedDraft] = useState<{
+    step?: number;
+    name?: string;
+    jdText?: string;
+    location?: string;
+    numberOfOpenings?: number | string;
+  } | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read draft when activeTab changes
   useEffect(() => {
     try {
       const raw =
@@ -132,6 +139,7 @@ function CampaignsContent() {
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sync activeTab from searchParams
   useEffect(() => {
     const isNew =
       searchParams.get("tab") === "new" ||
@@ -338,8 +346,7 @@ function CampaignsContent() {
                   onClick={() => {
                     if (checkCampaignLimit()) {
                       setActiveTab("new");
-                      const stepTarget =
-                        typeof savedDraft?.step === "number" ? savedDraft.step : 0;
+                      const stepTarget = typeof savedDraft?.step === "number" ? savedDraft.step : 0;
                       router.push(`/campaigns?tab=new&step=${stepTarget}`);
                     }
                   }}

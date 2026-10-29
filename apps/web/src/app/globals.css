@@ -10,26 +10,26 @@
 :root {
   color-scheme: light;
 
-  --background: #f1f5f9;
-  --foreground: #0f172a;
+  --background: #f0f3f7;
+  --foreground: #090d16;
   --card: #ffffff;
-  --card-foreground: #0f172a;
+  --card-foreground: #090d16;
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
+  --popover-foreground: #090d16;
   --primary: #2563eb;
   --primary-foreground: #ffffff;
-  --secondary: #f8fafc;
-  --secondary-foreground: #334155;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --secondary: #e2e8f0;
+  --secondary-foreground: #0f172a;
+  --muted: #e2e8f0;
+  --muted-foreground: #334155;
   --accent: rgba(37, 99, 235, 0.08);
   --accent-foreground: #1d4ed8;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
   --success: #10b981;
   --warning: #f59e0b;
-  --border: rgba(15, 23, 42, 0.08);
-  --input: rgba(15, 23, 42, 0.06);
+  --border: rgba(15, 23, 42, 0.12);
+  --input: rgba(15, 23, 42, 0.1);
   --ring: #2563eb;
   --chart-1: #2563eb;
   --chart-2: #06b6d4;
@@ -37,33 +37,33 @@
   --chart-4: #f59e0b;
   --chart-5: #ef4444;
 
-  /* Sidebar — light glass capsule matching the page background */
-  --sidebar: rgba(255, 255, 255, 0.92);
-  --sidebar-foreground: #0f172a;
-  --sidebar-border: rgba(15, 23, 42, 0.07);
+  /* Sidebar — light capsule matching the page background with crisp contrast */
+  --sidebar: rgba(255, 255, 255, 0.96);
+  --sidebar-foreground: #090d16;
+  --sidebar-border: rgba(15, 23, 42, 0.11);
   --sidebar-accent: rgba(37, 99, 235, 0.08);
   --sidebar-primary: #2563eb;
   --sidebar-primary-foreground: #ffffff;
 
   /* Glass */
-  --glass-fill: rgba(255, 255, 255, 0.72);
-  --glass-fill-hover: rgba(255, 255, 255, 0.86);
-  --glass-strong: rgba(255, 255, 255, 0.85);
-  --glass-blur: blur(40px) saturate(150%);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.05);
-  --glass-shadow-hover: 0 12px 48px rgba(0, 0, 0, 0.09);
-  --glass-shadow-modal: 0 8px 40px rgba(0, 0, 0, 0.12);
+  --glass-fill: rgba(255, 255, 255, 0.92);
+  --glass-fill-hover: rgba(255, 255, 255, 0.98);
+  --glass-strong: rgba(255, 255, 255, 0.96);
+  --glass-blur: blur(32px) saturate(160%);
+  --glass-border: rgba(15, 23, 42, 0.1);
+  --glass-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.05), 0 4px 14px -2px rgba(15, 23, 42, 0.05);
+  --glass-shadow-hover: 0 12px 32px -4px rgba(15, 23, 42, 0.09);
+  --glass-shadow-modal: 0 16px 40px -4px rgba(15, 23, 42, 0.14);
 
   /* Labels */
-  --label-primary: #111827;
-  --label-secondary: #4b5563;
-  --label-tertiary: #9ca3af;
-  --label-quaternary: #d1d5db;
+  --label-primary: #090d16;
+  --label-secondary: #334155;
+  --label-tertiary: #64748b;
+  --label-quaternary: #94a3b8;
 
   /* Separators */
-  --separator: rgba(0, 0, 0, 0.06);
-  --separator-opaque: #e5e7eb;
+  --separator: rgba(15, 23, 42, 0.08);
+  --separator-opaque: #cbd5e1;
 
   /* System colors */
   --blue: #2563eb;
@@ -254,8 +254,8 @@
     border-radius: 20px;
     border: 1px solid var(--border);
     box-shadow:
-      0 1px 3px rgba(15, 23, 42, 0.03),
-      0 6px 18px -2px rgba(15, 23, 42, 0.04);
+      0 1px 3px 0 rgba(15, 23, 42, 0.05),
+      0 4px 14px -2px rgba(15, 23, 42, 0.05);
     isolation: isolate;
   }
   .glass-surface-hover {
@@ -265,9 +265,9 @@
       border-color 250ms ease;
   }
   .glass-surface-hover:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.08);
-    border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px -4px rgba(15, 23, 42, 0.08);
+    border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
   }
 
   /* ---- Light glass sidebar (floating rounded capsule) ---- */
@@ -276,9 +276,8 @@
     -webkit-backdrop-filter: blur(40px) saturate(180%);
     backdrop-filter: blur(40px) saturate(180%);
     box-shadow:
-      0 4px 20px -2px rgba(15, 23, 42, 0.05),
-      0 16px 40px -6px rgba(15, 23, 42, 0.06),
-      0 0 35px -8px rgba(37, 99, 235, 0.12),
+      0 4px 20px -2px rgba(15, 23, 42, 0.07),
+      0 12px 36px -6px rgba(15, 23, 42, 0.08),
       inset 0 1px 0 rgba(255, 255, 255, 0.95);
     border: 1px solid var(--sidebar-border);
     border-radius: 44px;
@@ -399,14 +398,13 @@
 
   /* ---- Floating glass topbar ---- */
   .sp-topbar {
-    background: rgba(255, 255, 255, 0.88);
+    background: rgba(255, 255, 255, 0.96);
     -webkit-backdrop-filter: blur(32px) saturate(180%);
     backdrop-filter: blur(32px) saturate(180%);
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    border: 1px solid var(--border);
     border-radius: 24px;
     box-shadow:
-      0 4px 20px -2px rgba(15, 23, 42, 0.05),
-      0 0 30px -5px rgba(37, 99, 235, 0.09),
+      0 2px 10px -2px rgba(15, 23, 42, 0.05),
       inset 0 1px 0 rgba(255, 255, 255, 0.95);
   }
   .dark .sp-topbar {
@@ -866,8 +864,8 @@
   border-radius: 24px;
   padding: 24px;
   box-shadow:
-    0 1px 3px rgba(15, 23, 42, 0.03),
-    0 8px 24px -4px rgba(15, 23, 42, 0.04);
+    0 1px 3px 0 rgba(15, 23, 42, 0.04),
+    0 4px 14px -2px rgba(15, 23, 42, 0.05);
   position: relative;
   overflow: hidden;
   transition:
@@ -944,8 +942,8 @@
   border-radius: 24px;
   padding: 24px;
   box-shadow:
-    0 1px 3px rgba(15, 23, 42, 0.03),
-    0 8px 24px -4px rgba(15, 23, 42, 0.04);
+    0 1px 3px 0 rgba(15, 23, 42, 0.04),
+    0 4px 14px -2px rgba(15, 23, 42, 0.05);
   transition:
     box-shadow 0.3s ease,
     border-color 0.3s ease,
@@ -1071,8 +1069,8 @@
   border-radius: 24px;
   padding: 24px;
   box-shadow:
-    0 1px 3px rgba(15, 23, 42, 0.03),
-    0 8px 24px -4px rgba(15, 23, 42, 0.04);
+    0 1px 3px 0 rgba(15, 23, 42, 0.04),
+    0 4px 14px -2px rgba(15, 23, 42, 0.05);
   transition:
     box-shadow 0.3s ease,
     border-color 0.3s ease,

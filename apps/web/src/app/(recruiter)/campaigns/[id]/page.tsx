@@ -6,6 +6,8 @@ import {
   type DialnexaVoiceConfig,
   type Json,
   type RoundType,
+  TIER_LIMITS,
+  type Tier,
 } from "@scalepods/core";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,6 +18,7 @@ import {
   DollarSign,
   Flame,
   Loader2,
+  Lock,
   MapPin,
   Mic,
   PhoneCall,
@@ -227,6 +230,11 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const currentTier: Tier = (account?.tier as Tier) || "free";
+  const tierConfig = TIER_LIMITS[currentTier] ?? TIER_LIMITS.free;
+  // If tier is free or voiceScreening is disabled, voice feature is locked
+  const isVoiceSupported = currentTier !== "free" && Boolean(tierConfig?.voiceScreening);
+
   const savedVoiceConfig = campaign?.voice_call_config as unknown as DialnexaVoiceConfig | null;
   const hasVoiceConfig = useMemo(() => {
     if (!savedVoiceConfig) return false;
@@ -266,6 +274,14 @@ export default function CampaignDetailPage() {
   }, [effectiveVoiceConfig, isEditingVoiceConfig]);
 
   const handleTriggerVoiceCall = async (cand: (typeof candidates)[number]) => {
+    if (!isVoiceSupported) {
+      showToast(
+        "AI Voice Screening is available on Basic, Growth, and Enterprise plans. Please upgrade your plan to use this feature.",
+        { kind: "info" },
+      );
+      router.push("/billing");
+      return;
+    }
     if (!cand.phone) {
       showToast(`${cand.name || "Candidate"} does not have a phone number on file.`, {
         kind: "info",
@@ -308,6 +324,14 @@ export default function CampaignDetailPage() {
   };
 
   const handleTriggerVoiceCallAll = async () => {
+    if (!isVoiceSupported) {
+      showToast(
+        "AI Voice Screening is available on Basic, Growth, and Enterprise plans. Please upgrade your plan to use this feature.",
+        { kind: "info" },
+      );
+      router.push("/billing");
+      return;
+    }
     if (!hasVoiceConfig) {
       showToast("Voice screening is not enabled for this campaign.", { kind: "info" });
       return;
@@ -450,8 +474,8 @@ export default function CampaignDetailPage() {
           });
           successCount++;
 
-          // Also trigger voice screening call if voice is configured and candidate has phone
-          const isVoiceEnabled = Boolean(hasVoiceConfig);
+          // Also trigger voice screening call if voice is supported & configured and candidate has phone
+          const isVoiceEnabled = isVoiceSupported && Boolean(hasVoiceConfig);
           if (isVoiceEnabled && c.phone) {
             try {
               const vRes = await fetch("/api/voice-screen", {
@@ -604,13 +628,24 @@ export default function CampaignDetailPage() {
             <Users className="h-3.5 w-3.5 text-emerald-500" /> Openings & Capacity
           </span>
           <p className="text-xs font-semibold text-foreground">
-            {candidates.filter((c) => c.status === "offer_sent").length} of{" "}
-            {campaign.number_of_openings ?? 1} filled
-            {candidates.filter((c) => c.status === "offer_sent").length >=
-              (campaign.number_of_openings ?? 1) && (
-              <span className="text-[10px] text-amber-600 font-normal ml-1">
-                (Capacity reached)
-              </span>
+            {campaign.number_of_openings === 0 ? (
+              <>
+                {candidates.filter((c) => c.status === "offer_sent").length} filled
+                <span className="text-[10px] text-muted-foreground font-normal ml-1.5">
+                  (Continuous / Evergreen)
+                </span>
+              </>
+            ) : (
+              <>
+                {candidates.filter((c) => c.status === "offer_sent").length} of{" "}
+                {campaign.number_of_openings ?? 1} filled
+                {candidates.filter((c) => c.status === "offer_sent").length >=
+                  (campaign.number_of_openings ?? 1) && (
+                  <span className="text-[10px] text-amber-600 font-normal ml-1">
+                    (Capacity reached)
+                  </span>
+                )}
+              </>
             )}
           </p>
         </div>
@@ -684,7 +719,90 @@ export default function CampaignDetailPage() {
         />
       </SectionCard>
 
-      {!hasVoiceConfig ? (
+      {!isVoiceSupported ? (
+        <SectionCard
+          title="AI Voice Screening"
+          subtitle="Conversational AI phone screening for candidate pre-qualification"
+          action={
+            <Button
+              asChild
+              size="sm"
+              className="gap-1.5 text-xs font-semibold bg-gradient-to-r from-primary to-violet-600 hover:from-primary/90 hover:to-violet-600/90 text-white shadow-sm"
+            >
+              <Link href="/billing">
+                <Zap className="h-3.5 w-3.5 fill-current" />
+                Upgrade Plan
+              </Link>
+            </Button>
+          }
+        >
+          <div className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-b from-primary/5 via-card to-card p-6 md:p-8">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-inner">
+                  <PhoneCall className="h-6 w-6" />
+                </div>
+                <div className="space-y-1.5 max-w-xl">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-semibold text-foreground">
+                      Available on Basic, Growth & Enterprise Plans
+                    </h4>
+                    <Badge
+                      variant="secondary"
+                      className="bg-primary/15 text-primary border border-primary/25 text-[10px] font-semibold tracking-wide uppercase"
+                    >
+                      Upgrade Required
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    AI Voice Screening is not available on the Free tier. Upgrade your account to
+                    conduct automated 2-way conversational phone calls with qualified candidates,
+                    evaluate verbal skills, and sync evaluation scorecards before human rounds.
+                  </p>
+                  <div className="pt-2 flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className="text-[11px] font-medium text-muted-foreground gap-1 py-0.5 px-2"
+                    >
+                      <Sparkles className="h-3 w-3 text-amber-500" />
+                      Autonomous DialNexa Telephony
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="text-[11px] font-medium text-muted-foreground gap-1 py-0.5 px-2"
+                    >
+                      <Mic className="h-3 w-3 text-primary" />
+                      Live Conversational AI
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="text-[11px] font-medium text-muted-foreground gap-1 py-0.5 px-2"
+                    >
+                      <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                      Automated Scoring & Transcripts
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row md:flex-col items-stretch sm:items-center md:items-end gap-2.5 w-full md:w-auto shrink-0 border-t md:border-t-0 pt-4 md:pt-0 border-border/60">
+                <Button
+                  asChild
+                  className="gap-2 font-semibold shadow-md bg-gradient-to-r from-primary to-violet-600 hover:from-primary/90 hover:to-violet-600/90 text-white"
+                >
+                  <Link href="/billing">
+                    <Zap className="h-4 w-4 fill-current" />
+                    Upgrade to Unlock Voice
+                  </Link>
+                </Button>
+                <span className="text-[11px] text-muted-foreground text-center md:text-right">
+                  Available from Basic plan (20 calls/mo)
+                </span>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      ) : !hasVoiceConfig ? (
         <SectionCard
           title="AI Voice Screening"
           subtitle="Conversational AI voice screening was not enabled during campaign creation"

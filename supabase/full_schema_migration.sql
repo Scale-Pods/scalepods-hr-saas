@@ -3254,7 +3254,6 @@ create or replace function public.claim_expired_campaign_purges(p_batch_size int
 returns table(campaign_id uuid, account_id uuid, lease_token uuid)
 language plpgsql security definer set search_path=public
 as $$
-#variable_conflict use_column
 begin
   if coalesce(auth.role(), '') <> 'service_role' then raise exception 'service_role_required' using errcode='42501'; end if;
   insert into public.retention_purge_queue(campaign_id,account_id)
@@ -3270,10 +3269,10 @@ begin
     order by q.created_at for update of q skip locked
     limit greatest(1,least(coalesce(p_batch_size,10),50))
   ), claimed as (
-    update public.retention_purge_queue q set status='processing',lease_token=gen_random_uuid(),claimed_at=now(),attempt_count=q.attempt_count+1
+    update public.retention_purge_queue q set status='processing',lease_token=gen_random_uuid(),claimed_at=now(),attempt_count=attempt_count+1
     from picked where q.campaign_id=picked.campaign_id
     returning q.campaign_id,q.account_id,q.lease_token
-  ) select claimed.campaign_id, claimed.account_id, claimed.lease_token from claimed;
+  ) select * from claimed;
 end;
 $$;
 
@@ -4527,6 +4526,41 @@ alter table public.accounts
 comment on column public.accounts.cancel_at_period_end is 'Indicates whether the recurring subscription is cancelled but remains active until next_billing_date';
 
 -- =========================================================================
+-- FILE: 0039_fix_campaign_round_cascade_delete.sql
+-- =========================================================================
+
+-- Fix: allow cascade deletion of campaign_rounds when the parent campaign is
+-- deleted. The previous trigger blocked ALL DELETE operations, including those
+-- triggered by Postgres ON DELETE CASCADE from the campaigns table.
+-- We now only block direct (non-cascade) deletes and all updates.
+
+create or replace function public.guard_campaign_round_configuration()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if tg_op = 'UPDATE' then
+    raise exception 'round_immutable' using detail = 'A hiring round cannot be changed after it is created.';
+  end if;
+
+  -- For DELETE: allow cascade deletion when the parent campaign is deleted.
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+
+  -- INSERT path: block if applications already exist for this campaign.
+  if exists (select 1 from public.applications a where a.campaign_id = new.campaign_id) then
+    raise exception 'pipeline_locked' using detail = 'Hiring rounds cannot be added after applications exist.';
+  end if;
+  if new.round_number < 1 then
+    raise exception 'invalid_round_number' using detail = 'Round numbers must be positive.';
+  end if;
+  return new;
+end;
+$$;
+
+-- =========================================================================
 -- FILE: 0039_team_members_authenticated_grants.sql
 -- =========================================================================
 
@@ -4664,10 +4698,92 @@ grant select on public.v_funnel_conversion to authenticated, service_role, anon;
 grant select on public.v_time_to_hire to authenticated, service_role, anon;
 grant select on public.v_source_effectiveness to authenticated, service_role, anon;
 
--- Bookings view alias over calendar_events for n8n workflows
+-- =========================================================================
+-- FILE: 0042_offer_template_fields.sql
+-- =========================================================================
+
+-- Migration 0042: Add offer template columns to campaigns and make template_id optional in offers
+
+alter table public.campaigns
+  add column if not exists offer_template_text text,
+  add column if not exists offer_template_file_name text;
+
+alter table public.offers
+  alter column template_id drop not null;
+
+alter table public.offers
+  add column if not exists generated_document_text text;
+
+comment on column public.campaigns.offer_template_text is 'Raw unstructured offer letter & NDA template uploaded during campaign creation';
+comment on column public.campaigns.offer_template_file_name is 'File name of the uploaded template document';
+comment on column public.offers.generated_document_text is 'Final AI-generated populated offer letter text dispatched to the candidate';
+
+-- =========================================================================
+-- FILE: 0043_fix_claim_expired_campaign_purges_ambiguity.sql
+-- =========================================================================
+
+-- Fix ambiguous column reference error 42702 in claim_expired_campaign_purges
+-- When RETURNS TABLE defines campaign_id, PL/pgSQL variable substitution collides
+-- with SQL column references (such as in ON CONFLICT).
+-- We add #variable_conflict use_column and explicitly qualify all table references.
+
+create or replace function public.claim_expired_campaign_purges(p_batch_size integer default 10)
+returns table(campaign_id uuid, account_id uuid, lease_token uuid)
+language plpgsql security definer set search_path=public
+as $$
+#variable_conflict use_column
+begin
+  if coalesce(auth.role(), '') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+
+  insert into public.retention_purge_queue(campaign_id, account_id)
+  select c.id, c.account_id
+  from public.campaigns c
+  where c.status = 'closed' and c.retention_purge_at <= now()
+  on conflict (campaign_id) do nothing;
+
+  return query
+  with picked as (
+    select q.campaign_id
+    from public.retention_purge_queue q
+    join public.campaigns c on c.id = q.campaign_id
+    where (q.status in ('queued', 'failed') or (q.status = 'processing' and q.claimed_at < now() - interval '10 minutes'))
+      and c.status = 'closed'
+      and c.retention_purge_at <= now()
+    order by q.created_at
+    for update of q skip locked
+    limit greatest(1, least(coalesce(p_batch_size, 10), 50))
+  ),
+  claimed as (
+    update public.retention_purge_queue q
+    set status = 'processing',
+        lease_token = gen_random_uuid(),
+        claimed_at = now(),
+        attempt_count = q.attempt_count + 1
+    from picked
+    where q.campaign_id = picked.campaign_id
+    returning q.campaign_id, q.account_id, q.lease_token
+  )
+  select claimed.campaign_id, claimed.account_id, claimed.lease_token
+  from claimed;
+end;
+$$;
+
+revoke all on function public.claim_expired_campaign_purges(integer) from public, anon, authenticated;
+grant execute on function public.claim_expired_campaign_purges(integer) to service_role;
+
+-- =========================================================================
+-- FILE: 0044_bookings_view_for_calendar_events.sql
+-- =========================================================================
+
+-- Migration 0044: Expose public.bookings view with no_show and status support for n8n
+
+-- 1. Add status column to calendar_events if not exists
 alter table public.calendar_events
   add column if not exists status text not null default 'booked';
 
+-- 2. Drop and recreate view with exact columns expected by n8n (no_show, status, slot_end)
 drop view if exists public.bookings;
 
 create or replace view public.bookings as
@@ -4698,7 +4814,17 @@ from public.calendar_events ce
 left join public.round_instances ri on ri.id = ce.round_instance_id;
 
 alter view public.bookings set (security_invoker = true);
+
 grant select, insert, update on public.bookings to anon, authenticated, service_role;
 grant select, update on public.calendar_events to anon, authenticated, service_role;
 
+-- 3. Notify PostgREST to reload schema cache
+notify pgrst, 'reload schema';
 
+-- =========================================================================
+-- FILE: 0045_allow_zero_openings.sql
+-- =========================================================================
+
+-- Migration 0045: Allow campaign number_of_openings to be 0 or greater (supporting 0 to infinite positions for evergreen/continuous hiring)
+alter table public.campaigns drop constraint if exists campaigns_openings_positive;
+alter table public.campaigns add constraint campaigns_openings_positive check (number_of_openings >= 0);

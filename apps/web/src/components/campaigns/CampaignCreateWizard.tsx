@@ -153,7 +153,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     d.setDate(d.getDate() + 30);
     return d.toISOString().split("T")[0];
   });
-  const [numberOfOpenings, setNumberOfOpenings] = useState<number | string>("0");
+  const [numberOfOpenings, setNumberOfOpenings] = useState<number | string>(1);
   const [salaryMin, setSalaryMin] = useState("");
   const [salaryMax, setSalaryMax] = useState("");
   const [salaryCurrency, setSalaryCurrency] = useState("USD");
@@ -213,7 +213,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         if (parsed.workArrangement) setWorkArrangement(parsed.workArrangement);
         if (parsed.openingDate) setOpeningDate(parsed.openingDate);
         if (parsed.closingDate) setClosingDate(parsed.closingDate);
-        if (parsed.numberOfOpenings !== undefined) setNumberOfOpenings(parsed.numberOfOpenings);
+        if (parsed.numberOfOpenings !== undefined && parsed.numberOfOpenings !== null) {
+          setNumberOfOpenings(parsed.numberOfOpenings);
+        }
         if (parsed.salaryMin) setSalaryMin(parsed.salaryMin);
         if (parsed.salaryMax) setSalaryMax(parsed.salaryMax);
         if (parsed.salaryCurrency) setSalaryCurrency(parsed.salaryCurrency);
@@ -271,7 +273,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           workArrangement,
           openingDate,
           closingDate,
-          numberOfOpenings,
+          numberOfOpenings: numberOfOpenings === "" ? 0 : Number(numberOfOpenings),
           salaryMin,
           salaryMax,
           salaryCurrency,
@@ -702,8 +704,13 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     if (!closingDate) return "Please specify a closing date.";
     if (closingDate < openingDate)
       return "Target closing date must be scheduled after the opening date.";
-    if (numberOfOpenings === "" || Number(numberOfOpenings) < 0)
-      return "Please specify the number of openings (0 or more).";
+    if (
+      numberOfOpenings === "" ||
+      Number(numberOfOpenings) < 0 ||
+      Number.isNaN(Number(numberOfOpenings))
+    ) {
+      return "Please specify a valid number of openings (0 or more).";
+    }
     if ((salaryMin && !salaryMax) || (!salaryMin && salaryMax))
       return "Both minimum and maximum salary must be provided if specifying a salary range.";
     if (salaryMin && salaryMax && Number(salaryMin) > Number(salaryMax))
@@ -752,7 +759,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       work_arrangement: workArrangement,
       opening_date: openingDate,
       closing_date: closingDate,
-      number_of_openings: Math.max(1, Number(numberOfOpenings) || 1),
+      number_of_openings: Math.max(0, parseInt(String(numberOfOpenings), 10) || 0),
       salary_min: salaryMin ? Number(salaryMin) : undefined,
       salary_max: salaryMax ? Number(salaryMax) : undefined,
       salary_currency: salaryMin && salaryMax ? salaryCurrency : undefined,
@@ -862,7 +869,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           work_arrangement: workArrangement,
           opening_date: openingDate,
           closing_date: closingDate,
-          number_of_openings: Math.max(1, Number(numberOfOpenings) || 1),
+          number_of_openings: Math.max(0, parseInt(String(numberOfOpenings), 10) || 0),
         };
         if (salaryMin && salaryMax) {
           updateFields.salary_min = Number(salaryMin);
@@ -1128,26 +1135,31 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   min={0}
                   value={numberOfOpenings}
                   onFocus={(e) => e.target.select()}
-                  onKeyDown={(e) => {
-                    if (e.key === "0" && (numberOfOpenings === "1" || numberOfOpenings === 1)) {
-                      e.preventDefault();
-                      setNumberOfOpenings("0");
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === "") {
+                      setNumberOfOpenings("");
+                      return;
+                    }
+                    const clean = raw.replace(/^0+(?=\d)/, "");
+                    const parsed = parseInt(clean, 10);
+                    if (!Number.isNaN(parsed) && parsed >= 0) {
+                      setNumberOfOpenings(clean === "0" ? 0 : parsed);
                     }
                   }}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === "") {
-                      setNumberOfOpenings("0");
-                    } else {
-                      setNumberOfOpenings(
-                        val.length > 1 && val.startsWith("0") ? val.replace(/^0+/, "") || "0" : val,
-                      );
+                  onBlur={() => {
+                    if (
+                      numberOfOpenings === "" ||
+                      Number.isNaN(Number(numberOfOpenings)) ||
+                      Number(numberOfOpenings) < 0
+                    ) {
+                      setNumberOfOpenings(0);
                     }
                   }}
                   className="rounded-xl text-foreground"
                 />
                 <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Positions to fill before capacity warning
+                  Positions to fill before capacity warning (0 for continuous / unlimited)
                 </span>
               </div>
             </div>

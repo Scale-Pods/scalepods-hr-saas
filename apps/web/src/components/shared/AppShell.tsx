@@ -132,10 +132,10 @@ export function AppShell({
 
   return (
     <div className="relative flex min-h-screen bg-background overflow-x-hidden">
-      {/* Ambient background mesh glow */}
-      <div className="pointer-events-none fixed -top-32 right-[-8%] z-0 h-[650px] w-[650px] rounded-full bg-gradient-to-br from-blue-500/18 via-indigo-400/12 to-transparent blur-[130px] dark:from-blue-600/[0.09] dark:via-blue-500/[0.05] dark:to-transparent" />
-      <div className="pointer-events-none fixed top-[35%] left-[-10%] z-0 h-[550px] w-[550px] rounded-full bg-gradient-to-tr from-cyan-400/18 via-sky-300/12 to-transparent blur-[120px] dark:from-cyan-600/[0.07] dark:via-cyan-500/[0.04] dark:to-transparent" />
-      <div className="pointer-events-none fixed -bottom-28 right-[18%] z-0 h-[500px] w-[500px] rounded-full bg-gradient-to-tl from-purple-400/14 via-blue-400/10 to-transparent blur-[140px] dark:from-purple-600/[0.06] dark:via-transparent dark:to-transparent" />
+      {/* Ambient background mesh glow — gentle and soft in light mode to prevent glare */}
+      <div className="pointer-events-none fixed -top-32 right-[-8%] z-0 h-[650px] w-[650px] rounded-full bg-gradient-to-br from-blue-500/[0.04] via-indigo-400/[0.02] to-transparent blur-[140px] dark:from-blue-600/[0.09] dark:via-blue-500/[0.05] dark:to-transparent" />
+      <div className="pointer-events-none fixed top-[35%] left-[-10%] z-0 h-[550px] w-[550px] rounded-full bg-gradient-to-tr from-cyan-400/[0.03] via-sky-300/[0.02] to-transparent blur-[130px] dark:from-cyan-600/[0.07] dark:via-cyan-500/[0.04] dark:to-transparent" />
+      <div className="pointer-events-none fixed -bottom-28 right-[18%] z-0 h-[500px] w-[500px] rounded-full bg-gradient-to-tl from-purple-400/[0.03] via-blue-400/[0.02] to-transparent blur-[140px] dark:from-purple-600/[0.06] dark:via-transparent dark:to-transparent" />
 
       {/* Desktop sidebar — floating capsule */}
       <aside
@@ -171,7 +171,7 @@ export function AppShell({
             </div>
 
             {/* Center — search with shortcut */}
-            <div className="flex max-w-sm flex-1 items-center justify-between rounded-full bg-black/[0.03] px-3.5 py-1.5 transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-primary/20 dark:bg-white/[0.05]">
+            <div className="flex max-w-sm flex-1 items-center justify-between rounded-full border border-border/70 bg-card/80 px-3.5 py-1.5 transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-primary/20 dark:bg-white/[0.05]">
               <div className="flex items-center gap-2.5 min-w-0">
                 <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
                 <span className="truncate text-xs text-muted-foreground">
