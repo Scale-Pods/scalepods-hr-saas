@@ -91,13 +91,15 @@ describe("CadencePreview Timing Controls", () => {
     fireEvent.change(numInputs[0], { target: { value: "18" } });
     expect(handleChangeTiming).toHaveBeenCalledWith("pre_interview_reminder", { hoursBefore: 18 });
 
-    // Change time for interview_day
-    const timeInputs = document.querySelectorAll('input[type="time"]');
-    expect(timeInputs.length).toBeGreaterThanOrEqual(3);
-    fireEvent.change(timeInputs[2], { target: { value: "08:00" } });
-    expect(handleChangeTiming).toHaveBeenCalledWith("interview_day", {
-      sendTime: "08:00",
-      sendHour: 8,
+    // Change time for interview_day using TimePicker
+    const timeButtons = screen.getAllByRole("button", { name: /09:00 am/i });
+    expect(timeButtons.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(timeButtons[timeButtons.length - 1]);
+
+    const preset1pm = screen.getByRole("button", { name: "1:00 PM" });
+    fireEvent.click(preset1pm);
+    expect(handleChangeTiming).toHaveBeenCalledWith("pre_interview_reminder", {
+      sendTime: "13:00",
     });
   });
 });

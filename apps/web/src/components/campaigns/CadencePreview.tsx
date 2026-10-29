@@ -14,6 +14,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { TimePicker } from "@/components/ui/time-picker";
 import {
   Select,
   SelectContent,
@@ -211,15 +212,15 @@ export function CadencePreview({
                 </SelectContent>
               </Select>
               <span className="text-muted-foreground text-xs font-medium">at</span>
-              <Input
-                type="time"
+              <TimePicker
                 value={sendTimeVal}
-                onChange={(e) =>
+                onChange={(time) =>
                   onChangeTiming?.(stageKey, {
-                    sendTime: e.target.value,
+                    sendTime: time,
                   })
                 }
-                className="h-7 w-24 text-xs text-center font-mono px-2"
+                size="sm"
+                className="w-28 text-xs font-mono"
               />
             </div>
             {renderWarning(stageKey, "dayOffset")}
@@ -260,16 +261,15 @@ export function CadencePreview({
               <span className="text-muted-foreground text-xs font-medium whitespace-nowrap">
                 hrs before slot (or
               </span>
-              <Input
-                type="time"
+              <TimePicker
                 value={sendTimeVal}
-                onChange={(e) =>
+                onChange={(time) =>
                   onChangeTiming?.(stageKey, {
-                    sendTime: e.target.value,
+                    sendTime: time,
                   })
                 }
-                className="h-7 w-24 text-xs text-center font-mono px-2"
-                title="Target dispatch clock time"
+                size="sm"
+                className="w-28 text-xs font-mono"
               />
               <span className="text-muted-foreground text-xs font-medium">)</span>
             </div>
@@ -297,18 +297,17 @@ export function CadencePreview({
           <div className="flex items-center justify-center gap-1.5 text-xs text-center">
             <div className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border/70 bg-background/50 px-2 py-1">
               <span className="text-muted-foreground text-xs font-medium">At</span>
-              <Input
-                type="time"
+              <TimePicker
                 value={sendTimeVal}
-                onChange={(e) => {
-                  const sendTime = e.target.value;
-                  const hour = parseInt(sendTime.split(":")[0], 10);
+                onChange={(time) => {
+                  const hour = parseInt(time.split(":")[0], 10);
                   onChangeTiming?.(stageKey, {
-                    sendTime,
+                    sendTime: time,
                     sendHour: Number.isFinite(hour) ? hour : undefined,
                   });
                 }}
-                className="h-7 w-24 text-xs text-center font-mono px-2"
+                size="sm"
+                className="w-28 text-xs font-mono"
               />
               <span className="text-muted-foreground text-xs font-medium">local</span>
             </div>
@@ -348,16 +347,15 @@ export function CadencePreview({
               <span className="text-muted-foreground text-xs font-medium whitespace-nowrap">
                 hrs before due (or
               </span>
-              <Input
-                type="time"
+              <TimePicker
                 value={sendTimeVal}
-                onChange={(e) =>
+                onChange={(time) =>
                   onChangeTiming?.(stageKey, {
-                    sendTime: e.target.value,
+                    sendTime: time,
                   })
                 }
-                className="h-7 w-24 text-xs text-center font-mono px-2"
-                title="Target dispatch clock time"
+                size="sm"
+                className="w-28 text-xs font-mono"
               />
               <span className="text-muted-foreground text-xs font-medium">)</span>
             </div>

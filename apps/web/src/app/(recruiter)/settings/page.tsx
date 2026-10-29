@@ -12,6 +12,7 @@ import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TimePicker } from "@/components/ui/time-picker";
 import { useAccount } from "@/features/account/hooks";
 import { useSession } from "@/features/auth/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -278,11 +279,10 @@ function SettingsPageInner() {
             >
               Quiet hours start
             </label>
-            <Input
+            <TimePicker
               id="quiet-start"
-              type="time"
               value={quietStart}
-              onChange={(e) => setQuietStart(e.target.value)}
+              onChange={(time) => setQuietStart(time)}
             />
           </div>
           <div>
@@ -292,11 +292,10 @@ function SettingsPageInner() {
             >
               Quiet hours end
             </label>
-            <Input
+            <TimePicker
               id="quiet-end"
-              type="time"
               value={quietEnd}
-              onChange={(e) => setQuietEnd(e.target.value)}
+              onChange={(time) => setQuietEnd(time)}
             />
           </div>
           <div>
