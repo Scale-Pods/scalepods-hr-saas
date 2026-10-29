@@ -1930,3 +1930,15 @@ select option {
 .interview-theme h3 {
   text-rendering: optimizeLegibility;
 }
+
+/* Ensure Razorpay checkout iframe and container always receive full pointer events and sit above any backdrop */
+.razorpay-container {
+  pointer-events: auto !important;
+  z-index: 2147483647 !important;
+  isolation: isolate;
+}
+
+.razorpay-container > iframe,
+.razorpay-checkout-frame {
+  pointer-events: auto !important;
+}

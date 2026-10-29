@@ -336,6 +336,7 @@ export default function BillingPage() {
       <TierCompareModal
         open={compareOpen}
         onClose={() => setCompareOpen(false)}
+        onReopen={() => setCompareOpen(true)}
         currentTier={tier}
         accessToken={session?.access_token}
         onPlanUpdated={refreshAccount}
@@ -349,15 +350,35 @@ function loadRazorpayCheckoutScript(): Promise<boolean> {
     if (typeof window === "undefined") return resolve(false);
     if ((window as unknown as { Razorpay?: unknown }).Razorpay) return resolve(true);
 
-    const existing = document.querySelector(
+    const existing = document.querySelector<HTMLScriptElement>(
       'script[src="https://checkout.razorpay.com/v1/checkout.js"]',
     );
-    if (existing) return resolve(true);
+
+    const checkRazorpayReady = () => {
+      const start = Date.now();
+      const interval = setInterval(() => {
+        if ((window as unknown as { Razorpay?: unknown }).Razorpay) {
+          clearInterval(interval);
+          resolve(true);
+        } else if (Date.now() - start > 8000) {
+          clearInterval(interval);
+          resolve(Boolean((window as unknown as { Razorpay?: unknown }).Razorpay));
+        }
+      }, 50);
+    };
+
+    if (existing) {
+      if ((window as unknown as { Razorpay?: unknown }).Razorpay) return resolve(true);
+      existing.addEventListener("load", checkRazorpayReady, { once: true });
+      existing.addEventListener("error", () => resolve(false), { once: true });
+      checkRazorpayReady();
+      return;
+    }
 
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.async = true;
-    script.onload = () => resolve(true);
+    script.onload = checkRazorpayReady;
     script.onerror = () => resolve(false);
     document.body.appendChild(script);
   });
@@ -373,12 +394,14 @@ const PLAN_PRICING_DISPLAY: Record<Tier, { price: string; period: string }> = {
 function TierCompareModal({
   open,
   onClose,
+  onReopen,
   currentTier,
   accessToken,
   onPlanUpdated,
 }: {
   open: boolean;
   onClose: () => void;
+  onReopen?: () => void;
   currentTier: Tier;
   accessToken?: string;
   onPlanUpdated?: () => void;
@@ -424,6 +447,11 @@ function TierCompareModal({
       const limits = TIER_LIMITS[t];
       const formattedPrice =
         data.currency === "INR" ? `₹${data.amount / 100}` : `$${data.amount / 100}`;
+
+      // Dismiss the Radix dialog before opening Razorpay checkout so its modal overlay,
+      // focus-trap, and pointer-events lock do not swallow clicks on the Razorpay iframe
+      onClose();
+
       const rzp = new RazorpayConstructor({
         key: data.key_id,
         subscription_id: data.subscription_id,
@@ -457,7 +485,6 @@ function TierCompareModal({
             if (verifyRes.ok && verifyData.success) {
               toast.success(`Subscribed to ${limits.label} plan successfully!`);
               onPlanUpdated?.();
-              onClose();
             } else {
               toast.error(verifyData.error || "Payment verification failed.");
             }
@@ -470,6 +497,7 @@ function TierCompareModal({
         modal: {
           ondismiss: () => {
             setSubscribingTier(null);
+            onReopen?.();
           },
         },
         theme: {

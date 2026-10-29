@@ -1,5 +1,6 @@
 "use client";
 
+import Script from "next/script";
 import { AppShell, type BillingStatus } from "@/components/shared/AppShell";
 import { OnboardingModal } from "@/components/shared/OnboardingModal";
 import { useAccount } from "@/features/account/hooks";
@@ -22,20 +23,23 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   const showOnboarding = !accountLoading && Boolean(account) && !account?.company_name;
 
   return (
-    <AppShell
-      tier={account?.tier ?? "free"}
-      billingStatus={toBillingStatus(account?.billing_status)}
-      userName={account?.name}
-      companyName={account?.company_name}
-      nextBillingDate={account?.next_billing_date}
-    >
-      {children}
-      <OnboardingModal
-        open={showOnboarding}
-        initialUserName={account?.name ?? ""}
-        initialCompanyName={account?.company_name ?? ""}
-        onComplete={refreshAccount}
-      />
-    </AppShell>
+    <>
+      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
+      <AppShell
+        tier={account?.tier ?? "free"}
+        billingStatus={toBillingStatus(account?.billing_status)}
+        userName={account?.name}
+        companyName={account?.company_name}
+        nextBillingDate={account?.next_billing_date}
+      >
+        {children}
+        <OnboardingModal
+          open={showOnboarding}
+          initialUserName={account?.name ?? ""}
+          initialCompanyName={account?.company_name ?? ""}
+          onComplete={refreshAccount}
+        />
+      </AppShell>
+    </>
   );
 }
