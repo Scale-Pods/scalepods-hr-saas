@@ -39,7 +39,7 @@ import { toast } from "sonner";
 import { CadencePreview } from "@/components/campaigns/CadencePreview";
 import { ChannelToggle } from "@/components/campaigns/ChannelToggle";
 import { DialnexaConfigEditor } from "@/components/campaigns/DialnexaConfigEditor";
-import { DEFAULT_ROUND, type RoundDraft, RoundEditor } from "@/components/campaigns/RoundEditor";
+import { DEFAULT_ROUNDS, type RoundDraft, RoundEditor } from "@/components/campaigns/RoundEditor";
 import { StepsBar } from "@/components/campaigns/StepsBar";
 import HowToCreateButton from "@/components/HowToCreateButton";
 import { showErrorToast } from "@/components/shared/TierLimitToast";
@@ -157,7 +157,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const [salaryMax, setSalaryMax] = useState("");
   const [salaryCurrency, setSalaryCurrency] = useState("USD");
   const [salaryPeriod, setSalaryPeriod] = useState<"annual" | "monthly" | "hourly">("annual");
-  const [numberOfRounds, setNumberOfRounds] = useState(1);
+  const [numberOfRounds, setNumberOfRounds] = useState(2);
   const [startDate, setStartDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(() => {
     const d = new Date();
@@ -173,7 +173,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     "PROBATION_PERIOD",
   ]);
   const [newVariableInput, setNewVariableInput] = useState("");
-  const [rounds, setRounds] = useState<RoundDraft[]>([DEFAULT_ROUND]);
+  const [rounds, setRounds] = useState<RoundDraft[]>(DEFAULT_ROUNDS);
   const [whatsappOn, setWhatsappOn] = useState(tierConfig.whatsapp);
   const [voiceOn, setVoiceOn] = useState(tierConfig.voiceScreening);
   const [dialnexaConfig, setDialnexaConfig] = useState<DialnexaVoiceConfig>(() => ({
@@ -334,8 +334,8 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     setNumberOfOpenings("0");
     setSalaryMin("");
     setSalaryMax("");
-    setNumberOfRounds(1);
-    setRounds([DEFAULT_ROUND]);
+    setNumberOfRounds(2);
+    setRounds(DEFAULT_ROUNDS);
     setCustomCadence({});
     setOfferTemplateText("");
     setOfferTemplateFileName("");

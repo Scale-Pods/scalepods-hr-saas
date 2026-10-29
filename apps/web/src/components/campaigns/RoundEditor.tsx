@@ -1,4 +1,4 @@
-import { type RoundType, type TeamMemberRow, type Tier, tierAtLeast } from "@scalepods/core";
+import { type RoundType, type Tier, tierAtLeast } from "@scalepods/core";
 import {
   AlertCircle,
   Bot,
@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 
 export interface TeamMemberOption {
   id: string;
@@ -53,6 +52,15 @@ export const DEFAULT_ROUND: RoundDraft = {
   brief_text: "",
   assignment_deadline_hours: 72,
 };
+
+export const DEFAULT_ROUNDS: RoundDraft[] = [
+  DEFAULT_ROUND,
+  {
+    ...DEFAULT_ROUND,
+    id: "round-2",
+    round_type: "human_interview",
+  },
+];
 
 let draftSequence = 0;
 

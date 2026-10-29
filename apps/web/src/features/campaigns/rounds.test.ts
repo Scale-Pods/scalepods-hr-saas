@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ROUND, type RoundDraft } from "@/components/campaigns/RoundEditor";
+import { DEFAULT_ROUND, DEFAULT_ROUNDS, type RoundDraft } from "@/components/campaigns/RoundEditor";
 import { syncRoundCount } from "./rounds";
 
 const DEFAULT_FIELDS = {
@@ -49,5 +49,11 @@ describe("syncRoundCount", () => {
     const second = draft({ cutoff_score: 90 });
     const third = draft({ cutoff_score: 55 });
     expect(syncRoundCount([first, second, third], 1)).toEqual([first]);
+  });
+
+  it("provides 2 default rounds for new campaigns", () => {
+    expect(DEFAULT_ROUNDS).toHaveLength(2);
+    expect(DEFAULT_ROUNDS[0].round_type).toBe("ai_interview");
+    expect(DEFAULT_ROUNDS[1].round_type).toBe("human_interview");
   });
 });
