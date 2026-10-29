@@ -1,7 +1,8 @@
 -- Candidate authenticated calendar booking with one self-service reschedule.
 alter table public.round_instances
   add column if not exists reschedule_count integer not null default 0
-    check(reschedule_count between 0 and 1);
+    check(reschedule_count between 0 and 1),
+  add column if not exists conferencing_link text;
 
 create or replace function public.book_interview_slot(
   p_round_instance_id uuid,p_token text,p_slot_start timestamptz,p_slot_end timestamptz,
@@ -37,7 +38,7 @@ begin
       values(v_round.account_id,v_round.id,coalesce(v_interviewer_email,''),p_event_id,p_slot_start,p_slot_end);
     end if;
     update public.round_instances set scheduled_at=p_slot_start,event_id=p_event_id,
-      conferencing_link=p_meet_link,reschedule_count=1 where id=v_round.id;
+      meet_link=p_meet_link,conferencing_link=p_meet_link,reschedule_count=1 where id=v_round.id;
     return;
   else raise exception 'booking_state_conflict' using errcode='55000';
   end if;
@@ -48,7 +49,7 @@ begin
   insert into public.calendar_events(account_id,round_instance_id,interviewer_email,event_id,slot_start,slot_end)
   values(v_round.account_id,v_round.id,coalesce(v_interviewer_email,''),p_event_id,p_slot_start,p_slot_end);
   update public.round_instances set status='scheduled',scheduled_at=p_slot_start,event_id=p_event_id,
-    conferencing_link=p_meet_link,reschedule_count=0 where id=v_round.id;
+    meet_link=p_meet_link,conferencing_link=p_meet_link,reschedule_count=0 where id=v_round.id;
 end;
 $$;
 revoke all on function public.book_interview_slot(uuid,text,timestamptz,timestamptz,text,text,boolean) from public,anon,authenticated;

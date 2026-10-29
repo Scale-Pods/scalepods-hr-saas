@@ -21,7 +21,7 @@ begin
     from public.calendar_events ce where ce.round_instance_id=v_ri.id;
   return jsonb_build_object(
     'round_instance',jsonb_build_object('id',v_ri.id,'round_type',v_ri.round_type,'status',v_ri.status,
-      'scheduled_at',v_ri.scheduled_at,'meet_link',v_ri.conferencing_link,'event_id',v_ri.event_id,'deadline_at',v_ri.deadline_at,'reschedule_count',v_ri.reschedule_count),
+      'scheduled_at',v_ri.scheduled_at,'meet_link',coalesce(v_ri.meet_link, v_ri.conferencing_link, v_booked->>'meet_link'),'event_id',v_ri.event_id,'deadline_at',v_ri.deadline_at,'reschedule_count',v_ri.reschedule_count),
     'candidate',jsonb_build_object('id',v_cand.id,'name',v_cand.name,'email',v_cand.email,'phone',v_cand.phone),
     'campaign',jsonb_build_object('id',v_camp.id,'name',v_camp.name,'number_of_rounds',v_camp.number_of_rounds),
     'round',jsonb_build_object('round_number',v_cr.round_number,'round_type',v_cr.round_type,
