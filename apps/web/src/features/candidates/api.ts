@@ -436,6 +436,32 @@ export async function fetchCandidateProfile(
     });
   }
 
+  // Deduplicate timeline entries so repeated evaluation runs for the same round/stage only show the definitive latest record
+  const deduplicatedView: LedgerView[] = [];
+  const seenStageRound = new Set<string>();
+
+  const sortedDesc = [...view].sort(
+    (a, b) =>
+      new Date(b.created_at || b.decided_at || 0).getTime() -
+      new Date(a.created_at || a.decided_at || 0).getTime(),
+  );
+
+  for (const item of sortedDesc) {
+    const roundNum = roundNumberFromStage(item.stage) ?? (item.forRound?.round_number || null);
+    const key = roundNum ? `round_${roundNum}` : `${item.stage}_${item.round_instance_id || ""}`;
+    if (!seenStageRound.has(key)) {
+      seenStageRound.add(key);
+      deduplicatedView.push(item);
+    }
+  }
+
+  // Restore oldest-first chronological display order
+  deduplicatedView.sort(
+    (a, b) =>
+      new Date(a.created_at || a.decided_at || 0).getTime() -
+      new Date(b.created_at || b.decided_at || 0).getTime(),
+  );
+
   // 8. Resolve campaign-specific resume URL
   let resumeUrl: string | null = null;
   if (cand.account_id && activeCampaignId && cand.email) {
@@ -803,7 +829,7 @@ export async function fetchCandidateProfile(
     selectedCampaignId: activeCampaignId,
     candidateCampaigns,
     resumeUrl: matchedApplication?.resume_path || resumeUrl,
-    timeline: view,
+    timeline: deduplicatedView,
     outreach,
     interviewSessionId: sessionRows[0]?.id || null,
     interviewRecordings,
