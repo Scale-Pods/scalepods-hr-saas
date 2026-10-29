@@ -56,9 +56,9 @@ as $$
 declare v_round public.round_instances%rowtype; v_cr public.campaign_rounds%rowtype; v_job public.campaigns%rowtype; v_app public.applications%rowtype; v_interviewer_email text;
 begin
   if coalesce(auth.role(),'')<>'service_role' then raise exception 'service_role_required' using errcode='42501'; end if;
-  if not exists(select 1 from public.candidate_access_tokens t where t.resource_type='booking'
-    and t.resource_id=p_round_instance_id and t.token_hash=encode(digest(p_token,'sha256'),'hex')
-    and t.revoked_at is null and t.expires_at>now()) then raise exception 'booking_token_invalid' using errcode='28000'; end if;
+  if not public.candidate_token_valid(p_token, 'booking', p_round_instance_id) then
+    raise exception 'booking_token_invalid' using errcode='28000';
+  end if;
   select * into v_round from public.round_instances where id=p_round_instance_id for update;
   if not found or v_round.round_type<>'human_interview' then raise exception 'round_not_bookable'; end if;
   select * into v_job from public.campaigns where id=v_round.campaign_id and account_id=v_round.account_id;
