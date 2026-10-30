@@ -69,20 +69,16 @@ describe("Multi-Tier Comprehensive Matrix Testing", () => {
       expect(roundTypeLimitLabel("assignment")).toBe("Available on Growth+");
     });
 
-    it("suppresses WhatsApp and Voice Call channels in cadence", () => {
+    it("suppresses WhatsApp channel in cadence on Free tier", () => {
       expect(limits.whatsapp).toBe(false);
       expect(limits.voiceScreening).toBe(false);
       expect(voiceScreeningEnabledForTier(tier)).toBe(false);
       expect(tierEntitlementReason(tier, "whatsapp")).toBe("WhatsApp requires the Basic tier");
-      expect(tierEntitlementReason(tier, "voice_call")).toBe(
-        "Voice screening requires the Basic tier",
-      );
 
       const rendered = cadenceForTier(tier, "ai_interview");
       // All rendered stages should only include email channel
       for (const row of rendered) {
         expect(row.channels).not.toContain("whatsapp");
-        expect(row.channels).not.toContain("voice_call");
       }
     });
 
@@ -121,12 +117,11 @@ describe("Multi-Tier Comprehensive Matrix Testing", () => {
       expect(plan.aiVoiceScreeningCreditsIncluded).toBe(20);
     });
 
-    it("unlocks WhatsApp and Voice screening in cadence", () => {
+    it("unlocks WhatsApp channel in cadence on Basic+", () => {
       expect(limits.whatsapp).toBe(true);
       expect(limits.voiceScreening).toBe(true);
       expect(voiceScreeningEnabledForTier(tier)).toBe(true);
       expect(tierEntitlementReason(tier, "whatsapp")).toBeNull();
-      expect(tierEntitlementReason(tier, "voice_call")).toBeNull();
 
       const rendered = cadenceForTier(tier, "ai_interview");
       const shortlist = rendered.find((r) => r.stage.key === "shortlist");

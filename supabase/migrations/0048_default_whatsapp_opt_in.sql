@@ -169,3 +169,4 @@ $$;
 
 revoke all on function public.update_application_contact(uuid, text, text, text, boolean) from public, anon, authenticated;
 grant execute on function public.update_application_contact(uuid, text, text, text, boolean) to authenticated, service_role;
+

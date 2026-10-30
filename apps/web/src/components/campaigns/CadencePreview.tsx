@@ -1,20 +1,9 @@
 import type { CadenceChannel, CadenceRenderRow, CadenceTimingWarning } from "@scalepods/core";
-import {
-  AlertTriangle,
-  Check,
-  Clock,
-  Lock,
-  Mail,
-  MessageSquare,
-  Phone,
-  Plus,
-  X,
-} from "lucide-react";
+import { AlertTriangle, Check, Clock, Lock, Mail, MessageSquare, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { TimePicker } from "@/components/ui/time-picker";
 import {
   Select,
   SelectContent,
@@ -30,12 +19,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TimePicker } from "@/components/ui/time-picker";
 import { cn } from "@/lib/utils";
 
 const CHANNEL_META = {
   email: { label: "Email", icon: Mail },
   whatsapp: { label: "WhatsApp", icon: MessageSquare },
-  voice_call: { label: "Voice", icon: Phone },
 } as const;
 
 export interface CadenceTimingValues {

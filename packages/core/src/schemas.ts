@@ -26,7 +26,7 @@ export const campaignRoundSchema = z.object({
   evaluation_criteria: z.array(z.any()).optional().nullable(),
 });
 
-export const cadenceChannelSchema = z.enum(["email", "whatsapp", "voice_call"]);
+export const cadenceChannelSchema = z.enum(["email", "whatsapp"]);
 
 export const cadenceConfigSchema = z
   .object({

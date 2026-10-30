@@ -175,7 +175,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const [newVariableInput, setNewVariableInput] = useState("");
   const [rounds, setRounds] = useState<RoundDraft[]>(DEFAULT_ROUNDS);
   const [whatsappOn, setWhatsappOn] = useState(tierConfig.whatsapp);
-  const [voiceOn, setVoiceOn] = useState(tierConfig.voiceScreening);
+  const hasVoiceRound = rounds
+    .slice(0, numberOfRounds)
+    .some((r) => r.round_type === "ai_voice_call");
   const [dialnexaConfig, setDialnexaConfig] = useState<DialnexaVoiceConfig>(() => ({
     ...DEFAULT_DIALNEXA_CONFIG,
   }));
@@ -232,7 +234,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           setRounds(parsed.rounds);
         }
         if (parsed.whatsappOn !== undefined) setWhatsappOn(parsed.whatsappOn);
-        if (parsed.voiceOn !== undefined) setVoiceOn(parsed.voiceOn);
         if (parsed.dialnexaConfig) setDialnexaConfig(parsed.dialnexaConfig);
         if (parsed.customCadence) setCustomCadence(parsed.customCadence);
         if (
@@ -287,7 +288,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           offerTemplateVariables,
           rounds,
           whatsappOn,
-          voiceOn,
           dialnexaConfig,
           customCadence,
         });
@@ -317,7 +317,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     offerTemplateVariables,
     rounds,
     whatsappOn,
-    voiceOn,
     dialnexaConfig,
     customCadence,
   ]);
@@ -513,7 +512,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       for (const row of tierRows) {
         const activeChannels = row.channels.filter((c) => {
           if (c === "whatsapp" && !whatsappOn) return false;
-          if (c === "voice_call" && !voiceOn) return false;
           return true;
         });
         const isEnabled = row.enabled && activeChannels.length > 0;
@@ -559,16 +557,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         channels: custom.channels ?? r.channels,
       };
     });
-  }, [
-    rounds,
-    numberOfRounds,
-    tier,
-    whatsappOn,
-    voiceOn,
-    customCadence,
-    userAddedStages,
-    durationDays,
-  ]);
+  }, [rounds, numberOfRounds, tier, whatsappOn, customCadence, userAddedStages, durationDays]);
 
   /**
    * Per-stage warnings when configured timing falls outside the campaign window.
@@ -675,14 +664,10 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         label,
         dayLabel,
         description: "Custom campaign touchpoint.",
-        channels: ["email", "whatsapp", "voice_call"],
+        channels: ["email", "whatsapp"],
         appliesTo: [],
       },
-      channels: [
-        "email",
-        ...(whatsappOn ? ["whatsapp" as CadenceChannel] : []),
-        ...(voiceOn ? ["voice_call" as CadenceChannel] : []),
-      ],
+      channels: ["email", ...(whatsappOn ? ["whatsapp" as CadenceChannel] : [])],
       enabled: true,
     };
     setUserAddedStages((prev) => [...prev, newStage]);
@@ -794,7 +779,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
               }
             : undefined,
       },
-      voice_call_config: voiceOn ? dialnexaConfig : undefined,
+      voice_call_config: hasVoiceRound ? dialnexaConfig : undefined,
       rounds: rounds.slice(0, numberOfRounds).map((r, i) => ({
         round_number: i + 1,
         round_type: r.round_type,
@@ -884,7 +869,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           updateFields.salary_currency = salaryCurrency;
           updateFields.salary_period = salaryPeriod;
         }
-        if (voiceOn) {
+        if (hasVoiceRound) {
           updateFields.voice_call_config = dialnexaConfig as unknown as Json;
         }
         if (payload.cadence_config) {
@@ -1565,6 +1550,27 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 onChange={(patch) => updateRound(i, patch)}
               />
             ))}
+
+            {hasVoiceRound ? (
+              <div className="rounded-2xl border border-primary/20 bg-card p-5 space-y-4 shadow-xs mt-6">
+                <div className="flex items-center gap-2 text-primary font-semibold text-sm">
+                  <Sparkles className="h-4 w-4 text-primary shrink-0" />
+                  <span>
+                    <strong>AI Voice Screening Round Configuration:</strong> Configure your
+                    autonomous phone screening agent for this round below.
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Customize the screening prompt, select and audition AI voice personas, adjust
+                  conversational eager levels, and test call your agent before launching.
+                </p>
+                <DialnexaConfigEditor
+                  value={dialnexaConfig}
+                  onChange={setDialnexaConfig}
+                  jobTitle={name}
+                />
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -1592,41 +1598,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                 }
                 onCheckedChange={setWhatsappOn}
               />
-              <ChannelToggle
-                label="AI Voice Screening Phone Call"
-                description="ScalePods conversational AI initiates a 5-minute automated phone screening ahead of Round 1 to verify candidate communication and availability."
-                checked={voiceOn}
-                disabled={!tierConfig.voiceScreening}
-                lockText={
-                  !tierConfig.voiceScreening ? "Available on the Basic plan and above" : undefined
-                }
-                onCheckedChange={setVoiceOn}
-              />
-
-              {voiceOn ? (
-                <div className="pt-2 space-y-3">
-                  <div className="flex items-center gap-2 rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2.5 text-xs text-primary font-medium">
-                    <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-                    <span>
-                      <strong>Voice Agent Configuration:</strong> Configure your AI voice screening
-                      agent below. This configuration is established during campaign creation, and
-                      can be edited after campaign launch with all your settings preserved.
-                    </span>
-                  </div>
-                  <DialnexaConfigEditor
-                    value={dialnexaConfig}
-                    onChange={setDialnexaConfig}
-                    jobTitle={name}
-                  />
-                </div>
-              ) : (
-                tierConfig.voiceScreening && (
-                  <p className="text-[11px] text-muted-foreground italic px-1">
-                    Note: Configure your AI voice agent here or update it anytime from campaign
-                    details.
-                  </p>
-                )
-              )}
             </div>
 
             <div className="pt-5 border-t border-border space-y-3.5">

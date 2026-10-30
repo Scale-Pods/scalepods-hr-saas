@@ -351,15 +351,6 @@ export function CampaignNewPage() {
                 lockText="Available on the Basic tier"
                 onChange={setWhatsappOn}
               />
-              <ChannelToggle
-                label="Voice screening call"
-                desc="Automated 5-minute screening call ahead of Round 1."
-                checked={voiceOn}
-                disabled={!tierConfig.voiceScreening}
-                locked={!tierConfig.voiceScreening}
-                lockText="Available on the Basic tier"
-                onChange={setVoiceOn}
-              />
             </div>
 
             <div>

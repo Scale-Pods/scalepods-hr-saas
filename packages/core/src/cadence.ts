@@ -6,7 +6,7 @@ import type { RoundType, Tier } from "./types";
  * integration doc, Section 3.2. Adjust keys/labels/stages here if the real
  * cadence differs; the campaign builder preview + settings render this source.
  */
-export type CadenceChannel = "email" | "whatsapp" | "voice_call";
+export type CadenceChannel = "email" | "whatsapp";
 
 export interface CadenceStageDef {
   key: string;
@@ -86,14 +86,6 @@ export const CADENCE_STAGES = [
     appliesTo: ["ai_interview", "human_interview", "ai_voice_call"],
   },
   {
-    key: "voice_screen",
-    label: "Voice screening call",
-    dayLabel: "Before round 1",
-    description: "Automated 5-minute screening call intro (up to 2 attempts/day).",
-    channels: ["voice_call"],
-    appliesTo: [],
-  },
-  {
     key: "assignment_deadline_24h",
     label: "Assignment deadline nudge",
     dayLabel: "24h before deadline",
@@ -122,8 +114,6 @@ export interface CadenceRenderRow {
 export function tierEntitlementReason(tier: Tier, channel: CadenceChannel): string | null {
   const t = TIER_LIMITS[tier];
   if (channel === "whatsapp" && !t.whatsapp) return "WhatsApp requires the Basic tier";
-  if (channel === "voice_call" && !t.voiceScreening)
-    return "Voice screening requires the Basic tier";
   return null;
 }
 
@@ -138,7 +128,6 @@ export function cadenceForTier(tier: Tier, roundType: RoundType): CadenceRenderR
     const channels = stage.channels.filter((c) => {
       if (c === "email") return true;
       if (c === "whatsapp") return limits.whatsapp;
-      if (c === "voice_call") return limits.voiceScreening;
       return true;
     });
     return { stage, channels, enabled: applies && channels.length > 0 };
@@ -371,7 +360,6 @@ export function defaultCadenceForTier(tier: Tier, durationHours?: number | null)
     const channels = stage.channels.filter((c) => {
       if (c === "email") return true;
       if (c === "whatsapp") return TIER_LIMITS[tier].whatsapp;
-      if (c === "voice_call") return TIER_LIMITS[tier].voiceScreening;
       return false;
     });
     const roundTypeFits =

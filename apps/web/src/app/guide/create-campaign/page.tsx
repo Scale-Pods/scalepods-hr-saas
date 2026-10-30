@@ -135,9 +135,9 @@ const sections: GuideSection[] = [
       {
         num: 9,
         title: "Choose outreach channels",
-        text: "Toggle Automated Email, WhatsApp Instant Messaging and AI Voice Screening Phone Call.",
+        text: "Toggle Automated Email and WhatsApp Instant Messaging outreach channels.",
         image: "09-channels.png",
-        alt: "Outreach channels configuration toggling Automated Email, WhatsApp Instant Messaging, and AI Voice Screening Phone Call",
+        alt: "Outreach channels configuration toggling Automated Email and WhatsApp Instant Messaging",
         width: 1917,
         height: 875,
       },

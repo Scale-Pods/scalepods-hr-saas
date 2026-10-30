@@ -8,19 +8,16 @@ import {
 } from "./cadence";
 
 describe("defaultCadenceForTier", () => {
-  it("keeps email-only stages on free and gates WhatsApp/voice/assignment", () => {
+  it("keeps email-only stages on free and gates WhatsApp/assignment", () => {
     const free = defaultCadenceForTier("free");
     expect(free.stages.shortlist?.channels).toEqual(["email"]);
     expect(free.stages.shortlist?.enabled).toBe(true);
-    expect(free.stages.voice_screen?.enabled).toBe(false);
     expect(free.stages.assignment_deadline_24h?.enabled).toBe(false);
   });
 
-  it("adds WhatsApp and voice channels on Basic+", () => {
+  it("adds WhatsApp channels on Basic+", () => {
     const basic = defaultCadenceForTier("basic");
     expect(basic.stages.shortlist?.channels).toEqual(["email", "whatsapp"]);
-    expect(basic.stages.voice_screen?.channels).toEqual(["voice_call"]);
-    expect(basic.stages.voice_screen?.enabled).toBe(true);
   });
 
   it("applies timing defaults to timing-aware stages", () => {

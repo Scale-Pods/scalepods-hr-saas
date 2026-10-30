@@ -1,11 +1,10 @@
-import { Check, MessageSquare, Phone } from "lucide-react";
-import type { CadenceRenderRow } from "@scalepods/core";
+import { Check, MessageSquare } from "lucide-react";
+import type { CadenceChannel, CadenceRenderRow } from "@scalepods/core";
 import { cn } from "../lib/cn";
 
 const CHANNEL_META = {
   email: { label: "Email", icon: null },
   whatsapp: { label: "WhatsApp", icon: MessageSquare },
-  voice_call: { label: "Voice", icon: Phone },
 } as const;
 
 /**
@@ -61,7 +60,7 @@ export function CadencePreview({ rows }: { rows: CadenceRenderRow[] }) {
   );
 }
 
-function ChannelPill({ channel }: { channel: "email" | "whatsapp" | "voice_call" }) {
+function ChannelPill({ channel }: { channel: CadenceChannel }) {
   const meta = CHANNEL_META[channel];
   const Icon = meta.icon;
   return (
