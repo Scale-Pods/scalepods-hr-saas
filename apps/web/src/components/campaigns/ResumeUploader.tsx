@@ -5,7 +5,7 @@ import { useState } from "react";
 import { showErrorToast } from "@/components/shared/TierLimitToast";
 import { Button } from "@/components/ui/button";
 import { extractTextFromFile } from "@/lib/extract-text";
-import { parseResumeContact } from "@/lib/parse-resume";
+import { normalizePhoneNumber, parseResumeContact } from "@/lib/parse-resume";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { type DropFile, UploadDropzone } from "./UploadDropzone";
@@ -108,7 +108,7 @@ export function ResumeUploader({
                 campaign_id: campaign.id,
                 candidate_name: row.name ?? row.file.name.replace(/\.[^.]+$/, ""),
                 candidate_email: row.email,
-                candidate_phone: row.phone || null,
+                candidate_phone: normalizePhoneNumber(row.phone) || null,
                 resume_path: filePath,
                 resume_text: extracted.text.slice(0, 40000),
                 whatsapp_opt_in: true,

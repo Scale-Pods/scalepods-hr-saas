@@ -23,16 +23,54 @@ const JOB_WORDS =
 const COMPANY_WORDS =
   /\b(corp|inc|ltd|llc|gmbh|technologies|technology|tech|labs?|group|solutions?|systems?|company|companies|university|universities|hospital|agency|studio|global|health|sciences?|partners?|digital|polytechnic|college|school|institute|academy|foundation|industries|industry)\b/i;
 
+export function normalizePhoneNumber(
+  rawPhone?: string | null,
+  defaultCountry = "+91",
+): string | undefined {
+  if (!rawPhone) return undefined;
+  const trimmed = rawPhone.trim();
+  if (!trimmed) return undefined;
+
+  // If already starts with '+', keep '+' and normalize digits
+  if (trimmed.startsWith("+")) {
+    const digits = trimmed.slice(1).replace(/\D/g, "");
+    if (digits.length >= 7 && digits.length <= 15) {
+      return `+${digits}`;
+    }
+    return trimmed;
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits || digits.length < 7) return undefined;
+
+  // 10 digits: Indian mobile number format fallback
+  if (digits.length === 10) {
+    return `${defaultCountry}${digits}`;
+  }
+  // 11 digits starting with 0: strip 0 and prepend +91
+  if (digits.length === 11 && digits.startsWith("0")) {
+    return `${defaultCountry}${digits.slice(1)}`;
+  }
+  // 12 digits starting with 91: prepend +
+  if (digits.length === 12 && digits.startsWith("91")) {
+    return `+${digits}`;
+  }
+
+  // Fallback: prepend default country code (+91)
+  return `${defaultCountry}${digits}`;
+}
+
 export function parseResumeText(text: string): ParsedContact {
   const rawEmail = text.match(EMAIL_RE)?.[0];
   const email = rawEmail ? rawEmail.replace(/\s+/g, "") : undefined;
 
   const phoneMatches = text.match(PHONE_RE);
-  const phone = phoneMatches?.find((p) => {
+  const rawPhone = phoneMatches?.find((p) => {
     if (p.match(/\b\d{2}[./-]\d{2}[./-]\d{4}\b/)) return false;
     const digits = p.replace(/\D/g, "");
     return digits.length >= 7 && digits.length <= 15;
   });
+  const phone = normalizePhoneNumber(rawPhone);
 
   let name = guessName(text);
 

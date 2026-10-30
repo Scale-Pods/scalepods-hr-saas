@@ -60,7 +60,7 @@ export interface ViewCandidate {
   latest_score: number | null;
   resume_score?: number | null;
   ai_interview_score?: number | null;
-  round_type?: RoundType | string | null;
+  round_type?: string | null;
   interview_status?:
     | "not_started"
     | "in_progress"
@@ -138,6 +138,7 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
     campaign_id: string;
     application_id?: string | null;
     round_number: number;
+    round_type?: string | null;
     status: string;
     created_at: string;
     reviewer_cutoff?: number | null;

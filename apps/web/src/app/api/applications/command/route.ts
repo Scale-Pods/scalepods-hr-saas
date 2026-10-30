@@ -405,7 +405,7 @@ async function triggerImmediateVoiceCallIfEligible(
         max_duration_seconds: voiceConfig.max_duration_seconds,
         end_call_on_silence_sec: voiceConfig.end_call_on_silence_sec,
         ambient_noise: voiceConfig.ambient_noise,
-        candidate_name: app.candidate_name,
+        candidate_name: app.candidate_name ?? undefined,
         role_title: roleTitle,
         company_name: "ScalePods",
         questions: roundQuestions,

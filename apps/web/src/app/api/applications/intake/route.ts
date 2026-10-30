@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
 import { callN8nGateway } from "@/lib/n8n-gateway";
+import { normalizePhoneNumber } from "@/lib/parse-resume";
 
 export const dynamic = "force-dynamic";
 
@@ -52,8 +53,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const normalizedPhone = parsed.data.candidate_phone
+      ? (normalizePhoneNumber(parsed.data.candidate_phone) ?? parsed.data.candidate_phone)
+      : parsed.data.candidate_phone;
+
     const { response, payload } = await callN8nGateway("hiring/application-intake", token, {
       ...parsed.data,
+      candidate_phone: normalizedPhone,
       jd_text: campaign.jd_text,
     });
     if (!response.ok) {

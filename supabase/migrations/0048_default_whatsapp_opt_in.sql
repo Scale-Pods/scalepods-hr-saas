@@ -80,10 +80,9 @@ begin
 
   insert into public.candidates (account_id, name, email, phone)
   values (v_account_id, btrim(p_candidate_name), v_email, nullif(btrim(p_candidate_phone), ''))
-  on conflict (account_id, email) do update
+  on conflict (account_id, normalized_email) do update
   set name = excluded.name,
-      phone = coalesce(excluded.phone, public.candidates.phone),
-      updated_at = now()
+      phone = coalesce(excluded.phone, public.candidates.phone)
   returning id into v_candidate_id;
 
   if exists (

@@ -1,7 +1,5 @@
-import { ArrowRight, CheckCircle, Clock, FileText, Mail, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle, FileText, Mail, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-
-const ESTIMATED_MINUTES = 5;
 
 function ConfettiParticle({ delay, left }: { delay: number; left: number }) {
   const colors = [
@@ -142,19 +140,6 @@ export function Completion() {
               </div>
             </div>
           </div>
-        </div>
-
-        <div
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl mb-6 animate-fade-in"
-          style={{ background: "var(--fill-quaternary)" }}
-        >
-          <Clock size={14} style={{ color: "var(--label-secondary)" }} />
-          <p className="text-sm" style={{ color: "var(--label-secondary)" }}>
-            Scorecard results typically available in about{" "}
-            <span className="font-semibold" style={{ color: "var(--label-primary)" }}>
-              {ESTIMATED_MINUTES} minutes
-            </span>
-          </p>
         </div>
 
         <p className="text-xs" style={{ color: "var(--label-quaternary)" }}>

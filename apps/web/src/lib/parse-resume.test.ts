@@ -17,16 +17,16 @@ Senior Product Designer, Acme Corp (2020-present)
   it("extracts email, phone, and name from a plain-text resume", () => {
     const parsed = parseResumeText(SAMPLE);
     expect(parsed.email).toBe("sarah.johnson@example.com");
-    expect(parsed.phone).toBe("+1 (415) 555-0132");
+    expect(parsed.phone).toBe("+14155550132");
     expect(parsed.name).toBe("Sarah Johnson");
   });
 
   it.each([
-    ["(415) 555-0132", "(415) 555-0132"],
-    ["415-555-0132", "415-555-0132"],
-    ["415.555.0132", "415.555.0132"],
-    ["+44 20 7946 0958", "+44 20 7946 0958"],
-    ["call me: 555-0109", "555-0109"],
+    ["(415) 555-0132", "+914155550132"],
+    ["415-555-0132", "+914155550132"],
+    ["415.555.0132", "+914155550132"],
+    ["+44 20 7946 0958", "+442079460958"],
+    ["call me: 555-0109", "+915550109"],
   ])("extracts phone %s", (input, expected) => {
     const text = `Emily Rodriguez\n${input}\nemily@acme.io\n...`;
     expect(parseResumeText(text).phone).toBe(expected);
@@ -40,7 +40,7 @@ Full Stack Developer
 ...`;
     const parsed = parseResumeText(text);
     expect(parsed.email).toBe("mchen@startup.io");
-    expect(parsed.phone).toBe("555-0109");
+    expect(parsed.phone).toBe("+915550109");
     expect(parsed.name).toBe("Michael Chen");
   });
 
@@ -55,7 +55,7 @@ Web Developer, Acme Corp
 ...`;
     const parsed = parseResumeText(text);
     expect(parsed.email).toBe("webdev@noreply.co");
-    expect(parsed.phone).toBe("+1 (917) 555-0144");
+    expect(parsed.phone).toBe("+19175550144");
     expect(parsed.name).toBe("John Smith");
   });
 
@@ -82,6 +82,6 @@ PROJECTS
     const parsed = parseResumeText(text);
     expect(parsed.name).toBe("Aqib Firdous Khan");
     expect(parsed.email).toBe("aqibfirdous93@gmail.com");
-    expect(parsed.phone).toBe("7780874496");
+    expect(parsed.phone).toBe("+917780874496");
   });
 });

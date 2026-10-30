@@ -51,6 +51,7 @@ export default function BookPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<{ start: string; end: string } | null>(null);
   const [booking, setBooking] = useState(false);
+  const [isRescheduling, setIsRescheduling] = useState(false);
   const [success, setSuccess] = useState<BookingContext["round_instance"] | null>(null);
 
   useEffect(() => {
@@ -86,17 +87,50 @@ export default function BookPage() {
     };
   }, [token, riId, mode]);
 
+  const activeEventId =
+    eventId || ctx?.booked_event?.event_id || ctx?.round_instance?.event_id || undefined;
+  const activeInterviewerEmail =
+    interviewerEmail ||
+    ctx?.booked_event?.interviewer_email ||
+    ctx?.round?.interviewer_email ||
+    undefined;
+  const isRescheduleMode =
+    mode === "reschedule" ||
+    isRescheduling ||
+    Boolean(activeEventId && ctx?.round_instance?.status === "scheduled");
+
   const handleBook = async (payload: {
     slot_start: string;
     slot_end: string;
     event_id?: string;
     interviewer_email?: string;
+    is_reschedule?: boolean;
   }) => {
     if (!ctx) return;
     setBooking(true);
     try {
-      await bookSlot({ round_instance_id: ctx.round_instance.id, token, ...payload });
-      setSuccess(ctx.round_instance);
+      const resolvedEventId = payload.event_id || activeEventId;
+      const resolvedInterviewerEmail = payload.interviewer_email || activeInterviewerEmail;
+      const willReschedule =
+        Boolean(payload.is_reschedule) ||
+        isRescheduleMode ||
+        Boolean(resolvedEventId && ctx.round_instance.status === "scheduled");
+
+      await bookSlot({
+        round_instance_id: ctx.round_instance.id,
+        token,
+        slot_start: payload.slot_start,
+        slot_end: payload.slot_end,
+        event_id: resolvedEventId,
+        interviewer_email: resolvedInterviewerEmail,
+        is_reschedule: willReschedule,
+      });
+      setSuccess({
+        ...ctx.round_instance,
+        scheduled_at: payload.slot_start,
+        status: "scheduled",
+      });
+      setIsRescheduling(false);
       setView("booked");
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Something went wrong");
@@ -139,13 +173,16 @@ export default function BookPage() {
         )}
         {!meetLink && (
           <p className="mt-3 text-sm text-label-secondary">
-            The interview link will be emailed to you at 9 AM on the interview day.
+            The interview link will be emailed shortly to you.
           </p>
         )}
         {!success && (
           <button
             type="button"
-            onClick={() => setView("pick")}
+            onClick={() => {
+              setIsRescheduling(true);
+              setView("pick");
+            }}
             className="mt-5 text-xs font-medium text-primary hover:text-accent-foreground"
           >
             Need to reschedule?
@@ -159,14 +196,13 @@ export default function BookPage() {
     <div>
       <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">Pick a time</h1>
       <p className="mt-1.5 text-sm text-label-secondary">
-        {mode === "reschedule"
-          ? "Select a new slot below:"
-          : "Choose a slot to book your interview."}
+        {isRescheduleMode ? "Select a new slot below:" : "Choose a slot to book your interview."}
       </p>
       <SlotPicker
         ctx={ctx as BookingContext}
-        eventId={mode === "reschedule" ? eventId : undefined}
-        interviewerEmail={mode === "reschedule" ? interviewerEmail : undefined}
+        eventId={activeEventId}
+        interviewerEmail={activeInterviewerEmail}
+        isReschedule={isRescheduleMode}
         onSelect={handleBook}
         loading={booking}
         selected={selectedSlot}
@@ -180,6 +216,7 @@ function SlotPicker({
   ctx,
   eventId,
   interviewerEmail,
+  isReschedule,
   onSelect,
   loading,
   selected,
@@ -188,11 +225,13 @@ function SlotPicker({
   ctx: BookingContext;
   eventId?: string;
   interviewerEmail?: string;
+  isReschedule?: boolean;
   onSelect: (s: {
     slot_start: string;
     slot_end: string;
     event_id?: string;
     interviewer_email?: string;
+    is_reschedule?: boolean;
   }) => void;
   loading: boolean;
   selected: { start: string; end: string } | null;
@@ -323,6 +362,7 @@ function SlotPicker({
       slot_end: isoEnd,
       event_id: eventId || undefined,
       interviewer_email: interviewerEmail || undefined,
+      is_reschedule: isReschedule,
     });
   };
 

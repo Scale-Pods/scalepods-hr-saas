@@ -154,7 +154,7 @@ export function CadencePreview({
     }));
   };
 
-  const renderTimingCell = (stageKey: string, enabled: boolean, stage?: CadenceStageDef) => {
+  const renderTimingCell = (stageKey: string, enabled: boolean, stage?: { dayLabel?: string }) => {
     const timing = timingConfig[stageKey] || {};
     const dayLabel = stage?.dayLabel;
 

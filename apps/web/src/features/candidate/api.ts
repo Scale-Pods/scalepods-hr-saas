@@ -75,18 +75,36 @@ export async function bookSlot(payload: {
   token: string;
   slot_start: string;
   slot_end: string;
+  new_slot_start?: string;
+  new_slot_end?: string;
   event_id?: string;
   interviewer_email?: string;
+  is_reschedule?: boolean;
 }): Promise<void> {
-  const path = payload.event_id ? "reschedule" : "book-slot";
+  const isReschedule = Boolean(payload.event_id || payload.is_reschedule);
+  const path = isReschedule ? "reschedule" : "book-slot";
+  const body = {
+    ...payload,
+    slot_start: payload.slot_start,
+    slot_end: payload.slot_end,
+    new_slot_start: payload.new_slot_start || payload.slot_start,
+    new_slot_end: payload.new_slot_end || payload.slot_end,
+  };
   const res = await fetch(`${n8nBase()}/webhook/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? body.reason ?? `Booking failed (${res.status})`);
+    const errorBody = await res.json().catch(() => ({}));
+    const message =
+      errorBody.error ||
+      errorBody.reason ||
+      errorBody.message ||
+      (res.status === 409
+        ? "This slot is no longer available. Please choose another time."
+        : `Booking failed (${res.status})`);
+    throw new Error(message);
   }
 }
 
