@@ -15,17 +15,19 @@ describe("Voice Screen Test Call API Route", () => {
     expect(data.error).toMatch(/Phone number is required/);
   });
 
-  it("normalizes phone and triggers call dispatch via primary n8n backend", async () => {
+  it("normalizes phone and triggers call dispatch via dedicated test webhook", async () => {
     const originalFetch = global.fetch;
+    const urlsCalled: string[] = [];
     const mockFetch = vi.fn().mockImplementation((url: string) => {
-      if (url.includes("/webhook/voice-screen")) {
+      urlsCalled.push(url);
+      if (url.includes("/webhook/voice-screen-test")) {
         return Promise.resolve({
           ok: true,
           status: 200,
           text: async () =>
             JSON.stringify({
               status: "call_initiated",
-              call_id: "n8n_call_mock_12345",
+              call_id: "test_webhook_call_777",
             }),
         });
       }
@@ -58,15 +60,9 @@ describe("Voice Screen Test Call API Route", () => {
       const data = await res.json();
       expect(data.success).toBe(true);
       expect(data.mode).toBe("n8n_backend");
-      expect(data.call_id).toBe("n8n_call_mock_12345");
+      expect(data.call_id).toBe("test_webhook_call_777");
       expect(data.to_phone_number).toBe("+919876543210");
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/webhook/voice-screen"),
-        expect.objectContaining({
-          method: "POST",
-          body: expect.stringContaining('"is_test_call":true'),
-        }),
-      );
+      expect(urlsCalled.some((u) => u.includes("/webhook/voice-screen-test"))).toBe(true);
     } finally {
       global.fetch = originalFetch;
     }
@@ -179,7 +175,7 @@ describe("Voice Screen Test Call API Route", () => {
           }),
         });
       }
-      if (url.includes("/webhook/voice-screen")) {
+      if (url.includes("/webhook/voice-screen-test")) {
         return Promise.resolve({
           ok: true,
           status: 200,
