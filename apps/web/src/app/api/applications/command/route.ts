@@ -496,6 +496,7 @@ async function triggerImmediateVoiceCallIfEligible(
             round_instance_id: targetRiId,
             account_id: app.account_id,
             application_id: app.id,
+            campaign_id: app.campaign_id,
             source: "scalepods_advance_trigger",
           },
           notes: {
@@ -505,6 +506,7 @@ async function triggerImmediateVoiceCallIfEligible(
             candidate_id: app.candidate_id,
             round_instance_id: targetRiId,
             account_id: app.account_id,
+            campaign_id: app.campaign_id,
           },
         }),
       });

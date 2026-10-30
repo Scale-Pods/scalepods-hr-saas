@@ -204,6 +204,7 @@ export async function POST(req: Request) {
           candidate_id: body.candidate_id || null,
           round_instance_id: roundInstanceId || null,
           account_id: accountId || null,
+          campaign_id: body.campaign_id || null,
           source: "scalepods_direct_dispatch",
         },
         notes: {
@@ -213,6 +214,7 @@ export async function POST(req: Request) {
           candidate_id: body.candidate_id || null,
           round_instance_id: roundInstanceId || null,
           account_id: accountId || null,
+          campaign_id: body.campaign_id || null,
         },
       }),
     });

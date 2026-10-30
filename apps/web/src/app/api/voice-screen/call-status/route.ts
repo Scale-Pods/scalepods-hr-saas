@@ -102,6 +102,8 @@ export async function GET(req: Request) {
     const accountId = searchParams.get("account_id");
     const campaignId = searchParams.get("campaign_id");
     const candidateId = searchParams.get("candidate_id");
+    const sinceParam = searchParams.get("since");
+    const isTestCallQuery = searchParams.get("is_test_call") === "true";
     const apiKey = process.env.DIALNEXA_API_KEY || DEFAULT_DIALNEXA_API_KEY;
 
     if (!callId && !phone) {
@@ -109,7 +111,7 @@ export async function GET(req: Request) {
     }
 
     // 1. Fetch by direct call_id
-    if (callId) {
+    if (callId && callId !== "dispatched" && callId !== "undefined" && callId !== "null") {
       try {
         const detailRes = await fetch(`https://api.dialnexa.com/v1/calls/${callId}`, {
           headers: {
@@ -209,9 +211,7 @@ export async function GET(req: Request) {
         const matchingOls = (ols ?? []).filter((ol) => {
           if (campaignId) {
             const matchesRi =
-              ol.round_instance_id &&
-              allowedRoundInstanceIds &&
-              allowedRoundInstanceIds.includes(ol.round_instance_id);
+              ol.round_instance_id && allowedRoundInstanceIds?.includes(ol.round_instance_id);
             const matchesApp = targetAppId && ol.application_id === targetAppId;
             return Boolean(matchesRi || matchesApp);
           }
@@ -258,6 +258,8 @@ export async function GET(req: Request) {
       ? data
       : (data as { data?: Array<Record<string, unknown>> }).data || [];
 
+    const sinceMs = sinceParam ? Number(sinceParam) : null;
+
     const matching = allCalls.filter((c) => {
       const toNumber = String(c.to_number || "").replace(/[\s+-]/g, "");
       const matchesPhone = toNumber.includes(cleanPhone) || cleanPhone.includes(toNumber);
@@ -265,6 +267,32 @@ export async function GET(req: Request) {
 
       // Check metadata / notes if present
       const meta = (c.metadata || c.notes || {}) as Record<string, unknown>;
+      const isCallTest = Boolean(
+        meta.is_test_call ||
+          meta.source === "scalepods_test_console" ||
+          meta.source === "scalepods_test_call_fallback" ||
+          meta.source === "scalepods_test_call",
+      );
+
+      // Separate test calls from real candidate campaign calls
+      if (isTestCallQuery && !isCallTest && !sinceMs) {
+        return false;
+      }
+      if (!isTestCallQuery && isCallTest) {
+        return false;
+      }
+
+      const callTime = new Date(
+        (c.called_time || c.initiated_time || c.created_at) as string,
+      ).getTime();
+
+      // If 'since' is specified (e.g. test call polling started at dispatch time), filter out older calls
+      if (sinceMs && !Number.isNaN(sinceMs)) {
+        if (callTime && callTime < sinceMs - 5000) {
+          return false;
+        }
+      }
+
       if (accountId && meta.account_id && meta.account_id !== accountId) {
         return false;
       }
@@ -273,28 +301,26 @@ export async function GET(req: Request) {
       }
 
       if (campaignId) {
-        if (!validOutreachTimes || validOutreachTimes.length === 0) {
+        if (meta.campaign_id && meta.campaign_id !== campaignId) {
           return false;
         }
-        const callTime = new Date((c.called_time || c.initiated_time) as string).getTime();
-        const matchesWindow = validOutreachTimes.some(
-          (ot) => Math.abs(callTime - ot) < 45 * 60 * 1000,
-        );
-        if (!matchesWindow) return false;
-
         if (
           meta.round_instance_id &&
           allowedRoundInstanceIds &&
+          allowedRoundInstanceIds.length > 0 &&
           !allowedRoundInstanceIds.includes(String(meta.round_instance_id))
         ) {
           return false;
         }
 
-        if (meta.campaign_id && meta.campaign_id !== campaignId) {
+        if (!validOutreachTimes || validOutreachTimes.length === 0) {
           return false;
         }
+        const matchesWindow = validOutreachTimes.some(
+          (ot) => Math.abs(callTime - ot) < 45 * 60 * 1000,
+        );
+        if (!matchesWindow) return false;
       } else if (validOutreachTimes && validOutreachTimes.length > 0) {
-        const callTime = new Date((c.called_time || c.initiated_time) as string).getTime();
         const matchesWindow = validOutreachTimes.some(
           (ot) => Math.abs(callTime - ot) < 45 * 60 * 1000,
         );
@@ -302,6 +328,15 @@ export async function GET(req: Request) {
       }
 
       return true;
+    });
+
+    // Always sort newest calls first
+    matching.sort((a, b) => {
+      const timeA =
+        new Date((a.called_time || a.initiated_time || a.created_at) as string).getTime() || 0;
+      const timeB =
+        new Date((b.called_time || b.initiated_time || b.created_at) as string).getTime() || 0;
+      return timeB - timeA;
     });
 
     // Populate individual call details (including recording_sas_url and transcript) for matching calls

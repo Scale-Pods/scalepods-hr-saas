@@ -142,6 +142,7 @@ export function DialnexaConfigEditor({
   } | null>(null);
   const [isPollingCall, setIsPollingCall] = useState(false);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const dispatchTimeRef = useRef<number | null>(null);
 
   // In-browser Simulator State
   const [simActive, setSimActive] = useState(false);
@@ -506,15 +507,32 @@ export function DialnexaConfigEditor({
 
       setIsPollingCall(true);
       try {
+        const sinceTime = dispatchTimeRef.current || Date.now() - 30000;
         const param =
           idToUse && idToUse !== "dispatched"
             ? `call_id=${encodeURIComponent(idToUse)}`
-            : `phone=${encodeURIComponent(phoneToUse)}`;
+            : `phone=${encodeURIComponent(phoneToUse)}&is_test_call=true&since=${sinceTime}`;
         const res = await fetch(`/api/voice-screen/call-status?${param}`);
         if (res.ok) {
           const data = await res.json();
           const targetCall = data.call || (Array.isArray(data.calls) && data.calls[0]) || null;
           if (targetCall) {
+            // Guard: If polling by phone (without an exact call_id match), ignore stale calls that occurred before this dispatch
+            if (!idToUse || idToUse === "dispatched") {
+              const callTime = targetCall.called_time
+                ? new Date(targetCall.called_time).getTime()
+                : targetCall.initiated_time
+                  ? new Date(targetCall.initiated_time).getTime()
+                  : 0;
+              if (
+                dispatchTimeRef.current &&
+                callTime &&
+                callTime < dispatchTimeRef.current - 5000
+              ) {
+                // Stale call from another campaign or earlier session, ignore it
+                return null;
+              }
+            }
             setTestCallResult(targetCall);
             return targetCall;
           }
@@ -545,6 +563,10 @@ export function DialnexaConfigEditor({
       return;
     }
 
+    const now = Date.now();
+    dispatchTimeRef.current = now;
+    setTestCallResult(null);
+    setPhoneCallId(null);
     setIsDispatchingCall(true);
     setCallError(null);
     setPhoneCallStatus("Dispatching outbound test call...");
