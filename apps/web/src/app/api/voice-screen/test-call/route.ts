@@ -57,57 +57,75 @@ export async function POST(req: Request) {
       );
     }
 
-    // Try primary n8n workflow engine first with timeout guard
+    // Try dedicated n8n test call webhook (/webhook/voice-screen-test), then legacy /webhook/voice-screen
     let n8nSuccess = false;
     let n8nData: Record<string, unknown> = {};
 
-    try {
-      const n8nRes = await fetch(`${n8nBase}/webhook/voice-screen`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
-        signal: AbortSignal.timeout(4000),
-        body: JSON.stringify({
-          candidate_phone: phone,
-          candidate_name: candidate_name || "Recruiter Test",
-          role_title: role_title || "ScalePods Voice Agent Test",
-          company_name: "ScalePods",
-          is_test_call: true,
-          plan_tier: "enterprise",
-          tier: "enterprise",
-          is_enterprise: true,
-          account_id:
-            typeof body.account_id === "string" &&
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.account_id)
-              ? body.account_id
-              : "00000000-0000-0000-0000-000000000000",
-          voice_call_config: {
-            ...voice_call_config,
-            agent_id: targetAgentId,
-          },
-        }),
-      });
+    const testPayload = JSON.stringify({
+      candidate_phone: phone,
+      candidate_name: candidate_name || "Recruiter Test",
+      role_title: role_title || "ScalePods Voice Agent Test",
+      company_name: "ScalePods",
+      is_test_call: true,
+      plan_tier: "enterprise",
+      tier: "enterprise",
+      is_enterprise: true,
+      account_id:
+        typeof body.account_id === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.account_id)
+          ? body.account_id
+          : "00000000-0000-0000-0000-000000000000",
+      voice_call_config: {
+        ...voice_call_config,
+        agent_id: targetAgentId,
+      },
+    });
 
-      const n8nText = await n8nRes.text();
+    const webhooksToTry = [
+      process.env.N8N_VOICE_SCREEN_TEST_WEBHOOK_URL || `${n8nBase}/webhook/voice-screen-test`,
+      `${n8nBase}/webhook/voice-screen`,
+    ];
+
+    for (const webhookUrl of webhooksToTry) {
       try {
-        n8nData = JSON.parse(n8nText);
-      } catch {
-        n8nData = { raw: n8nText };
-      }
+        const n8nRes = await fetch(webhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authHeader ? { Authorization: authHeader } : {}),
+          },
+          signal: AbortSignal.timeout(4000),
+          body: testPayload,
+        });
 
-      if (n8nRes.ok) {
-        n8nSuccess = true;
-      } else {
+        if (n8nRes.status === 404 && webhookUrl.includes("voice-screen-test")) {
+          // Dedicated test webhook not created yet on n8n canvas, continue to fallback
+          continue;
+        }
+
+        const n8nText = await n8nRes.text();
+        try {
+          n8nData = JSON.parse(n8nText);
+        } catch {
+          n8nData = { raw: n8nText };
+        }
+
+        if (n8nRes.ok) {
+          n8nSuccess = true;
+          break;
+        } else {
+          console.warn(
+            `[api/voice-screen/test-call] n8n returned non-ok status from ${webhookUrl}:`,
+            n8nRes.status,
+            n8nData,
+          );
+        }
+      } catch (n8nErr) {
         console.warn(
-          "[api/voice-screen/test-call] n8n returned non-ok status:",
-          n8nRes.status,
-          n8nData,
+          `[api/voice-screen/test-call] n8n webhook unreachable or timed out for ${webhookUrl}:`,
+          n8nErr,
         );
       }
-    } catch (n8nErr) {
-      console.warn("[api/voice-screen/test-call] n8n webhook unreachable or timed out:", n8nErr);
     }
 
     if (n8nSuccess) {
