@@ -377,14 +377,31 @@ export async function reviewCandidateRound(params: {
   accountId?: string;
   accessToken?: string;
 }): Promise<void> {
-  if (params.applicationId) {
+  let appId = params.applicationId;
+  const supabase = supabaseBrowser();
+
+  if (!appId && params.roundInstanceId) {
+    try {
+      const { data: ri } = await supabase
+        .from("round_instances")
+        .select("application_id")
+        .eq("id", params.roundInstanceId)
+        .maybeSingle();
+      if (ri?.application_id) {
+        appId = ri.application_id;
+      }
+    } catch (lookupErr) {
+      console.warn("Could not lookup application_id for round instance:", lookupErr);
+    }
+  }
+
+  if (appId) {
     await decideApplication({
-      applicationId: params.applicationId,
+      applicationId: appId,
       action: params.decision === "failed" ? "reject" : "advance",
     });
     return;
   }
-  const supabase = supabaseBrowser();
   const decision =
     params.decision ??
     (params.score != null && params.score >= params.reviewerCutoff ? "passed" : "failed");
