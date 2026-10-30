@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { syncDialnexaAgentConfig } from "@/lib/dialnexa";
+import {
+  DEFAULT_DIALNEXA_AGENT_ID,
+  DEFAULT_DIALNEXA_API_KEY,
+  syncDialnexaAgentConfig,
+} from "@/lib/dialnexa";
 
 export async function POST(req: Request) {
   try {
@@ -22,113 +26,190 @@ export async function POST(req: Request) {
       .replace(/\/+$/, "")
       .replace(/\/webhook\/?$/, "");
 
-    const targetAgentId = agent_id || voice_call_config?.agent_id || "agent_Lg812J59k27OXl";
+    const targetAgentId =
+      agent_id ||
+      voice_call_config?.agent_id ||
+      DEFAULT_DIALNEXA_AGENT_ID ||
+      "agent_Lg812J59k27OXl";
     const authHeader = req.headers.get("authorization");
 
     // DialNexa loads prompt & welcome_message from the agent entity, not the call dispatch payload.
     // Sync the customized prompt, greeting, and latency settings to DialNexa before placing the call.
-    await syncDialnexaAgentConfig({
-      agent_id: targetAgentId,
-      prompt: voice_call_config?.prompt,
-      first_message: voice_call_config?.first_message,
-      response_eagerness: voice_call_config?.response_eagerness,
-      responsiveness: voice_call_config?.responsiveness,
-      interruption_sensitivity: voice_call_config?.interruption_sensitivity,
-      max_duration_seconds: voice_call_config?.max_duration_seconds,
-      end_call_on_silence_sec: voice_call_config?.end_call_on_silence_sec,
-      ambient_noise: voice_call_config?.ambient_noise,
-      candidate_name: candidate_name || "Recruiter Test",
-      role_title: role_title || "ScalePods Voice Agent Test",
-      company_name: "ScalePods",
-    });
-
-    // All calls are dispatched strictly through the n8n backend workflow engine
-    const n8nRes = await fetch(`${n8nBase}/webhook/voice-screen`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(authHeader ? { Authorization: authHeader } : {}),
-      },
-      body: JSON.stringify({
-        candidate_phone: phone,
+    try {
+      await syncDialnexaAgentConfig({
+        agent_id: targetAgentId,
+        prompt: voice_call_config?.prompt,
+        first_message: voice_call_config?.first_message,
+        response_eagerness: voice_call_config?.response_eagerness,
+        responsiveness: voice_call_config?.responsiveness,
+        interruption_sensitivity: voice_call_config?.interruption_sensitivity,
+        max_duration_seconds: voice_call_config?.max_duration_seconds,
+        end_call_on_silence_sec: voice_call_config?.end_call_on_silence_sec,
+        ambient_noise: voice_call_config?.ambient_noise,
         candidate_name: candidate_name || "Recruiter Test",
         role_title: role_title || "ScalePods Voice Agent Test",
         company_name: "ScalePods",
-        is_test_call: true,
-        plan_tier: "enterprise",
-        tier: "enterprise",
-        is_enterprise: true,
-        account_id:
-          typeof body.account_id === "string" &&
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.account_id)
-            ? body.account_id
-            : "00000000-0000-0000-0000-000000000000",
-        voice_call_config: {
-          ...voice_call_config,
-          agent_id: targetAgentId,
+      });
+    } catch (syncErr) {
+      console.warn(
+        "[api/voice-screen/test-call] Failed to sync agent config to DialNexa:",
+        syncErr,
+      );
+    }
+
+    // Try primary n8n workflow engine first with timeout guard
+    let n8nSuccess = false;
+    let n8nData: Record<string, unknown> = {};
+
+    try {
+      const n8nRes = await fetch(`${n8nBase}/webhook/voice-screen`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
+        signal: AbortSignal.timeout(4000),
+        body: JSON.stringify({
+          candidate_phone: phone,
+          candidate_name: candidate_name || "Recruiter Test",
+          role_title: role_title || "ScalePods Voice Agent Test",
+          company_name: "ScalePods",
+          is_test_call: true,
+          plan_tier: "enterprise",
+          tier: "enterprise",
+          is_enterprise: true,
+          account_id:
+            typeof body.account_id === "string" &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.account_id)
+              ? body.account_id
+              : "00000000-0000-0000-0000-000000000000",
+          voice_call_config: {
+            ...voice_call_config,
+            agent_id: targetAgentId,
+          },
+        }),
+      });
+
+      const n8nText = await n8nRes.text();
+      try {
+        n8nData = JSON.parse(n8nText);
+      } catch {
+        n8nData = { raw: n8nText };
+      }
+
+      if (n8nRes.ok) {
+        n8nSuccess = true;
+      } else {
+        console.warn(
+          "[api/voice-screen/test-call] n8n returned non-ok status:",
+          n8nRes.status,
+          n8nData,
+        );
+      }
+    } catch (n8nErr) {
+      console.warn("[api/voice-screen/test-call] n8n webhook unreachable or timed out:", n8nErr);
+    }
+
+    if (n8nSuccess) {
+      const callId =
+        (n8nData.call_id as string) ||
+        (n8nData.dialnexa_call_id as string) ||
+        (n8nData.vapi_call_id as string) ||
+        (n8nData.id as string) ||
+        (typeof n8nData.data === "object" && n8nData.data !== null && "id" in n8nData.data
+          ? String((n8nData.data as { id?: unknown }).id)
+          : undefined);
+
+      return NextResponse.json({
+        success: true,
+        mode: "n8n_backend",
+        call_id: callId,
+        to_phone_number: phone,
+        agent_id: targetAgentId,
+        message: "Outbound test call dispatched successfully via n8n.",
+        detail: n8nData,
+      });
+    }
+
+    // Direct DialNexa API fallback when n8n is down, timed out, or unconfigured
+    console.log(
+      "[api/voice-screen/test-call] Initiating direct DialNexa call dispatch fallback...",
+    );
+    const dialnexaApiKey = process.env.DIALNEXA_API_KEY || DEFAULT_DIALNEXA_API_KEY;
+
+    const dialnexaRes = await fetch("https://api.dialnexa.com/v1/calls", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${dialnexaApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        phone_number: phone,
+        agent_id: targetAgentId,
+        metadata: {
+          candidate_phone: phone,
+          candidate_name: candidate_name || "Recruiter Test",
+          company_name: "ScalePods",
+          role_title: role_title || "ScalePods Voice Agent Test",
+          is_test_call: true,
+          source: "scalepods_test_call_fallback",
+        },
+        notes: {
+          candidate_phone: phone,
+          candidate_name: candidate_name || "Recruiter Test",
+          role_title: role_title || "ScalePods Voice Agent Test",
+          is_test_call: true,
+          source: "scalepods_test_call_fallback",
         },
       }),
     });
 
-    const n8nText = await n8nRes.text();
-    let n8nData: Record<string, unknown> = {};
+    const dialnexaText = await dialnexaRes.text();
+    let dialnexaData: Record<string, unknown> = {};
     try {
-      n8nData = JSON.parse(n8nText);
+      dialnexaData = JSON.parse(dialnexaText);
     } catch {
-      n8nData = { raw: n8nText };
+      dialnexaData = { raw: dialnexaText };
     }
 
-    if (!n8nRes.ok) {
-      const extractErrorMessage = (data: Record<string, unknown>): string => {
-        if (typeof data.message === "string" && data.message.trim()) return data.message;
-        if (typeof data.error === "string" && data.error.trim()) return data.error;
-        if (typeof data.error === "object" && data.error !== null) {
-          const errObj = data.error as Record<string, unknown>;
-          if (typeof errObj.message === "string" && errObj.message.trim()) return errObj.message;
-          if (typeof errObj.error === "string" && errObj.error.trim()) return errObj.error;
-          try {
-            return JSON.stringify(errObj);
-          } catch {
-            return String(errObj);
-          }
-        }
-        return "Failed to dispatch test call via n8n backend";
-      };
-
-      const errorMsg = extractErrorMessage(n8nData);
+    if (!dialnexaRes.ok) {
+      const errorMsg =
+        (typeof dialnexaData.message === "string" && dialnexaData.message) ||
+        (typeof dialnexaData.error === "string" && dialnexaData.error) ||
+        "Failed to dispatch test call via DialNexa";
 
       return NextResponse.json(
         {
           error: errorMsg,
-          detail: n8nData,
+          detail: dialnexaData,
         },
-        { status: n8nRes.status },
+        { status: dialnexaRes.status },
       );
     }
 
     const callId =
-      (n8nData.call_id as string) ||
-      (n8nData.dialnexa_call_id as string) ||
-      (n8nData.vapi_call_id as string) ||
-      (n8nData.id as string) ||
-      (typeof n8nData.data === "object" && n8nData.data !== null && "id" in n8nData.data
-        ? String((n8nData.data as { id?: unknown }).id)
+      (dialnexaData.id as string) ||
+      (dialnexaData.call_id as string) ||
+      (typeof dialnexaData.data === "object" &&
+      dialnexaData.data !== null &&
+      "id" in dialnexaData.data
+        ? String((dialnexaData.data as { id?: unknown }).id)
         : undefined);
 
     return NextResponse.json({
       success: true,
-      mode: "n8n_backend",
+      mode: "dialnexa_direct",
       call_id: callId,
       to_phone_number: phone,
       agent_id: targetAgentId,
-      message: "Outbound test call dispatched successfully.",
-      detail: n8nData,
+      message: "Outbound test call dispatched successfully via DialNexa.",
+      detail: dialnexaData,
     });
   } catch (err) {
     console.error("Test call trigger error:", err);
     return NextResponse.json(
       {
-        error: "Failed to dispatch test call via n8n backend",
+        error: "Failed to dispatch test call",
         message: err instanceof Error ? err.message : String(err),
       },
       { status: 500 },

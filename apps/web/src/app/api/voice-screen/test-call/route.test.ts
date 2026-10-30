@@ -72,14 +72,25 @@ describe("Voice Screen Test Call API Route", () => {
     }
   });
 
-  it("returns error response if n8n backend returns non-200", async () => {
+  it("falls back to direct DialNexa call dispatch if n8n backend fails or times out", async () => {
     const originalFetch = global.fetch;
     const mockFetch = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/webhook/voice-screen")) {
         return Promise.resolve({
           ok: false,
-          status: 400,
-          text: async () => JSON.stringify({ error: "Invalid n8n voice parameters" }),
+          status: 504,
+          text: async () => JSON.stringify({ error: "Gateway Timeout" }),
+        });
+      }
+      if (url.includes("/v1/calls")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              status: "success",
+              id: "dialnexa_fallback_call_999",
+            }),
         });
       }
       return Promise.resolve({ ok: true, status: 200, text: async () => "{}" });
@@ -97,18 +108,30 @@ describe("Voice Screen Test Call API Route", () => {
       });
 
       const res = await POST(req);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
       const data = await res.json();
-      expect(data.error).toBe("Invalid n8n voice parameters");
+      expect(data.success).toBe(true);
+      expect(data.mode).toBe("dialnexa_direct");
+      expect(data.call_id).toBe("dialnexa_fallback_call_999");
     } finally {
       global.fetch = originalFetch;
     }
   });
 
-  it("returns 500 when n8n backend is unreachable", async () => {
+  it("returns error response if both n8n and DialNexa dispatch fail", async () => {
     const originalFetch = global.fetch;
-    const mockFetch = vi.fn().mockImplementation(() => {
-      return Promise.reject(new Error("n8n network timeout"));
+    const mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/webhook/voice-screen")) {
+        return Promise.reject(new Error("n8n network timeout"));
+      }
+      if (url.includes("/v1/calls")) {
+        return Promise.resolve({
+          ok: false,
+          status: 400,
+          text: async () => JSON.stringify({ error: "Invalid phone number format" }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, text: async () => "{}" });
     });
     global.fetch = mockFetch;
 
@@ -118,14 +141,14 @@ describe("Voice Screen Test Call API Route", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone_number: "+919876543210",
-          candidate_name: "Timeout Test",
+          candidate_name: "Failed Test",
         }),
       });
 
       const res = await POST(req);
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(400);
       const data = await res.json();
-      expect(data.error).toMatch(/Failed to dispatch test call via n8n backend/);
+      expect(data.error).toBe("Invalid phone number format");
     } finally {
       global.fetch = originalFetch;
     }
