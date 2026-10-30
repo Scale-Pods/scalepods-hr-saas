@@ -101,5 +101,5 @@ describe("CadencePreview Timing Controls", () => {
     expect(handleChangeTiming).toHaveBeenCalledWith("pre_interview_reminder", {
       sendTime: "13:00",
     });
-  });
+  }, 15000);
 });

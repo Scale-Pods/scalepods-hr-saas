@@ -111,7 +111,7 @@ export function ResumeUploader({
                 candidate_phone: row.phone || null,
                 resume_path: filePath,
                 resume_text: extracted.text.slice(0, 40000),
-                whatsapp_opt_in: false,
+                whatsapp_opt_in: true,
               }),
             });
 

@@ -470,7 +470,7 @@ export const applicationIntakeSchema = z.object({
   candidate_phone: z.string().optional().nullable(),
   resume_path: z.string().min(1, "Resume file is required"),
   resume_text: z.string().min(1, "Resume text could not be extracted").max(40000),
-  whatsapp_opt_in: z.boolean().default(false),
+  whatsapp_opt_in: z.boolean().default(true),
 });
 
 export type ApplicationIntakePayload = z.infer<typeof applicationIntakeSchema>;
@@ -489,7 +489,7 @@ export const updateApplicationContactSchema = z.object({
   candidate_name: z.string().min(1, "Candidate name is required"),
   candidate_email: z.string().email("Valid email is required"),
   candidate_phone: z.string().optional().nullable(),
-  whatsapp_opt_in: z.boolean().default(false),
+  whatsapp_opt_in: z.boolean().default(true),
 });
 
 export type UpdateApplicationContactPayload = z.infer<typeof updateApplicationContactSchema>;

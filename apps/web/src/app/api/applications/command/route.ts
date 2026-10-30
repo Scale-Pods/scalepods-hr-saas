@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
           p_candidate_name: payload.candidate_name,
           p_candidate_email: payload.candidate_email,
           p_candidate_phone: payload.candidate_phone ?? null,
-          p_whatsapp_opt_in: Boolean(payload.whatsapp_opt_in),
+          p_whatsapp_opt_in: payload.whatsapp_opt_in !== false,
         },
       );
 

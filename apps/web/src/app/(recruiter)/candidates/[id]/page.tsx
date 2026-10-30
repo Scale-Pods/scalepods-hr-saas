@@ -332,7 +332,7 @@ export default function CandidateProfilePage() {
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
-  const [contactWhatsapp, setContactWhatsapp] = useState(false);
+  const [contactWhatsapp, setContactWhatsapp] = useState(true);
   const [contactSaving, setContactSaving] = useState(false);
 
   // Offer Modal State
@@ -344,12 +344,12 @@ export default function CandidateProfilePage() {
       setContactName(application.candidate_name || candidate?.name || "");
       setContactEmail(application.candidate_email || candidate?.email || "");
       setContactPhone(application.candidate_phone || candidate?.phone || "");
-      setContactWhatsapp(!!application.whatsapp_opt_in);
+      setContactWhatsapp(application.whatsapp_opt_in ?? true);
     } else if (candidate) {
       setContactName(candidate.name || "");
       setContactEmail(candidate.email || "");
       setContactPhone(candidate.phone || "");
-      setContactWhatsapp(false);
+      setContactWhatsapp(true);
     }
   }, [application, candidate]);
 
@@ -799,7 +799,7 @@ export default function CandidateProfilePage() {
               WhatsApp Status
             </span>
             <span className="text-sm font-semibold text-foreground">
-              {application?.whatsapp_opt_in ? (
+              {application?.whatsapp_opt_in !== false ? (
                 <span className="text-emerald-500 font-medium">Opted in</span>
               ) : (
                 <span className="text-muted-foreground font-normal">Not opted in</span>

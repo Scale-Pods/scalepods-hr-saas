@@ -896,7 +896,7 @@ export async function updateApplicationContact(params: {
       candidate_name: params.candidateName,
       candidate_email: params.candidateEmail,
       candidate_phone: params.candidatePhone ?? null,
-      whatsapp_opt_in: params.whatsappOptIn ?? false,
+      whatsapp_opt_in: params.whatsappOptIn ?? true,
     }),
   });
   const result = await response.json().catch(() => ({}));
