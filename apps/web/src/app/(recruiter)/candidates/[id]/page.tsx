@@ -43,6 +43,7 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
+  Trash2,
   User,
   UserCheck,
   Users,
@@ -82,7 +83,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccount } from "@/features/account/hooks";
-import type { ViewCandidate } from "@/features/campaigns/api";
+import { removeCandidateFromCampaign, type ViewCandidate } from "@/features/campaigns/api";
 import {
   decideApplication,
   type LedgerView,
@@ -168,30 +169,44 @@ const STAGE_LABELS: Record<string, string> = {
   resume: "Resume Screening",
   "resume screening": "Resume Screening",
   resume_screening: "Resume Screening",
-  voice_screen: "Voice Screening",
-  voice_screening: "Voice Screening",
-  ai_interview: "AI Interview",
+  voice_screen: "AI Voice Call",
+  voice_screening: "AI Voice Call",
+  voice_screening_call: "AI Voice Call",
   ai_voice: "AI Voice Call",
   ai_voice_call: "AI Voice Call",
-  round_undefined: "Round 1 Interview",
-  round_1: "Round 1 Interview",
-  round_2: "Round 2 Interview",
-  round_3: "Round 3 Interview",
-  round_4: "Round 4 Interview",
+  ai_interview: "AI Interview",
+  round_undefined: "Round 1",
+  round_1: "Round 1",
+  round_2: "Round 2",
+  round_3: "Round 3",
+  round_4: "Round 4",
   human_feedback: "Interviewer Feedback",
   assignment: "Take-Home Assignment",
   offer: "Offer Stage",
   override: "Manual Override",
 };
 
-function stageLabel(stage: string): string {
+function stageLabel(stage: string, roundType?: string): string {
   if (!stage) return "";
   const lower = stage.toLowerCase().trim();
-  if (STAGE_LABELS[lower]) return STAGE_LABELS[lower];
   const n = roundNumberFromStage(lower);
-  if (n) return `Round ${n} Interview`;
+
+  if (roundType === "ai_voice_call" || lower.includes("voice")) {
+    return n ? `Round ${n} AI Voice Call` : "AI Voice Call";
+  }
+  if (roundType === "human_interview") {
+    return n ? `Round ${n} Human Interview` : "Human Interview";
+  }
+  if (roundType === "assignment" || lower.includes("assignment")) {
+    return n ? `Round ${n} Take-Home Assignment` : "Take-Home Assignment";
+  }
+  if (roundType === "ai_interview") {
+    return n ? `Round ${n} AI Interview` : "AI Interview";
+  }
+
+  if (STAGE_LABELS[lower]) return STAGE_LABELS[lower];
+  if (n) return `Round ${n}`;
   if (lower.includes("resume")) return "Resume Screening";
-  if (lower.includes("voice")) return "Voice Screening";
   if (lower.includes("interview")) return "AI Interview";
   return stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -392,6 +407,36 @@ export default function CandidateProfilePage() {
       showErrorToast(err?.message || "Failed to reject application");
     } finally {
       setRejectBusy(false);
+    }
+  };
+
+  const [removeCampaignModalOpen, setRemoveCampaignModalOpen] = useState(false);
+  const [removingFromCampaign, setRemovingFromCampaign] = useState(false);
+
+  const handleRemoveFromCampaign = async () => {
+    const campId = selectedCampaignId || campaign?.id || application?.campaign_id;
+    if (!campId) {
+      showErrorToast("No active campaign selected.");
+      return;
+    }
+    setRemovingFromCampaign(true);
+    try {
+      const { data: sessionData } = await supabaseBrowser().auth.getSession();
+      await removeCandidateFromCampaign({
+        campaignId: campId,
+        candidateId: id,
+        applicationId: application?.id,
+        accessToken: sessionData?.session?.access_token,
+      });
+      showToast(`Removed candidate from ${campaignName || "campaign"}.`, { kind: "success" });
+      setRemoveCampaignModalOpen(false);
+      router.push(`/campaigns/${campId}`);
+    } catch (err) {
+      showErrorToast(
+        err instanceof Error ? err.message : "Failed to remove candidate from campaign.",
+      );
+    } finally {
+      setRemovingFromCampaign(false);
     }
   };
 
@@ -696,6 +741,17 @@ export default function CandidateProfilePage() {
                 >
                   <XCircle className="h-3.5 w-3.5 text-destructive" /> Reject
                 </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={decisionBusy || removingFromCampaign}
+                  onClick={() => setRemoveCampaignModalOpen(true)}
+                  className="rounded-xl text-xs gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                  title="Remove candidate from this campaign"
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" /> Remove from Campaign
+                </Button>
               </>
             )}
           </div>
@@ -805,25 +861,50 @@ export default function CandidateProfilePage() {
         <InterviewerFeedbackSection feedback={interviewerFeedback} />
       )}
 
-      <InterviewMediaAndTranscriptSection
-        recordings={interviewRecordings}
-        transcripts={interviewTranscripts}
-        scorecard={latestScorecard}
-        sessionId={
-          interviewRecordings[0]?.sessionId ||
-          (data as any)?.interviewSessionId ||
-          timeline.find((t) => t.session?.id)?.session?.id ||
-          undefined
-        }
-        onRefresh={() => refetch()}
-      />
+      {(() => {
+        const roundInstances = data?.roundInstances ?? [];
+        const hasAiInterviewRound =
+          interviewRecordings.length > 0 ||
+          interviewTranscripts.length > 0 ||
+          (latestScorecard != null && !dialnexaCalls.some((c) => c.scorecard)) ||
+          timeline.some((t) => t.forRound?.round_type === "ai_interview") ||
+          roundInstances.some((r) => r.round_type === "ai_interview");
 
-      <VoiceScreenCallSection
-        calls={dialnexaCalls}
-        loadingCalls={loadingCalls}
-        transcripts={voiceScreenTranscripts}
-        phone={candidate.phone}
-      />
+        const hasVoiceCallRound =
+          dialnexaCalls.length > 0 ||
+          voiceScreenTranscripts.length > 0 ||
+          timeline.some(
+            (t) => t.forRound?.round_type === "ai_voice_call" || t.stage?.includes("voice"),
+          ) ||
+          roundInstances.some((r) => r.round_type === "ai_voice_call");
+
+        return (
+          <>
+            {hasAiInterviewRound && (
+              <InterviewMediaAndTranscriptSection
+                recordings={interviewRecordings}
+                transcripts={interviewTranscripts}
+                scorecard={latestScorecard}
+                sessionId={
+                  interviewRecordings[0]?.sessionId ||
+                  (data as any)?.interviewSessionId ||
+                  timeline.find((t) => t.session?.id)?.session?.id ||
+                  undefined
+                }
+                onRefresh={() => refetch()}
+              />
+            )}
+
+            <VoiceScreenCallSection
+              calls={dialnexaCalls}
+              loadingCalls={loadingCalls}
+              transcripts={voiceScreenTranscripts}
+              phone={candidate?.phone}
+              hasVoiceRound={hasVoiceCallRound}
+            />
+          </>
+        );
+      })()}
 
       <SectionCard title="Manual override">
         <form onSubmit={handleOverride} className="grid gap-3 sm:grid-cols-4">
@@ -836,7 +917,8 @@ export default function CandidateProfilePage() {
             <option value="">Stage to override…</option>
             {timeline.map((r) => (
               <option key={r.id} value={r.id}>
-                {stageLabel(r.stage)} · {r.score ?? "—"} · {formatDateTime(r.decided_at)}
+                {stageLabel(r.stage, r.forRound?.round_type)} · {r.score ?? "—"} ·{" "}
+                {formatDateTime(r.decided_at)}
               </option>
             ))}
           </select>
@@ -944,6 +1026,50 @@ export default function CandidateProfilePage() {
                 <XCircle className="h-3.5 w-3.5" />
               )}
               Confirm Rejection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove from Campaign Confirmation Dialog */}
+      <Dialog open={removeCampaignModalOpen} onOpenChange={setRemoveCampaignModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" /> Remove Candidate from Campaign?
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove <strong>{candidate?.name || "this candidate"}</strong>{" "}
+              from <strong>{campaignName || "this campaign"}</strong>?
+              <br />
+              <br />
+              This will permanently delete this application, interview answers, and evaluation
+              history for this campaign.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={removingFromCampaign}
+              onClick={() => setRemoveCampaignModalOpen(false)}
+              className="rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={removingFromCampaign}
+              onClick={handleRemoveFromCampaign}
+              className="rounded-xl gap-1.5"
+            >
+              {removingFromCampaign ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              {removingFromCampaign ? "Removing..." : "Remove from Campaign"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1147,7 +1273,7 @@ function Timeline({ rows }: { rows: LedgerView[] }) {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium text-foreground">
-                    {stageLabel(row.stage)}
+                    {stageLabel(row.stage, row.forRound?.round_type)}
                   </span>
                   {row.source === "manual" && (
                     <Badge variant="secondary" className="bg-warning/15 text-warning">
@@ -1406,7 +1532,9 @@ function OutreachTable({
         {rows.map((r) => (
           <TableRow key={r.id}>
             <TableCell className="text-muted-foreground">{formatDateTime(r.sent_at)}</TableCell>
-            <TableCell className="text-foreground">{stageLabel(r.stage)}</TableCell>
+            <TableCell className="text-foreground">
+              {stageLabel(r.stage, r.channel === "voice_call" ? "ai_voice_call" : undefined)}
+            </TableCell>
             <TableCell className="text-muted-foreground capitalize">
               {r.channel.replace(/_/g, " ")}
             </TableCell>
@@ -2027,6 +2155,7 @@ function VoiceScreenCallSection({
   loadingCalls,
   transcripts,
   phone,
+  hasVoiceRound = false,
 }: {
   calls: Array<{
     id: string;
@@ -2067,12 +2196,32 @@ function VoiceScreenCallSection({
     weaknesses?: string[];
   }>;
   phone?: string | null;
+  hasVoiceRound?: boolean;
 }) {
   const hasCalls = calls.length > 0;
   const hasTranscripts = transcripts.length > 0;
 
-  if (!hasCalls && !hasTranscripts && !loadingCalls) {
-    return null;
+  if (!hasCalls && !hasTranscripts) {
+    if (!hasVoiceRound) return null;
+    return (
+      <SectionCard
+        title="AI Voice Screening Call"
+        subtitle="Conversational telephone screening evaluation"
+      >
+        {loadingCalls ? (
+          <div className="py-6 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <span>Connecting to voice screening records...</span>
+          </div>
+        ) : (
+          <EmptyState
+            title="AI Voice Call in progress or queued"
+            hint={`Candidate phone: ${phone || "On file"}. The automated phone screening call has been initiated. Recording, transcript, and evaluation scorecard will appear here once the call completes.`}
+            className="py-4"
+          />
+        )}
+      </SectionCard>
+    );
   }
 
   // Find most relevant voice screen scorecard across calls or transcripts

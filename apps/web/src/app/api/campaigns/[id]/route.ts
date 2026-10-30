@@ -236,6 +236,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         latest_score: aiScore != null ? aiScore : resumeScore,
         resume_score: resumeScore,
         ai_interview_score: aiScore,
+        round_type: appRi?.round_type ?? null,
         interview_status: interviewStatus,
         interview_session_id: appSession?.id ?? null,
         answers_count: appAnswers.length,

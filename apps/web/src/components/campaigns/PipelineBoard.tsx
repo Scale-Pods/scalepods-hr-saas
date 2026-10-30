@@ -24,6 +24,7 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   User,
   UserCheck,
   UserX,
@@ -63,7 +64,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { decideApplication, type ViewCandidate } from "@/features/campaigns/api";
+import {
+  decideApplication,
+  removeCandidateFromCampaign,
+  type ViewCandidate,
+} from "@/features/campaigns/api";
 import { cn } from "@/lib/utils";
 import { PrepareOfferModal } from "./PrepareOfferModal";
 import { ViewOfferLetterModal } from "./ViewOfferLetterModal";
@@ -85,6 +90,51 @@ export interface PipelineBoardProps {
   recruiterEmail: string;
   accessToken?: string;
   onRefresh: () => void;
+}
+
+function getRoundMeta(
+  cand: ViewCandidate,
+  rounds: CampaignRoundsRow[],
+): {
+  type: string;
+  shortLabel: string;
+  badgePrefix: string;
+  notStartedLabel: string;
+} {
+  const roundNum = cand.current_round_number || cand.round_number || 1;
+  const candRound = rounds.find((r) => r.round_number === roundNum);
+  const roundType = cand.round_type || candRound?.round_type;
+
+  switch (roundType) {
+    case "ai_voice_call":
+      return {
+        type: "ai_voice_call",
+        shortLabel: "Voice Call",
+        badgePrefix: "AI Voice Call",
+        notStartedLabel: "Initiated",
+      };
+    case "human_interview":
+      return {
+        type: "human_interview",
+        shortLabel: "Human Interview",
+        badgePrefix: "Human Interview",
+        notStartedLabel: "Invited",
+      };
+    case "assignment":
+      return {
+        type: "assignment",
+        shortLabel: "Assignment",
+        badgePrefix: "Assignment",
+        notStartedLabel: "Assigned",
+      };
+    default:
+      return {
+        type: "ai_interview",
+        shortLabel: "Interview",
+        badgePrefix: "AI Interview",
+        notStartedLabel: "Invited",
+      };
+  }
 }
 
 export function PipelineBoard({
@@ -316,6 +366,34 @@ export function PipelineBoard({
     }
   };
 
+  const [candidateToRemove, setCandidateToRemove] = useState<ViewCandidate | null>(null);
+  const [isRemovingCandidate, setIsRemovingCandidate] = useState(false);
+
+  const confirmRemoveCandidate = async () => {
+    if (!candidateToRemove) return;
+    setIsRemovingCandidate(true);
+    try {
+      await removeCandidateFromCampaign({
+        campaignId: campaign.id,
+        candidateId: candidateToRemove.candidate_id,
+        applicationId: candidateToRemove.application_id,
+        accessToken,
+      });
+      showToast(
+        `Removed ${candidateToRemove.name || candidateToRemove.email} from ${campaign.name}.`,
+        { kind: "success" },
+      );
+      setCandidateToRemove(null);
+      onRefresh();
+    } catch (err) {
+      showErrorToast(
+        err instanceof Error ? err.message : "Failed to remove candidate from campaign.",
+      );
+    } finally {
+      setIsRemovingCandidate(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Controls Bar */}
@@ -470,6 +548,7 @@ export function PipelineBoard({
                       const isBusy = actionBusyId === cand.application_id;
                       const isOfferStage = col.stage === "offer";
                       const isOfferSent = cand.status === "offer_sent";
+                      const roundMeta = getRoundMeta(cand, rounds);
 
                       return (
                         <div
@@ -510,7 +589,7 @@ export function PipelineBoard({
                                         : "border-rose-500/30 text-rose-600 bg-rose-500/10 dark:text-rose-400",
                                   )}
                                 >
-                                  Interview: {cand.ai_interview_score}/100
+                                  {roundMeta.shortLabel}: {cand.ai_interview_score}/100
                                 </Badge>
                               ) : null}
 
@@ -567,21 +646,23 @@ export function PipelineBoard({
                                   ? `${cand.ai_interview_score}/100`
                                   : cand.interview_status === "incomplete"
                                     ? "Ended Early"
-                                    : "Awaiting Score"}
+                                    : roundMeta.type === "ai_voice_call"
+                                      ? "Awaiting Call"
+                                      : "Awaiting Score"}
                               </span>
                             </div>
                           )}
 
                           {/* Status and Reason */}
                           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                            {/* AI Interview Status Badge */}
+                            {/* Round Stage Status Badge */}
                             {cand.interview_status === "evaluated" && (
                               <Badge
                                 variant="outline"
                                 className="border-emerald-500/40 text-emerald-600 bg-emerald-500/10 text-[10px] gap-1 px-1.5 py-0.5 font-semibold"
                               >
                                 <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500" />
-                                AI Interview: Evaluated (
+                                {roundMeta.badgePrefix}: Evaluated (
                                 {cand.ai_interview_score != null
                                   ? `${cand.ai_interview_score}/100`
                                   : "Scored"}
@@ -594,7 +675,7 @@ export function PipelineBoard({
                                 className="border-amber-500/40 text-amber-600 bg-amber-500/10 text-[10px] gap-1 px-1.5 py-0.5 animate-pulse"
                               >
                                 <Clock className="h-2.5 w-2.5 animate-spin" />
-                                AI Interview: In Progress
+                                {roundMeta.badgePrefix}: In Progress
                               </Badge>
                             )}
                             {cand.interview_status === "incomplete" && (
@@ -603,7 +684,7 @@ export function PipelineBoard({
                                 className="border-rose-500/40 text-rose-600 bg-rose-500/10 text-[10px] gap-1 px-1.5 py-0.5 font-semibold"
                               >
                                 <AlertCircle className="h-2.5 w-2.5 text-rose-500" />
-                                AI Interview: Ended Early{" "}
+                                {roundMeta.badgePrefix}: Ended Early{" "}
                                 {cand.answers_count
                                   ? `(${cand.answers_count} answered)`
                                   : "(Incomplete)"}
@@ -615,7 +696,7 @@ export function PipelineBoard({
                                 className="border-blue-500/40 text-blue-600 bg-blue-500/10 text-[10px] gap-1 px-1.5 py-0.5"
                               >
                                 <Sparkles className="h-2.5 w-2.5" />
-                                AI Interview: Evaluating
+                                {roundMeta.badgePrefix}: Evaluating
                               </Badge>
                             )}
                             {cand.interview_status === "not_started" &&
@@ -625,7 +706,7 @@ export function PipelineBoard({
                                   className="border-border text-muted-foreground bg-muted/20 text-[10px] gap-1 px-1.5 py-0.5"
                                 >
                                   <Clock className="h-2.5 w-2.5" />
-                                  AI Interview: Invited
+                                  {roundMeta.badgePrefix}: {roundMeta.notStartedLabel}
                                 </Badge>
                               )}
 
@@ -732,6 +813,18 @@ export function PipelineBoard({
                                   <XCircle className="h-3 w-3" />
                                 </Button>
                               )}
+
+                              {/* Remove Candidate Button */}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={isBusy || isJobClosed}
+                                onClick={() => setCandidateToRemove(cand)}
+                                className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10"
+                                title="Remove candidate from campaign"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
 
                               {/* Advance or Offer Button */}
                               {cand.status !== "rejected" &&
@@ -896,6 +989,18 @@ export function PipelineBoard({
                             </Button>
                           )}
 
+                          {/* Remove Candidate Button */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isBusy || isJobClosed}
+                            onClick={() => setCandidateToRemove(cand)}
+                            className="h-7 px-2 text-xs text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10"
+                            title="Remove candidate from campaign"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+
                           {cand.status !== "rejected" &&
                             cand.status !== "on_hold" &&
                             (isOfferStage ? (
@@ -1009,6 +1114,47 @@ export function PipelineBoard({
                 <XCircle className="h-4 w-4" />
               )}
               {isRejecting ? "Rejecting..." : "Confirm Final Rejection"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove Candidate Confirmation Modal */}
+      <AlertDialog
+        open={!!candidateToRemove}
+        onOpenChange={(open) => !open && setCandidateToRemove(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-rose-600">
+              <Trash2 className="h-5 w-5" />
+              Remove Candidate from Campaign?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove{" "}
+              <strong>{candidateToRemove?.name || candidateToRemove?.email}</strong> from{" "}
+              <strong>{campaign.name}</strong>?
+              <br />
+              <br />
+              This will permanently delete this candidate&apos;s application, interview sessions,
+              and evaluation progress for this campaign.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemovingCandidate}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isRemovingCandidate}
+              onClick={confirmRemoveCandidate}
+              className="gap-1.5"
+            >
+              {isRemovingCandidate ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              {isRemovingCandidate ? "Removing..." : "Remove Candidate"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

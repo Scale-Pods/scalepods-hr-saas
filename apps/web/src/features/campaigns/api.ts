@@ -60,6 +60,7 @@ export interface ViewCandidate {
   latest_score: number | null;
   resume_score?: number | null;
   ai_interview_score?: number | null;
+  round_type?: RoundType | string | null;
   interview_status?:
     | "not_started"
     | "in_progress"
@@ -290,6 +291,7 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         latest_score: aiScore != null ? aiScore : resumeScore,
         resume_score: resumeScore,
         ai_interview_score: aiScore,
+        round_type: appRi?.round_type ?? null,
         interview_status: interviewStatus,
         interview_session_id: appSession?.id ?? null,
         answers_count: appAnswers.length,
@@ -491,5 +493,36 @@ export async function deleteCampaign(
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || data.message || `Failed to delete campaign (${res.status})`);
+  }
+}
+
+export async function removeCandidateFromCampaign(params: {
+  campaignId: string;
+  candidateId: string;
+  applicationId?: string;
+  accessToken?: string;
+}): Promise<void> {
+  const token =
+    params.accessToken ??
+    (supabaseBrowser()
+      ? (await supabaseBrowser().auth.getSession()).data.session?.access_token
+      : undefined);
+
+  const res = await fetch("/api/applications/remove", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      campaignId: params.campaignId,
+      candidateId: params.candidateId,
+      applicationId: params.applicationId,
+    }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || data.message || `Failed to remove candidate (${res.status})`);
   }
 }

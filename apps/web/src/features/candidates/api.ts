@@ -84,6 +84,7 @@ export interface CandidateProfile {
   assignments?: AssignmentsRow[];
   interviewerFeedback?: InterviewerFeedbackRow[];
   offers?: OffersRow[];
+  roundInstances?: RoundInstancesRow[];
   retentionInfo?: {
     limitDays: number;
     hasArchivedRecords: boolean;
@@ -839,6 +840,7 @@ export async function fetchCandidateProfile(
     assignments,
     interviewerFeedback,
     offers,
+    roundInstances: roundRows,
     retentionInfo: {
       limitDays,
       hasArchivedRecords,

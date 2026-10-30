@@ -1,7 +1,7 @@
 "use client";
 
 import { type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
-import { ArrowLeft, Mail, MessageSquare, Phone } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, MessageSquare, Phone, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -9,6 +9,16 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,7 +49,8 @@ function SettingsPageInner() {
   const tier = (account?.tier ?? "free") as keyof typeof TIER_LIMITS;
   const t = TIER_LIMITS[tier];
 
-  const fromCampaign = params.get("from") === "campaign_wizard" || params.get("from") === "campaign";
+  const fromCampaign =
+    params.get("from") === "campaign_wizard" || params.get("from") === "campaign";
   const [hasDraft, setHasDraft] = useState(false);
 
   useEffect(() => {
@@ -221,6 +232,36 @@ function SettingsPageInner() {
     }
   };
 
+  const [memberToDelete, setMemberToDelete] = useState<TeamMemberRow | null>(null);
+  const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
+
+  const handleDeleteMember = async () => {
+    if (!memberToDelete || !session?.access_token) return;
+    setDeletingMemberId(memberToDelete.id);
+    try {
+      const res = await fetch(`/api/team-members?id=${memberToDelete.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "Failed to remove teammate", { kind: "error" });
+        return;
+      }
+      setMembers((prev) => prev.filter((m) => m.id !== memberToDelete.id));
+      showToast(`Removed ${memberToDelete.name} from teammates.`, { kind: "success" });
+      setMemberToDelete(null);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to remove teammate", {
+        kind: "error",
+      });
+    } finally {
+      setDeletingMemberId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Settings" subtitle={`${t.label} plan`} />
@@ -292,11 +333,7 @@ function SettingsPageInner() {
             >
               Quiet hours end
             </label>
-            <TimePicker
-              id="quiet-end"
-              value={quietEnd}
-              onChange={(time) => setQuietEnd(time)}
-            />
+            <TimePicker id="quiet-end" value={quietEnd} onChange={(time) => setQuietEnd(time)} />
           </div>
           <div>
             <label
@@ -337,6 +374,7 @@ function SettingsPageInner() {
                   <th className="py-2 pr-3 font-medium">Email</th>
                   <th className="py-2 font-medium">Role</th>
                   <th className="py-2 pr-3 font-medium">Google Calendar</th>
+                  <th className="py-2 pr-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -400,6 +438,24 @@ function SettingsPageInner() {
                         );
                       })()}
                     </td>
+                    <td className="py-2.5 pr-3 text-right">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        disabled={deletingMemberId === m.id}
+                        onClick={() => setMemberToDelete(m)}
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10"
+                        title={`Remove ${m.name}`}
+                        aria-label={`Remove ${m.name}`}
+                      >
+                        {deletingMemberId === m.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-rose-600" />
+                        )}
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -451,7 +507,8 @@ function SettingsPageInner() {
                 Campaign Creation in Progress
               </h4>
               <p className="text-xs text-muted-foreground">
-                Your campaign draft is auto-saved. Add teammates and connect their Google Calendar above, then return to your campaign.
+                Your campaign draft is auto-saved. Add teammates and connect their Google Calendar
+                above, then return to your campaign.
               </p>
             </div>
           </div>
@@ -528,6 +585,45 @@ function SettingsPageInner() {
           </div>
         </div>
       </SectionCard>
+
+      {/* Remove Teammate Confirmation Dialog */}
+      <AlertDialog
+        open={Boolean(memberToDelete)}
+        onOpenChange={(open) => !open && setMemberToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-rose-600">
+              <Trash2 className="h-5 w-5" />
+              Remove Teammate?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove <strong>{memberToDelete?.name}</strong> (
+              {memberToDelete?.email}) from your workspace teammates?
+              <br />
+              <br />
+              This will permanently delete this member from the database, unassign them from any
+              active campaign interview rounds, and remove their calendar credentials.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(deletingMemberId)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={Boolean(deletingMemberId)}
+              onClick={handleDeleteMember}
+              className="gap-1.5"
+            >
+              {deletingMemberId ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              {deletingMemberId ? "Removing..." : "Remove Teammate"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
