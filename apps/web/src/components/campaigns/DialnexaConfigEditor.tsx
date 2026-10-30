@@ -26,6 +26,7 @@ import {
   Flame,
   Headphones,
   HelpCircle,
+  Info,
   MessageSquareText,
   Mic,
   PhoneCall,
@@ -42,20 +43,74 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectSeparator,
   SelectTrigger,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { CustomVoiceGuideModal } from "./CustomVoiceGuideModal";
+
+function InfoTooltip({ title, content, tip }: { title?: string; content: string; tip?: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-flex items-center align-middle">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-all text-[10px] font-bold cursor-pointer ml-1.5 focus:outline-hidden ring-1 ring-border/50"
+        aria-label={title || "Information"}
+        title={title || "Click to learn more"}
+      >
+        <Info className="h-2.5 w-2.5" />
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-72 max-w-[85vw] rounded-xl border border-border bg-popover/95 p-3 text-xs text-popover-foreground shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 pointer-events-auto">
+          {title && (
+            <div className="flex items-center gap-1.5 font-semibold text-foreground mb-1 text-[12px] border-b border-border/40 pb-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              <span>{title}</span>
+            </div>
+          )}
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{content}</p>
+          {tip && (
+            <div className="mt-2 pt-1.5 border-t border-border/50 text-[11px] text-cyan-600 dark:text-cyan-400 font-medium flex items-start gap-1.5 bg-cyan-500/5 -mx-1 px-2 py-1 rounded-md">
+              <span className="shrink-0 text-xs">💡</span>
+              <span className="leading-tight">{tip}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export interface DialnexaConfigEditorProps {
   value: DialnexaVoiceConfig;
@@ -90,6 +145,15 @@ export function DialnexaConfigEditor({
     setVoiceSelectValue(isPreset ? value.voice : "custom");
     setCustomVoiceText(isPreset ? "" : value.voice || "");
   }, [value.voice]);
+
+  const [voiceAccentFilter, setVoiceAccentFilter] = useState<
+    "all" | "Indian" | "American" | "British" | "Australian"
+  >("all");
+
+  const filteredVoices = useMemo(() => {
+    if (voiceAccentFilter === "all") return DIALNEXA_VOICES;
+    return DIALNEXA_VOICES.filter((v) => v.accent === voiceAccentFilter);
+  }, [voiceAccentFilter]);
 
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
@@ -923,6 +987,11 @@ export function DialnexaConfigEditor({
               <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                 <Volume2 className="h-4 w-4 text-cyan-500" />
                 DialNexa Synthetic Voice (TTS)
+                <InfoTooltip
+                  title="AI Voice Model"
+                  content="Choose the natural voice personality that calls the candidate. ScalePods supports 24 high-fidelity voices across Indian, American, British, and Australian accents powered by ElevenLabs and OpenAI."
+                  tip="Match the accent of your primary applicant pool (e.g. Aditi or Rohan for India, Rachel for US, George for UK)."
+                />
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -948,26 +1017,51 @@ export function DialnexaConfigEditor({
                         ? customVoiceText.trim()
                           ? `Custom: ${customVoiceText.trim()}`
                           : "Custom Voice ID…"
-                        : selectedVoiceMeta?.label || value.voice}
+                        : selectedVoiceMeta
+                          ? `${selectedVoiceMeta.flag || ""} ${selectedVoiceMeta.label}`
+                          : value.voice}
                     </span>
                     {selectedVoiceMeta && (
                       <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-mono text-muted-foreground border border-border/60">
-                        {selectedVoiceMeta.gender} · {selectedVoiceMeta.provider}
+                        {selectedVoiceMeta.gender} · {selectedVoiceMeta.provider} ·{" "}
+                        {selectedVoiceMeta.accent || "General"}
                       </span>
                     )}
                   </div>
                 </SelectTrigger>
-                <SelectContent className="border-border bg-popover shadow-2xl">
-                  {DIALNEXA_VOICES.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      <div className="flex items-center justify-between gap-4 w-full pr-3">
-                        <span className="font-semibold text-foreground text-sm">{v.label}</span>
-                        <span className="text-[11px] font-mono text-muted-foreground">
-                          {v.gender} · {v.provider}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                <SelectContent className="border-border bg-popover shadow-2xl max-h-96">
+                  {(
+                    [
+                      { group: "Indian English & Hinglish", flag: "🇮🇳", accent: "Indian" },
+                      { group: "American English", flag: "🇺🇸", accent: "American" },
+                      { group: "British English", flag: "🇬🇧", accent: "British" },
+                      { group: "Australian English", flag: "🇦🇺", accent: "Australian" },
+                    ] as const
+                  ).map((grp) => {
+                    const groupVoices = DIALNEXA_VOICES.filter((v) => v.accent === grp.accent);
+                    if (groupVoices.length === 0) return null;
+                    return (
+                      <SelectGroup key={grp.group}>
+                        <SelectLabel className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-2 py-1.5 flex items-center gap-1.5 bg-muted/30">
+                          <span>{grp.flag}</span>
+                          <span>{grp.group}</span>
+                        </SelectLabel>
+                        {groupVoices.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            <div className="flex items-center justify-between gap-4 w-full pr-3">
+                              <span className="font-semibold text-foreground text-sm flex items-center gap-1.5">
+                                <span>{v.flag}</span>
+                                <span>{v.label}</span>
+                              </span>
+                              <span className="text-[11px] font-mono text-muted-foreground">
+                                {v.gender} · {v.provider}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    );
+                  })}
                   <SelectSeparator />
                   <SelectItem value="custom">Custom Voice ID…</SelectItem>
                 </SelectContent>
@@ -1027,7 +1121,10 @@ export function DialnexaConfigEditor({
             {selectedVoiceMeta && (
               <div className="rounded-lg bg-muted/40 border border-border/60 p-3 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-foreground">{selectedVoiceMeta.label}</span>
+                  <span className="font-medium text-foreground flex items-center gap-1">
+                    <span>{selectedVoiceMeta.flag}</span>
+                    <span>{selectedVoiceMeta.label}</span>
+                  </span>
                   <span className="text-[11px] text-muted-foreground">
                     {selectedVoiceMeta.description}
                   </span>
@@ -1061,11 +1158,43 @@ export function DialnexaConfigEditor({
 
             {/* Quick Audition Grid */}
             <div className="space-y-1.5 pt-1">
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Audition all voices
-              </span>
-              <div className="grid grid-cols-3 gap-1.5">
-                {DIALNEXA_VOICES.map((v) => (
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Audition all voices
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    ({filteredVoices.length})
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {(
+                    [
+                      { id: "all", label: "All" },
+                      { id: "Indian", label: "🇮🇳 Indian" },
+                      { id: "American", label: "🇺🇸 US" },
+                      { id: "British", label: "🇬🇧 UK" },
+                      { id: "Australian", label: "🇦🇺 AU" },
+                    ] as const
+                  ).map((acc) => (
+                    <button
+                      key={acc.id}
+                      type="button"
+                      onClick={() => setVoiceAccentFilter(acc.id)}
+                      className={cn(
+                        "rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer",
+                        voiceAccentFilter === acc.id
+                          ? "bg-primary text-primary-foreground font-semibold"
+                          : "bg-muted/60 text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {acc.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 max-h-56 overflow-y-auto pr-0.5">
+                {filteredVoices.map((v) => (
                   <div
                     key={v.id}
                     className={cn(
@@ -1084,6 +1213,7 @@ export function DialnexaConfigEditor({
                       }}
                       className="truncate text-left flex-1 cursor-pointer font-medium"
                     >
+                      <span className="mr-1">{v.flag}</span>
                       {v.label}
                     </button>
                     <button
@@ -1113,8 +1243,15 @@ export function DialnexaConfigEditor({
 
             <div className="space-y-3">
               <div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground font-medium">Speaking Pace</span>
+                <div className="flex justify-between text-xs items-center">
+                  <span className="text-muted-foreground font-medium flex items-center">
+                    Speaking Pace
+                    <InfoTooltip
+                      title="Speaking Pace"
+                      content="Controls the speaking rate of the AI recruiter. 1.00x is natural human pace. Lower values (0.90x) help candidates follow technical questions; higher values (1.10x) keep the call brisk."
+                      tip="1.00x is recommended for general phone screening."
+                    />
+                  </span>
                   <span className="font-mono text-primary font-bold">
                     {(value.voice_speed ?? 1.0).toFixed(2)}x
                   </span>
@@ -1131,8 +1268,15 @@ export function DialnexaConfigEditor({
               </div>
 
               <div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground font-medium">Voice Pitch</span>
+                <div className="flex justify-between text-xs items-center">
+                  <span className="text-muted-foreground font-medium flex items-center">
+                    Voice Pitch
+                    <InfoTooltip
+                      title="Voice Pitch"
+                      content="Fine-tune voice frequency higher or lower (-10 to +10 semitones) without altering speaking pace."
+                      tip="Leave at 0 for the natural pitch of the chosen actor."
+                    />
+                  </span>
                   <span className="font-mono text-primary font-bold">
                     {(value.voice_pitch ?? 0) > 0
                       ? `+${value.voice_pitch ?? 0}`
@@ -1153,9 +1297,14 @@ export function DialnexaConfigEditor({
               </div>
 
               <div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground font-medium">
+                <div className="flex justify-between text-xs items-center">
+                  <span className="text-muted-foreground font-medium flex items-center">
                     Temperature (Expressiveness)
+                    <InfoTooltip
+                      title="Voice Expressiveness"
+                      content="Higher values produce more emotive, expressive speech modulation; lower values sound more steady, calm, and formal."
+                      tip="1.00 provides warm, natural conversational delivery."
+                    />
                   </span>
                   <span className="font-mono text-primary font-bold">
                     {(value.voice_temperature ?? 1.0).toFixed(2)}
@@ -1264,6 +1413,11 @@ export function DialnexaConfigEditor({
             <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-primary" />
               System Prompt & Conversational Guidelines
+              <InfoTooltip
+                title="System Prompt"
+                content="The master persona and screening instructions for the AI recruiter. It defines what questions to ask, how to evaluate answers, and the overall interview demeanor."
+                tip="Use {{candidate_name}}, {{job_title}}, and {{company_name}} tags to personalize the interview dynamically."
+              />
             </span>
             <div className="flex items-center gap-1">
               {VARIABLE_PILLS.map((p) => (
@@ -1331,6 +1485,11 @@ export function DialnexaConfigEditor({
             <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <Mic className="h-4 w-4 text-emerald-500" />
               Agent Greeting (First Spoken Message)
+              <InfoTooltip
+                title="Opening Greeting"
+                content="The very first sentence the AI says as soon as the candidate answers the phone."
+                tip="Keep it under 15-20 words, introducing yourself and confirming you've reached the candidate."
+              />
             </span>
             <div className="flex items-center gap-1.5">
               <Button
@@ -1373,10 +1532,15 @@ export function DialnexaConfigEditor({
         {/* Duration & Voicemail Handling */}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2">
-            <div className="flex justify-between text-xs">
+            <div className="flex justify-between text-xs items-center">
               <span className="font-semibold text-foreground flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5 text-amber-500" />
                 Maximum Call Duration
+                <InfoTooltip
+                  title="Maximum Call Duration"
+                  content="Hard timeout cap for the interview. If the call reaches this duration, the AI politely concludes and disconnects."
+                  tip="5-10 minutes (300-600 sec) is standard for phone screening."
+                />
               </span>
               <span className="font-mono text-amber-500 font-bold">
                 {Math.round((value.max_duration_seconds || 300) / 60)} minutes
@@ -1400,8 +1564,13 @@ export function DialnexaConfigEditor({
 
           <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-foreground">
+              <span className="text-xs font-semibold text-foreground flex items-center">
                 Voicemail Detection & Handling
+                <InfoTooltip
+                  title="Voicemail & AMD"
+                  content="Answering Machine Detection (AMD) identifies automated carrier greetings, voicemail boxes, or IVRs so the AI doesn't waste screening time."
+                  tip="Enable 'Hang up immediately' if you do not want to leave voicemail messages."
+                />
               </span>
               <input
                 type="checkbox"
@@ -1539,9 +1708,14 @@ export function DialnexaConfigEditor({
 
           <div className="space-y-4 pt-2">
             <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-semibold text-foreground">
+              <div className="flex justify-between text-xs mb-1 items-center">
+                <span className="font-semibold text-foreground flex items-center">
                   Response Eagerness (Turn-Taking)
+                  <InfoTooltip
+                    title="Response Eagerness"
+                    content="Controls how quickly the AI begins responding once it detects the candidate stopped speaking. Higher values feel rapid and energetic; lower values let thoughtful candidates pause without interruption."
+                    tip="0.70 (70%) is balanced for most phone interviews."
+                  />
                 </span>
                 <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
                   {(currentEagerness * 100).toFixed(0)}%
@@ -1566,8 +1740,15 @@ export function DialnexaConfigEditor({
             </div>
 
             <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-semibold text-foreground">Responsiveness</span>
+              <div className="flex justify-between text-xs mb-1 items-center">
+                <span className="font-semibold text-foreground flex items-center">
+                  Responsiveness & Latency
+                  <InfoTooltip
+                    title="Responsiveness & Latency"
+                    content="Balances processing speed versus reasoning depth. Higher responsiveness lowers latency for lightning-fast voice replies."
+                    tip="0.80 provides natural phone conversation cadence."
+                  />
+                </span>
                 <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
                   {(currentResponsiveness * 100).toFixed(0)}%
                 </span>
@@ -1584,9 +1765,14 @@ export function DialnexaConfigEditor({
             </div>
 
             <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-semibold text-foreground">
+              <div className="flex justify-between text-xs mb-1 items-center">
+                <span className="font-semibold text-foreground flex items-center">
                   Interruption Sensitivity (Candidate cut-off)
+                  <InfoTooltip
+                    title="Interruption Sensitivity"
+                    content="Controls how easily the candidate can cut off the AI when speaking over it. At higher values, the AI stops speaking the millisecond candidate audio is detected."
+                    tip="0.50 (50%) prevents accidental stops from brief coughs while allowing natural human dialogue."
+                  />
                 </span>
                 <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
                   {(currentInterruption * 100).toFixed(0)}%
@@ -1663,8 +1849,12 @@ export function DialnexaConfigEditor({
                 <Zap className="h-4 w-4" />
               </div>
               <div>
-                <h5 className="text-sm font-semibold text-foreground">
+                <h5 className="text-sm font-semibold text-foreground flex items-center">
                   DialNexa Agent Functions & Live Tools
+                  <InfoTooltip
+                    title="Live Agent Functions"
+                    content="Tools the voice agent can autonomously execute during the call, such as transferring to a human recruiter, checking calendar slots, or concluding the call."
+                  />
                 </h5>
                 <p className="text-xs text-muted-foreground">
                   Empower the AI to trigger real actions during candidate calls: warm recruiter
@@ -1805,6 +1995,10 @@ export function DialnexaConfigEditor({
             <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <Cpu className="h-4 w-4 text-cyan-500" />
               DialNexa Real-Time Transcriber (STT) & Vocabulary Biasing
+              <InfoTooltip
+                title="STT Speech Engine"
+                content="Converts candidate audio to text in real-time. Deepgram Nova-2 is tuned for phone-grade audio, background noise resistance, and diverse accents."
+              />
             </span>
             <Badge variant="outline" className="text-[10px] font-mono">
               Deepgram Nova 2
@@ -1844,9 +2038,14 @@ export function DialnexaConfigEditor({
             <div className="space-y-1">
               <label
                 htmlFor="dialnexa-boosted-terms"
-                className="text-[11px] font-medium text-foreground"
+                className="text-[11px] font-medium text-foreground flex items-center"
               >
                 Boosted Keywords (Specialized Tech & Terms)
+                <InfoTooltip
+                  title="Vocabulary Biasing"
+                  content="Comma-separated jargon, tech stacks, or company acronyms (e.g. Kubernetes, PyTorch, GraphQL). Biases speech recognition toward accurately identifying these words."
+                  tip="Add specific technical frameworks or role requirements relevant to this position."
+                />
               </label>
               <Textarea
                 id="dialnexa-boosted-terms"

@@ -10,8 +10,10 @@ export interface DialnexaModelOption {
 export interface DialnexaVoiceOption {
   id: string;
   label: string;
-  provider: "ElevenLabs" | "OpenAI" | "Custom";
+  provider: "ElevenLabs" | "OpenAI" | "Sarvam" | "Deepgram" | "Custom";
   gender: "Female" | "Male" | "Neutral";
+  accent?: string;
+  flag?: string;
   description: string;
   sampleAudioUrl?: string;
   sampleText?: string;
@@ -57,11 +59,112 @@ export const DIALNEXA_MODELS: DialnexaModelOption[] = [
 ];
 
 export const DIALNEXA_VOICES: DialnexaVoiceOption[] = [
+  // ── Indian English & Hinglish ──
+  {
+    id: "aditi",
+    label: "Aditi",
+    provider: "ElevenLabs",
+    gender: "Female",
+    accent: "Indian",
+    flag: "🇮🇳",
+    description: "Warm, articulate, and professional Indian English accent",
+    sampleAudioUrl: "/voices/aditi.wav",
+    sampleText:
+      "Namaste! I'm Aditi. I'll be walking through your background and qualifications for this role.",
+  },
+  {
+    id: "rohan",
+    label: "Rohan",
+    provider: "ElevenLabs",
+    gender: "Male",
+    accent: "Indian",
+    flag: "🇮🇳",
+    description: "Corporate, authoritative, and crisp Indian English tone",
+    sampleAudioUrl: "/voices/rohan.wav",
+    sampleText:
+      "Hello, this is Rohan from the talent acquisition team. Excited to discuss your technical journey today.",
+  },
+  {
+    id: "ananya",
+    label: "Ananya",
+    provider: "ElevenLabs",
+    gender: "Female",
+    accent: "Indian",
+    flag: "🇮🇳",
+    description: "Friendly, modern, and engaging Indian English delivery",
+    sampleAudioUrl: "/voices/ananya.wav",
+    sampleText:
+      "Hi there, I'm Ananya! Thank you for applying. Let's explore your experience and what you're looking for next.",
+  },
+  {
+    id: "kabir",
+    label: "Kabir",
+    provider: "ElevenLabs",
+    gender: "Male",
+    accent: "Indian",
+    flag: "🇮🇳",
+    description: "Confident, tech-savvy, and conversational Indian English voice",
+    sampleAudioUrl: "/voices/kabir.wav",
+    sampleText:
+      "Hey, I'm Kabir. Looking forward to reviewing your engineering highlights and hands-on domain skills.",
+  },
+  {
+    id: "neerja",
+    label: "Neerja",
+    provider: "ElevenLabs",
+    gender: "Female",
+    accent: "Indian",
+    flag: "🇮🇳",
+    description: "Calm, polite, and welcoming executive recruiter tone",
+    sampleAudioUrl: "/voices/neerja.wav",
+    sampleText:
+      "Hello, I am Neerja. I appreciate you taking a few moments to connect with our talent team today.",
+  },
+  {
+    id: "aarav",
+    label: "Aarav",
+    provider: "ElevenLabs",
+    gender: "Male",
+    accent: "Indian",
+    flag: "🇮🇳",
+    description: "Bright, articulate, and energetic Indian English delivery",
+    sampleAudioUrl: "/voices/aarav.wav",
+    sampleText:
+      "Hi! Aarav here from hiring. Ready to dive into your recent projects and key technical achievements?",
+  },
+  {
+    id: "priya",
+    label: "Priya",
+    provider: "Sarvam",
+    gender: "Female",
+    accent: "Indian",
+    flag: "🇮🇳",
+    description: "Natural bilingual Indian English and conversational Hindi fluency",
+    sampleAudioUrl: "/voices/priya.wav",
+    sampleText:
+      "Hello, Priya speaking. Thank you for your application. Let us review your qualifications together.",
+  },
+  {
+    id: "vikram",
+    label: "Vikram",
+    provider: "ElevenLabs",
+    gender: "Male",
+    accent: "Indian",
+    flag: "🇮🇳",
+    description: "Seasoned, grounded, and respectful senior interviewer voice",
+    sampleAudioUrl: "/voices/vikram.wav",
+    sampleText:
+      "Good day, Vikram here. I look forward to an insightful discussion regarding your career aspirations.",
+  },
+
+  // ── American English (US & Canada) ──
   {
     id: "rachel",
     label: "Rachel",
     provider: "ElevenLabs",
     gender: "Female",
+    accent: "American",
+    flag: "🇺🇸",
     description: "Calm, articulate, and professional talent voice",
     sampleAudioUrl: "/voices/rachel.wav",
     sampleText:
@@ -72,6 +175,8 @@ export const DIALNEXA_VOICES: DialnexaVoiceOption[] = [
     label: "Adam",
     provider: "ElevenLabs",
     gender: "Male",
+    accent: "American",
+    flag: "🇺🇸",
     description: "Warm, authoritative, and corporate tone",
     sampleAudioUrl: "/voices/adam.wav",
     sampleText:
@@ -82,6 +187,8 @@ export const DIALNEXA_VOICES: DialnexaVoiceOption[] = [
     label: "Sarah",
     provider: "ElevenLabs",
     gender: "Female",
+    accent: "American",
+    flag: "🇺🇸",
     description: "Enthusiastic, approachable, and engaging",
     sampleAudioUrl: "/voices/sarah.wav",
     sampleText:
@@ -92,6 +199,8 @@ export const DIALNEXA_VOICES: DialnexaVoiceOption[] = [
     label: "Nova",
     provider: "OpenAI",
     gender: "Female",
+    accent: "American",
+    flag: "🇺🇸",
     description: "Crisp, modern, and energetic conversational voice",
     sampleAudioUrl: "/voices/nova.wav",
     sampleText:
@@ -102,10 +211,148 @@ export const DIALNEXA_VOICES: DialnexaVoiceOption[] = [
     label: "Alloy",
     provider: "OpenAI",
     gender: "Neutral",
+    accent: "American",
+    flag: "🇺🇸",
     description: "Balanced, neutral, and clear articulation",
     sampleAudioUrl: "/voices/alloy.wav",
     sampleText:
       "Greetings. I am Alloy, your automated screening assistant for today's voice assessment.",
+  },
+  {
+    id: "brian",
+    label: "Brian",
+    provider: "ElevenLabs",
+    gender: "Male",
+    accent: "American",
+    flag: "🇺🇸",
+    description: "Deep, resonant, and natural conversational cadence",
+    sampleAudioUrl: "/voices/brian.wav",
+    sampleText:
+      "Hello, Brian here. Glad to connect and explore how your experience aligns with our requirements.",
+  },
+  {
+    id: "drew",
+    label: "Drew",
+    provider: "ElevenLabs",
+    gender: "Male",
+    accent: "American",
+    flag: "🇺🇸",
+    description: "Casual, friendly tech recruiter tone",
+    sampleAudioUrl: "/voices/drew.wav",
+    sampleText:
+      "Hey! Drew from the engineering recruiting team. Excited to hear about your latest building blocks.",
+  },
+  {
+    id: "nicole",
+    label: "Nicole",
+    provider: "ElevenLabs",
+    gender: "Female",
+    accent: "American",
+    flag: "🇺🇸",
+    description: "Gentle, polite, and reassuring screening voice",
+    sampleAudioUrl: "/voices/nicole.wav",
+    sampleText:
+      "Hi, I'm Nicole. I want to make this conversation comfortable and informative for both of us.",
+  },
+  {
+    id: "echo",
+    label: "Echo",
+    provider: "OpenAI",
+    gender: "Male",
+    accent: "American",
+    flag: "🇺🇸",
+    description: "Smooth, warm, and natural conversational delivery",
+    sampleAudioUrl: "/voices/echo.wav",
+    sampleText:
+      "Hello, this is Echo. I'll be guiding you through a short series of introductory screening questions.",
+  },
+  {
+    id: "shimmer",
+    label: "Shimmer",
+    provider: "OpenAI",
+    gender: "Female",
+    accent: "American",
+    flag: "🇺🇸",
+    description: "Bright, optimistic, and expressive presentation",
+    sampleAudioUrl: "/voices/shimmer.wav",
+    sampleText:
+      "Hi! I'm Shimmer. Wonderful to meet you! Let's talk about what makes this position a great fit.",
+  },
+
+  // ── British / UK English ──
+  {
+    id: "george",
+    label: "George",
+    provider: "ElevenLabs",
+    gender: "Male",
+    accent: "British",
+    flag: "🇬🇧",
+    description: "Refined, articulate, and executive British English tone",
+    sampleAudioUrl: "/voices/george.wav",
+    sampleText:
+      "Good day. My name is George. I shall be conducting your initial interview on behalf of the company.",
+  },
+  {
+    id: "charlotte",
+    label: "Charlotte",
+    provider: "ElevenLabs",
+    gender: "Female",
+    accent: "British",
+    flag: "🇬🇧",
+    description: "Polite, elegant, and clear British RP accent",
+    sampleAudioUrl: "/voices/charlotte.wav",
+    sampleText:
+      "Hello, I'm Charlotte. Thank you for your application; I look forward to our brief discussion.",
+  },
+  {
+    id: "oliver",
+    label: "Oliver",
+    provider: "ElevenLabs",
+    gender: "Male",
+    accent: "British",
+    flag: "🇬🇧",
+    description: "Contemporary, conversational, and crisp British accent",
+    sampleAudioUrl: "/voices/oliver.wav",
+    sampleText:
+      "Hi there, Oliver here from talent acquisition. Looking forward to discussing your expertise.",
+  },
+  {
+    id: "alice",
+    label: "Alice",
+    provider: "ElevenLabs",
+    gender: "Female",
+    accent: "British",
+    flag: "🇬🇧",
+    description: "Engaging, pleasant, and structured British presentation",
+    sampleAudioUrl: "/voices/alice.wav",
+    sampleText:
+      "Hello! Alice here. It's a pleasure to speak with you today regarding your application for the role.",
+  },
+
+  // ── Australian English ──
+  {
+    id: "liam",
+    label: "Liam",
+    provider: "ElevenLabs",
+    gender: "Male",
+    accent: "Australian",
+    flag: "🇦🇺",
+    description: "Upbeat, casual, and friendly Australian English voice",
+    sampleAudioUrl: "/voices/liam.wav",
+    sampleText:
+      "G'day! Liam here from the hiring team. Keen to have a quick chat about your background and skills.",
+  },
+  {
+    id: "matilda",
+    label: "Matilda",
+    provider: "ElevenLabs",
+    gender: "Female",
+    accent: "Australian",
+    flag: "🇦🇺",
+    description: "Warm, authentic, and naturally engaging Australian accent",
+    sampleAudioUrl: "/voices/matilda.wav",
+    sampleText:
+      "Hi there! Matilda here. Thanks a lot for putting your hand up for this role. Let's get right into it.",
   },
 ];
 
