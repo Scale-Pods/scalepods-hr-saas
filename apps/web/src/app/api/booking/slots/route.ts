@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
 
@@ -74,9 +75,67 @@ export async function GET(request: NextRequest) {
         time_max: timeMax,
       }),
     });
-    const payload = await response
+    const payload = (await response
       .json()
-      .catch(() => ({ error: "Calendar availability lookup failed." }));
+      .catch(() => ({ error: "Calendar availability lookup failed." }))) as Record<string, unknown>;
+
+    // Merge database calendar_events for the round's interviewer to ensure zero double-booking latency
+    try {
+      const env = getEnv();
+      const serviceKey =
+        env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const adminSupabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, serviceKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+
+      const { data: riRow } = await adminSupabase
+        .from("round_instances")
+        .select("campaign_id, round_number")
+        .eq("id", roundInstanceId)
+        .maybeSingle();
+
+      if (riRow) {
+        const { data: crRow } = await adminSupabase
+          .from("campaign_rounds")
+          .select("interviewer_email, assigned_team_member_id")
+          .eq("campaign_id", riRow.campaign_id)
+          .eq("round_number", riRow.round_number)
+          .maybeSingle();
+
+        let interviewerEmail = crRow?.interviewer_email;
+        if (!interviewerEmail && crRow?.assigned_team_member_id) {
+          const { data: tmRow } = await adminSupabase
+            .from("team_members")
+            .select("email")
+            .eq("id", crRow.assigned_team_member_id)
+            .maybeSingle();
+          interviewerEmail = tmRow?.email;
+        }
+
+        if (interviewerEmail) {
+          const { data: bookedEvents } = await adminSupabase
+            .from("calendar_events")
+            .select("slot_start, slot_end")
+            .eq("interviewer_email", interviewerEmail)
+            .lt("slot_start", timeMax)
+            .gt("slot_end", timeMin);
+
+          if (bookedEvents && bookedEvents.length > 0) {
+            const dbBlocked = bookedEvents.map((e) => ({
+              start: e.slot_start,
+              end: e.slot_end,
+            }));
+            const existingBlocked = Array.isArray(payload.blocked) ? payload.blocked : [];
+            payload.blocked = [...existingBlocked, ...dbBlocked];
+          }
+        }
+      }
+    } catch (dbErr) {
+      console.warn("[api/booking/slots] Merging database booked events warning:", dbErr);
+    }
+
     return NextResponse.json(payload, { status: response.status });
   } catch (error) {
     console.error("[api/booking/slots] n8n availability failed:", error);

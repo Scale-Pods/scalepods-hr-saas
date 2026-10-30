@@ -363,6 +363,8 @@ export const bookingContextSchema = z.object({
     id: z.string(),
     name: z.string(),
     number_of_rounds: z.number(),
+    opening_date: z.string().nullable().optional(),
+    closing_date: z.string().nullable().optional(),
   }),
   round: z.object({
     round_number: z.number(),

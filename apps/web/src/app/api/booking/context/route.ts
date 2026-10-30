@@ -24,5 +24,26 @@ export async function GET(request: NextRequest) {
       { status: 404 },
     );
   }
-  return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
+
+  const result = typeof data === "object" && data !== null ? { ...data } : data;
+  if (result.campaign?.id && (!result.campaign.opening_date || !result.campaign.closing_date)) {
+    try {
+      const { data: campRow } = await supabase
+        .from("campaigns")
+        .select("opening_date, closing_date")
+        .eq("id", result.campaign.id)
+        .maybeSingle();
+      if (campRow) {
+        result.campaign = {
+          ...result.campaign,
+          opening_date: result.campaign.opening_date || campRow.opening_date || null,
+          closing_date: result.campaign.closing_date || campRow.closing_date || null,
+        };
+      }
+    } catch (e) {
+      console.warn("[api/booking/context] Failed to enrich campaign dates:", e);
+    }
+  }
+
+  return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { anonClient } from "../../lib/supabase";
-import { buildTimeSlots, browserTimeZone, formatDateTime, formatTime, availableSlotsSchema, bookingContextSchema, type BookingContext, type AvailableSlots } from "@scalepods/core";
+import { buildTimeSlots, browserTimeZone, formatDateTime, formatTime, localDateKey, availableSlotsSchema, bookingContextSchema, type BookingContext, type AvailableSlots } from "@scalepods/core";
 import { CandidateShell, ErrorCard, useCandidateToken } from "./shared";
 import { EmptyState } from "../../components/EmptyState";
 
@@ -210,19 +210,60 @@ function SlotPicker({
   const dailyEnd = ctx.round.daily_end_time ?? "18:00";
   const isHuman = ctx.round_instance.round_type === "human_interview";
 
-  const next10 = useMemo(() => {
+  const availableDays = useMemo(() => {
     const out: Date[] = [];
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    while (out.length < 10) {
-      const day = d.getDay();
-      if (day !== 0 && day !== 6) out.push(new Date(d));
-      d.setDate(d.getDate() + 1);
+    const now = new Date();
+    const todayStr = localDateKey(now);
+
+    let start = new Date();
+    const openingDate = (ctx.campaign as { opening_date?: string | null })?.opening_date;
+    if (openingDate && openingDate > todayStr) {
+      const [y, m, d] = openingDate.split("-").map(Number);
+      start = new Date(y, m - 1, d);
+    }
+
+    const closingDateStr =
+      (ctx.campaign as { closing_date?: string | null })?.closing_date ||
+      (ctx.round_instance.deadline_at ? ctx.round_instance.deadline_at.slice(0, 10) : null);
+
+    const curr = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    let safetyCounter = 0;
+    while (safetyCounter < 60) {
+      safetyCounter++;
+      const dayOfWeek = curr.getDay();
+      const currStr = localDateKey(curr);
+
+      if (closingDateStr && currStr > closingDateStr) {
+        break;
+      }
+
+      // Exclude weekends (Saturday: 6, Sunday: 0)
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        out.push(new Date(curr));
+        if (!closingDateStr && out.length >= 10) {
+          break;
+        }
+      }
+
+      curr.setDate(curr.getDate() + 1);
     }
     return out;
-  }, []);
+  }, [
+    (ctx.campaign as { opening_date?: string | null })?.opening_date,
+    (ctx.campaign as { closing_date?: string | null })?.closing_date,
+    ctx.round_instance.deadline_at,
+  ]);
 
-  const [activeDay, setActiveDay] = useState(next10[0]?.toISOString().slice(0, 10) ?? "");
+  const [activeDay, setActiveDay] = useState(
+    availableDays[0] ? localDateKey(availableDays[0]) : "",
+  );
+
+  useEffect(() => {
+    if (availableDays.length > 0 && !availableDays.some((d) => localDateKey(d) === activeDay)) {
+      setActiveDay(localDateKey(availableDays[0]));
+    }
+  }, [availableDays, activeDay]);
+
   const [slotsData, setSlotsData] = useState<Slots | null>(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
 
@@ -259,6 +300,15 @@ function SlotPicker({
   })), [slotsData]);
 
   const freeSlots = proposed.filter((s) => {
+    const isToday = activeDay === localDateKey(new Date());
+    if (isToday) {
+      const [sh, sm] = s.start.split(":").map(Number);
+      const slotStartLocal = new Date();
+      slotStartLocal.setHours(sh, sm, 0, 0);
+      if (slotStartLocal.getTime() <= Date.now() + 15 * 60 * 1000) {
+        return false;
+      }
+    }
     const sStart = new Date(`${activeDay}T${s.start}:00`).getTime();
     const sEnd = new Date(`${activeDay}T${s.end}:00`).getTime();
     return !blocked.some((b) => b.start < sEnd && b.end > sStart);
@@ -281,8 +331,8 @@ function SlotPicker({
       <div>
         <p className="mb-1 text-xs font-medium text-muted-foreground">Select a day</p>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {next10.map((d) => {
-            const key = d.toISOString().slice(0, 10);
+          {availableDays.map((d) => {
+            const key = localDateKey(d);
             return (
               <button
                 key={key}
