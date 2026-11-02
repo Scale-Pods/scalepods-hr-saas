@@ -955,48 +955,84 @@ export default function CandidateProfilePage() {
         );
       })()}
 
-      <SectionCard title="Manual override">
-        <form onSubmit={handleOverride} className="grid gap-3 sm:grid-cols-4">
-          <select
-            value={overrideTarget}
-            onChange={(e) => setOverrideTarget(e.target.value)}
-            className="rounded-lg border border-input bg-card px-3 py-2 text-sm"
-            aria-label="Stage to override"
-          >
-            <option value="">Stage to override…</option>
-            {timeline.map((r) => (
-              <option key={r.id} value={r.id}>
-                {stageLabel(r.stage, r.forRound?.round_type)} · {r.score ?? "—"} ·{" "}
-                {formatDateTime(r.decided_at)}
-              </option>
-            ))}
-          </select>
-          <Input
-            type="number"
-            min={0}
-            max={100}
-            value={overrideScore}
-            onChange={(e) => setOverrideScore(Number(e.target.value))}
-            aria-label="New score"
-          />
-          <div className="sm:col-span-2">
-            <Textarea
-              rows={1}
-              value={overrideReason}
-              onChange={(e) => setOverrideReason(e.target.value)}
-              placeholder="Reason for the override (e.g. exceptional portfolio, recruiter review)"
-            />
-          </div>
-          <div className="sm:col-start-4">
-            <Button
-              type="submit"
-              size="sm"
-              variant="secondary"
-              disabled={overrideBusy}
-              className="w-full"
-            >
-              <Redo2 className="h-3.5 w-3.5" aria-hidden /> Override
-            </Button>
+      <SectionCard
+        title="Manual override"
+        subtitle="Override a stage decision or score. All adjustments are recorded in the audit log."
+      >
+        <form onSubmit={handleOverride} className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-12 sm:items-end">
+            <div className="space-y-1.5 sm:col-span-4">
+              <Label
+                htmlFor="override-target"
+                className="text-xs font-semibold text-muted-foreground"
+              >
+                Stage to override
+              </Label>
+              <select
+                id="override-target"
+                value={overrideTarget}
+                onChange={(e) => setOverrideTarget(e.target.value)}
+                className="flex h-10 w-full rounded-xl border border-input bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-card dark:text-foreground"
+                aria-label="Stage to override"
+              >
+                <option value="">Stage to override…</option>
+                {timeline.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {stageLabel(r.stage, r.forRound?.round_type)} · {r.score ?? "—"} ·{" "}
+                    {formatDateTime(r.decided_at)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label
+                htmlFor="override-score"
+                className="text-xs font-semibold text-muted-foreground"
+              >
+                New score (0–100)
+              </Label>
+              <Input
+                id="override-score"
+                type="number"
+                min={0}
+                max={100}
+                value={overrideScore}
+                onChange={(e) => setOverrideScore(Number(e.target.value))}
+                aria-label="New score"
+                placeholder="Score"
+                className="h-10"
+              />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-4">
+              <Label
+                htmlFor="override-reason"
+                className="text-xs font-semibold text-muted-foreground"
+              >
+                Reason for override
+              </Label>
+              <Input
+                id="override-reason"
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="Reason (e.g. exceptional portfolio, recruiter review)"
+                aria-label="Reason for override"
+                className="h-10"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <Button
+                type="submit"
+                size="default"
+                variant="secondary"
+                disabled={overrideBusy}
+                className="h-10 w-full rounded-xl gap-2 font-medium"
+              >
+                <Redo2 className="h-4 w-4" aria-hidden /> Override
+              </Button>
+            </div>
           </div>
         </form>
       </SectionCard>
