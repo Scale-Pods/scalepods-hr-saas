@@ -121,8 +121,20 @@ export async function POST(req: Request) {
           } catch {
             n8nData = { raw: n8nText };
           }
-          n8nSuccess = true;
-          break;
+          const hasErrorInPayload = Boolean(
+            n8nData?.error ||
+              n8nData?.errorMessage ||
+              (typeof n8nData?.message === "string" &&
+                /error in the workflow|error in workflow/i.test(n8nData.message)),
+          );
+          if (!hasErrorInPayload) {
+            n8nSuccess = true;
+            break;
+          }
+          console.warn(
+            `[api/voice-screen/test-call] ${endpoint} returned error payload despite ok status:`,
+            n8nData,
+          );
         } else if (n8nRes.status !== 404) {
           const n8nText = await n8nRes.text();
           try {
@@ -204,10 +216,15 @@ export async function POST(req: Request) {
     }
 
     if (!dialnexaRes.ok) {
-      const errorMsg =
+      let errorMsg =
         (typeof dialnexaData.message === "string" && dialnexaData.message) ||
         (typeof dialnexaData.error === "string" && dialnexaData.error) ||
         "Failed to dispatch test call via DialNexa";
+
+      if (/error in the workflow|error in workflow/i.test(errorMsg)) {
+        errorMsg =
+          "Workflow execution failed. Please verify your phone number and agent settings, then try again.";
+      }
 
       return NextResponse.json(
         {

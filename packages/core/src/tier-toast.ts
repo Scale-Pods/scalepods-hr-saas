@@ -27,9 +27,25 @@ export function describeError(err: unknown): { title: string; message: string } 
   if (err instanceof Error) {
     const detail = (err as { detail?: string }).detail;
     const message = detail && detail !== err.message ? `${err.message}: ${detail}` : err.message;
+    if (/error in the workflow|error in workflow|workflow execution failed/i.test(message)) {
+      const cleanDetail =
+        detail && !/error in the workflow|error in workflow/i.test(detail) ? detail : null;
+      return {
+        title: "Workflow Notice",
+        message:
+          cleanDetail ||
+          "Workflow execution failed. Please check your configuration and try again.",
+      };
+    }
     return { title: "Something went wrong", message };
   }
   if (typeof err === "string" && err.trim().length > 0) {
+    if (/error in the workflow|error in workflow/i.test(err)) {
+      return {
+        title: "Workflow Notice",
+        message: "Workflow execution failed. Please check your configuration and try again.",
+      };
+    }
     return { title: "Notice", message: err };
   }
   if (
@@ -38,7 +54,14 @@ export function describeError(err: unknown): { title: string; message: string } 
     "message" in err &&
     typeof (err as { message: unknown }).message === "string"
   ) {
-    return { title: "Something went wrong", message: (err as { message: string }).message };
+    const rawMsg = (err as { message: string }).message;
+    if (/error in the workflow|error in workflow/i.test(rawMsg)) {
+      return {
+        title: "Workflow Notice",
+        message: "Workflow execution failed. Please check your configuration and try again.",
+      };
+    }
+    return { title: "Something went wrong", message: rawMsg };
   }
   return { title: "Something went wrong", message: "An unexpected error occurred." };
 }

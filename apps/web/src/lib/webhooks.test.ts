@@ -73,4 +73,18 @@ describe("callWorkflow", () => {
     expect(res._httpStatus).toBe(200);
     expect(res.usage.ai_interview).toBe(3);
   });
+
+  it("sanitizes generic 'error in the workflow' messages into helpful error text", async () => {
+    fetchMock.mockResolvedValue(
+      fakeResponse(
+        { message: "There was an error in the workflow." },
+        500,
+        "Internal Server Error",
+      ),
+    );
+
+    await expect(callWorkflow("voice-screen")).rejects.toThrow(
+      "Workflow could not be completed. Please check your inputs and try again.",
+    );
+  });
 });

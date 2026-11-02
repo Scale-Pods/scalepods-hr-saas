@@ -205,7 +205,17 @@ export async function POST(req: Request) {
       }
 
       if (n8nRes.ok) {
-        n8nSuccess = true;
+        const hasErrorInPayload = Boolean(
+          n8nData?.error ||
+            n8nData?.errorMessage ||
+            (typeof n8nData?.message === "string" &&
+              /error in the workflow|error in workflow/i.test(n8nData.message)),
+        );
+        if (!hasErrorInPayload) {
+          n8nSuccess = true;
+        } else {
+          console.warn("[api/voice-screen] n8n returned error payload despite ok status:", n8nData);
+        }
       } else {
         console.warn("[api/voice-screen] n8n returned non-ok status:", n8nRes.status, n8nData);
       }
@@ -268,12 +278,19 @@ export async function POST(req: Request) {
     }
 
     if (!dialnexaRes.ok) {
+      let errorMsg =
+        (dialnexaData.message as string) ||
+        (dialnexaData.error as string) ||
+        "DialNexa dispatch failed";
+
+      if (/error in the workflow|error in workflow/i.test(errorMsg)) {
+        errorMsg =
+          "Workflow execution failed. Please verify candidate phone number and agent settings, then try again.";
+      }
+
       return NextResponse.json(
         {
-          error:
-            (dialnexaData.message as string) ||
-            (dialnexaData.error as string) ||
-            "DialNexa dispatch failed",
+          error: errorMsg,
           detail: dialnexaData,
         },
         { status: dialnexaRes.status },

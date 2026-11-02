@@ -36,5 +36,20 @@ export async function callN8nGateway(
     payload = { error: text.slice(0, 500) };
   }
 
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const obj = payload as Record<string, unknown>;
+    const rawMsg =
+      (typeof obj.errorMessage === "string" && obj.errorMessage) ||
+      (typeof obj.error === "string" && obj.error) ||
+      (typeof obj.message === "string" && obj.message);
+    if (rawMsg && /error in the workflow|error in workflow/i.test(rawMsg)) {
+      payload = {
+        ...obj,
+        error: "Workflow execution failed. Please check your inputs and try again.",
+        message: "Workflow execution failed. Please check your inputs and try again.",
+      };
+    }
+  }
+
   return { response, payload };
 }

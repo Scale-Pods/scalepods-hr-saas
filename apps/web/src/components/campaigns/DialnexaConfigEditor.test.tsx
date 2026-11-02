@@ -1,7 +1,16 @@
 import { DEFAULT_DIALNEXA_CONFIG } from "@scalepods/core";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { toast } from "sonner";
 import { describe, expect, it, vi } from "vitest";
 import { DialnexaConfigEditor } from "./DialnexaConfigEditor";
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+    info: vi.fn(),
+  },
+}));
 
 describe("DialnexaConfigEditor", () => {
   it("renders with default values and shows active badges", () => {
@@ -502,6 +511,44 @@ describe("DialnexaConfigEditor", () => {
           prompt: expect.stringContaining("Experience leading distributed remote teams"),
         }),
       );
+    });
+
+    it("triggers toast error instead of showing raw 'error in workflow' on test call failure", async () => {
+      const onChange = vi.fn();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: false,
+          json: async () => ({
+            error: "There was an error in the workflow.",
+          }),
+        }),
+      );
+
+      render(
+        <DialnexaConfigEditor
+          value={DEFAULT_DIALNEXA_CONFIG}
+          onChange={onChange}
+          jobTitle="Engineering Lead"
+        />,
+      );
+
+      // Enter valid phone number
+      const phoneInput = screen.getByPlaceholderText("+91 98765 43210");
+      fireEvent.change(phoneInput, { target: { value: "+919876543210" } });
+
+      const testCallBtn = screen.getByText("Test Call Now");
+      fireEvent.click(testCallBtn);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          "Workflow execution failed. Please verify your phone number and agent settings, then try again.",
+        );
+      });
+
+      // Verify the UI does NOT render a raw "error in workflow" error message
+      expect(screen.queryByText(/There was an error in the workflow/i)).not.toBeInTheDocument();
+      vi.unstubAllGlobals();
     });
   });
 });

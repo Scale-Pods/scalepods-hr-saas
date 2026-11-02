@@ -1,3 +1,4 @@
+import { describeError } from "@scalepods/core";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { isHardStop, TierLimitToast } from "./TierLimitToast";
@@ -52,5 +53,25 @@ describe("TierLimitToast", () => {
     const onRetry = vi.fn();
     render(<TierLimitToast title="Something went wrong" message="Network" onRetry={onRetry} />);
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+});
+
+describe("describeError", () => {
+  it("translates raw workflow errors into user-friendly notices", () => {
+    const err = new Error("There was an error in the workflow.");
+    const res = describeError(err);
+    expect(res.title).toBe("Workflow Notice");
+    expect(res.message).toBe(
+      "Workflow execution failed. Please check your configuration and try again.",
+    );
+  });
+
+  it("preserves specific detail when available for workflow errors", () => {
+    const err = Object.assign(new Error("error in workflow"), {
+      detail: "phone_number_required: Valid phone number is required",
+    });
+    const res = describeError(err);
+    expect(res.title).toBe("Workflow Notice");
+    expect(res.message).toBe("phone_number_required: Valid phone number is required");
   });
 });

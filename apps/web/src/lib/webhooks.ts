@@ -84,12 +84,27 @@ export async function callWorkflow<T>(
   }
 
   const body = (isRecord(payload) ? payload : {}) as Record<string, unknown>;
-  const message =
+  const rawError =
+    (typeof body.errorMessage === "string" && body.errorMessage) ||
     (typeof body.error === "string" && body.error) ||
-    (typeof body.message === "string" && body.message) ||
-    response.statusText;
-  const detail = typeof body.detail === "string" ? body.detail : undefined;
+    (typeof body.message === "string" && body.message);
+  const detail =
+    typeof body.detail === "string"
+      ? body.detail
+      : typeof body.errorDetails === "string"
+        ? body.errorDetails
+        : typeof body.errorDetails === "object" && body.errorDetails !== null
+          ? JSON.stringify(body.errorDetails)
+          : undefined;
   const reason = typeof body.reason === "string" ? body.reason : undefined;
+
+  let message = rawError || response.statusText;
+  if (message && /error in the workflow|error in workflow/i.test(message)) {
+    message =
+      detail && !/error in the workflow|error in workflow/i.test(detail)
+        ? detail
+        : "Workflow could not be completed. Please check your inputs and try again.";
+  }
 
   if (TIER_LIMIT_STATUS.has(response.status)) {
     throw new TierLimitError(

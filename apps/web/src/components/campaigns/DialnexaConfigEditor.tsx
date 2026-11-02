@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -721,7 +722,8 @@ export function DialnexaConfigEditor({
   // ── Real Phone Test Call Dispatch ──
   const dispatchRealPhoneCall = async () => {
     if (!testPhoneNumber || testPhoneNumber.length < 8) {
-      setCallError("Please enter a valid phone number with country code (e.g. +91 98765 43210)");
+      const msg = "Please enter a valid phone number with country code (e.g. +91 98765 43210)";
+      toast.error(msg);
       return;
     }
 
@@ -745,10 +747,10 @@ export function DialnexaConfigEditor({
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok || data.error) {
-        const errorText =
+        let errorText =
           typeof data.error === "string"
             ? data.error
             : typeof data.error === "object" && data.error !== null
@@ -758,7 +760,25 @@ export function DialnexaConfigEditor({
               : typeof data.message === "string"
                 ? data.message
                 : "Failed to trigger outbound test call";
-        setCallError(errorText);
+
+        // Sanitize any raw workflow execution error into a helpful toast error message
+        const isWorkflowError =
+          /error in the workflow|error in workflow|workflow execution failed/i.test(errorText);
+        if (isWorkflowError) {
+          const detail =
+            (typeof data.detail === "string" && data.detail) ||
+            (typeof data.detail === "object" && data.detail !== null
+              ? (data.detail as { message?: string; errorMessage?: string }).errorMessage ||
+                (data.detail as { message?: string; errorMessage?: string }).message
+              : undefined);
+          errorText =
+            detail && !/error in the workflow|error in workflow/i.test(detail)
+              ? detail
+              : "Workflow execution failed. Please verify your phone number and agent settings, then try again.";
+        }
+
+        toast.error(errorText);
+        setCallError(isWorkflowError ? null : errorText);
         setPhoneCallStatus(null);
       } else {
         const callIdStr =
@@ -769,6 +789,7 @@ export function DialnexaConfigEditor({
         setPhoneCallStatus(
           `Test call dispatched (Call ID: ${callIdStr}). Your phone will ring shortly!`,
         );
+        toast.success(`Outbound test call dispatched to ${testPhoneNumber}!`);
 
         // Start automated polling for call telemetry, recording, and transcript
         setTestCallResult(null);
@@ -794,7 +815,14 @@ export function DialnexaConfigEditor({
         }, 4000);
       }
     } catch (err) {
-      setCallError(err instanceof Error ? err.message : "Network error triggering test call");
+      let errorMsg = err instanceof Error ? err.message : "Network error triggering test call";
+      const isWorkflowError =
+        /error in the workflow|error in workflow|workflow execution failed/i.test(errorMsg);
+      if (isWorkflowError) {
+        errorMsg = "Workflow execution failed. Please verify your settings and try again.";
+      }
+      toast.error(errorMsg);
+      setCallError(isWorkflowError ? null : errorMsg);
       setPhoneCallStatus(null);
     } finally {
       setIsDispatchingCall(false);
@@ -1368,7 +1396,7 @@ export function DialnexaConfigEditor({
                   {phoneCallStatus}
                 </div>
               )}
-              {callError && (
+              {callError && !/error in the workflow|error in workflow/i.test(callError) && (
                 <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   {callError}
@@ -3038,18 +3066,21 @@ export function DialnexaConfigEditor({
                     </div>
                   </div>
 
-                  {callError && (
-                    <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 p-2.5 text-xs text-rose-600 dark:text-rose-400">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      <span>
-                        {typeof callError === "string"
-                          ? callError
-                          : typeof (callError as { message?: string }).message === "string"
-                            ? (callError as { message: string }).message
-                            : JSON.stringify(callError)}
-                      </span>
-                    </div>
-                  )}
+                  {callError &&
+                    !/error in the workflow|error in workflow/i.test(
+                      typeof callError === "string" ? callError : "",
+                    ) && (
+                      <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 p-2.5 text-xs text-rose-600 dark:text-rose-400">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        <span>
+                          {typeof callError === "string"
+                            ? callError
+                            : typeof (callError as { message?: string }).message === "string"
+                              ? (callError as { message: string }).message
+                              : JSON.stringify(callError)}
+                        </span>
+                      </div>
+                    )}
 
                   {phoneCallStatus && (
                     <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-700 dark:text-emerald-300">
