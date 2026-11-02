@@ -40,6 +40,30 @@ interface FeedbackContext {
   expires_at: string;
 }
 
+const DEFAULT_CRITERIA: EvaluationCriterion[] = [
+  {
+    name: "Technical Proficiency",
+    weight: 25,
+    description: "Domain knowledge, technical fundamentals, and hands-on execution competence",
+  },
+  {
+    name: "Problem Solving & Analytical Thinking",
+    weight: 25,
+    description: "Ability to break down problems, systematic logic, and solution architecture",
+  },
+  {
+    name: "Communication & Clarity",
+    weight: 25,
+    description: "Clarity of articulation, structured thought process, and active listening",
+  },
+  {
+    name: "Culture & Collaboration Fit",
+    weight: 25,
+    description:
+      "Teamwork, adaptability, curiosity, coachability, and alignment with company core values",
+  },
+];
+
 function FeedbackContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
@@ -55,6 +79,25 @@ function FeedbackContent() {
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
   const [noShowSuccess, setNoShowSuccess] = useState(false);
   const [showNoShowConfirm, setShowNoShowConfirm] = useState(false);
+
+  // Normalized criteria ensuring rich evaluation pillars are always present
+  const normalizedCriteria: EvaluationCriterion[] = useMemo(() => {
+    const raw = context?.evaluation_criteria;
+    if (!raw || !Array.isArray(raw) || raw.length === 0) {
+      return DEFAULT_CRITERIA;
+    }
+    return raw.map((item: unknown) => {
+      if (typeof item === "string") {
+        return { name: item, weight: 25 };
+      }
+      const obj = item as Record<string, unknown>;
+      return {
+        name: String(obj.name || obj.title || "Core Competency"),
+        weight: typeof obj.weight === "number" ? obj.weight : 25,
+        description: typeof obj.description === "string" ? obj.description : undefined,
+      };
+    });
+  }, [context?.evaluation_criteria]);
 
   useEffect(() => {
     if (!token) {
@@ -84,13 +127,19 @@ function FeedbackContent() {
         setContext(ctx);
 
         // Pre-fill initial scores for criteria
-        if (ctx.evaluation_criteria && Array.isArray(ctx.evaluation_criteria)) {
-          const initialScores: Record<string, number> = {};
-          ctx.evaluation_criteria.forEach((c) => {
-            initialScores[c.name] = 75; // default competent score
-          });
-          setCriterionScores(initialScores);
-        }
+        const rawList = ctx.evaluation_criteria;
+        const criteriaList =
+          !rawList || !Array.isArray(rawList) || rawList.length === 0
+            ? DEFAULT_CRITERIA
+            : rawList.map((c: unknown) =>
+                typeof c === "string" ? { name: c, weight: 25 } : (c as EvaluationCriterion),
+              );
+
+        const initialScores: Record<string, number> = {};
+        criteriaList.forEach((c) => {
+          if (c.name) initialScores[c.name] = 75; // default competent score
+        });
+        setCriterionScores(initialScores);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "An unexpected error occurred.";
         setError(message);
@@ -104,11 +153,11 @@ function FeedbackContent() {
 
   // Compute weighted or average score
   const computedScore = useMemo(() => {
-    if (!context?.evaluation_criteria?.length) return 75;
+    if (!normalizedCriteria.length) return 75;
     let totalWeight = 0;
     let weightedSum = 0;
 
-    for (const c of context.evaluation_criteria) {
+    for (const c of normalizedCriteria) {
       const weight = c.weight ?? 1;
       const score = criterionScores[c.name] ?? 75;
       totalWeight += weight;
@@ -116,7 +165,7 @@ function FeedbackContent() {
     }
 
     return Math.round(weightedSum / (totalWeight || 1));
-  }, [context, criterionScores]);
+  }, [normalizedCriteria, criterionScores]);
 
   const activeOverallScore = computedScore;
 
@@ -142,9 +191,9 @@ function FeedbackContent() {
       setSubmitting(true);
       setError(null);
 
-      const criteriaArray = Object.entries(criterionScores).map(([name, score]) => ({
-        name,
-        score,
+      const criteriaArray = normalizedCriteria.map((c) => ({
+        name: c.name,
+        score: criterionScores[c.name] ?? 75,
       }));
 
       const client = anonClient();
@@ -375,7 +424,7 @@ function FeedbackContent() {
         </div>
 
         <div className="space-y-6">
-          {context?.evaluation_criteria?.map((criterion) => {
+          {normalizedCriteria.map((criterion) => {
             const currentVal = criterionScores[criterion.name] ?? 75;
             return (
               <div

@@ -4929,6 +4929,50 @@ revoke all on function public.book_interview_slot(uuid,text,timestamptz,timestam
 grant execute on function public.book_interview_slot(uuid,text,timestamptz,timestamptz,text,text,boolean) to service_role;
 
 -- =========================================================================
+-- FILE: 0047_booking_context_campaign_dates.sql
+-- =========================================================================
+
+-- Migration 0047: Include opening_date and closing_date in campaign object returned by get_booking_context
+
+create or replace function public.get_booking_context(
+  p_round_instance_id uuid,p_token text,p_tz_offset_minutes int default 0
+) returns jsonb language plpgsql security definer set search_path=public
+as $$
+declare v_ri public.round_instances%rowtype; v_cand public.candidates%rowtype; v_camp public.campaigns%rowtype;
+  v_cr public.campaign_rounds%rowtype; v_account public.accounts%rowtype; v_booked jsonb;
+begin
+  if not public.candidate_token_valid(p_token,'booking',p_round_instance_id) then
+    raise exception 'invalid_link' using detail='This booking link is invalid or has expired.';
+  end if;
+  select * into v_ri from public.round_instances where id=p_round_instance_id;
+  if not found or v_ri.round_type<>'human_interview' then raise exception 'round_not_bookable'; end if;
+  select * into v_camp from public.campaigns where id=v_ri.campaign_id and account_id=v_ri.account_id;
+  if not found or v_camp.status<>'open' then raise exception 'job_closed'; end if;
+  select * into v_cand from public.candidates where id=v_ri.candidate_id;
+  select * into v_cr from public.campaign_rounds where campaign_id=v_ri.campaign_id and round_number=v_ri.round_number;
+  select * into v_account from public.accounts where id=v_ri.account_id;
+  select jsonb_build_object('event_id',ce.event_id,'slot_start',ce.slot_start,'slot_end',ce.slot_end,
+    'meet_link',ce.meet_link,'interviewer_email',ce.interviewer_email) into v_booked
+    from public.calendar_events ce where ce.round_instance_id=v_ri.id;
+  return jsonb_build_object(
+    'round_instance',jsonb_build_object('id',v_ri.id,'round_type',v_ri.round_type,'status',v_ri.status,
+      'scheduled_at',v_ri.scheduled_at,'meet_link',coalesce(v_ri.meet_link, v_ri.conferencing_link, v_booked->>'meet_link'),'event_id',v_ri.event_id,'deadline_at',v_ri.deadline_at,'reschedule_count',v_ri.reschedule_count),
+    'candidate',jsonb_build_object('id',v_cand.id,'name',v_cand.name,'email',v_cand.email,'phone',v_cand.phone),
+    'campaign',jsonb_build_object('id',v_camp.id,'name',v_camp.name,'number_of_rounds',v_camp.number_of_rounds,'opening_date',v_camp.opening_date,'closing_date',v_camp.closing_date),
+    'round',jsonb_build_object('round_number',v_cr.round_number,'round_type',v_cr.round_type,
+      'interviewer_email',coalesce(v_cr.interviewer_email,(select tm.email from public.team_members tm where tm.id=v_cr.assigned_team_member_id)),
+      'cutoff_score',v_cr.cutoff_score,'daily_start_time',to_char(v_cr.daily_start_time,'HH24:MI'),
+      'daily_end_time',to_char(v_cr.daily_end_time,'HH24:MI'),'duration_minutes',v_cr.duration_minutes),
+    'account',jsonb_build_object('tier',v_account.tier,'voice_screening_included',v_account.tier in ('basic','growth','enterprise')),
+    'booked_event',v_booked
+  );
+end;
+$$;
+
+revoke all on function public.get_booking_context(uuid,text,int) from public;
+grant execute on function public.get_booking_context(uuid,text,int) to anon,authenticated,service_role;
+
+-- =========================================================================
 -- FILE: 0047_calendar_credential_lookup_by_email.sql
 -- =========================================================================
 
@@ -4983,3 +5027,741 @@ $$;
 
 revoke all on function public.get_interviewer_calendar_credential(uuid, text) from public,anon,authenticated;
 grant execute on function public.get_interviewer_calendar_credential(uuid, text) to service_role;
+
+-- =========================================================================
+-- FILE: 0048_default_whatsapp_opt_in.sql
+-- =========================================================================
+
+-- 0048_default_whatsapp_opt_in.sql
+-- Change default WhatsApp opt-in status to true across applications table and intake/contact functions
+
+-- 1. Alter applications table default
+alter table public.applications
+  alter column whatsapp_opt_in set default true;
+
+-- 2. Update existing applications to be opted in by default
+update public.applications
+  set whatsapp_opt_in = true
+  where whatsapp_opt_in is false or whatsapp_opt_in is null;
+
+-- 3. Update create_application_intake function
+create or replace function public.create_application_intake(
+  p_campaign_id uuid,
+  p_candidate_name text,
+  p_candidate_email text,
+  p_candidate_phone text,
+  p_resume_path text,
+  p_whatsapp_opt_in boolean default true
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_account_id uuid := auth.uid();
+  v_campaign public.campaigns%rowtype;
+  v_candidate_id uuid;
+  v_application public.applications%rowtype;
+  v_email text := lower(btrim(p_candidate_email));
+  v_normalized_email text;
+  v_round_count integer;
+  v_voice_round_count integer;
+begin
+  if v_account_id is null and coalesce(auth.role(), '') = 'service_role' then
+    select account_id into v_account_id
+    from public.campaigns
+    where id = p_campaign_id;
+  end if;
+
+  if v_account_id is null then
+    raise exception 'not_authenticated' using errcode = '42501';
+  end if;
+
+  select * into v_campaign
+  from public.campaigns
+  where id = p_campaign_id;
+
+  if not found or v_campaign.account_id <> v_account_id then
+    raise exception 'campaign_not_found' using errcode = 'P0002';
+  end if;
+
+  if v_campaign.status <> 'open' then
+    raise exception 'campaign_closed' using errcode = '22023';
+  end if;
+
+  select count(*), count(*) filter (where round_type = 'ai_voice_call')
+  into v_round_count, v_voice_round_count
+  from public.campaign_rounds
+  where campaign_id = p_campaign_id;
+
+  if coalesce(v_round_count, 0) = 0 then
+    raise exception 'campaign_has_no_rounds' using errcode = '22023';
+  end if;
+
+  if coalesce(v_voice_round_count, 0) > 0 and nullif(btrim(p_candidate_phone), '') is null then
+    raise exception 'phone_required' using errcode = '22023';
+  end if;
+
+  if nullif(btrim(p_candidate_name), '') is null or v_email is null or nullif(btrim(p_resume_path), '') is null then
+    raise exception 'candidate_fields_required' using errcode = '22023';
+  end if;
+
+  v_normalized_email := lower(
+    regexp_replace(split_part(v_email, '@', 1), '[+].*', '')
+    || '@' || split_part(v_email, '@', 2)
+  );
+
+  insert into public.candidates (account_id, name, email, phone)
+  values (v_account_id, btrim(p_candidate_name), v_email, nullif(btrim(p_candidate_phone), ''))
+  on conflict (account_id, normalized_email) do update
+  set name = excluded.name,
+      phone = coalesce(excluded.phone, public.candidates.phone)
+  returning id into v_candidate_id;
+
+  if exists (
+    select 1
+    from public.applications a
+    where a.campaign_id = p_campaign_id
+      and a.normalized_email = v_normalized_email
+  ) then
+    raise exception 'candidate_already_uploaded' using errcode = '23505';
+  end if;
+
+  insert into public.applications (
+    account_id, campaign_id, candidate_id, candidate_name, candidate_email,
+    candidate_phone, resume_path, whatsapp_opt_in, status, current_stage
+  ) values (
+    v_account_id, p_campaign_id, v_candidate_id, btrim(p_candidate_name), v_email,
+    nullif(btrim(p_candidate_phone), ''), btrim(p_resume_path), coalesce(p_whatsapp_opt_in, true),
+    'active', 'needs_review'
+  ) returning * into v_application;
+
+  return to_jsonb(v_application);
+end;
+$$;
+
+revoke all on function public.create_application_intake(uuid, text, text, text, text, boolean) from public, anon;
+grant execute on function public.create_application_intake(uuid, text, text, text, text, boolean) to authenticated, service_role;
+
+-- 4. Update update_application_contact function
+create or replace function public.update_application_contact(
+  p_application_id uuid,
+  p_candidate_name text,
+  p_candidate_email text,
+  p_candidate_phone text,
+  p_whatsapp_opt_in boolean default true
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_application public.applications%rowtype;
+  v_campaign public.campaigns%rowtype;
+  v_normalized_email text;
+begin
+  select * into v_application from public.applications where id = p_application_id for update;
+  if not found or (coalesce(auth.role(), '') <> 'service_role' and auth.uid() is distinct from v_application.account_id) then
+    raise exception 'not_authorized' using detail = 'The application is outside this workspace.';
+  end if;
+  select * into v_campaign from public.campaigns where id = v_application.campaign_id;
+  if v_campaign.status <> 'open' then
+    raise exception 'job_closed' using detail = 'Candidate details cannot be changed for a closed job.';
+  end if;
+  if nullif(btrim(p_candidate_name), '') is null or nullif(btrim(p_candidate_email), '') is null then
+    raise exception 'candidate_fields_required' using detail = 'Candidate name and email are required.';
+  end if;
+  if exists (
+    select 1 from public.campaign_rounds r
+    where r.campaign_id = v_application.campaign_id and r.round_type = 'ai_voice_call'
+  ) and nullif(btrim(p_candidate_phone), '') is null then
+    raise exception 'phone_required' using detail = 'A phone number is required for this job’s AI voice round.';
+  end if;
+  v_normalized_email := lower(
+    regexp_replace(split_part(btrim(p_candidate_email), '@', 1), '[+].*', '')
+    || '@' || split_part(btrim(p_candidate_email), '@', 2)
+  );
+  if exists (
+    select 1 from public.applications a
+    where a.campaign_id = v_application.campaign_id
+      and a.id <> v_application.id
+      and a.normalized_email = v_normalized_email
+  ) then
+    raise exception 'duplicate_application' using detail = 'This email already has an application for this job.';
+  end if;
+  update public.applications
+  set candidate_name = btrim(p_candidate_name),
+      candidate_email = btrim(p_candidate_email),
+      candidate_phone = nullif(btrim(p_candidate_phone), ''),
+      whatsapp_opt_in = coalesce(p_whatsapp_opt_in, true)
+  where id = v_application.id;
+end;
+$$;
+
+revoke all on function public.update_application_contact(uuid, text, text, text, boolean) from public, anon, authenticated;
+grant execute on function public.update_application_contact(uuid, text, text, text, boolean) to authenticated, service_role;
+
+-- =========================================================================
+-- FILE: 0049_interviewer_evaluation_workflow.sql
+-- =========================================================================
+
+-- 0049_interviewer_evaluation_workflow.sql
+-- RPCs to support automated post-interview evaluation dispatch and evaluation context retrieval
+
+create extension if not exists "pgcrypto" with schema extensions;
+
+-- 1. Function to find human interviews whose scheduled end time has elapsed and require evaluation
+create or replace function public.get_due_interview_evaluations()
+returns table (
+  round_instance_id uuid,
+  account_id uuid,
+  campaign_id uuid,
+  application_id uuid,
+  candidate_id uuid,
+  candidate_name text,
+  candidate_email text,
+  role_title text,
+  company_name text,
+  round_number int,
+  scheduled_at timestamptz,
+  interviewer_email text,
+  interviewer_name text
+)
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  return query
+  select
+    ri.id as round_instance_id,
+    ri.account_id,
+    ri.campaign_id,
+    ri.application_id,
+    ri.candidate_id,
+    a.candidate_name,
+    a.candidate_email,
+    c.name as role_title,
+    coalesce(acc.company_name, 'ScalePods') as company_name,
+    ri.round_number,
+    ri.scheduled_at,
+    coalesce(tm.email, cr.interviewer_email) as interviewer_email,
+    coalesce(tm.name, 'Interviewer') as interviewer_name
+  from public.round_instances ri
+  join public.applications a on a.id = ri.application_id
+  join public.campaigns c on c.id = ri.campaign_id
+  join public.accounts acc on acc.id = ri.account_id
+  join public.campaign_rounds cr on cr.campaign_id = ri.campaign_id and cr.round_number = ri.round_number
+  left join public.team_members tm on tm.id = cr.assigned_team_member_id
+       or (cr.assigned_team_member_id is null and lower(tm.email) = lower(cr.interviewer_email) and tm.account_id = ri.account_id)
+  left join public.interviewer_feedback_links fl on fl.round_instance_id = ri.id
+  left join public.interviewer_feedback ifb on ifb.round_instance_id = ri.id
+  where ri.round_type = 'human_interview'
+    and ri.status = 'scheduled'
+    and ri.scheduled_at is not null
+    and ri.scheduled_at + coalesce(cr.duration_minutes, 45) * interval '1 minute' <= now()
+    and c.status = 'open'
+    and a.status not in ('rejected', 'offer_sent', 'hired')
+    and fl.id is null
+    and ifb.id is null
+    and coalesce(tm.email, cr.interviewer_email) is not null;
+end;
+$$;
+
+-- 2. Function to generate a secure feedback link for an interview round
+create or replace function public.create_interviewer_feedback_link(
+  p_round_instance_id uuid,
+  p_expires_hours int default 48
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_round public.round_instances%rowtype;
+  v_cr public.campaign_rounds%rowtype;
+  v_tm public.team_members%rowtype;
+  v_token text;
+  v_token_hash text;
+  v_expires_at timestamptz;
+  v_link_id uuid;
+begin
+  select * into v_round from public.round_instances where id = p_round_instance_id;
+  if not found or v_round.round_type <> 'human_interview' then
+    raise exception 'invalid_round' using detail = 'Round instance not found or not a human interview.';
+  end if;
+
+  select * into v_cr from public.campaign_rounds
+  where campaign_id = v_round.campaign_id and round_number = v_round.round_number;
+
+  select * into v_tm from public.team_members
+  where id = v_cr.assigned_team_member_id
+     or (v_cr.assigned_team_member_id is null and lower(email) = lower(v_cr.interviewer_email) and account_id = v_round.account_id)
+  limit 1;
+
+  if not found and v_cr.interviewer_email is not null then
+    insert into public.team_members (account_id, name, email, role)
+    values (v_round.account_id, split_part(v_cr.interviewer_email, '@', 1), lower(btrim(v_cr.interviewer_email)), 'interviewer')
+    on conflict (account_id, email) do nothing;
+
+    select * into v_tm from public.team_members
+    where account_id = v_round.account_id and lower(email) = lower(btrim(v_cr.interviewer_email))
+    limit 1;
+  end if;
+
+  if not found then
+    raise exception 'interviewer_not_found' using detail = 'Assigned team member not found.';
+  end if;
+
+  -- 32-byte hex token and standard SHA-256 hash
+  v_token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+  v_token_hash := encode(sha256(v_token::bytea), 'hex');
+  v_expires_at := now() + make_interval(hours => coalesce(p_expires_hours, 48));
+
+  insert into public.interviewer_feedback_links (
+    account_id, application_id, round_instance_id, team_member_id,
+    token_hash, expires_at
+  ) values (
+    v_round.account_id, v_round.application_id, v_round.id, v_tm.id,
+    v_token_hash, v_expires_at
+  )
+  on conflict (round_instance_id) do update
+    set token_hash = excluded.token_hash,
+        expires_at = excluded.expires_at,
+        revoked_at = null
+  returning id into v_link_id;
+
+  return jsonb_build_object(
+    'link_id', v_link_id,
+    'token', v_token,
+    'expires_at', v_expires_at,
+    'interviewer_email', coalesce(v_tm.email, v_cr.interviewer_email),
+    'interviewer_name', v_tm.name
+  );
+end;
+$$;
+
+-- 3. Function to retrieve interview context for the evaluation page by token
+create or replace function public.get_interviewer_feedback_context(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_link public.interviewer_feedback_links%rowtype;
+  v_round public.round_instances%rowtype;
+  v_app public.applications%rowtype;
+  v_campaign public.campaigns%rowtype;
+  v_cr public.campaign_rounds%rowtype;
+  v_account public.accounts%rowtype;
+  v_interviewer public.team_members%rowtype;
+  v_criteria jsonb;
+begin
+  if p_token is null or btrim(p_token) = '' then
+    raise exception 'invalid_token' using detail = 'Feedback token is required.';
+  end if;
+
+  select * into v_link
+  from public.interviewer_feedback_links
+  where token_hash = encode(sha256(p_token::bytea), 'hex');
+
+  if not found then
+    raise exception 'feedback_link_not_found' using detail = 'This feedback link does not exist.';
+  end if;
+
+  select * into v_round from public.round_instances where id = v_link.round_instance_id;
+  select * into v_app from public.applications where id = v_link.application_id;
+  select * into v_campaign from public.campaigns where id = v_round.campaign_id;
+  select * into v_account from public.accounts where id = v_link.account_id;
+  select * into v_interviewer from public.team_members where id = v_link.team_member_id;
+
+  select * into v_cr from public.campaign_rounds
+  where campaign_id = v_round.campaign_id and round_number = v_round.round_number;
+
+  v_criteria := coalesce(
+    v_cr.evaluation_criteria,
+    '[
+      {"name": "Technical Proficiency", "weight": 25},
+      {"name": "Problem Solving & Analytical Thinking", "weight": 25},
+      {"name": "Communication & Clarity", "weight": 25},
+      {"name": "Culture & Collaboration Fit", "weight": 25}
+    ]'::jsonb
+  );
+
+  return jsonb_build_object(
+    'is_valid', (v_link.used_at is null and v_link.no_show_at is null and v_link.revoked_at is null and v_link.expires_at > now()),
+    'status', case
+      when v_link.used_at is not null then 'already_submitted'
+      when v_link.no_show_at is not null then 'no_show_reported'
+      when v_link.expires_at <= now() then 'expired'
+      when v_link.revoked_at is not null then 'revoked'
+      else 'active'
+    end,
+    'candidate_name', v_app.candidate_name,
+    'candidate_email', v_app.candidate_email,
+    'role_title', v_campaign.name,
+    'company_name', coalesce(v_account.company_name, 'ScalePods'),
+    'round_number', v_round.round_number,
+    'scheduled_at', v_round.scheduled_at,
+    'interviewer_name', coalesce(v_interviewer.name, 'Interviewer'),
+    'interviewer_email', coalesce(v_interviewer.email, v_cr.interviewer_email),
+    'evaluation_criteria', v_criteria,
+    'questions', coalesce(v_cr.questions, '[]'::jsonb),
+    'expires_at', v_link.expires_at
+  );
+end;
+$$;
+
+-- 4. Update submit_interviewer_feedback and report_interviewer_no_show with built-in sha256
+create or replace function public.submit_interviewer_feedback(
+  p_token text,
+  p_criteria_scores jsonb,
+  p_overall_score numeric,
+  p_notes text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_link public.interviewer_feedback_links%rowtype;
+  v_round public.round_instances%rowtype;
+  v_application public.applications%rowtype;
+  v_item jsonb;
+  v_score numeric;
+  v_id uuid;
+begin
+  select * into v_link
+  from public.interviewer_feedback_links
+  where token_hash = encode(sha256(p_token::bytea), 'hex')
+    and used_at is null and no_show_at is null and revoked_at is null
+    and expires_at > now();
+  if not found then
+    raise exception 'feedback_link_invalid' using detail = 'This feedback link is invalid or expired.';
+  end if;
+  if p_criteria_scores is null
+     or jsonb_typeof(p_criteria_scores) is distinct from 'array'
+     or jsonb_array_length(p_criteria_scores) = 0 then
+    raise exception 'feedback_required' using detail = 'Submit a score for each required criterion.';
+  end if;
+  if p_overall_score is null or p_overall_score < 1 or p_overall_score > 100 then
+    raise exception 'feedback_score_invalid' using detail = 'Scores must be between 1 and 100.';
+  end if;
+  for v_item in select value from jsonb_array_elements(p_criteria_scores) loop
+    begin
+      v_score := (v_item->>'score')::numeric;
+    exception when others then
+      raise exception 'feedback_score_invalid' using detail = 'Each criterion needs a numeric score from 1 to 100.';
+    end;
+    if v_score < 1 or v_score > 100 then
+      raise exception 'feedback_score_invalid' using detail = 'Each criterion score must be between 1 and 100.';
+    end if;
+  end loop;
+
+  select * into v_round from public.round_instances where id = v_link.round_instance_id;
+  select * into v_application from public.applications where id = v_link.application_id;
+  if v_round.status <> 'scheduled' or v_application.status in ('rejected','offer_sent') then
+    raise exception 'feedback_not_available' using detail = 'Feedback is no longer available for this interview.';
+  end if;
+  if not exists (
+    select 1 from public.campaigns c
+    where c.id = v_round.campaign_id and c.account_id = v_link.account_id and c.status = 'open'
+  ) then
+    raise exception 'job_closed' using detail = 'Feedback cannot be submitted for a closed job.';
+  end if;
+
+  insert into public.interviewer_feedback (
+    account_id, application_id, round_instance_id, team_member_id,
+    criteria_scores, overall_score, notes
+  ) values (
+    v_link.account_id, v_link.application_id, v_link.round_instance_id,
+    v_link.team_member_id, p_criteria_scores, p_overall_score, p_notes
+  ) returning id into v_id;
+
+  insert into public.application_evaluations (
+    account_id, application_id, round_instance_id, score_type,
+    score, criteria_scores, evidence, notes
+  ) values (
+    v_link.account_id, v_link.application_id, v_link.round_instance_id, 'human_feedback',
+    p_overall_score, p_criteria_scores, '[]'::jsonb, p_notes
+  );
+
+  insert into public.decision_ledger (
+    account_id, candidate_id, application_id, round_instance_id,
+    stage, score, score_type, rationale, source
+  ) values (
+    v_link.account_id, v_application.candidate_id, v_link.application_id, v_link.round_instance_id,
+    'round', p_overall_score, 'human_feedback', p_notes, 'manual'
+  );
+
+  update public.interviewer_feedback_links set used_at = now() where id = v_link.id;
+  update public.round_instances set status = 'completed' where id = v_round.id;
+  return v_id;
+end;
+$$;
+
+create or replace function public.report_interviewer_no_show(p_token text)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_link public.interviewer_feedback_links%rowtype;
+  v_round public.round_instances%rowtype;
+begin
+  select * into v_link
+  from public.interviewer_feedback_links
+  where token_hash = encode(sha256(p_token::bytea), 'hex')
+    and used_at is null and no_show_at is null and revoked_at is null
+    and expires_at > now();
+  if not found then
+    raise exception 'feedback_link_invalid' using detail = 'This feedback link is invalid or expired.';
+  end if;
+  select * into v_round from public.round_instances where id = v_link.round_instance_id;
+  if v_round.status <> 'scheduled' or v_round.scheduled_at > now() then
+    raise exception 'no_show_not_available' using detail = 'This interview cannot be marked as a no-show yet.';
+  end if;
+  if not exists (
+    select 1 from public.campaigns c
+    where c.id = v_round.campaign_id and c.account_id = v_link.account_id and c.status = 'open'
+  ) then
+    raise exception 'job_closed' using detail = 'A no-show cannot be reported for a closed job.';
+  end if;
+  update public.interviewer_feedback_links set no_show_at = now() where id = v_link.id;
+  update public.round_instances set status = 'no_show' where id = v_round.id;
+end;
+$$;
+
+-- Permissions
+grant execute on function public.get_due_interview_evaluations() to service_role;
+grant execute on function public.create_interviewer_feedback_link(uuid, int) to service_role;
+grant execute on function public.get_interviewer_feedback_context(text) to anon, authenticated, service_role;
+grant execute on function public.submit_interviewer_feedback(text, jsonb, numeric, text) to anon, authenticated, service_role;
+grant execute on function public.report_interviewer_no_show(text) to anon, authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+-- =========================================================================
+-- FILE: 0050_concurrency_safe_booking_and_reschedule.sql
+-- =========================================================================
+
+-- Migration 0050: Concurrency safe booking, collision prevention, and resilient rescheduling
+create or replace function public.book_interview_slot(
+  p_round_instance_id uuid,
+  p_token text,
+  p_slot_start timestamptz,
+  p_slot_end timestamptz,
+  p_event_id text,
+  p_meet_link text,
+  p_is_reschedule boolean default false
+) returns void language plpgsql security definer set search_path=public
+as $$
+declare
+  v_round public.round_instances%rowtype;
+  v_cr public.campaign_rounds%rowtype;
+  v_job public.campaigns%rowtype;
+  v_interviewer_email text;
+  v_resched_count int;
+begin
+  if coalesce(auth.role(),'') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+
+  if not public.candidate_token_valid(p_token, 'booking', p_round_instance_id) then
+    raise exception 'booking_token_invalid' using errcode='28000';
+  end if;
+
+  select * into v_round
+  from public.round_instances
+  where id = p_round_instance_id
+  for update;
+
+  if not found or v_round.round_type <> 'human_interview' then
+    raise exception 'round_not_bookable';
+  end if;
+
+  select * into v_job
+  from public.campaigns
+  where id = v_round.campaign_id and account_id = v_round.account_id;
+
+  if not found or v_job.status <> 'open' then
+    raise exception 'job_closed';
+  end if;
+
+  select * into v_cr
+  from public.campaign_rounds
+  where campaign_id = v_round.campaign_id and round_number = v_round.round_number;
+
+  v_interviewer_email := coalesce(
+    v_cr.interviewer_email,
+    (select tm.email from public.team_members tm where tm.id = v_cr.assigned_team_member_id),
+    ''
+  );
+
+  -- Concurrency control: Transaction-level advisory lock on interviewer
+  -- This guarantees simultaneous bookings/reschedules for the same interviewer serialize
+  -- and cannot double-book the same slot.
+  perform pg_advisory_xact_lock(hashtext('booking_interviewer:' || coalesce(nullif(v_interviewer_email, ''), v_round.account_id::text)));
+
+  v_resched_count := coalesce(v_round.reschedule_count, 0);
+
+  -- Reschedule Branch
+  if (p_is_reschedule or v_round.status = 'scheduled') and (v_round.event_id is not null or p_event_id is not null) then
+    if v_resched_count >= 3 then
+      raise exception 'max_reschedules_exceeded' using errcode='55001';
+    end if;
+
+    -- Verify slot is not already booked by another candidate
+    if exists (
+      select 1 from public.calendar_events e
+      where e.round_instance_id <> v_round.id
+        and e.interviewer_email = v_interviewer_email
+        and e.slot_start < p_slot_end
+        and e.slot_end > p_slot_start
+    ) then
+      raise exception 'interview_slot_unavailable' using errcode='45000';
+    end if;
+
+    update public.calendar_events
+    set slot_start = p_slot_start,
+        slot_end = p_slot_end,
+        event_id = coalesce(p_event_id, event_id)
+    where round_instance_id = v_round.id;
+
+    if not found then
+      insert into public.calendar_events(account_id, round_instance_id, interviewer_email, event_id, slot_start, slot_end)
+      values(v_round.account_id, v_round.id, v_interviewer_email, coalesce(p_event_id, v_round.event_id, ''), p_slot_start, p_slot_end);
+    end if;
+
+    update public.round_instances
+    set scheduled_at = p_slot_start,
+        event_id = coalesce(p_event_id, event_id),
+        meet_link = coalesce(p_meet_link, meet_link),
+        conferencing_link = coalesce(p_meet_link, conferencing_link),
+        reschedule_count = v_resched_count + 1
+    where id = v_round.id;
+
+    return;
+
+  -- Initial Booking Branch
+  elsif v_round.status = 'pending' and not p_is_reschedule then
+    -- Verify slot is not already booked by another candidate
+    if exists (
+      select 1 from public.calendar_events e
+      where e.round_instance_id <> v_round.id
+        and e.interviewer_email = v_interviewer_email
+        and e.slot_start < p_slot_end
+        and e.slot_end > p_slot_start
+    ) then
+      raise exception 'interview_slot_unavailable' using errcode='45000';
+    end if;
+
+    insert into public.calendar_events(account_id, round_instance_id, interviewer_email, event_id, slot_start, slot_end)
+    values(v_round.account_id, v_round.id, v_interviewer_email, p_event_id, p_slot_start, p_slot_end);
+
+    update public.round_instances
+    set status = 'scheduled',
+        scheduled_at = p_slot_start,
+        event_id = p_event_id,
+        meet_link = p_meet_link,
+        conferencing_link = p_meet_link,
+        reschedule_count = 0
+    where id = v_round.id;
+
+    return;
+
+  else
+    raise exception 'booking_state_conflict' using errcode='55000';
+  end if;
+end;
+$$;
+
+revoke all on function public.book_interview_slot(uuid,text,timestamptz,timestamptz,text,text,boolean) from public,anon,authenticated;
+grant execute on function public.book_interview_slot(uuid,text,timestamptz,timestamptz,text,text,boolean) to service_role;
+
+-- =========================================================================
+-- FILE: 0051_ensure_evaluation_criteria_fallback.sql
+-- =========================================================================
+
+-- Migration 0051: Ensure default criteria fallback when campaign_rounds.evaluation_criteria is empty array or null
+create or replace function public.get_interviewer_feedback_context(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_link public.interviewer_feedback_links%rowtype;
+  v_round public.round_instances%rowtype;
+  v_app public.applications%rowtype;
+  v_campaign public.campaigns%rowtype;
+  v_cr public.campaign_rounds%rowtype;
+  v_account public.accounts%rowtype;
+  v_interviewer public.team_members%rowtype;
+  v_criteria jsonb;
+begin
+  if p_token is null or btrim(p_token) = '' then
+    raise exception 'invalid_token' using detail = 'Feedback token is required.';
+  end if;
+
+  select * into v_link
+  from public.interviewer_feedback_links
+  where token_hash = encode(sha256(p_token::bytea), 'hex');
+
+  if not found then
+    raise exception 'feedback_link_not_found' using detail = 'This feedback link does not exist.';
+  end if;
+
+  select * into v_round from public.round_instances where id = v_link.round_instance_id;
+  select * into v_app from public.applications where id = v_link.application_id;
+  select * into v_campaign from public.campaigns where id = v_round.campaign_id;
+  select * into v_account from public.accounts where id = v_link.account_id;
+  select * into v_interviewer from public.team_members where id = v_link.team_member_id;
+
+  select * into v_cr from public.campaign_rounds
+  where campaign_id = v_round.campaign_id and round_number = v_round.round_number;
+
+  if v_cr.evaluation_criteria is null
+     or jsonb_typeof(v_cr.evaluation_criteria) <> 'array'
+     or jsonb_array_length(v_cr.evaluation_criteria) = 0 then
+    v_criteria := '[
+      {"name": "Technical Proficiency", "weight": 25, "description": "Domain knowledge, technical fundamentals, and hands-on execution competence"},
+      {"name": "Problem Solving & Analytical Thinking", "weight": 25, "description": "Ability to break down problems, systematic logic, and solution architecture"},
+      {"name": "Communication & Clarity", "weight": 25, "description": "Clarity of articulation, structured thought process, and active listening"},
+      {"name": "Culture & Collaboration Fit", "weight": 25, "description": "Teamwork, adaptability, curiosity, coachability, and alignment with company core values"}
+    ]'::jsonb;
+  else
+    v_criteria := v_cr.evaluation_criteria;
+  end if;
+
+  return jsonb_build_object(
+    'is_valid', (v_link.used_at is null and v_link.no_show_at is null and v_link.revoked_at is null and v_link.expires_at > now()),
+    'status', case
+      when v_link.used_at is not null then 'already_submitted'
+      when v_link.no_show_at is not null then 'no_show_reported'
+      when v_link.expires_at <= now() then 'expired'
+      when v_link.revoked_at is not null then 'revoked'
+      else 'active'
+    end,
+    'candidate_name', v_app.candidate_name,
+    'candidate_email', v_app.candidate_email,
+    'role_title', v_campaign.name,
+    'company_name', coalesce(v_account.company_name, 'ScalePods'),
+    'round_number', v_round.round_number,
+    'scheduled_at', v_round.scheduled_at,
+    'interviewer_name', coalesce(v_interviewer.name, 'Interviewer'),
+    'interviewer_email', coalesce(v_interviewer.email, v_cr.interviewer_email),
+    'evaluation_criteria', v_criteria,
+    'questions', coalesce(v_cr.questions, '[]'::jsonb),
+    'expires_at', v_link.expires_at
+  );
+end;
+$$;
+
+grant execute on function public.get_interviewer_feedback_context(text) to anon, authenticated, service_role;
