@@ -1,5 +1,5 @@
 -- 0052_backfill_and_fix_feedback_decision_ledger.sql
--- Fix submit_interviewer_feedback to ensure decision_ledger has a descriptive rationale and 'panel' source,
+-- Fix submit_interviewer_feedback to ensure decision_ledger has a descriptive rationale,
 -- and backfill existing human feedback ledger records that had null rationales.
 
 create or replace function public.submit_interviewer_feedback(
@@ -87,7 +87,7 @@ begin
     stage, score, score_type, rationale, source
   ) values (
     v_link.account_id, v_application.candidate_id, v_link.application_id, v_link.round_instance_id,
-    'round', p_overall_score, 'human_feedback', v_rationale, 'panel'
+    'round', p_overall_score, 'human_feedback', v_rationale, 'manual'
   );
 
   update public.interviewer_feedback_links set used_at = now() where id = v_link.id;
@@ -98,9 +98,8 @@ $$;
 
 -- Backfill any existing human_feedback decision_ledger records that have NULL or empty rationale
 update public.decision_ledger
-set rationale = 'Human interview evaluation completed with score of ' || round(coalesce(score, 0))::text || '/100.',
-    source = 'panel'
-where (score_type = 'human_feedback' or source = 'panel')
+set rationale = 'Human interview evaluation completed with score of ' || round(coalesce(score, 0))::text || '/100.'
+where score_type = 'human_feedback'
   and (rationale is null or trim(rationale) = '');
 
 grant execute on function public.submit_interviewer_feedback(text, jsonb, numeric, text) to anon, authenticated, service_role;
