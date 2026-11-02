@@ -410,7 +410,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   );
 
   if (loading || !session) {
-    if (!loading && !session) {
+    if (!loading && !session && loadError) {
       return (
         <div className="min-h-screen flex items-center justify-center p-4">
           <div className="max-w-md text-center">
@@ -419,8 +419,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
               Session Not Found
             </p>
             <p className="text-sm" style={{ color: "var(--label-secondary)" }}>
-              {loadError ||
-                "Unable to load your interview session. Please check your invite link or contact the recruiter."}
+              {loadError}
             </p>
           </div>
         </div>

@@ -72,7 +72,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [currentQuestionId, setCurrentQuestionId] = useState("");
   const [scorecard, setScorecard] = useState<Scorecard | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [isGeneratingTurn, setIsGeneratingTurn] = useState(false);
   const [isAnalyzingAnswer, setIsAnalyzingAnswer] = useState(false);

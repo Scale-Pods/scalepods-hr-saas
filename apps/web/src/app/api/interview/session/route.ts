@@ -31,11 +31,24 @@ export async function GET(request: NextRequest) {
     const supabase = getAdminSupabase();
 
     // 1. Fetch Session
-    const { data: session, error: sessionErr } = await supabase
+    let { data: session, error: sessionErr } = await supabase
       .from("interview_sessions")
       .select("*")
       .eq("id", sessionId)
       .maybeSingle();
+
+    if (!session && !sessionErr) {
+      const { data: sessionByRi } = await supabase
+        .from("interview_sessions")
+        .select("*")
+        .eq("round_instance_id", sessionId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (sessionByRi) {
+        session = sessionByRi;
+      }
+    }
 
     if (sessionErr || !session) {
       return NextResponse.json(
