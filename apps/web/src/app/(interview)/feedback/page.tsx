@@ -68,13 +68,12 @@ function FeedbackContent() {
       try {
         setLoading(true);
         const client = anonClient();
-        const rpcFn = client.rpc as unknown as (
-          fn: string,
-          params: Record<string, unknown>,
-        ) => Promise<{ data: unknown; error: { message: string } | null }>;
-        const { data, error: rpcErr } = await rpcFn("get_interviewer_feedback_context", {
-          p_token: token,
-        });
+        const { data, error: rpcErr } = await (client as any).rpc(
+          "get_interviewer_feedback_context",
+          {
+            p_token: token,
+          },
+        );
 
         if (rpcErr) {
           setError(rpcErr.message || "Failed to validate evaluation link.");
@@ -149,7 +148,7 @@ function FeedbackContent() {
       }));
 
       const client = anonClient();
-      const { error: submitErr } = await client.rpc("submit_interviewer_feedback", {
+      const { error: submitErr } = await (client as any).rpc("submit_interviewer_feedback", {
         p_token: token,
         p_criteria_scores: criteriaArray,
         p_overall_score: activeOverallScore,
@@ -176,7 +175,7 @@ function FeedbackContent() {
       setError(null);
 
       const client = anonClient();
-      const { error: noShowErr } = await client.rpc("report_interviewer_no_show", {
+      const { error: noShowErr } = await (client as any).rpc("report_interviewer_no_show", {
         p_token: token,
       });
 
