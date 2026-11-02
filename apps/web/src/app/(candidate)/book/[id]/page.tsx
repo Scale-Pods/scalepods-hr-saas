@@ -79,7 +79,11 @@ export default function BookPage() {
       .catch((err) => {
         if (!cancelled) {
           setView("error");
-          setError(err instanceof Error ? err.message : "Link invalid or expired.");
+          const msg =
+            err instanceof Error && err.message !== "invalid_link"
+              ? err.message
+              : "This interview booking link is invalid or has expired. A valid security token is required. Please check your latest invitation message or contact the recruiter for a fresh link.";
+          setError(msg);
         }
       });
     return () => {

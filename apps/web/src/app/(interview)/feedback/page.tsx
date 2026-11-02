@@ -119,7 +119,7 @@ function FeedbackContent() {
     return Math.round(weightedSum / (totalWeight || 1));
   }, [context, criterionScores]);
 
-  const activeOverallScore = overallScoreManual ?? computedScore;
+  const activeOverallScore = computedScore;
 
   const scoreBadge = useMemo(() => {
     if (activeOverallScore >= 85)
