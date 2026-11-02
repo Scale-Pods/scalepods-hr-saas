@@ -93,15 +93,10 @@ export interface CandidateProfile {
 }
 
 function roundNumberFromStage(stage: string): number | null {
-  const m = /^round_(\d+)$/.exec(stage);
+  if (!stage) return null;
+  const m = /(?:round[_-]?|r)(\d+)/i.exec(stage);
   if (m) return Number(m[1]);
-  if (
-    stage === "round_undefined" ||
-    stage.includes("round") ||
-    stage.includes("interview") ||
-    stage.includes("voice")
-  )
-    return 1;
+  if (stage === "round_undefined") return 1;
   return null;
 }
 
@@ -361,77 +356,111 @@ export async function fetchCandidateProfile(
     });
   }
 
-  // Synthesize Round 1 entry if an interview round exists in THIS campaign but is missing from decision_ledger
-  const firstSession = sessionRows[0];
-  const firstRound = roundRows[0];
-  const sc =
-    (firstRound ? scorecardByRoundId.get(firstRound.id) : undefined) ??
-    (firstSession ? scorecardBySessionId.get(firstSession.id) : undefined);
-
-  if (
-    (firstSession || firstRound || sc) &&
-    !view.some(
+  // Synthesize missing round entries for ALL rounds configured in this campaign
+  for (const rRow of roundRows) {
+    const alreadyListed = view.some(
       (v) =>
-        roundNumberFromStage(v.stage) === 1 ||
-        (firstRound && v.round_instance_id === firstRound.id),
-    )
-  ) {
+        (rRow.id && v.round_instance_id === rRow.id) ||
+        roundNumberFromStage(v.stage) === rRow.round_number,
+    );
+    if (alreadyListed) continue;
+
+    const rSession = sessionRows.find((s) => s.round_instance_id === rRow.id);
+    const sc =
+      scorecardByRoundId.get(rRow.id) ??
+      (rSession ? scorecardBySessionId.get(rSession.id) : undefined);
+
     const isEval = sc?.overall_score != null;
-    const sessionStartMs = firstSession?.started_at
-      ? new Date(firstSession.started_at).getTime()
-      : 0;
+    const sessionStartMs = rSession?.started_at ? new Date(rSession.started_at).getTime() : 0;
     const isStale =
-      firstSession?.status === "in_progress" &&
+      rSession?.status === "in_progress" &&
       sessionStartMs > 0 &&
       Date.now() - sessionStartMs > 25 * 60 * 1000;
     const isEndedEarly =
-      firstSession?.status === "incomplete" || firstRound?.status === "incomplete" || isStale;
-    const isInProgress = firstSession?.status === "in_progress" && !isStale;
-    const isComplete = firstSession?.status === "completed" || firstRound?.status === "completed";
+      rSession?.status === "incomplete" || rRow.status === "incomplete" || isStale;
+    const isInProgress = rSession?.status === "in_progress" && !isStale;
+    const isComplete = rSession?.status === "completed" || rRow.status === "completed";
 
-    let roundRationale = "AI interview round initiated. Awaiting candidate to join.";
+    let roundRationale = "";
     if (isEval) {
-      roundRationale = sc?.rationale ?? "AI Interview assessment completed.";
-    } else if (isEndedEarly) {
       roundRationale =
-        "Candidate started the AI interview but ended the session in between. Answers recorded up to disconnection are available in the transcript below.";
-    } else if (isInProgress) {
-      roundRationale = "AI interview session is currently in progress.";
-    } else if (isComplete) {
-      roundRationale =
-        "AI interview completed. AI evaluation and scorecard generation in progress.";
+        sc?.rationale ??
+        `${rRow.round_type === "human_interview" ? "Human Interview" : rRow.round_type === "ai_voice_call" ? "AI Voice Screening" : rRow.round_type === "assignment" ? "Take-Home Assignment" : "AI Interview"} assessment completed.`;
+    } else if (rRow.round_type === "human_interview") {
+      if (rRow.status === "scheduled" || rRow.scheduled_at) {
+        const dateStr = rRow.scheduled_at
+          ? new Date(rRow.scheduled_at).toLocaleString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })
+          : "scheduled";
+        roundRationale = `Human interview scheduled for ${dateStr}. Awaiting interviewer evaluation.`;
+      } else if (
+        rRow.status === "completed" ||
+        rRow.status === "passed" ||
+        rRow.status === "failed"
+      ) {
+        roundRationale = "Human interview completed. Interviewer feedback and evaluation pending.";
+      } else {
+        roundRationale = "Human interview invitation sent. Awaiting candidate slot booking.";
+      }
+    } else if (rRow.round_type === "ai_voice_call") {
+      if (rRow.status === "completed") {
+        roundRationale = "AI voice screening call completed.";
+      } else {
+        roundRationale = "AI voice screening call queued/dispatched.";
+      }
+    } else if (rRow.round_type === "assignment") {
+      if (rRow.status === "completed") {
+        roundRationale = "Take-home assignment submitted. Awaiting evaluation.";
+      } else {
+        roundRationale = "Take-home assignment issued. Awaiting candidate submission.";
+      }
+    } else {
+      // ai_interview
+      if (isEndedEarly) {
+        roundRationale =
+          "Candidate started the AI interview but ended the session in between. Answers recorded up to disconnection are available in the transcript below.";
+      } else if (isInProgress) {
+        roundRationale = "AI interview session is currently in progress.";
+      } else if (isComplete) {
+        roundRationale =
+          "AI interview completed. AI evaluation and scorecard generation in progress.";
+      } else {
+        roundRationale = "AI interview invitation sent. Awaiting candidate to join.";
+      }
     }
 
     view.push({
-      id: `synth-${firstSession?.id || firstRound?.id || "r1"}`,
-      account_id: firstRound?.account_id ?? cand.account_id,
+      id: `synth-${rRow.id}`,
+      account_id: rRow.account_id ?? cand.account_id,
       candidate_id: id,
-      round_instance_id: firstRound?.id ?? null,
-      stage: "round_1",
+      round_instance_id: rRow.id,
+      stage: `round_${rRow.round_number}`,
       score: isEval ? sc.overall_score : null,
       rationale: roundRationale,
       weight: 1,
       created_at:
         sc?.evaluated_at ??
-        firstSession?.completed_at ??
-        firstSession?.started_at ??
-        firstRound?.created_at ??
+        rSession?.completed_at ??
+        rSession?.started_at ??
+        rRow.created_at ??
         new Date().toISOString(),
       decided_at:
         sc?.evaluated_at ??
-        firstSession?.completed_at ??
-        firstSession?.started_at ??
-        firstRound?.created_at ??
+        rSession?.completed_at ??
+        rSession?.started_at ??
+        rRow.created_at ??
         new Date().toISOString(),
       raw_text: null,
       source: "workflow",
-      session: firstSession
-        ? { ...firstSession, status: isEndedEarly ? "incomplete" : firstSession.status }
+      session: rSession
+        ? { ...rSession, status: isEndedEarly ? "incomplete" : rSession.status }
         : undefined,
       scorecard: sc,
-      forRound: firstRound
-        ? { ...firstRound, status: isEndedEarly ? "incomplete" : firstRound.status }
-        : undefined,
+      forRound: { ...rRow, status: isEndedEarly ? "incomplete" : rRow.status },
       recordingExpired: false,
       recordingSignedUrl: null,
     });

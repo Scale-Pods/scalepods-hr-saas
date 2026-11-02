@@ -5,6 +5,7 @@ import {
   formatDateTime,
   type InterviewerFeedbackRow,
   type OffersRow,
+  type RoundInstancesRow,
 } from "@scalepods/core";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -158,10 +159,10 @@ function statusBadge(status?: string | null) {
 }
 
 function roundNumberFromStage(stage: string): number | null {
-  const m = /^round_(\d+)$/.exec(stage);
+  if (!stage) return null;
+  const m = /(?:round[_-]?|r)(\d+)/i.exec(stage);
   if (m) return Number(m[1]);
-  if (stage === "round_undefined" || stage.includes("round") || stage.includes("interview"))
-    return 1;
+  if (stage === "round_undefined") return 1;
   return null;
 }
 
@@ -169,9 +170,9 @@ const STAGE_LABELS: Record<string, string> = {
   resume: "Resume Screening",
   "resume screening": "Resume Screening",
   resume_screening: "Resume Screening",
-  voice_screen: "AI Voice Call",
-  voice_screening: "AI Voice Call",
-  voice_screening_call: "AI Voice Call",
+  voice_screen: "AI Voice Call Screening",
+  voice_screening: "AI Voice Call Screening",
+  voice_screening_call: "AI Voice Call Screening",
   ai_voice: "AI Voice Call",
   ai_voice_call: "AI Voice Call",
   ai_interview: "AI Interview",
@@ -180,34 +181,81 @@ const STAGE_LABELS: Record<string, string> = {
   round_2: "Round 2",
   round_3: "Round 3",
   round_4: "Round 4",
+  human_interview: "Human Interview",
   human_feedback: "Interviewer Feedback",
   assignment: "Take-Home Assignment",
   offer: "Offer Stage",
   override: "Manual Override",
+  booking_invite: "Human Interview Invitation",
+  human_interview_invite: "Human Interview Invitation",
+  booking_reminder_day1: "Booking Reminder (Day 1)",
+  booking_reminder_day3: "Booking Reminder (Day 3)",
+  booking_reminder_day5: "Booking Reminder (Day 5)",
+  booking_reminder_1: "Booking Reminder (Day 1)",
+  booking_reminder_2: "Booking Reminder (Day 3)",
+  booking_reminder_3: "Booking Reminder (Day 5)",
+  booking_confirmed: "Interview Booking Confirmed",
+  booking_rescheduled: "Interview Rescheduled",
+  interview_invite: "Interview Invitation",
+  ai_interview_invite: "AI Interview Invitation",
+  interview_reminder_day1: "Interview Reminder (Day 1)",
+  interview_reminder_day3: "Interview Reminder (Day 3)",
+  interview_reminder_day5: "Interview Reminder (Day 5)",
+  interview_reminder_1: "Interview Reminder (Day 1)",
+  interview_reminder_2: "Interview Reminder (Day 3)",
+  interview_reminder_3: "Interview Reminder (Day 5)",
+  post_interview_evaluation: "Interviewer Evaluation Dispatch",
+  evaluation_dispatch: "Interviewer Evaluation Dispatch",
+  feedback_reminder: "Evaluation Reminder",
+  feedback_submitted: "Interviewer Feedback Submitted",
+  assignment_invite: "Take-Home Assignment Dispatched",
+  assignment_reminder: "Assignment Reminder",
+  assignment_submitted: "Assignment Submitted",
+  offer_sent: "Offer Letter Sent",
+  offer_accepted: "Offer Accepted",
+  offer_declined: "Offer Declined",
+  rejection: "Rejection Notification",
 };
 
-function stageLabel(stage: string, roundType?: string): string {
+function stageLabel(stage: string, roundType?: string, roundNumber?: number): string {
   if (!stage) return "";
   const lower = stage.toLowerCase().trim();
-  const n = roundNumberFromStage(lower);
+  const n = roundNumber ?? roundNumberFromStage(lower);
 
   if (roundType === "ai_voice_call" || lower.includes("voice")) {
     return n ? `Round ${n} AI Voice Call` : "AI Voice Call";
   }
-  if (roundType === "human_interview") {
+  if (roundType === "human_interview" || lower.includes("booking") || lower.includes("human")) {
+    if (lower.includes("reminder")) {
+      const dayMatch = /day\s*(\d+)|reminder[_-]?(\d+)/i.exec(lower);
+      const daySuffix = dayMatch ? ` (Day ${dayMatch[1] || dayMatch[2]})` : "";
+      return n ? `Round ${n} Booking Reminder${daySuffix}` : `Booking Reminder${daySuffix}`;
+    }
+    if (lower.includes("confirm")) {
+      return n ? `Round ${n} Booking Confirmed` : "Interview Booking Confirmed";
+    }
+    if (lower.includes("resched")) {
+      return n ? `Round ${n} Rescheduled` : "Interview Rescheduled";
+    }
     return n ? `Round ${n} Human Interview` : "Human Interview";
   }
   if (roundType === "assignment" || lower.includes("assignment")) {
     return n ? `Round ${n} Take-Home Assignment` : "Take-Home Assignment";
   }
   if (roundType === "ai_interview") {
+    if (lower.includes("reminder")) {
+      const dayMatch = /day\s*(\d+)|reminder[_-]?(\d+)/i.exec(lower);
+      const daySuffix = dayMatch ? ` (Day ${dayMatch[1] || dayMatch[2]})` : "";
+      return n
+        ? `Round ${n} AI Interview Reminder${daySuffix}`
+        : `AI Interview Reminder${daySuffix}`;
+    }
     return n ? `Round ${n} AI Interview` : "AI Interview";
   }
 
   if (STAGE_LABELS[lower]) return STAGE_LABELS[lower];
   if (n) return `Round ${n}`;
   if (lower.includes("resume")) return "Resume Screening";
-  if (lower.includes("interview")) return "AI Interview";
   return stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -956,7 +1004,7 @@ export default function CandidateProfilePage() {
         title="Outreach history"
         subtitle="Record of automated candidate notifications, interview invites, and communications."
       >
-        <OutreachTable rows={outreach} />
+        <OutreachTable rows={outreach} roundInstances={data?.roundInstances} />
       </SectionCard>
 
       {/* Rejection Confirmation Modal */}
@@ -1498,6 +1546,7 @@ function DeliveryState({ state }: { state: string }) {
 
 function OutreachTable({
   rows,
+  roundInstances,
 }: {
   rows: {
     id: string;
@@ -1506,7 +1555,9 @@ function OutreachTable({
     channel: string;
     delivery_state: string;
     fallback_used: boolean;
+    round_instance_id?: string | null;
   }[];
+  roundInstances?: RoundInstancesRow[];
 }) {
   if (rows.length === 0) {
     return (
@@ -1529,23 +1580,33 @@ function OutreachTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((r) => (
-          <TableRow key={r.id}>
-            <TableCell className="text-muted-foreground">{formatDateTime(r.sent_at)}</TableCell>
-            <TableCell className="text-foreground">
-              {stageLabel(r.stage, r.channel === "voice_call" ? "ai_voice_call" : undefined)}
-            </TableCell>
-            <TableCell className="text-muted-foreground capitalize">
-              {r.channel.replace(/_/g, " ")}
-            </TableCell>
-            <TableCell>
-              <DeliveryState state={r.delivery_state} />
-            </TableCell>
-            <TableCell className="text-muted-foreground">
-              {r.fallback_used ? "Yes" : "No"}
-            </TableCell>
-          </TableRow>
-        ))}
+        {rows.map((r) => {
+          const matchingRound = r.round_instance_id
+            ? roundInstances?.find((ri) => ri.id === r.round_instance_id)
+            : undefined;
+          const roundType = matchingRound?.round_type;
+          const roundNumber = matchingRound?.round_number;
+          const displayLabel = stageLabel(
+            r.stage,
+            r.channel === "voice_call" ? "ai_voice_call" : roundType,
+            roundNumber,
+          );
+          return (
+            <TableRow key={r.id}>
+              <TableCell className="text-muted-foreground">{formatDateTime(r.sent_at)}</TableCell>
+              <TableCell className="text-foreground font-medium">{displayLabel}</TableCell>
+              <TableCell className="text-muted-foreground capitalize">
+                {r.channel.replace(/_/g, " ")}
+              </TableCell>
+              <TableCell>
+                <DeliveryState state={r.delivery_state} />
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {r.fallback_used ? "Yes" : "No"}
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );
