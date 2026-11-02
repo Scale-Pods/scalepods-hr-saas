@@ -16,10 +16,38 @@ import { BUCKETS } from "@/lib/storage";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 export type { ScorecardRow };
+
+export interface CriterionScoreItem {
+  name: string;
+  score: number;
+  weight?: number;
+  description?: string;
+}
+
+export function parseCriteriaScores(raw: unknown): CriterionScoreItem[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as CriterionScoreItem[];
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  if (typeof raw === "object") {
+    return Object.entries(raw as Record<string, any>).map(([name, val]) => ({
+      name,
+      score: typeof val === "number" ? val : Number(val?.score ?? 0),
+      weight: typeof val === "object" ? val?.weight : undefined,
+    }));
+  }
+  return [];
+}
+
 export interface LedgerView extends DecisionLedgerRow {
   session?: InterviewSessionRow;
   scorecard?: ScorecardRow;
   forRound?: RoundInstancesRow;
+  interviewerFeedback?: InterviewerFeedbackRow;
   recordingExpired?: boolean;
   recordingSignedUrl?: string | null;
 }
@@ -264,6 +292,22 @@ export async function fetchCandidateProfile(
     }
   }
 
+  // 6b. Fetch interviewer feedback strictly for active campaign application or round instances
+  let interviewerFeedback: InterviewerFeedbackRow[] = [];
+  if (matchedApplication?.id) {
+    const { data: fbData } = await supabase
+      .from("interviewer_feedback")
+      .select("*")
+      .eq("application_id", matchedApplication.id);
+    interviewerFeedback = (fbData ?? []) as InterviewerFeedbackRow[];
+  } else if (roundIds.length > 0) {
+    const { data: fbData } = await supabase
+      .from("interviewer_feedback")
+      .select("*")
+      .in("round_instance_id", roundIds);
+    interviewerFeedback = (fbData ?? []) as InterviewerFeedbackRow[];
+  }
+
   // 7. Filter timeline (decision_ledger) strictly to this campaign
   const ledgerRows = allLedgerRows.filter((row) => {
     // 7a. Explicit round instance linkage
@@ -321,6 +365,17 @@ export async function fetchCandidateProfile(
       (roundNum === 1 ? Array.from(scorecardByRoundId.values())[0] : undefined) ??
       (roundNum === 1 ? Array.from(scorecardBySessionId.values())[0] : undefined);
 
+    const matchingFeedback =
+      (row.round_instance_id
+        ? interviewerFeedback.find((f) => f.round_instance_id === row.round_instance_id)
+        : undefined) ??
+      (forRound
+        ? interviewerFeedback.find((f) => f.round_instance_id === forRound.id)
+        : undefined) ??
+      (row.score_type === "human_feedback" || forRound?.round_type === "human_interview"
+        ? interviewerFeedback[0]
+        : undefined);
+
     let recordingSignedUrl: string | null = null;
     let recordingExpired = false;
     const recordingPath = session?.recording_url || scorecard?.recording_path;
@@ -336,21 +391,43 @@ export async function fetchCandidateProfile(
     }
 
     const resolvedScore =
-      scorecard && scorecard.overall_score != null ? scorecard.overall_score : row.score;
-    const resolvedRationale =
+      scorecard && scorecard.overall_score != null
+        ? scorecard.overall_score
+        : row.score != null
+          ? row.score
+          : matchingFeedback?.overall_score != null
+            ? Number(matchingFeedback.overall_score)
+            : null;
+
+    let resolvedRationale =
       scorecard && scorecard.overall_score != null
         ? scorecard.rationale || row.rationale
         : row.rationale;
+
+    if (!resolvedRationale && matchingFeedback) {
+      if (matchingFeedback.notes?.trim()) {
+        resolvedRationale = matchingFeedback.notes.trim();
+      } else {
+        const parsed = parseCriteriaScores(matchingFeedback.criteria_scores);
+        if (parsed.length > 0) {
+          const breakdown = parsed.map((c) => `${c.name}: ${c.score}/100`).join(" • ");
+          resolvedRationale = `Human interview evaluation completed with an overall score of ${matchingFeedback.overall_score ?? resolvedScore ?? 0}/100.\nBreakdown: ${breakdown}`;
+        } else {
+          resolvedRationale = `Human interview evaluation completed with an overall score of ${matchingFeedback.overall_score ?? resolvedScore ?? 0}/100.`;
+        }
+      }
+    }
 
     view.push({
       ...row,
       score: resolvedScore,
       rationale: resolvedRationale,
       decided_at: row.created_at,
-      source: "workflow",
+      source: row.score_type === "human_feedback" ? "panel" : row.source || "workflow",
       session,
       scorecard,
       forRound,
+      interviewerFeedback: matchingFeedback,
       recordingExpired,
       recordingSignedUrl,
     });
@@ -370,7 +447,11 @@ export async function fetchCandidateProfile(
       scorecardByRoundId.get(rRow.id) ??
       (rSession ? scorecardBySessionId.get(rSession.id) : undefined);
 
-    const isEval = sc?.overall_score != null;
+    const matchingFeedback =
+      rRow.round_type === "human_interview"
+        ? interviewerFeedback.find((f) => f.round_instance_id === rRow.id)
+        : undefined;
+
     const sessionStartMs = rSession?.started_at ? new Date(rSession.started_at).getTime() : 0;
     const isStale =
       rSession?.status === "in_progress" &&
@@ -382,10 +463,18 @@ export async function fetchCandidateProfile(
     const isComplete = rSession?.status === "completed" || rRow.status === "completed";
 
     let roundRationale = "";
-    if (isEval) {
+    if (sc?.overall_score != null) {
       roundRationale =
         sc?.rationale ??
         `${rRow.round_type === "human_interview" ? "Human Interview" : rRow.round_type === "ai_voice_call" ? "AI Voice Screening" : rRow.round_type === "assignment" ? "Take-Home Assignment" : "AI Interview"} assessment completed.`;
+    } else if (matchingFeedback) {
+      const parsed = parseCriteriaScores(matchingFeedback.criteria_scores);
+      const breakdown = parsed.map((c) => `${c.name}: ${c.score}/100`).join(" • ");
+      roundRationale = matchingFeedback.notes?.trim()
+        ? matchingFeedback.notes.trim()
+        : breakdown
+          ? `Human interview evaluation completed with an overall score of ${matchingFeedback.overall_score}/100.\nBreakdown: ${breakdown}`
+          : `Human interview evaluation completed with an overall score of ${matchingFeedback.overall_score}/100.`;
     } else if (rRow.round_type === "human_interview") {
       if (rRow.status === "scheduled" || rRow.scheduled_at) {
         const dateStr = rRow.scheduled_at
@@ -439,28 +528,33 @@ export async function fetchCandidateProfile(
       candidate_id: id,
       round_instance_id: rRow.id,
       stage: `round_${rRow.round_number}`,
-      score: isEval ? sc.overall_score : null,
+      score:
+        sc?.overall_score ??
+        (matchingFeedback?.overall_score != null ? Number(matchingFeedback.overall_score) : null),
       rationale: roundRationale,
       weight: 1,
       created_at:
         sc?.evaluated_at ??
+        matchingFeedback?.submitted_at ??
         rSession?.completed_at ??
         rSession?.started_at ??
         rRow.created_at ??
         new Date().toISOString(),
       decided_at:
         sc?.evaluated_at ??
+        matchingFeedback?.submitted_at ??
         rSession?.completed_at ??
         rSession?.started_at ??
         rRow.created_at ??
         new Date().toISOString(),
       raw_text: null,
-      source: "workflow",
+      source: matchingFeedback ? "panel" : "workflow",
       session: rSession
         ? { ...rSession, status: isEndedEarly ? "incomplete" : rSession.status }
         : undefined,
       scorecard: sc,
       forRound: { ...rRow, status: isEndedEarly ? "incomplete" : rRow.status },
+      interviewerFeedback: matchingFeedback,
       recordingExpired: false,
       recordingSignedUrl: null,
     });
@@ -837,17 +931,14 @@ export async function fetchCandidateProfile(
   }
 
   let assignments: AssignmentsRow[] = [];
-  let interviewerFeedback: InterviewerFeedbackRow[] = [];
   let offers: OffersRow[] = [];
 
   if (matchedApplication?.id) {
-    const [assignRes, feedbackRes, offersRes] = await Promise.all([
+    const [assignRes, offersRes] = await Promise.all([
       supabase.from("assignments").select("*").eq("application_id", matchedApplication.id),
-      supabase.from("interviewer_feedback").select("*").eq("application_id", matchedApplication.id),
       supabase.from("offers").select("*").eq("application_id", matchedApplication.id),
     ]);
     assignments = (assignRes.data ?? []) as AssignmentsRow[];
-    interviewerFeedback = (feedbackRes.data ?? []) as InterviewerFeedbackRow[];
     offers = (offersRes.data ?? []) as OffersRow[];
   }
 

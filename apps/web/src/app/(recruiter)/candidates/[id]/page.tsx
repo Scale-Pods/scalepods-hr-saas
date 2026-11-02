@@ -88,6 +88,7 @@ import { removeCandidateFromCampaign, type ViewCandidate } from "@/features/camp
 import {
   decideApplication,
   type LedgerView,
+  parseCriteriaScores,
   type ScorecardRow,
   updateApplicationContact,
 } from "@/features/candidates/api";
@@ -1323,9 +1324,14 @@ function Timeline({ rows }: { rows: LedgerView[] }) {
                   <span className="text-sm font-medium text-foreground">
                     {stageLabel(row.stage, row.forRound?.round_type)}
                   </span>
-                  {row.source === "manual" && (
+                  {row.source === "manual" && row.score_type !== "human_feedback" && (
                     <Badge variant="secondary" className="bg-warning/15 text-warning">
                       Manual override
+                    </Badge>
+                  )}
+                  {row.score_type === "human_feedback" && (
+                    <Badge variant="secondary" className="bg-primary/15 text-primary">
+                      Panel Evaluation
                     </Badge>
                   )}
                   {row.forRound?.retake_of_round_instance_id && (
@@ -1381,12 +1387,12 @@ function Timeline({ rows }: { rows: LedgerView[] }) {
               </div>
             </button>
             {isOpen && (
-              <div className="mt-1 rounded-lg bg-fill-quaternary/70 p-3 text-sm">
+              <div className="mt-1 rounded-lg bg-fill-quaternary/70 p-3 text-sm space-y-3">
                 {row.rationale ? (
                   <p className="whitespace-pre-wrap text-muted-foreground">{row.rationale}</p>
-                ) : (
+                ) : !row.interviewerFeedback ? (
                   <p className="text-xs text-muted-foreground">No rationale recorded.</p>
-                )}
+                ) : null}
                 {row.forRound?.fault_reason && (
                   <p className="mt-2 text-xs text-warning">
                     Technical interruption recorded — a retake link was sent automatically. Reason:{" "}
@@ -1394,6 +1400,9 @@ function Timeline({ rows }: { rows: LedgerView[] }) {
                   </p>
                 )}
                 {row.scorecard && <ScorecardSummary row={row} />}
+                {row.interviewerFeedback && (
+                  <InterviewerFeedbackTimelineSummary feedback={row.interviewerFeedback} />
+                )}
               </div>
             )}
           </li>
@@ -1510,6 +1519,53 @@ function ScorecardSummary({ row }: { row: LedgerView }) {
           Recording/transcript no longer available (past your plan&apos;s retention window).
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function InterviewerFeedbackTimelineSummary({ feedback }: { feedback: InterviewerFeedbackRow }) {
+  const criteria = parseCriteriaScores(feedback.criteria_scores);
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border border-border/50 bg-background/60 p-3">
+      <div className="flex items-center justify-between border-b border-border/40 pb-1.5">
+        <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+          <UserCheck className="h-3.5 w-3.5 text-primary" /> Interviewer Criteria Ratings
+        </span>
+        <span className="text-xs font-bold text-foreground">{feedback.overall_score}/100</span>
+      </div>
+
+      {criteria.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 pt-1">
+          {criteria.map((c) => (
+            <div key={c.name} className="rounded-lg bg-card border border-border/40 p-2 space-y-1">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] text-muted-foreground block truncate" title={c.name}>
+                  {c.name}
+                </span>
+                {c.weight != null && (
+                  <span className="text-[9px] text-muted-foreground font-normal">{c.weight}%</span>
+                )}
+              </div>
+              <span className="text-xs font-bold text-foreground block">{c.score}/100</span>
+              <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full",
+                    c.score >= 75
+                      ? "bg-emerald-500"
+                      : c.score >= 60
+                        ? "bg-primary"
+                        : c.score >= 50
+                          ? "bg-amber-500"
+                          : "bg-destructive",
+                  )}
+                  style={{ width: `${Math.min(100, Math.max(0, c.score))}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2887,40 +2943,107 @@ function InterviewerFeedbackSection({ feedback }: { feedback: InterviewerFeedbac
       subtitle="Evaluations, recommendations, and structured feedback from panel interviewers"
     >
       <div className="space-y-4">
-        {feedback.map((f) => (
-          <div key={f.id} className="rounded-xl border border-border/70 bg-card p-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <UserCheck className="h-4 w-4 text-primary" />
-                <span className="text-xs font-semibold text-foreground">
-                  Interviewer · {f.team_member_id.slice(0, 8)}
-                </span>
+        {feedback.map((f) => {
+          const criteria = parseCriteriaScores(f.criteria_scores);
+          return (
+            <div key={f.id} className="rounded-xl border border-border/70 bg-card p-4 space-y-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                    <UserCheck className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-foreground block">
+                      Interviewer · {f.team_member_id.slice(0, 8)}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      Structured Competency Evaluation
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {f.overall_score != null && (
+                    <span className="text-base font-bold text-foreground">
+                      {f.overall_score}
+                      <span className="text-xs font-normal text-muted-foreground">/100</span>
+                    </span>
+                  )}
+                  {f.submitted_at && (
+                    <span className="text-xs text-muted-foreground">
+                      · {formatDateTime(f.submitted_at)}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {f.overall_score != null && (
-                  <span className="text-sm font-bold text-foreground">
-                    {f.overall_score}
-                    <span className="text-xs font-normal text-muted-foreground">/100</span>
-                  </span>
-                )}
-                {f.submitted_at && (
-                  <span className="text-xs text-muted-foreground">
-                    · {formatDateTime(f.submitted_at)}
-                  </span>
-                )}
-              </div>
-            </div>
 
-            {f.notes && (
-              <div className="rounded-lg bg-muted/20 border border-border/40 p-3 text-xs space-y-1">
-                <span className="font-semibold text-muted-foreground block text-[11px] uppercase tracking-wide">
-                  Feedback Notes:
-                </span>
-                <p className="text-foreground whitespace-pre-wrap">{f.notes}</p>
-              </div>
-            )}
-          </div>
-        ))}
+              {criteria.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                    Competency Criteria Ratings:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    {criteria.map((c) => (
+                      <div
+                        key={c.name}
+                        className="rounded-lg border border-border/50 bg-muted/20 p-2.5 space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span
+                            className="text-xs font-medium text-foreground truncate"
+                            title={c.name}
+                          >
+                            {c.name}
+                          </span>
+                          {c.weight != null && (
+                            <span className="text-[10px] text-muted-foreground font-normal">
+                              {c.weight}% wt
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-sm font-bold text-foreground">
+                            {c.score}
+                            <span className="text-[10px] text-muted-foreground font-normal">
+                              /100
+                            </span>
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all",
+                              c.score >= 75
+                                ? "bg-emerald-500"
+                                : c.score >= 60
+                                  ? "bg-primary"
+                                  : c.score >= 50
+                                    ? "bg-amber-500"
+                                    : "bg-destructive",
+                            )}
+                            style={{ width: `${Math.min(100, Math.max(0, c.score))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {f.notes ? (
+                <div className="rounded-lg bg-muted/20 border border-border/40 p-3 text-xs space-y-1">
+                  <span className="font-semibold text-muted-foreground block text-[11px] uppercase tracking-wide">
+                    Feedback Notes:
+                  </span>
+                  <p className="text-foreground whitespace-pre-wrap">{f.notes}</p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground italic">
+                  Evaluation criteria scored without additional written notes.
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
     </SectionCard>
   );
