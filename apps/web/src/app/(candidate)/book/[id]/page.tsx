@@ -10,6 +10,7 @@ import {
 } from "@scalepods/core";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,6 +52,7 @@ export default function BookPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<{ start: string; end: string } | null>(null);
   const [booking, setBooking] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
   const [isRescheduling, setIsRescheduling] = useState(false);
   const [success, setSuccess] = useState<BookingContext["round_instance"] | null>(null);
 
@@ -112,6 +114,7 @@ export default function BookPage() {
   }) => {
     if (!ctx) return;
     setBooking(true);
+    setBookingError(null);
     try {
       const resolvedEventId = payload.event_id || activeEventId;
       const resolvedInterviewerEmail = payload.interviewer_email || activeInterviewerEmail;
@@ -136,8 +139,19 @@ export default function BookPage() {
       });
       setIsRescheduling(false);
       setView("booked");
+      toast.success(
+        willReschedule
+          ? "Interview rescheduled successfully!"
+          : "Interview slot booked successfully!",
+      );
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Something went wrong");
+      let message = err instanceof Error ? err.message : "Something went wrong";
+      if (/error in the workflow|error in workflow|workflow execution failed/i.test(message)) {
+        message =
+          "Unable to book this slot at this time. Please choose another slot or contact the recruiter.";
+      }
+      toast.error(message);
+      setBookingError(message);
     } finally {
       setBooking(false);
     }
@@ -202,6 +216,11 @@ export default function BookPage() {
       <p className="mt-1.5 text-sm text-label-secondary">
         {isRescheduleMode ? "Select a new slot below:" : "Choose a slot to book your interview."}
       </p>
+      {bookingError && (
+        <div className="mt-4 rounded-2xl border border-destructive/20 bg-destructive/10 p-4 text-xs font-medium text-destructive">
+          {bookingError}
+        </div>
+      )}
       <SlotPicker
         ctx={ctx as BookingContext}
         eventId={activeEventId}

@@ -93,7 +93,12 @@ export function BookPage() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? body.reason ?? `Booking failed (${res.status})`);
+        let message =
+          body.error ?? body.errorMessage ?? body.reason ?? body.message ?? `Booking failed (${res.status})`;
+        if (/error in the workflow|error in workflow/i.test(message)) {
+          message = "Unable to book this slot at this time. Please try another slot or contact the recruiter.";
+        }
+        throw new Error(message);
       }
       const round = { ...ctx.round_instance, meet_link: ctx.round_instance.meet_link };
       setSuccess(round);

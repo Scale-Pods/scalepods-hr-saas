@@ -97,13 +97,30 @@ export async function bookSlot(payload: {
   });
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
-    const message =
+    let message =
       errorBody.error ||
+      errorBody.errorMessage ||
       errorBody.reason ||
       errorBody.message ||
       (res.status === 409
         ? "This slot is no longer available. Please choose another time."
         : `Booking failed (${res.status})`);
+
+    // Clean up any raw workflow execution error into a user-friendly error message
+    if (
+      typeof message === "string" &&
+      /error in the workflow|error in workflow|workflow execution failed/i.test(message)
+    ) {
+      const detail =
+        (typeof errorBody.detail === "string" && errorBody.detail) ||
+        (typeof errorBody.errorMessage === "string" &&
+          !/error in the workflow/i.test(errorBody.errorMessage) &&
+          errorBody.errorMessage);
+      message =
+        detail ||
+        "Unable to book this slot at this time. Please choose another slot or contact the recruiter.";
+    }
+
     throw new Error(message);
   }
 }
