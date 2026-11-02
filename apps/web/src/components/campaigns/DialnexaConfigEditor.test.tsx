@@ -11,6 +11,7 @@ describe("DialnexaConfigEditor", () => {
         value={DEFAULT_DIALNEXA_CONFIG}
         onChange={onChange}
         jobTitle="Product Manager"
+        defaultMode="advanced"
       />,
     );
 
@@ -27,6 +28,7 @@ describe("DialnexaConfigEditor", () => {
         value={DEFAULT_DIALNEXA_CONFIG}
         onChange={onChange}
         jobTitle="Software Engineer"
+        defaultMode="advanced"
       />,
     );
 
@@ -49,6 +51,7 @@ describe("DialnexaConfigEditor", () => {
         value={DEFAULT_DIALNEXA_CONFIG}
         onChange={onChange}
         jobTitle="DevOps Architect"
+        defaultMode="advanced"
       />,
     );
 
@@ -64,7 +67,13 @@ describe("DialnexaConfigEditor", () => {
 
   it("renders voice preview and audition buttons for all available voices", () => {
     const onChange = vi.fn();
-    render(<DialnexaConfigEditor value={DEFAULT_DIALNEXA_CONFIG} onChange={onChange} />);
+    render(
+      <DialnexaConfigEditor
+        value={DEFAULT_DIALNEXA_CONFIG}
+        onChange={onChange}
+        defaultMode="advanced"
+      />,
+    );
 
     expect(screen.getByText("Sample Voice")).toBeInTheDocument();
     expect(screen.getByText("Audition all voices")).toBeInTheDocument();
@@ -82,7 +91,13 @@ describe("DialnexaConfigEditor", () => {
 
   it("navigates smoothly across tabs and step buttons", () => {
     const onChange = vi.fn();
-    render(<DialnexaConfigEditor value={DEFAULT_DIALNEXA_CONFIG} onChange={onChange} />);
+    render(
+      <DialnexaConfigEditor
+        value={DEFAULT_DIALNEXA_CONFIG}
+        onChange={onChange}
+        defaultMode="advanced"
+      />,
+    );
 
     expect(screen.getByText("1. Voice & Audio")).toBeInTheDocument();
     expect(screen.getByText("2. System Prompt")).toBeInTheDocument();
@@ -107,7 +122,13 @@ describe("DialnexaConfigEditor", () => {
 
   it("updates response eagerness and handles presets", () => {
     const onChange = vi.fn();
-    render(<DialnexaConfigEditor value={DEFAULT_DIALNEXA_CONFIG} onChange={onChange} />);
+    render(
+      <DialnexaConfigEditor
+        value={DEFAULT_DIALNEXA_CONFIG}
+        onChange={onChange}
+        defaultMode="advanced"
+      />,
+    );
 
     // Click on Eagerness tab
     const eagernessTab = screen.getByText("4. Eagerness & Latency");
@@ -128,7 +149,13 @@ describe("DialnexaConfigEditor", () => {
 
   it("toggles agent functions and tools", () => {
     const onChange = vi.fn();
-    render(<DialnexaConfigEditor value={DEFAULT_DIALNEXA_CONFIG} onChange={onChange} />);
+    render(
+      <DialnexaConfigEditor
+        value={DEFAULT_DIALNEXA_CONFIG}
+        onChange={onChange}
+        defaultMode="advanced"
+      />,
+    );
 
     // Click on Functions tab
     const functionsTab = screen.getByText("5. Functions & Tools");
@@ -157,6 +184,7 @@ describe("DialnexaConfigEditor", () => {
         value={DEFAULT_DIALNEXA_CONFIG}
         onChange={onChange}
         jobTitle="Cloud Engineer"
+        defaultMode="advanced"
       />,
     );
 
@@ -198,6 +226,7 @@ describe("DialnexaConfigEditor", () => {
         value={DEFAULT_DIALNEXA_CONFIG}
         onChange={onChange}
         jobTitle="Cloud Engineer"
+        defaultMode="advanced"
       />,
     );
 
@@ -266,6 +295,7 @@ describe("DialnexaConfigEditor", () => {
         value={DEFAULT_DIALNEXA_CONFIG}
         onChange={onChange}
         jobTitle="Cloud Engineer"
+        defaultMode="advanced"
       />,
     );
 
@@ -308,6 +338,7 @@ describe("DialnexaConfigEditor", () => {
         value={DEFAULT_DIALNEXA_CONFIG}
         onChange={onChange}
         jobTitle="Senior Architect"
+        defaultMode="advanced"
       />,
     );
 
@@ -321,12 +352,156 @@ describe("DialnexaConfigEditor", () => {
 
     // Re-render with previous data saved in campaign
     rerender(
-      <DialnexaConfigEditor value={customConfig} onChange={onChange} jobTitle="Senior Architect" />,
+      <DialnexaConfigEditor
+        value={customConfig}
+        onChange={onChange}
+        jobTitle="Senior Architect"
+        defaultMode="advanced"
+      />,
     );
 
     expect(promptTextarea).toHaveValue(
       "Previous saved prompt instructions for candidate evaluation",
     );
     expect(screen.getByDisplayValue("Welcome candidate to the interview")).toBeInTheDocument();
+  });
+
+  describe("Simple Recruiter Setup (Quick Mode)", () => {
+    it("renders 3 fixed call types with voice selection and topics by default", () => {
+      const onChange = vi.fn();
+      render(
+        <DialnexaConfigEditor
+          value={DEFAULT_DIALNEXA_CONFIG}
+          onChange={onChange}
+          jobTitle="Frontend Engineer"
+        />,
+      );
+
+      // Check header and mode toggle
+      expect(screen.getByText("✨ Simple Recruiter Setup")).toBeInTheDocument();
+      expect(screen.getByText("⚙️ Advanced Studio")).toBeInTheDocument();
+
+      // Check 3 fixed call types
+      expect(screen.getByText("Choose Call Type")).toBeInTheDocument();
+      expect(screen.getByText("Technical Screening")).toBeInTheDocument();
+      expect(screen.getByText("General Screening")).toBeInTheDocument();
+      expect(screen.getByText("Cultural Fit")).toBeInTheDocument();
+
+      // Check voice picker section
+      expect(screen.getByText("Choose AI Voice")).toBeInTheDocument();
+      expect(screen.getByText("Aditi")).toBeInTheDocument();
+      expect(screen.getByText("Rohan")).toBeInTheDocument();
+      expect(screen.getAllByText("Rachel").length).toBeGreaterThanOrEqual(1);
+
+      // Check topics section
+      expect(screen.getByText("Discussion Topics")).toBeInTheDocument();
+
+      // Check test call
+      expect(screen.getByText("Test Call")).toBeInTheDocument();
+      expect(screen.getByText("Test Call Now")).toBeInTheDocument();
+    });
+
+    it("allows seamlessly toggling between Simple Recruiter Setup and Advanced Studio", () => {
+      const onChange = vi.fn();
+      render(
+        <DialnexaConfigEditor
+          value={DEFAULT_DIALNEXA_CONFIG}
+          onChange={onChange}
+          jobTitle="Backend Lead"
+        />,
+      );
+
+      // Initially in Simple mode
+      expect(screen.queryByText("1. Voice & Audio")).not.toBeInTheDocument();
+
+      // Click to switch to Advanced Studio
+      const advancedBtn = screen.getByText("⚙️ Advanced Studio");
+      fireEvent.click(advancedBtn);
+
+      // Now Advanced Studio navigation tabs are visible
+      expect(screen.getByText("1. Voice & Audio")).toBeInTheDocument();
+      expect(screen.getByText("2. System Prompt")).toBeInTheDocument();
+
+      // Click back to Simple Recruiter Setup
+      const simpleBtn = screen.getByText("✨ Simple Recruiter Setup");
+      fireEvent.click(simpleBtn);
+
+      // Tabs are hidden again, simple call types are back
+      expect(screen.queryByText("1. Voice & Audio")).not.toBeInTheDocument();
+      expect(screen.getByText("Choose Call Type")).toBeInTheDocument();
+    });
+
+    it("selecting a call type updates the fixed predefined configuration", () => {
+      const onChange = vi.fn();
+      render(
+        <DialnexaConfigEditor
+          value={DEFAULT_DIALNEXA_CONFIG}
+          onChange={onChange}
+          jobTitle="Senior Fullstack Dev"
+        />,
+      );
+
+      // Click Technical Screening
+      const techBtn = screen.getByText("Technical Screening");
+      fireEvent.click(techBtn);
+
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "gpt-4o",
+          max_duration_seconds: 600,
+          response_eagerness: 0.1,
+          responsiveness: 0.85,
+          interruption_sensitivity: 0.4,
+          transcriber_id: "trs_deepgram_nova_2",
+          prompt: expect.stringContaining("Senior Fullstack Dev"),
+        }),
+      );
+
+      // Click Cultural Fit
+      const cultureBtn = screen.getByText("Cultural Fit");
+      fireEvent.click(cultureBtn);
+
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "gpt-4o-mini",
+          max_duration_seconds: 480,
+          response_eagerness: 0.1,
+          prompt: expect.stringContaining("cultural fit"),
+        }),
+      );
+    });
+
+    it("allows recruiter to pick an AI voice in simple setup", () => {
+      const onChange = vi.fn();
+      render(<DialnexaConfigEditor value={DEFAULT_DIALNEXA_CONFIG} onChange={onChange} />);
+
+      const aditiVoice = screen.getByText("Aditi");
+      fireEvent.click(aditiVoice);
+
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          voice: "aditi",
+        }),
+      );
+    });
+
+    it("allows adding a new discussion topic and updates the prompt", () => {
+      const onChange = vi.fn();
+      render(<DialnexaConfigEditor value={DEFAULT_DIALNEXA_CONFIG} onChange={onChange} />);
+
+      const topicInput = screen.getByPlaceholderText(/Type a new topic and press Enter/);
+      fireEvent.change(topicInput, {
+        target: { value: "Experience leading distributed remote teams" },
+      });
+
+      const addBtn = screen.getByRole("button", { name: "Add" });
+      fireEvent.click(addBtn);
+
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: expect.stringContaining("Experience leading distributed remote teams"),
+        }),
+      );
+    });
   });
 });

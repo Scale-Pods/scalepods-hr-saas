@@ -49,6 +49,14 @@ export async function POST(req: Request) {
         candidate_name: candidate_name || "Recruiter Test",
         role_title: role_title || "ScalePods Voice Agent Test",
         company_name: "ScalePods",
+        job_description:
+          body.job_description ||
+          body.jd_text ||
+          "Full-stack web application development, microservices, cloud infrastructure, and collaborative engineering.",
+        candidate_resume:
+          body.candidate_resume ||
+          body.resume_text ||
+          "Seasoned software engineer with 6+ years building distributed applications, modern web interfaces, and backend systems.",
       });
     } catch (syncErr) {
       console.warn(
@@ -80,6 +88,14 @@ export async function POST(req: Request) {
             candidate_name: candidate_name || "Recruiter Test",
             role_title: role_title || "ScalePods Voice Agent Test",
             company_name: "ScalePods",
+            job_description:
+              body.job_description ||
+              body.jd_text ||
+              "Full-stack web application development, microservices, cloud infrastructure, and collaborative engineering.",
+            candidate_resume:
+              body.candidate_resume ||
+              body.resume_text ||
+              "Seasoned software engineer with 6+ years building distributed applications, modern web interfaces, and backend systems.",
             is_test_call: true,
             plan_tier: "enterprise",
             tier: "enterprise",

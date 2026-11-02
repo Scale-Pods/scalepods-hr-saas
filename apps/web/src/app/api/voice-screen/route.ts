@@ -26,6 +26,8 @@ export async function POST(req: Request) {
     let planTier = body.plan_tier || body.tier;
     let roundQuestions: string[] = [];
     let roundCriteria: string[] = [];
+    let candidateResumeText = body.candidate_resume || body.resume_text || "";
+    let campaignJdText = body.job_description || body.jd_text || "";
 
     if (body.candidate_id || roundInstanceId) {
       try {
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
         let riQuery = supabase
           .from("round_instances")
           .select(
-            "id, account_id, round_number, campaign_id, campaigns(id, name, voice_call_config)",
+            "id, account_id, round_number, campaign_id, candidate_id, campaigns(id, name, jd_text, voice_call_config)",
           );
 
         if (roundInstanceId) {
@@ -54,15 +56,49 @@ export async function POST(req: Request) {
         if (ri?.account_id) {
           accountId = accountId || ri.account_id;
         }
+
         if (ri?.campaigns) {
           const camp = Array.isArray(ri.campaigns)
-            ? (ri.campaigns[0] as { id?: string; name?: string; voice_call_config?: unknown })
-            : (ri.campaigns as { id?: string; name?: string; voice_call_config?: unknown });
+            ? (ri.campaigns[0] as {
+                id?: string;
+                name?: string;
+                jd_text?: string;
+                voice_call_config?: unknown;
+              })
+            : (ri.campaigns as {
+                id?: string;
+                name?: string;
+                jd_text?: string;
+                voice_call_config?: unknown;
+              });
           if (!voiceCallConfig && camp?.voice_call_config) {
             voiceCallConfig = camp.voice_call_config;
           }
           if (!roleTitle && camp?.name) {
             roleTitle = camp.name;
+          }
+          if (!campaignJdText && camp?.jd_text) {
+            campaignJdText = camp.jd_text;
+          }
+        }
+
+        const targetCandidateId = body.candidate_id || ri?.candidate_id;
+        if (targetCandidateId && !candidateResumeText) {
+          const { data: cand } = await supabase
+            .from("candidates")
+            .select("resume_text, metadata")
+            .eq("id", targetCandidateId)
+            .maybeSingle();
+          if (cand?.resume_text) {
+            candidateResumeText = cand.resume_text;
+          } else if (
+            cand?.metadata &&
+            typeof cand.metadata === "object" &&
+            "resume_text" in cand.metadata
+          ) {
+            candidateResumeText = String(
+              (cand.metadata as Record<string, unknown>).resume_text || "",
+            );
           }
         }
 
@@ -127,6 +163,8 @@ export async function POST(req: Request) {
         candidate_name: body.candidate_name,
         role_title: roleTitle,
         company_name: body.company_name || "ScalePods",
+        job_description: campaignJdText,
+        candidate_resume: candidateResumeText,
         questions: roundQuestions,
         evaluation_criteria: roundCriteria,
       });
@@ -151,6 +189,8 @@ export async function POST(req: Request) {
           account_id: isUuid(accountId) ? accountId : "00000000-0000-0000-0000-000000000000",
           voice_call_config: voiceCallConfig || undefined,
           role_title: roleTitle || undefined,
+          job_description: campaignJdText || undefined,
+          candidate_resume: candidateResumeText || undefined,
           plan_tier: planTier || undefined,
           tier: planTier || undefined,
           is_enterprise: isEnterprise,

@@ -953,7 +953,7 @@ export default function CampaignDetailPage() {
                     <Flame className="h-3 w-3 text-amber-500" />
                     <span>
                       Eagerness:{" "}
-                      {Math.round((effectiveVoiceConfig.response_eagerness ?? 0.7) * 100)}%
+                      {Math.round((effectiveVoiceConfig.response_eagerness ?? 0.1) * 100)}%
                     </span>
                   </Badge>
                   <Badge

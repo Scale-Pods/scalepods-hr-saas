@@ -15,6 +15,10 @@ export interface SyncDialnexaAgentParams {
   candidate_name?: string;
   role_title?: string;
   company_name?: string;
+  job_description?: string;
+  jd_text?: string;
+  candidate_resume?: string;
+  resume_text?: string;
   questions?: string[];
   evaluation_criteria?: string[];
 }
@@ -24,13 +28,27 @@ export interface SyncDialnexaAgentParams {
  */
 export function interpolateDialnexaVariables(
   template: string,
-  vars: { candidate_name?: string; job_title?: string; company_name?: string },
+  vars: {
+    candidate_name?: string;
+    job_title?: string;
+    company_name?: string;
+    job_description?: string;
+    candidate_resume?: string;
+  },
 ): string {
   if (!template || typeof template !== "string") return "";
   return template
     .replace(/\{\{candidate_name\}\}/g, vars.candidate_name || "Candidate")
     .replace(/\{\{job_title\}\}/g, vars.job_title || "Open Position")
-    .replace(/\{\{company_name\}\}/g, vars.company_name || "ScalePods");
+    .replace(/\{\{company_name\}\}/g, vars.company_name || "ScalePods")
+    .replace(
+      /\{\{job_description\}\}/g,
+      vars.job_description || "Refer to requirements for this role.",
+    )
+    .replace(
+      /\{\{candidate_resume\}\}/g,
+      vars.candidate_resume || "Refer to candidate profile and qualifications.",
+    );
 }
 
 /**
@@ -81,12 +99,18 @@ export async function syncDialnexaAgentConfig(
       candidate_name: params.candidate_name || "Candidate",
       job_title: params.role_title || "Open Position",
       company_name: params.company_name || "ScalePods",
+      job_description:
+        params.job_description || params.jd_text || "Refer to requirements for this role.",
+      candidate_resume:
+        params.candidate_resume ||
+        params.resume_text ||
+        "Refer to candidate profile and qualifications.",
     };
 
     let fullPrompt = params.prompt || "";
     if (params.questions && params.questions.length > 0) {
       const formattedQuestions = params.questions
-        .filter((q) => Boolean(q && q.trim()))
+        .filter((q) => Boolean(q?.trim()))
         .map((q, idx) => `${idx + 1}. ${q.trim()}`)
         .join("\n");
       if (formattedQuestions) {
@@ -95,7 +119,7 @@ export async function syncDialnexaAgentConfig(
     }
     if (params.evaluation_criteria && params.evaluation_criteria.length > 0) {
       const formattedCriteria = params.evaluation_criteria
-        .filter((c) => Boolean(c && c.trim()))
+        .filter((c) => Boolean(c?.trim()))
         .map((c) => `- ${c.trim()}`)
         .join("\n");
       if (formattedCriteria) {

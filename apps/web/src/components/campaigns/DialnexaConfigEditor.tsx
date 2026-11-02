@@ -10,12 +10,16 @@ import {
   type DialnexaFunctionConfig,
   type DialnexaPostCallField,
   type DialnexaVoiceConfig,
+  VOICE_CALL_TYPES,
+  type VoiceCallTopic,
+  type VoiceCallTypeId,
 } from "@scalepods/core";
 import {
   Activity,
   AlertCircle,
   Bot,
   Calendar,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -117,12 +121,23 @@ export interface DialnexaConfigEditorProps {
   onChange: (value: DialnexaVoiceConfig) => void;
   jobTitle?: string;
   className?: string;
+  defaultMode?: "quick" | "advanced";
 }
 
 const VARIABLE_PILLS = [
   { token: "{{candidate_name}}", label: "Candidate Name", example: "Jane Doe" },
   { token: "{{job_title}}", label: "Job Title", example: "Senior Engineer" },
   { token: "{{company_name}}", label: "Company Name", example: "ScalePods" },
+  {
+    token: "{{job_description}}",
+    label: "Job Description",
+    example: "Key responsibilities & tech stack",
+  },
+  {
+    token: "{{candidate_resume}}",
+    label: "Candidate Resume",
+    example: "Work history, skills & projects",
+  },
 ];
 
 export function DialnexaConfigEditor({
@@ -130,7 +145,39 @@ export function DialnexaConfigEditor({
   onChange,
   jobTitle,
   className,
+  defaultMode = "quick",
 }: DialnexaConfigEditorProps) {
+  const [editorMode, setEditorMode] = useState<"quick" | "advanced">(defaultMode);
+
+  // ── Quick Mode: Fixed Call Type State (Technical, General Screening, Cultural Fit) ──
+  const detectedInitialType = useMemo<VoiceCallTypeId>(() => {
+    const promptLower = (value.prompt || "").toLowerCase();
+    if (
+      promptLower.includes("technical talent screener") ||
+      promptLower.includes("primary tech stack") ||
+      promptLower.includes("programming languages")
+    ) {
+      return "technical";
+    }
+    if (
+      promptLower.includes("cultural fit") ||
+      promptLower.includes("culture & availability") ||
+      promptLower.includes("values alignment")
+    ) {
+      return "cultural_fit";
+    }
+    return "general_screening";
+  }, [value.prompt]);
+
+  const [selectedCallTypeId, setSelectedCallTypeId] =
+    useState<VoiceCallTypeId>(detectedInitialType);
+  const [callTypeTopics, setCallTypeTopics] = useState<VoiceCallTopic[]>(() => {
+    const typeDef =
+      VOICE_CALL_TYPES.find((t) => t.id === detectedInitialType) || VOICE_CALL_TYPES[1];
+    return typeDef.defaultTopics.map((t) => ({ ...t }));
+  });
+  const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
+  const [newTopicText, setNewTopicText] = useState<string>("");
   const customVoiceId = useId();
 
   const isPresetVoice = DIALNEXA_VOICES.some((v) => v.id === value.voice);
@@ -181,7 +228,7 @@ export function DialnexaConfigEditor({
       ? value.post_call_analysis
       : DEFAULT_POST_CALL_ANALYSIS;
 
-  const currentEagerness = value.response_eagerness ?? 0.7;
+  const currentEagerness = value.response_eagerness ?? 0.1;
   const currentResponsiveness = value.responsiveness ?? 0.8;
   const currentInterruption = value.interruption_sensitivity ?? 0.5;
   const currentTranscriber = value.transcriber_id ?? "trs_deepgram_nova_2";
@@ -354,6 +401,57 @@ export function DialnexaConfigEditor({
       ...value,
       prompt: updatedPrompt,
       first_message: updatedFirstMessage,
+    });
+  };
+
+  // ── Quick Mode: Apply a Fixed Call Type ──
+  const applyCallType = (typeId: VoiceCallTypeId) => {
+    const callType = VOICE_CALL_TYPES.find((t) => t.id === typeId);
+    if (!callType) return;
+    const topics = callType.defaultTopics.map((t) => ({ ...t }));
+    setSelectedCallTypeId(typeId);
+    setCallTypeTopics(topics);
+    setEditingTopicId(null);
+    setNewTopicText("");
+
+    let prompt = callType.buildPrompt(topics);
+    let firstMessage = callType.buildFirstMessage();
+    if (jobTitle?.trim()) {
+      prompt = prompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
+      firstMessage = firstMessage.replace(/\{\{job_title\}\}/g, jobTitle.trim());
+    }
+
+    // Apply fixed config + generated prompt/greeting
+    onChange({
+      ...value,
+      model: callType.model,
+      max_duration_seconds: callType.max_duration_seconds,
+      response_eagerness: callType.response_eagerness,
+      responsiveness: callType.responsiveness,
+      interruption_sensitivity: callType.interruption_sensitivity,
+      transcriber_id: callType.transcriber_id,
+      ambient_noise: callType.ambient_noise,
+      backchanneling: callType.backchanneling,
+      voicemail_detection: callType.voicemail_detection,
+      hangup_on_voicemail: callType.hangup_on_voicemail,
+      end_call_on_silence_sec: callType.end_call_on_silence_sec,
+      llm_temperature: callType.llm_temperature,
+      prompt,
+      first_message: firstMessage,
+    });
+  };
+
+  const updateCallTypeTopics = (newTopics: VoiceCallTopic[]) => {
+    setCallTypeTopics(newTopics);
+    const callType = VOICE_CALL_TYPES.find((t) => t.id === selectedCallTypeId);
+    if (!callType) return;
+    let prompt = callType.buildPrompt(newTopics);
+    if (jobTitle?.trim()) {
+      prompt = prompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
+    }
+    onChange({
+      ...value,
+      prompt,
     });
   };
 
@@ -828,1771 +926,2334 @@ export function DialnexaConfigEditor({
         </div>
       </div>
 
-      {/* Primary Section Navigation Tabs */}
-      <div className="space-y-1.5">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/70 bg-card/60 p-1.5 shadow-2xs backdrop-blur-sm">
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full">
-            <button
-              type="button"
-              onClick={() => setActiveNavTab("voice")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
-                activeNavTab === "voice"
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              <Volume2 className="h-3.5 w-3.5 text-cyan-400" />
-              <span>1. Voice & Audio</span>
-            </button>
+      {/* View Mode Segmented Switcher: Simple Recruiter Setup vs Advanced Studio */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/40 p-2 rounded-2xl border border-border/70">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setEditorMode("quick")}
+            className={cn(
+              "flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer",
+              editorMode === "quick"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+            )}
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>✨ Simple Recruiter Setup</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveNavTab("prompt")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
-                activeNavTab === "prompt"
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              <Sparkles className="h-3.5 w-3.5 text-violet-400" />
-              <span>2. System Prompt</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveNavTab("greeting")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
-                activeNavTab === "greeting"
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              <Mic className="h-3.5 w-3.5 text-emerald-400" />
-              <span>3. Opening Greeting</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveNavTab("eagerness")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
-                activeNavTab === "eagerness"
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              <Flame className="h-3.5 w-3.5 text-amber-400" />
-              <span>4. Eagerness & Latency</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveNavTab("functions")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
-                activeNavTab === "functions"
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              <Zap className="h-3.5 w-3.5 text-purple-400" />
-              <span>5. Functions & Tools</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveNavTab("stt")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
-                activeNavTab === "stt"
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              <Cpu className="h-3.5 w-3.5 text-cyan-400" />
-              <span>6. STT & Boost</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveNavTab("test")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
-                activeNavTab === "test"
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10",
-              )}
-            >
-              <Activity className="h-3.5 w-3.5" />
-              <span>7. Live Test Console</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveNavTab("all")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all cursor-pointer border border-transparent shrink-0",
-                activeNavTab === "all"
-                  ? "bg-card text-foreground border-border/80 shadow-xs"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-              )}
-              title="View all sections"
-            >
-              <Sliders className="h-3.5 w-3.5" />
-              <span>All Sections</span>
-            </button>
-          </div>
-
-          <span className="text-[11px] font-mono text-muted-foreground px-2 shrink-0">
-            {activeNavTab === "all"
-              ? "Overview mode"
-              : `Step ${
-                  activeNavTab === "voice"
-                    ? "1"
-                    : activeNavTab === "prompt"
-                      ? "2"
-                      : activeNavTab === "greeting"
-                        ? "3"
-                        : activeNavTab === "eagerness"
-                          ? "4"
-                          : activeNavTab === "functions"
-                            ? "5"
-                            : activeNavTab === "stt"
-                              ? "6"
-                              : "7"
-                } of 7`}
-          </span>
+          <button
+            type="button"
+            onClick={() => setEditorMode("advanced")}
+            className={cn(
+              "flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer",
+              editorMode === "advanced"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+            )}
+          >
+            <Sliders className="h-4 w-4" />
+            <span>⚙️ Advanced Studio</span>
+          </button>
         </div>
 
-        {/* Stepper Progress Bar */}
-        <div className="h-1 w-full rounded-full bg-border/40 overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-primary via-cyan-500 to-emerald-500 transition-all duration-300 ease-out rounded-full"
-            style={{ width: `${progressPercent}%` }}
-          />
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground px-1">
+          {editorMode === "quick" ? (
+            <span className="hidden sm:inline">
+              Guided 3-minute setup for fast recruiter launches
+            </span>
+          ) : (
+            <span className="hidden sm:inline">
+              Full engineering console: latency tuning, webhooks & STT
+            </span>
+          )}
         </div>
       </div>
 
-      {/* ── Section 1: Voice & Audio Tuning ── */}
-      <div
-        className={cn("space-y-4", activeNavTab !== "voice" && activeNavTab !== "all" && "hidden")}
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          {/* Synthetic Voice Card */}
-          <div className="flex flex-col justify-between rounded-xl border border-border/90 bg-card/80 p-4 shadow-xs space-y-3.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Volume2 className="h-4 w-4 text-cyan-500" />
-                DialNexa Synthetic Voice (TTS)
-                <InfoTooltip
-                  title="AI Voice Model"
-                  content="Choose the natural voice personality that calls the candidate. ScalePods supports 24 high-fidelity voices across Indian, American, British, and Australian accents powered by ElevenLabs and OpenAI."
-                  tip="Match the accent of your primary applicant pool (e.g. Aditi or Rohan for India, Rachel for US, George for UK)."
-                />
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsVoiceGuideOpen(true)}
-                  className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
-                >
-                  <HelpCircle className="h-3 w-3" />
-                  Voice ID Guide
-                </button>
-                <Badge variant="outline" className="text-[10px] font-mono">
-                  {selectedVoiceMeta?.provider || "Custom"}
-                </Badge>
+      {editorMode === "quick" ? (
+        /* ═══════════════════════════════════════════════════════
+           SIMPLE RECRUITER SETUP — 3 Fixed Call Types
+           ═══════════════════════════════════════════════════════ */
+        <div className="space-y-5 animate-in fade-in duration-200">
+          {/* ── STEP 1: Pick Call Type ── */}
+          <div className="rounded-2xl border border-border/80 bg-card/90 p-5 shadow-xs space-y-3.5">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-xs ring-1 ring-primary/20">
+                1
+              </div>
+              <div>
+                <h5 className="text-sm font-bold text-foreground flex items-center gap-1">
+                  Choose Call Type
+                  <InfoTooltip
+                    title="Call Type"
+                    content="All latency, model, duration, and AI settings are pre-optimised for each call type. You only customise the voice and the discussion topics."
+                    tip="Pick the type closest to your hiring goal — you can always switch."
+                  />
+                </h5>
+                <p className="text-xs text-muted-foreground">
+                  All AI settings are pre-configured. Just pick the right type for your role.
+                </p>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Select value={voiceSelectValue} onValueChange={handleVoiceSelectChange}>
-                <SelectTrigger className="h-11 w-full bg-background border-border/90 px-3.5 text-foreground shadow-xs">
-                  <div className="flex items-center gap-2.5 truncate">
-                    <span className="font-semibold text-foreground text-sm">
-                      {voiceSelectValue === "custom"
-                        ? customVoiceText.trim()
-                          ? `Custom: ${customVoiceText.trim()}`
-                          : "Custom Voice ID…"
-                        : selectedVoiceMeta
-                          ? `${selectedVoiceMeta.flag || ""} ${selectedVoiceMeta.label}`
-                          : value.voice}
-                    </span>
-                    {selectedVoiceMeta && (
-                      <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-mono text-muted-foreground border border-border/60">
-                        {selectedVoiceMeta.gender} · {selectedVoiceMeta.provider} ·{" "}
-                        {selectedVoiceMeta.accent || "General"}
+            <div className="grid gap-3 sm:grid-cols-3">
+              {VOICE_CALL_TYPES.map((ct) => {
+                const isSelected = selectedCallTypeId === ct.id;
+                return (
+                  <button
+                    key={ct.id}
+                    type="button"
+                    onClick={() => applyCallType(ct.id)}
+                    className={cn(
+                      "rounded-xl border p-4 text-left transition-all cursor-pointer flex flex-col gap-2.5 relative group",
+                      isSelected
+                        ? "border-primary bg-primary/10 ring-2 ring-primary/30 shadow-xs"
+                        : "border-border/70 bg-background/60 hover:border-primary/40 hover:bg-muted/30",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-2xl leading-none">{ct.emoji}</span>
+                      {isSelected && (
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] shrink-0">
+                          <Check className="h-3 w-3 stroke-[3]" />
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <h6 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                        {ct.name}
+                      </h6>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                        {ct.tagline}
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
+                      {ct.description}
+                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap mt-auto pt-1 border-t border-border/40">
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {Math.round(ct.max_duration_seconds / 60)} min max
                       </span>
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {ct.badge}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── STEP 2: Pick Voice (only shown after call type selected) ── */}
+          {selectedCallTypeId && (
+            <div className="rounded-2xl border border-border/80 bg-card/90 p-5 shadow-xs space-y-3.5 animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-bold text-xs ring-1 ring-cyan-500/20">
+                  2
+                </div>
+                <div>
+                  <h5 className="text-sm font-bold text-foreground flex items-center gap-1">
+                    Choose AI Voice
+                    <InfoTooltip
+                      title="AI Voice"
+                      content="The voice the candidate hears on the call. Click the play button to preview. All voices are available in all call types."
+                      tip="Indian accents work best for India-based candidates."
+                    />
+                  </h5>
+                  <p className="text-xs text-muted-foreground">
+                    Click ▶ to preview. The rest of the AI configuration is fixed.
+                  </p>
+                </div>
+              </div>
+
+              {/* Accent Filter Tabs */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(["all", "Indian", "American", "British", "Australian"] as const).map((accent) => (
+                  <button
+                    key={accent}
+                    type="button"
+                    onClick={() => setVoiceAccentFilter(accent)}
+                    className={cn(
+                      "rounded-full px-3 py-1 text-[11px] font-semibold transition-all cursor-pointer border",
+                      voiceAccentFilter === accent
+                        ? "bg-cyan-600 text-white border-cyan-600 shadow-xs"
+                        : "bg-muted/50 text-muted-foreground border-border/50 hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    {accent === "all"
+                      ? "All Voices"
+                      : `${accent === "Indian" ? "🇮🇳" : accent === "American" ? "🇺🇸" : accent === "British" ? "🇬🇧" : "🇦🇺"} ${accent}`}
+                  </button>
+                ))}
+              </div>
+
+              {/* Voice Grid */}
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 max-h-72 overflow-y-auto pr-1">
+                {filteredVoices.map((voice) => {
+                  const isActive = value.voice === voice.id;
+                  const isPlaying = playingVoiceId === voice.id;
+                  return (
+                    <div
+                      key={voice.id}
+                      className={cn(
+                        "flex items-center gap-2 rounded-xl border p-2 transition-all group",
+                        isActive
+                          ? "border-cyan-500 bg-cyan-500/10 ring-1 ring-cyan-500/30"
+                          : "border-border/60 hover:border-cyan-500/40 hover:bg-muted/30",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onChange({ ...value, voice: voice.id })}
+                        className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
+                        title={`Select ${voice.label}`}
+                      >
+                        <div
+                          className={cn(
+                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold",
+                            isActive
+                              ? "bg-cyan-500 text-white"
+                              : "bg-muted text-muted-foreground group-hover:bg-cyan-500/20",
+                          )}
+                        >
+                          {voice.flag ||
+                            (voice.gender === "Female" ? "♀" : voice.gender === "Male" ? "♂" : "∅")}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs font-semibold text-foreground truncate">
+                              {voice.label}
+                            </span>
+                            {isActive && (
+                              <Check className="h-3 w-3 text-cyan-500 shrink-0 stroke-[3]" />
+                            )}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {voice.gender} · {voice.accent}
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => playVoiceSample(voice.id)}
+                        className={cn(
+                          "shrink-0 flex h-6 w-6 items-center justify-center rounded-full transition-all cursor-pointer",
+                          isPlaying
+                            ? "bg-cyan-500 text-white animate-pulse"
+                            : "bg-muted/70 text-muted-foreground hover:bg-cyan-500/20 hover:text-cyan-600",
+                        )}
+                        aria-label={isPlaying ? `Stop ${voice.label}` : `Preview ${voice.label}`}
+                      >
+                        {isPlaying ? (
+                          <Square className="h-2.5 w-2.5" />
+                        ) : (
+                          <Play className="h-2.5 w-2.5 ml-0.5" />
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Selected voice callout */}
+              {selectedVoiceMeta && (
+                <div className="rounded-xl bg-cyan-500/5 border border-cyan-500/20 px-3.5 py-2.5 text-xs text-muted-foreground flex items-start gap-2">
+                  <Volume2 className="h-4 w-4 text-cyan-500 mt-0.5 shrink-0" />
+                  <span>
+                    <span className="font-semibold text-foreground">{selectedVoiceMeta.label}</span>{" "}
+                    — {selectedVoiceMeta.description}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STEP 3: Discussion Topics (only shown after call type + voice selected) ── */}
+          {selectedCallTypeId && value.voice && (
+            <div className="rounded-2xl border border-border/80 bg-card/90 p-5 shadow-xs space-y-3.5 animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 font-bold text-xs ring-1 ring-violet-500/20">
+                    3
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-bold text-foreground flex items-center gap-1">
+                      Discussion Topics
+                      <InfoTooltip
+                        title="Discussion Topics"
+                        content="The AI will naturally cover each topic during the call. You can add, edit, reorder or remove topics. The AI prompt is automatically rebuilt whenever you change topics."
+                        tip="Keep topics concise — one idea per line works best."
+                      />
+                    </h5>
+                    <p className="text-xs text-muted-foreground">
+                      Edit what the AI discusses. Everything else is pre-configured.
+                    </p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="text-xs shrink-0">
+                  {callTypeTopics.length} topic{callTypeTopics.length !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+
+              <div className="space-y-2">
+                {callTypeTopics.map((topic, idx) => (
+                  <div key={topic.id} className="flex items-start gap-2 group">
+                    <span className="flex h-6 w-6 mt-1 shrink-0 items-center justify-center rounded-md bg-violet-500/10 text-violet-600 text-[11px] font-bold">
+                      {idx + 1}
+                    </span>
+                    {editingTopicId === topic.id ? (
+                      <div className="flex flex-1 gap-1.5">
+                        <Input
+                          value={topic.text}
+                          onChange={(e) => {
+                            const updated = callTypeTopics.map((t) =>
+                              t.id === topic.id ? { ...t, text: e.target.value } : t,
+                            );
+                            updateCallTypeTopics(updated);
+                          }}
+                          onBlur={() => setEditingTopicId(null)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") setEditingTopicId(null);
+                          }}
+                          autoFocus
+                          className="h-8 text-xs flex-1"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-emerald-600 hover:bg-emerald-500/10 cursor-pointer"
+                          onClick={() => setEditingTopicId(null)}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-1 items-start gap-1.5 rounded-lg border border-border/50 px-2.5 py-1.5 bg-background/60 hover:border-violet-400/40 hover:bg-muted/20 transition-all">
+                        <p className="flex-1 text-xs text-foreground leading-snug py-0.5">
+                          {topic.text}
+                        </p>
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setEditingTopicId(topic.id)}
+                            className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-violet-600 hover:bg-violet-500/10 cursor-pointer transition-all"
+                            aria-label="Edit topic"
+                          >
+                            <FileText className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = callTypeTopics.filter((t) => t.id !== topic.id);
+                              updateCallTypeTopics(updated);
+                            }}
+                            className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-red-500 hover:bg-red-500/10 cursor-pointer transition-all"
+                            aria-label="Remove topic"
+                          >
+                            <PhoneOff className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
-                </SelectTrigger>
-                <SelectContent className="border-border bg-popover shadow-2xl max-h-96">
-                  {(
-                    [
-                      { group: "Indian English & Hinglish", flag: "🇮🇳", accent: "Indian" },
-                      { group: "American English", flag: "🇺🇸", accent: "American" },
-                      { group: "British English", flag: "🇬🇧", accent: "British" },
-                      { group: "Australian English", flag: "🇦🇺", accent: "Australian" },
-                    ] as const
-                  ).map((grp) => {
-                    const groupVoices = DIALNEXA_VOICES.filter((v) => v.accent === grp.accent);
-                    if (groupVoices.length === 0) return null;
-                    return (
-                      <SelectGroup key={grp.group}>
-                        <SelectLabel className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-2 py-1.5 flex items-center gap-1.5 bg-muted/30">
-                          <span>{grp.flag}</span>
-                          <span>{grp.group}</span>
-                        </SelectLabel>
-                        {groupVoices.map((v) => (
-                          <SelectItem key={v.id} value={v.id}>
-                            <div className="flex items-center justify-between gap-4 w-full pr-3">
-                              <span className="font-semibold text-foreground text-sm flex items-center gap-1.5">
-                                <span>{v.flag}</span>
-                                <span>{v.label}</span>
-                              </span>
-                              <span className="text-[11px] font-mono text-muted-foreground">
-                                {v.gender} · {v.provider}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    );
-                  })}
-                  <SelectSeparator />
-                  <SelectItem value="custom">Custom Voice ID…</SelectItem>
-                </SelectContent>
-              </Select>
+                ))}
 
-              {voiceSelectValue === "custom" && (
-                <div className="pt-1.5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label
-                      htmlFor={customVoiceId}
-                      className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"
-                    >
-                      <span>ElevenLabs / Custom Voice ID</span>
-                    </label>
+                {/* Add topic row */}
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-[11px] font-bold">
+                    +
+                  </span>
+                  <Input
+                    value={newTopicText}
+                    onChange={(e) => setNewTopicText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newTopicText.trim()) {
+                        const updated = [
+                          ...callTypeTopics,
+                          { id: `custom-${Date.now()}`, text: newTopicText.trim() },
+                        ];
+                        updateCallTypeTopics(updated);
+                        setNewTopicText("");
+                      }
+                    }}
+                    placeholder="Type a new topic and press Enter…"
+                    className="h-8 text-xs flex-1"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!newTopicText.trim()}
+                    onClick={() => {
+                      if (!newTopicText.trim()) return;
+                      const updated = [
+                        ...callTypeTopics,
+                        { id: `custom-${Date.now()}`, text: newTopicText.trim() },
+                      ];
+                      updateCallTypeTopics(updated);
+                      setNewTopicText("");
+                    }}
+                    className="h-8 text-xs cursor-pointer"
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-muted/40 border border-border/50 p-3 text-[11px] text-muted-foreground flex items-start gap-2">
+                <Info className="h-3.5 w-3.5 text-violet-500 mt-0.5 shrink-0" />
+                <span>
+                  The AI will cover topics in order, asking natural follow-up questions as needed.
+                  You don't need to write scripts — the AI handles conversation flow automatically.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP 4: Test Call ── */}
+          {selectedCallTypeId && value.voice && callTypeTopics.length > 0 && (
+            <div className="rounded-2xl border border-border/80 bg-card/90 p-5 shadow-xs space-y-3.5 animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs ring-1 ring-emerald-500/20">
+                  4
+                </div>
+                <div>
+                  <h5 className="text-sm font-bold text-foreground flex items-center gap-1">
+                    Test Call
+                    <InfoTooltip
+                      title="Test Call"
+                      content="Sends a real call to your phone so you can hear exactly what candidates will experience."
+                      tip="Use a real mobile number — the call rings within 15 seconds."
+                    />
+                  </h5>
+                  <p className="text-xs text-muted-foreground">
+                    Dial your phone to hear the AI before going live.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  type="tel"
+                  value={testPhoneNumber}
+                  onChange={(e) => setTestPhoneNumber(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="h-9 text-sm flex-1"
+                />
+                <Button
+                  type="button"
+                  onClick={() => dispatchRealPhoneCall()}
+                  disabled={isDispatchingCall || testPhoneNumber.length < 8}
+                  className="h-9 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shrink-0"
+                >
+                  {isDispatchingCall ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      Calling…
+                    </>
+                  ) : (
+                    <>
+                      <PhoneCall className="h-3.5 w-3.5" />
+                      Test Call Now
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {phoneCallStatus && (
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  {phoneCallStatus}
+                </div>
+              )}
+              {callError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {callError}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── What's fixed callout ── */}
+          {selectedCallTypeId &&
+            (() => {
+              const ct = VOICE_CALL_TYPES.find((t) => t.id === selectedCallTypeId);
+              if (!ct) return null;
+              return (
+                <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-3 space-y-2">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-amber-500" />
+                    Pre-configured for {ct.name}
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                    <span className="rounded-full bg-muted border border-border/50 px-2.5 py-0.5">
+                      🧠 Model: {ct.model}
+                    </span>
+                    <span className="rounded-full bg-muted border border-border/50 px-2.5 py-0.5">
+                      ⏱ {Math.round(ct.max_duration_seconds / 60)} min limit
+                    </span>
+                    <span className="rounded-full bg-muted border border-border/50 px-2.5 py-0.5">
+                      🎙 {ct.transcriber_id.replace("trs_", "").replace(/_/g, " ")}
+                    </span>
+                    <span className="rounded-full bg-muted border border-border/50 px-2.5 py-0.5">
+                      ⚡ Eagerness: {ct.response_eagerness}
+                    </span>
+                    <span className="rounded-full bg-muted border border-border/50 px-2.5 py-0.5">
+                      🔇 Silence cutoff: {ct.end_call_on_silence_sec}s
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+          {/* Footer CTA: Switch to Advanced Studio */}
+          <div className="rounded-xl border border-border/70 bg-muted/30 p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div>
+              <span className="font-semibold text-foreground">
+                Need to fine-tune every parameter?
+              </span>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Adjust latency, interruption sensitivity, STT transcriber, webhooks, and more.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEditorMode("advanced")}
+              className="gap-1.5 text-xs cursor-pointer border-primary/30 text-primary hover:bg-primary/10"
+            >
+              <Sliders className="h-3.5 w-3.5" />
+              <span>Open Advanced Studio ⚙️</span>
+            </Button>
+          </div>
+        </div>
+      ) : (
+        /* ═══════════════════════════════════════════════════════
+           ADVANCED STUDIO (ORIGINAL FULL ENGINEERING SUITE)
+           ═══════════════════════════════════════════════════════ */
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Primary Section Navigation Tabs */}
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/70 bg-card/60 p-1.5 shadow-2xs backdrop-blur-sm">
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full">
+                <button
+                  type="button"
+                  onClick={() => setActiveNavTab("voice")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
+                    activeNavTab === "voice"
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                  )}
+                >
+                  <Volume2 className="h-3.5 w-3.5 text-cyan-400" />
+                  <span>1. Voice & Audio</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveNavTab("prompt")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
+                    activeNavTab === "prompt"
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                  )}
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+                  <span>2. System Prompt</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveNavTab("greeting")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
+                    activeNavTab === "greeting"
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                  )}
+                >
+                  <Mic className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>3. Opening Greeting</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveNavTab("eagerness")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
+                    activeNavTab === "eagerness"
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                  )}
+                >
+                  <Flame className="h-3.5 w-3.5 text-amber-400" />
+                  <span>4. Eagerness & Latency</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveNavTab("functions")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
+                    activeNavTab === "functions"
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                  )}
+                >
+                  <Zap className="h-3.5 w-3.5 text-purple-400" />
+                  <span>5. Functions & Tools</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveNavTab("stt")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
+                    activeNavTab === "stt"
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                  )}
+                >
+                  <Cpu className="h-3.5 w-3.5 text-cyan-400" />
+                  <span>6. STT & Boost</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveNavTab("test")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shrink-0",
+                    activeNavTab === "test"
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10",
+                  )}
+                >
+                  <Activity className="h-3.5 w-3.5" />
+                  <span>7. Live Test Console</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveNavTab("all")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all cursor-pointer border border-transparent shrink-0",
+                    activeNavTab === "all"
+                      ? "bg-card text-foreground border-border/80 shadow-xs"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                  title="View all sections"
+                >
+                  <Sliders className="h-3.5 w-3.5" />
+                  <span>All Sections</span>
+                </button>
+              </div>
+
+              <span className="text-[11px] font-mono text-muted-foreground px-2 shrink-0">
+                {activeNavTab === "all"
+                  ? "Overview mode"
+                  : `Step ${
+                      activeNavTab === "voice"
+                        ? "1"
+                        : activeNavTab === "prompt"
+                          ? "2"
+                          : activeNavTab === "greeting"
+                            ? "3"
+                            : activeNavTab === "eagerness"
+                              ? "4"
+                              : activeNavTab === "functions"
+                                ? "5"
+                                : activeNavTab === "stt"
+                                  ? "6"
+                                  : "7"
+                    } of 7`}
+              </span>
+            </div>
+
+            {/* Stepper Progress Bar */}
+            <div className="h-1 w-full rounded-full bg-border/40 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-primary via-cyan-500 to-emerald-500 transition-all duration-300 ease-out rounded-full"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+
+          {/* ── Section 1: Voice & Audio Tuning ── */}
+          <div
+            className={cn(
+              "space-y-4",
+              activeNavTab !== "voice" && activeNavTab !== "all" && "hidden",
+            )}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Synthetic Voice Card */}
+              <div className="flex flex-col justify-between rounded-xl border border-border/90 bg-card/80 p-4 shadow-xs space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Volume2 className="h-4 w-4 text-cyan-500" />
+                    DialNexa Synthetic Voice (TTS)
+                    <InfoTooltip
+                      title="AI Voice Model"
+                      content="Choose the natural voice personality that calls the candidate. ScalePods supports 24 high-fidelity voices across Indian, American, British, and Australian accents powered by ElevenLabs and OpenAI."
+                      tip="Match the accent of your primary applicant pool (e.g. Aditi or Rohan for India, Rachel for US, George for UK)."
+                    />
+                  </span>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setIsVoiceGuideOpen(true)}
                       className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
                     >
                       <HelpCircle className="h-3 w-3" />
-                      How to get a Voice ID?
+                      Voice ID Guide
                     </button>
+                    <Badge variant="outline" className="text-[10px] font-mono">
+                      {selectedVoiceMeta?.provider || "Custom"}
+                    </Badge>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id={customVoiceId}
-                      placeholder="e.g. 21m00Tcm4TlvDq8ikWAM"
-                      value={customVoiceText}
-                      onChange={(e) => handleCustomVoiceChange(e.target.value)}
-                      className="h-9 text-xs font-mono bg-background text-foreground"
-                    />
+                </div>
+
+                <div className="space-y-2">
+                  <Select value={voiceSelectValue} onValueChange={handleVoiceSelectChange}>
+                    <SelectTrigger className="h-11 w-full bg-background border-border/90 px-3.5 text-foreground shadow-xs">
+                      <div className="flex items-center gap-2.5 truncate">
+                        <span className="font-semibold text-foreground text-sm">
+                          {voiceSelectValue === "custom"
+                            ? customVoiceText.trim()
+                              ? `Custom: ${customVoiceText.trim()}`
+                              : "Custom Voice ID…"
+                            : selectedVoiceMeta
+                              ? `${selectedVoiceMeta.flag || ""} ${selectedVoiceMeta.label}`
+                              : value.voice}
+                        </span>
+                        {selectedVoiceMeta && (
+                          <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-mono text-muted-foreground border border-border/60">
+                            {selectedVoiceMeta.gender} · {selectedVoiceMeta.provider} ·{" "}
+                            {selectedVoiceMeta.accent || "General"}
+                          </span>
+                        )}
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="border-border bg-popover shadow-2xl max-h-96">
+                      {(
+                        [
+                          { group: "Indian English & Hinglish", flag: "🇮🇳", accent: "Indian" },
+                          { group: "American English", flag: "🇺🇸", accent: "American" },
+                          { group: "British English", flag: "🇬🇧", accent: "British" },
+                          { group: "Australian English", flag: "🇦🇺", accent: "Australian" },
+                        ] as const
+                      ).map((grp) => {
+                        const groupVoices = DIALNEXA_VOICES.filter((v) => v.accent === grp.accent);
+                        if (groupVoices.length === 0) return null;
+                        return (
+                          <SelectGroup key={grp.group}>
+                            <SelectLabel className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-2 py-1.5 flex items-center gap-1.5 bg-muted/30">
+                              <span>{grp.flag}</span>
+                              <span>{grp.group}</span>
+                            </SelectLabel>
+                            {groupVoices.map((v) => (
+                              <SelectItem key={v.id} value={v.id}>
+                                <div className="flex items-center justify-between gap-4 w-full pr-3">
+                                  <span className="font-semibold text-foreground text-sm flex items-center gap-1.5">
+                                    <span>{v.flag}</span>
+                                    <span>{v.label}</span>
+                                  </span>
+                                  <span className="text-[11px] font-mono text-muted-foreground">
+                                    {v.gender} · {v.provider}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        );
+                      })}
+                      <SelectSeparator />
+                      <SelectItem value="custom">Custom Voice ID…</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {voiceSelectValue === "custom" && (
+                    <div className="pt-1.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label
+                          htmlFor={customVoiceId}
+                          className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"
+                        >
+                          <span>ElevenLabs / Custom Voice ID</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setIsVoiceGuideOpen(true)}
+                          className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <HelpCircle className="h-3 w-3" />
+                          How to get a Voice ID?
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id={customVoiceId}
+                          placeholder="e.g. 21m00Tcm4TlvDq8ikWAM"
+                          value={customVoiceText}
+                          onChange={(e) => handleCustomVoiceChange(e.target.value)}
+                          className="h-9 text-xs font-mono bg-background text-foreground"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsVoiceGuideOpen(true)}
+                          className="h-9 shrink-0 text-xs gap-1 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 cursor-pointer"
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                          Pick Voice
+                        </Button>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>Paste your 20-character ElevenLabs Voice ID.</span>
+                        <Link
+                          href="/guide/custom-voice-id"
+                          target="_blank"
+                          className="text-cyan-400 hover:underline inline-flex items-center gap-1 font-medium"
+                        >
+                          Full Guide <ExternalLink className="h-2.5 w-2.5" />
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {selectedVoiceMeta && (
+                  <div className="rounded-lg bg-muted/40 border border-border/60 p-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-foreground flex items-center gap-1">
+                        <span>{selectedVoiceMeta.flag}</span>
+                        <span>{selectedVoiceMeta.label}</span>
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {selectedVoiceMeta.description}
+                      </span>
+                    </div>
+                    {selectedVoiceMeta.sampleText && (
+                      <p className="text-[11px] text-muted-foreground italic leading-relaxed">
+                        &ldquo;{selectedVoiceMeta.sampleText}&rdquo;
+                      </p>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setIsVoiceGuideOpen(true)}
-                      className="h-9 shrink-0 text-xs gap-1 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 cursor-pointer"
+                      onClick={() => playVoiceSample(selectedVoiceMeta.id)}
+                      className="w-full gap-2 text-xs border-primary/30 hover:bg-primary/5 cursor-pointer"
                     >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Pick Voice
+                      {playingVoiceId === selectedVoiceMeta.id ? (
+                        <>
+                          <Square className="h-3 w-3 text-rose-500 fill-rose-500" />
+                          <span>Stop Sample</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-3 w-3 text-cyan-500 fill-cyan-500" />
+                          <span>Sample Voice</span>
+                        </>
+                      )}
                     </Button>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>Paste your 20-character ElevenLabs Voice ID.</span>
-                    <Link
-                      href="/guide/custom-voice-id"
-                      target="_blank"
-                      className="text-cyan-400 hover:underline inline-flex items-center gap-1 font-medium"
-                    >
-                      Full Guide <ExternalLink className="h-2.5 w-2.5" />
-                    </Link>
+                )}
+
+                {/* Quick Audition Grid */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between gap-1 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        Audition all voices
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        ({filteredVoices.length})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {(
+                        [
+                          { id: "all", label: "All" },
+                          { id: "Indian", label: "🇮🇳 Indian" },
+                          { id: "American", label: "🇺🇸 US" },
+                          { id: "British", label: "🇬🇧 UK" },
+                          { id: "Australian", label: "🇦🇺 AU" },
+                        ] as const
+                      ).map((acc) => (
+                        <button
+                          key={acc.id}
+                          type="button"
+                          onClick={() => setVoiceAccentFilter(acc.id)}
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer",
+                            voiceAccentFilter === acc.id
+                              ? "bg-primary text-primary-foreground font-semibold"
+                              : "bg-muted/60 text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {acc.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 max-h-56 overflow-y-auto pr-0.5">
+                    {filteredVoices.map((v) => (
+                      <div
+                        key={v.id}
+                        className={cn(
+                          "flex items-center justify-between p-2 rounded-lg border text-left text-xs transition-colors",
+                          value.voice === v.id
+                            ? "border-primary bg-primary/10 text-primary font-semibold"
+                            : "border-border/60 bg-background/50 hover:bg-muted text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        <button
+                          type="button"
+                          title={`Select ${v.label}`}
+                          onClick={() => {
+                            setVoiceSelectValue(v.id);
+                            onChange({ ...value, voice: v.id });
+                          }}
+                          className="truncate text-left flex-1 cursor-pointer font-medium"
+                        >
+                          <span className="mr-1">{v.flag}</span>
+                          {v.label}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => playVoiceSample(v.id)}
+                          className="p-1 hover:text-primary rounded cursor-pointer shrink-0 ml-1"
+                          title={`Preview ${v.label}`}
+                        >
+                          {playingVoiceId === v.id ? (
+                            <Square className="h-2.5 w-2.5 text-rose-500 fill-rose-500" />
+                          ) : (
+                            <Play className="h-2.5 w-2.5" />
+                          )}
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* Voice Speed, Pitch & Acoustics */}
+              <div className="flex flex-col justify-between rounded-xl border border-border/90 bg-card/80 p-4 shadow-xs space-y-3.5">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Headphones className="h-4 w-4 text-purple-500" />
+                  Acoustic Polish & Speech Speed
+                </span>
+
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex justify-between text-xs items-center">
+                      <span className="text-muted-foreground font-medium flex items-center">
+                        Speaking Pace
+                        <InfoTooltip
+                          title="Speaking Pace"
+                          content="Controls the speaking rate of the AI recruiter. 1.00x is natural human pace. Lower values (0.90x) help candidates follow technical questions; higher values (1.10x) keep the call brisk."
+                          tip="1.00x is recommended for general phone screening."
+                        />
+                      </span>
+                      <span className="font-mono text-primary font-bold">
+                        {(value.voice_speed ?? 1.0).toFixed(2)}x
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="1.5"
+                      step="0.05"
+                      value={value.voice_speed ?? 1.0}
+                      onChange={(e) =>
+                        onChange({ ...value, voice_speed: parseFloat(e.target.value) })
+                      }
+                      className="w-full accent-primary mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs items-center">
+                      <span className="text-muted-foreground font-medium flex items-center">
+                        Voice Pitch
+                        <InfoTooltip
+                          title="Voice Pitch"
+                          content="Fine-tune voice frequency higher or lower (-10 to +10 semitones) without altering speaking pace."
+                          tip="Leave at 0 for the natural pitch of the chosen actor."
+                        />
+                      </span>
+                      <span className="font-mono text-primary font-bold">
+                        {(value.voice_pitch ?? 0) > 0
+                          ? `+${value.voice_pitch ?? 0}`
+                          : (value.voice_pitch ?? 0)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="-10"
+                      max="10"
+                      step="1"
+                      value={value.voice_pitch ?? 0}
+                      onChange={(e) =>
+                        onChange({ ...value, voice_pitch: parseInt(e.target.value, 10) })
+                      }
+                      className="w-full accent-primary mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs items-center">
+                      <span className="text-muted-foreground font-medium flex items-center">
+                        Temperature (Expressiveness)
+                        <InfoTooltip
+                          title="Voice Expressiveness"
+                          content="Higher values produce more emotive, expressive speech modulation; lower values sound more steady, calm, and formal."
+                          tip="1.00 provides warm, natural conversational delivery."
+                        />
+                      </span>
+                      <span className="font-mono text-primary font-bold">
+                        {(value.voice_temperature ?? 1.0).toFixed(2)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.0"
+                      max="1.5"
+                      step="0.05"
+                      value={value.voice_temperature ?? 1.0}
+                      onChange={(e) =>
+                        onChange({ ...value, voice_temperature: parseFloat(e.target.value) })
+                      }
+                      className="w-full accent-primary mt-1"
+                    />
+                  </div>
+
+                  <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-foreground">Ambient Line Noise</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Comfort telephony line noise to avoid dead silence
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={value.ambient_noise ?? true}
+                      onChange={(e) => onChange({ ...value, ambient_noise: e.target.checked })}
+                      className="h-4 w-4 accent-primary rounded cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-foreground">
+                        Denoising Strength (0-4)
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Removes background chatter from candidate end
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-primary">
+                      {value.denoise_strength ?? 1}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {selectedVoiceMeta && (
-              <div className="rounded-lg bg-muted/40 border border-border/60 p-3 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-foreground flex items-center gap-1">
-                    <span>{selectedVoiceMeta.flag}</span>
-                    <span>{selectedVoiceMeta.label}</span>
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {selectedVoiceMeta.description}
-                  </span>
-                </div>
-                {selectedVoiceMeta.sampleText && (
-                  <p className="text-[11px] text-muted-foreground italic leading-relaxed">
-                    &ldquo;{selectedVoiceMeta.sampleText}&rdquo;
-                  </p>
-                )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => playVoiceSample(selectedVoiceMeta.id)}
-                  className="w-full gap-2 text-xs border-primary/30 hover:bg-primary/5 cursor-pointer"
-                >
-                  {playingVoiceId === selectedVoiceMeta.id ? (
-                    <>
-                      <Square className="h-3 w-3 text-rose-500 fill-rose-500" />
-                      <span>Stop Sample</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-3 w-3 text-cyan-500 fill-cyan-500" />
-                      <span>Sample Voice</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button size="sm" onClick={() => setActiveNavTab("prompt")} className="gap-1 text-xs">
+                Next: System Prompt <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
 
-            {/* Quick Audition Grid */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between gap-1 flex-wrap">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    Audition all voices
-                  </span>
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    ({filteredVoices.length})
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  {(
-                    [
-                      { id: "all", label: "All" },
-                      { id: "Indian", label: "🇮🇳 Indian" },
-                      { id: "American", label: "🇺🇸 US" },
-                      { id: "British", label: "🇬🇧 UK" },
-                      { id: "Australian", label: "🇦🇺 AU" },
-                    ] as const
-                  ).map((acc) => (
-                    <button
-                      key={acc.id}
-                      type="button"
-                      onClick={() => setVoiceAccentFilter(acc.id)}
-                      className={cn(
-                        "rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer",
-                        voiceAccentFilter === acc.id
-                          ? "bg-primary text-primary-foreground font-semibold"
-                          : "bg-muted/60 text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {acc.label}
-                    </button>
-                  ))}
-                </div>
+          {/* ── Section 2: System Prompt & Conversational Guidelines ── */}
+          <div
+            className={cn(
+              "space-y-4",
+              activeNavTab !== "prompt" && activeNavTab !== "all" && "hidden",
+            )}
+          >
+            {/* Templates Picker */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Wand2 className="h-4 w-4 text-primary" />
+                  Recruitment Screening Templates
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  Click any template to auto-populate prompt & greeting
+                </span>
               </div>
-              <div className="grid grid-cols-3 gap-1.5 max-h-56 overflow-y-auto pr-0.5">
-                {filteredVoices.map((v) => (
-                  <div
-                    key={v.id}
+              <div className="grid gap-2.5 sm:grid-cols-3">
+                {DIALNEXA_TEMPLATES.map((tmpl) => (
+                  <button
+                    key={tmpl.id}
+                    type="button"
+                    onClick={() => applyTemplate(tmpl.id)}
                     className={cn(
-                      "flex items-center justify-between p-2 rounded-lg border text-left text-xs transition-colors",
-                      value.voice === v.id
-                        ? "border-primary bg-primary/10 text-primary font-semibold"
-                        : "border-border/60 bg-background/50 hover:bg-muted text-muted-foreground hover:text-foreground",
+                      "rounded-xl border p-3 text-left transition-all cursor-pointer",
+                      activeTemplate === tmpl.id
+                        ? "border-primary bg-primary/10 shadow-xs ring-1 ring-primary/30"
+                        : "border-border/70 bg-card/60 hover:border-primary/40",
                     )}
                   >
-                    <button
-                      type="button"
-                      title={`Select ${v.label}`}
-                      onClick={() => {
-                        setVoiceSelectValue(v.id);
-                        onChange({ ...value, voice: v.id });
-                      }}
-                      className="truncate text-left flex-1 cursor-pointer font-medium"
-                    >
-                      <span className="mr-1">{v.flag}</span>
-                      {v.label}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => playVoiceSample(v.id)}
-                      className="p-1 hover:text-primary rounded cursor-pointer shrink-0 ml-1"
-                      title={`Preview ${v.label}`}
-                    >
-                      {playingVoiceId === v.id ? (
-                        <Square className="h-2.5 w-2.5 text-rose-500 fill-rose-500" />
-                      ) : (
-                        <Play className="h-2.5 w-2.5" />
+                    <div className="flex items-center justify-between">
+                      <h6 className="text-xs font-semibold text-foreground">{tmpl.name}</h6>
+                      {activeTemplate === tmpl.id && (
+                        <Badge
+                          variant="secondary"
+                          className="text-[9px] px-1.5 py-0 bg-primary/20 text-primary"
+                        >
+                          Active
+                        </Badge>
                       )}
-                    </button>
-                  </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                      {tmpl.description}
+                    </p>
+                  </button>
                 ))}
               </div>
             </div>
-          </div>
 
-          {/* Voice Speed, Pitch & Acoustics */}
-          <div className="flex flex-col justify-between rounded-xl border border-border/90 bg-card/80 p-4 shadow-xs space-y-3.5">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <Headphones className="h-4 w-4 text-purple-500" />
-              Acoustic Polish & Speech Speed
-            </span>
-
-            <div className="space-y-3">
-              <div>
-                <div className="flex justify-between text-xs items-center">
-                  <span className="text-muted-foreground font-medium flex items-center">
-                    Speaking Pace
-                    <InfoTooltip
-                      title="Speaking Pace"
-                      content="Controls the speaking rate of the AI recruiter. 1.00x is natural human pace. Lower values (0.90x) help candidates follow technical questions; higher values (1.10x) keep the call brisk."
-                      tip="1.00x is recommended for general phone screening."
-                    />
-                  </span>
-                  <span className="font-mono text-primary font-bold">
-                    {(value.voice_speed ?? 1.0).toFixed(2)}x
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="1.5"
-                  step="0.05"
-                  value={value.voice_speed ?? 1.0}
-                  onChange={(e) => onChange({ ...value, voice_speed: parseFloat(e.target.value) })}
-                  className="w-full accent-primary mt-1"
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between text-xs items-center">
-                  <span className="text-muted-foreground font-medium flex items-center">
-                    Voice Pitch
-                    <InfoTooltip
-                      title="Voice Pitch"
-                      content="Fine-tune voice frequency higher or lower (-10 to +10 semitones) without altering speaking pace."
-                      tip="Leave at 0 for the natural pitch of the chosen actor."
-                    />
-                  </span>
-                  <span className="font-mono text-primary font-bold">
-                    {(value.voice_pitch ?? 0) > 0
-                      ? `+${value.voice_pitch ?? 0}`
-                      : (value.voice_pitch ?? 0)}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="-10"
-                  max="10"
-                  step="1"
-                  value={value.voice_pitch ?? 0}
-                  onChange={(e) =>
-                    onChange({ ...value, voice_pitch: parseInt(e.target.value, 10) })
-                  }
-                  className="w-full accent-primary mt-1"
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between text-xs items-center">
-                  <span className="text-muted-foreground font-medium flex items-center">
-                    Temperature (Expressiveness)
-                    <InfoTooltip
-                      title="Voice Expressiveness"
-                      content="Higher values produce more emotive, expressive speech modulation; lower values sound more steady, calm, and formal."
-                      tip="1.00 provides warm, natural conversational delivery."
-                    />
-                  </span>
-                  <span className="font-mono text-primary font-bold">
-                    {(value.voice_temperature ?? 1.0).toFixed(2)}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0.0"
-                  max="1.5"
-                  step="0.05"
-                  value={value.voice_temperature ?? 1.0}
-                  onChange={(e) =>
-                    onChange({ ...value, voice_temperature: parseFloat(e.target.value) })
-                  }
-                  className="w-full accent-primary mt-1"
-                />
-              </div>
-
-              <div className="pt-2 border-t border-border/60 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-foreground">Ambient Line Noise</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Comfort telephony line noise to avoid dead silence
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={value.ambient_noise ?? true}
-                  onChange={(e) => onChange({ ...value, ambient_noise: e.target.checked })}
-                  className="h-4 w-4 accent-primary rounded cursor-pointer"
-                />
-              </div>
-
+            {/* System Prompt Instructions */}
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-foreground">Denoising Strength (0-4)</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Removes background chatter from candidate end
-                  </p>
-                </div>
-                <span className="text-xs font-mono font-bold text-primary">
-                  {value.denoise_strength ?? 1}
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  System Prompt & Conversational Guidelines
+                  <InfoTooltip
+                    title="System Prompt"
+                    content="The master persona and screening instructions for the AI recruiter. It defines what questions to ask, how to evaluate answers, and the overall interview demeanor."
+                    tip="Use {{candidate_name}}, {{job_title}}, and {{company_name}} tags to personalize the interview dynamically."
+                  />
                 </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Button size="sm" onClick={() => setActiveNavTab("prompt")} className="gap-1 text-xs">
-            Next: System Prompt <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Section 2: System Prompt & Conversational Guidelines ── */}
-      <div
-        className={cn("space-y-4", activeNavTab !== "prompt" && activeNavTab !== "all" && "hidden")}
-      >
-        {/* Templates Picker */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <Wand2 className="h-4 w-4 text-primary" />
-              Recruitment Screening Templates
-            </span>
-            <span className="text-[11px] text-muted-foreground">
-              Click any template to auto-populate prompt & greeting
-            </span>
-          </div>
-          <div className="grid gap-2.5 sm:grid-cols-3">
-            {DIALNEXA_TEMPLATES.map((tmpl) => (
-              <button
-                key={tmpl.id}
-                type="button"
-                onClick={() => applyTemplate(tmpl.id)}
-                className={cn(
-                  "rounded-xl border p-3 text-left transition-all cursor-pointer",
-                  activeTemplate === tmpl.id
-                    ? "border-primary bg-primary/10 shadow-xs ring-1 ring-primary/30"
-                    : "border-border/70 bg-card/60 hover:border-primary/40",
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <h6 className="text-xs font-semibold text-foreground">{tmpl.name}</h6>
-                  {activeTemplate === tmpl.id && (
-                    <Badge
-                      variant="secondary"
-                      className="text-[9px] px-1.5 py-0 bg-primary/20 text-primary"
+                <div className="flex items-center gap-1">
+                  {VARIABLE_PILLS.map((p) => (
+                    <button
+                      key={p.token}
+                      type="button"
+                      onClick={() => insertVariable("prompt", p.token)}
+                      className="rounded-md bg-muted/80 px-2 py-0.5 text-[10px] font-mono text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer border border-border/60"
+                      title={`Insert ${p.token}`}
                     >
-                      Active
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
-                  {tmpl.description}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* System Prompt Instructions */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <Sparkles className="h-4 w-4 text-primary" />
-              System Prompt & Conversational Guidelines
-              <InfoTooltip
-                title="System Prompt"
-                content="The master persona and screening instructions for the AI recruiter. It defines what questions to ask, how to evaluate answers, and the overall interview demeanor."
-                tip="Use {{candidate_name}}, {{job_title}}, and {{company_name}} tags to personalize the interview dynamically."
-              />
-            </span>
-            <div className="flex items-center gap-1">
-              {VARIABLE_PILLS.map((p) => (
-                <button
-                  key={p.token}
-                  type="button"
-                  onClick={() => insertVariable("prompt", p.token)}
-                  className="rounded-md bg-muted/80 px-2 py-0.5 text-[10px] font-mono text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer border border-border/60"
-                  title={`Insert ${p.token}`}
-                >
-                  +{p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <Textarea
-            rows={10}
-            value={value.prompt || ""}
-            onChange={(e) => onChange({ ...value, prompt: e.target.value })}
-            placeholder="Enter system prompt and conversation instructions for the AI screening agent..."
-            className="text-xs font-mono bg-background leading-relaxed shadow-inner"
-          />
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
-            <span>
-              Dynamic tokens:{" "}
-              <code className="text-primary font-mono">&#123;&#123;candidate_name&#125;&#125;</code>
-              , <code className="text-primary font-mono">&#123;&#123;job_title&#125;&#125;</code>,{" "}
-              <code className="text-primary font-mono">&#123;&#123;company_name&#125;&#125;</code>
-            </span>
-            <span className="font-mono">
-              {(value.prompt || "").length} characters · ~
-              {Math.ceil((value.prompt || "").length / 4)} tokens
-            </span>
-          </div>
-        </div>
-
-        <div className="flex justify-between pt-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setActiveNavTab("voice")}
-            className="gap-1 text-xs"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" /> Back: Voice & Audio
-          </Button>
-          <Button size="sm" onClick={() => setActiveNavTab("greeting")} className="gap-1 text-xs">
-            Next: Opening Greeting <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Section 3: Opening Greeting & Call Controls ── */}
-      <div
-        className={cn(
-          "space-y-4",
-          activeNavTab !== "greeting" &&
-            activeNavTab !== "duration" &&
-            activeNavTab !== "all" &&
-            "hidden",
-        )}
-      >
-        {/* First Message Greeting */}
-        <div className="rounded-xl border border-border/90 bg-card/80 p-4 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <Mic className="h-4 w-4 text-emerald-500" />
-              Agent Greeting (First Spoken Message)
-              <InfoTooltip
-                title="Opening Greeting"
-                content="The very first sentence the AI says as soon as the candidate answers the phone."
-                tip="Keep it under 15-20 words, introducing yourself and confirming you've reached the candidate."
-              />
-            </span>
-            <div className="flex items-center gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={previewGreetingAudio}
-                className="h-7 text-[11px] gap-1 px-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
-                title="Preview greeting spoken aloud"
-              >
-                <Volume2 className="h-3 w-3" />
-                Audition Greeting
-              </Button>
-              {VARIABLE_PILLS.map((p) => (
-                <button
-                  key={p.token}
-                  type="button"
-                  onClick={() => insertVariable("first_message", p.token)}
-                  className="rounded-md bg-muted/80 px-2 py-0.5 text-[10px] font-mono text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer border border-border/60"
-                  title={`Insert ${p.token}`}
-                >
-                  +{p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <Textarea
-            rows={3}
-            value={value.first_message || ""}
-            onChange={(e) => onChange({ ...value, first_message: e.target.value })}
-            placeholder="Hi {{candidate_name}}, this is the recruiting team at ScalePods..."
-            className="text-xs bg-background leading-relaxed shadow-inner"
-          />
-          <p className="text-[11px] text-muted-foreground">
-            Spoken immediately when candidate picks up the phone. Keep it natural, warm, and concise
-            (under 20 seconds).
-          </p>
-        </div>
-
-        {/* Duration & Voicemail Handling */}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2">
-            <div className="flex justify-between text-xs items-center">
-              <span className="font-semibold text-foreground flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5 text-amber-500" />
-                Maximum Call Duration
-                <InfoTooltip
-                  title="Maximum Call Duration"
-                  content="Hard timeout cap for the interview. If the call reaches this duration, the AI politely concludes and disconnects."
-                  tip="5-10 minutes (300-600 sec) is standard for phone screening."
-                />
-              </span>
-              <span className="font-mono text-amber-500 font-bold">
-                {Math.round((value.max_duration_seconds || 300) / 60)} minutes
-              </span>
-            </div>
-            <input
-              type="range"
-              min="60"
-              max="1800"
-              step="60"
-              value={value.max_duration_seconds || 300}
-              onChange={(e) =>
-                onChange({ ...value, max_duration_seconds: parseInt(e.target.value, 10) })
-              }
-              className="w-full accent-amber-500 cursor-pointer"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Maximum call cap before safe wrap-up and hangup.
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-foreground flex items-center">
-                Voicemail Detection & Handling
-                <InfoTooltip
-                  title="Voicemail & AMD"
-                  content="Answering Machine Detection (AMD) identifies automated carrier greetings, voicemail boxes, or IVRs so the AI doesn't waste screening time."
-                  tip="Enable 'Hang up immediately' if you do not want to leave voicemail messages."
-                />
-              </span>
-              <input
-                type="checkbox"
-                checked={value.voicemail_detection ?? true}
-                onChange={(e) => onChange({ ...value, voicemail_detection: e.target.checked })}
-                className="h-4 w-4 accent-primary rounded cursor-pointer"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="hangup_voicemail"
-                checked={value.hangup_on_voicemail ?? false}
-                onChange={(e) => onChange({ ...value, hangup_on_voicemail: e.target.checked })}
-                className="h-3.5 w-3.5 accent-primary rounded cursor-pointer"
-              />
-              <label
-                htmlFor="hangup_voicemail"
-                className="text-[11px] text-muted-foreground cursor-pointer"
-              >
-                Hang up immediately if answering machine is detected
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* DialNexa Post-Call Structured Extraction Fields */}
-        <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-emerald-500" />
-              DialNexa Post-Call Analysis Extraction Schema ({postCallList.length} Fields)
-            </span>
-            <Badge variant="outline" className="text-[10px] font-mono">
-              Auto-Extracted Post Call
-            </Badge>
-          </div>
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {postCallList.map((f) => (
-              <span
-                key={f.field_name}
-                className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] font-mono text-muted-foreground border border-border/50"
-              >
-                <span className="font-semibold text-foreground">{f.field_name}</span>
-                <span className="text-[10px] text-primary">({f.field_type})</span>
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex justify-between pt-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setActiveNavTab("prompt")}
-            className="gap-1 text-xs"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" /> Back: System Prompt
-          </Button>
-          <Button size="sm" onClick={() => setActiveNavTab("eagerness")} className="gap-1 text-xs">
-            Next: Eagerness & Latency <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Section 4: Turn-Taking & Response Eagerness ── */}
-      <div
-        className={cn(
-          "space-y-4",
-          activeNavTab !== "eagerness" && activeNavTab !== "all" && "hidden",
-        )}
-      >
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                <Flame className="h-4 w-4" />
-              </div>
-              <div>
-                <h5 className="text-sm font-semibold text-foreground">
-                  DialNexa Turn-Taking & Response Eagerness
-                </h5>
-                <p className="text-xs text-muted-foreground">
-                  Controls how eagerly the AI replies to candidate speech. Shaves conversational
-                  latency and prevents awkward pauses.
-                </p>
-              </div>
-            </div>
-            <Badge
-              variant="outline"
-              className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 font-mono text-xs"
-            >
-              {currentEagerness >= 0.85
-                ? "Ultra-Eager (Fast)"
-                : currentEagerness >= 0.65
-                  ? "Conversational (Balanced)"
-                  : "Patient (Deliberate)"}
-            </Badge>
-          </div>
-
-          {/* Quick Presets */}
-          <div className="flex flex-wrap gap-2">
-            {[
-              {
-                label: "Ultra-Eager (0.95)",
-                val: 0.95,
-                desc: "Near-zero pause, interrupts naturally",
-              },
-              { label: "Fast (0.85)", val: 0.85, desc: "Great for rapid-fire screening" },
-              { label: "Conversational (0.70)", val: 0.7, desc: "Default balanced flow" },
-              { label: "Patient (0.50)", val: 0.5, desc: "Allows candidate pauses to think" },
-            ].map((p) => (
-              <button
-                key={p.val}
-                type="button"
-                onClick={() =>
-                  onChange({
-                    ...value,
-                    response_eagerness: p.val,
-                    responsiveness: Math.min(1.0, p.val + 0.1),
-                  })
-                }
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-xs font-medium border text-left transition-colors cursor-pointer",
-                  Math.abs(currentEagerness - p.val) < 0.05
-                    ? "bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/50 font-semibold"
-                    : "bg-background border-border/70 hover:bg-muted text-muted-foreground",
-                )}
-              >
-                <div>{p.label}</div>
-                <div className="text-[10px] text-muted-foreground">{p.desc}</div>
-              </button>
-            ))}
-          </div>
-
-          <div className="space-y-4 pt-2">
-            <div>
-              <div className="flex justify-between text-xs mb-1 items-center">
-                <span className="font-semibold text-foreground flex items-center">
-                  Response Eagerness (Turn-Taking)
-                  <InfoTooltip
-                    title="Response Eagerness"
-                    content="Controls how quickly the AI begins responding once it detects the candidate stopped speaking. Higher values feel rapid and energetic; lower values let thoughtful candidates pause without interruption."
-                    tip="0.70 (70%) is balanced for most phone interviews."
-                  />
-                </span>
-                <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
-                  {(currentEagerness * 100).toFixed(0)}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0.1"
-                max="1.0"
-                step="0.05"
-                value={currentEagerness}
-                onChange={(e) =>
-                  onChange({ ...value, response_eagerness: parseFloat(e.target.value) })
-                }
-                className="w-full accent-amber-500 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>0.1 (Wait for complete silence)</span>
-                <span>0.7 (Default)</span>
-                <span>1.0 (Jump in immediately)</span>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs mb-1 items-center">
-                <span className="font-semibold text-foreground flex items-center">
-                  Responsiveness & Latency
-                  <InfoTooltip
-                    title="Responsiveness & Latency"
-                    content="Balances processing speed versus reasoning depth. Higher responsiveness lowers latency for lightning-fast voice replies."
-                    tip="0.80 provides natural phone conversation cadence."
-                  />
-                </span>
-                <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
-                  {(currentResponsiveness * 100).toFixed(0)}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0.1"
-                max="1.0"
-                step="0.05"
-                value={currentResponsiveness}
-                onChange={(e) => onChange({ ...value, responsiveness: parseFloat(e.target.value) })}
-                className="w-full accent-amber-500 cursor-pointer"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs mb-1 items-center">
-                <span className="font-semibold text-foreground flex items-center">
-                  Interruption Sensitivity (Candidate cut-off)
-                  <InfoTooltip
-                    title="Interruption Sensitivity"
-                    content="Controls how easily the candidate can cut off the AI when speaking over it. At higher values, the AI stops speaking the millisecond candidate audio is detected."
-                    tip="0.50 (50%) prevents accidental stops from brief coughs while allowing natural human dialogue."
-                  />
-                </span>
-                <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
-                  {(currentInterruption * 100).toFixed(0)}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0.0"
-                max="1.0"
-                step="0.05"
-                value={currentInterruption}
-                onChange={(e) =>
-                  onChange({ ...value, interruption_sensitivity: parseFloat(e.target.value) })
-                }
-                className="w-full accent-amber-500 cursor-pointer"
-              />
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Higher sensitivity allows candidate to speak over the AI and stop its voice
-                instantly.
-              </p>
-            </div>
-
-            <div className="pt-2 border-t border-amber-500/20 flex flex-wrap gap-4 text-xs">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={value.backchanneling ?? true}
-                  onChange={(e) => onChange({ ...value, backchanneling: e.target.checked })}
-                  className="h-4 w-4 accent-amber-500 rounded"
-                />
-                <span className="font-medium text-foreground">
-                  Backchanneling (&ldquo;mm-hmm&rdquo;, &ldquo;got it&rdquo;)
-                </span>
-              </label>
-
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px]">
-                  Nudge: {value.reminder_message_interval ?? 10}s
-                </span>
-                <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px]">
-                  Hangup: {value.end_call_on_silence_sec ?? 20}s
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-between pt-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setActiveNavTab("greeting")}
-            className="gap-1 text-xs"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" /> Back: Opening Greeting
-          </Button>
-          <Button size="sm" onClick={() => setActiveNavTab("functions")} className="gap-1 text-xs">
-            Next: Functions & Tools <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Section 5: Functions & Tool Calling ── */}
-      <div
-        className={cn(
-          "space-y-4",
-          activeNavTab !== "functions" && activeNavTab !== "all" && "hidden",
-        )}
-      >
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/20 text-purple-600 dark:text-purple-400">
-                <Zap className="h-4 w-4" />
-              </div>
-              <div>
-                <h5 className="text-sm font-semibold text-foreground flex items-center">
-                  DialNexa Agent Functions & Live Tools
-                  <InfoTooltip
-                    title="Live Agent Functions"
-                    content="Tools the voice agent can autonomously execute during the call, such as transferring to a human recruiter, checking calendar slots, or concluding the call."
-                  />
-                </h5>
-                <p className="text-xs text-muted-foreground">
-                  Empower the AI to trigger real actions during candidate calls: warm recruiter
-                  transfers, calendar scheduling, and wrap-ups.
-                </p>
-              </div>
-            </div>
-            <Badge
-              variant="outline"
-              className="bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 font-mono text-xs"
-            >
-              {functionsList.filter((f) => f.enabled).length} Active Tools
-            </Badge>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {/* End Call Function */}
-            <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <PhoneOff className="h-3.5 w-3.5 text-rose-500" />
-                  End Call (`end_call`)
-                </span>
-                <input
-                  type="checkbox"
-                  checked={functionsList.find((f) => f.type === "end_call")?.enabled ?? true}
-                  onChange={() => toggleFunction("end_call")}
-                  className="h-4 w-4 accent-primary rounded cursor-pointer"
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Hangs up politely once the candidate interview is finished or caller asks to leave.
-              </p>
-            </div>
-
-            {/* Call Transfer Function */}
-            <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <PhoneForwarded className="h-3.5 w-3.5 text-cyan-500" />
-                  Warm Recruiter Transfer (`call_transfer`)
-                </span>
-                <input
-                  type="checkbox"
-                  checked={functionsList.find((f) => f.type === "call_transfer")?.enabled ?? false}
-                  onChange={() => toggleFunction("call_transfer")}
-                  className="h-4 w-4 accent-primary rounded cursor-pointer"
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Bridges the active telephone call to a live recruiter if the candidate is VIP.
-              </p>
-              {functionsList.find((f) => f.type === "call_transfer")?.enabled && (
-                <Input
-                  placeholder="Transfer Phone (e.g. +91 98765 00000)"
-                  value={
-                    (
-                      functionsList.find((f) => f.type === "call_transfer")?.config as {
-                        transfer_phone_number?: string;
-                      }
-                    )?.transfer_phone_number || ""
-                  }
-                  onChange={(e) =>
-                    updateFunctionConfig("call_transfer", {
-                      transfer_phone_number: e.target.value,
-                    })
-                  }
-                  className="h-8 text-xs font-mono bg-background"
-                />
-              )}
-            </div>
-
-            {/* Calendar Scheduling Function */}
-            <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <Calendar className="h-3.5 w-3.5 text-purple-500" />
-                  Check Calendar (`check_calendar_availability`)
-                </span>
-                <input
-                  type="checkbox"
-                  checked={
-                    functionsList.find((f) => f.type === "check_calendar_availability")?.enabled ??
-                    true
-                  }
-                  onChange={() => toggleFunction("check_calendar_availability")}
-                  className="h-4 w-4 accent-primary rounded cursor-pointer"
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Inquires live open calendar slots to schedule round 2 directly on the phone call.
-              </p>
-            </div>
-
-            {/* Book Calendar Slot Function */}
-            <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <Calendar className="h-3.5 w-3.5 text-emerald-500" />
-                  Book Interview Slot (`book_calendar`)
-                </span>
-                <input
-                  type="checkbox"
-                  checked={functionsList.find((f) => f.type === "book_calendar")?.enabled ?? false}
-                  onChange={() => toggleFunction("book_calendar")}
-                  className="h-4 w-4 accent-primary rounded cursor-pointer"
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Locks in an agreed date/time slot directly into the hiring team&apos;s calendar
-                before hanging up.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-between pt-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setActiveNavTab("eagerness")}
-            className="gap-1 text-xs"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" /> Back: Eagerness & Latency
-          </Button>
-          <Button size="sm" onClick={() => setActiveNavTab("stt")} className="gap-1 text-xs">
-            Next: STT & Boost <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Section 6: Speech-to-Text & Transcriber ── */}
-      <div
-        className={cn("space-y-4", activeNavTab !== "stt" && activeNavTab !== "all" && "hidden")}
-      >
-        <div className="rounded-xl border border-border/80 bg-card/80 p-4 space-y-3.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <Cpu className="h-4 w-4 text-cyan-500" />
-              DialNexa Real-Time Transcriber (STT) & Vocabulary Biasing
-              <InfoTooltip
-                title="STT Speech Engine"
-                content="Converts candidate audio to text in real-time. Deepgram Nova-2 is tuned for phone-grade audio, background noise resistance, and diverse accents."
-              />
-            </span>
-            <Badge variant="outline" className="text-[10px] font-mono">
-              Deepgram Nova 2
-            </Badge>
-          </div>
-
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label htmlFor="stt-selector" className="text-[11px] font-medium text-foreground">
-                Primary Transcriber Engine
-              </label>
-              <Select
-                value={currentTranscriber}
-                onValueChange={(val) => onChange({ ...value, transcriber_id: val })}
-              >
-                <SelectTrigger id="stt-selector" className="h-9 bg-background text-xs">
-                  <span>
-                    {selectedTranscriberMeta?.label || currentTranscriber} ·{" "}
-                    {selectedTranscriberMeta?.badge}
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  {DIALNEXA_TRANSCRIBERS.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-xs font-medium">{t.label}</span>
-                        <span className="text-[10px] font-mono text-muted-foreground">
-                          {t.badge}
-                        </span>
-                      </div>
-                    </SelectItem>
+                      +{p.label}
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label
-                htmlFor="dialnexa-boosted-terms"
-                className="text-[11px] font-medium text-foreground flex items-center"
-              >
-                Boosted Keywords (Specialized Tech & Terms)
-                <InfoTooltip
-                  title="Vocabulary Biasing"
-                  content="Comma-separated jargon, tech stacks, or company acronyms (e.g. Kubernetes, PyTorch, GraphQL). Biases speech recognition toward accurately identifying these words."
-                  tip="Add specific technical frameworks or role requirements relevant to this position."
-                />
-              </label>
+                </div>
+              </div>
               <Textarea
-                id="dialnexa-boosted-terms"
-                rows={3}
-                value={value.boosted_keywords ?? DEFAULT_BOOSTED_KEYWORDS}
-                onChange={(e) => onChange({ ...value, boosted_keywords: e.target.value })}
-                className="text-xs bg-background font-mono leading-relaxed"
-                placeholder="Comma-separated words: React, TypeScript, Kafka, Docker..."
+                rows={10}
+                value={value.prompt || ""}
+                onChange={(e) => onChange({ ...value, prompt: e.target.value })}
+                placeholder="Enter system prompt and conversation instructions for the AI screening agent..."
+                className="text-xs font-mono bg-background leading-relaxed shadow-inner"
               />
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
+                <span>
+                  Dynamic tokens:{" "}
+                  <code className="text-primary font-mono">
+                    &#123;&#123;candidate_name&#125;&#125;
+                  </code>
+                  ,{" "}
+                  <code className="text-primary font-mono">&#123;&#123;job_title&#125;&#125;</code>,{" "}
+                  <code className="text-primary font-mono">
+                    &#123;&#123;company_name&#125;&#125;
+                  </code>
+                </span>
+                <span className="font-mono">
+                  {(value.prompt || "").length} characters · ~
+                  {Math.ceil((value.prompt || "").length / 4)} tokens
+                </span>
+              </div>
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <div>
-                <p className="text-xs font-medium text-foreground">Boost Dynamic Variables</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Inject candidate and role names into STT bias
-                </p>
-              </div>
-              <input
-                type="checkbox"
-                checked={value.boost_dynamic_variables ?? true}
-                onChange={(e) => onChange({ ...value, boost_dynamic_variables: e.target.checked })}
-                className="h-4 w-4 accent-primary rounded cursor-pointer"
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-foreground">Predictive Preprocessing</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Speculative LLM inference (cuts 200ms latency)
-                </p>
-              </div>
-              <input
-                type="checkbox"
-                checked={value.predictive_preprocessing_enabled ?? true}
-                onChange={(e) =>
-                  onChange({ ...value, predictive_preprocessing_enabled: e.target.checked })
-                }
-                className="h-4 w-4 accent-primary rounded cursor-pointer"
-              />
+            <div className="flex justify-between pt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveNavTab("voice")}
+                className="gap-1 text-xs"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Back: Voice & Audio
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setActiveNavTab("greeting")}
+                className="gap-1 text-xs"
+              >
+                Next: Opening Greeting <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
             </div>
           </div>
-        </div>
 
-        <div className="flex justify-between pt-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setActiveNavTab("functions")}
-            className="gap-1 text-xs"
+          {/* ── Section 3: Opening Greeting & Call Controls ── */}
+          <div
+            className={cn(
+              "space-y-4",
+              activeNavTab !== "greeting" &&
+                activeNavTab !== "duration" &&
+                activeNavTab !== "all" &&
+                "hidden",
+            )}
           >
-            <ChevronLeft className="h-3.5 w-3.5" /> Back: Functions & Tools
-          </Button>
-          <Button size="sm" onClick={() => setActiveNavTab("test")} className="gap-1 text-xs">
-            Next: Live Test Console <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Section 7: Live Test Console (Interactive Simulator & Real Outbound Call) ── */}
-      <div
-        className={cn("space-y-4", activeNavTab !== "test" && activeNavTab !== "all" && "hidden")}
-      >
-        <div className="rounded-xl border border-emerald-500/40 bg-gradient-to-b from-emerald-500/10 via-card to-card p-4 space-y-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-xs">
-                <Activity className="h-5 w-5" />
+            {/* First Message Greeting */}
+            <div className="rounded-xl border border-border/90 bg-card/80 p-4 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Mic className="h-4 w-4 text-emerald-500" />
+                  Agent Greeting (First Spoken Message)
+                  <InfoTooltip
+                    title="Opening Greeting"
+                    content="The very first sentence the AI says as soon as the candidate answers the phone."
+                    tip="Keep it under 15-20 words, introducing yourself and confirming you've reached the candidate."
+                  />
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={previewGreetingAudio}
+                    className="h-7 text-[11px] gap-1 px-2 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
+                    title="Preview greeting spoken aloud"
+                  >
+                    <Volume2 className="h-3 w-3" />
+                    Audition Greeting
+                  </Button>
+                  {VARIABLE_PILLS.map((p) => (
+                    <button
+                      key={p.token}
+                      type="button"
+                      onClick={() => insertVariable("first_message", p.token)}
+                      className="rounded-md bg-muted/80 px-2 py-0.5 text-[10px] font-mono text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer border border-border/60"
+                      title={`Insert ${p.token}`}
+                    >
+                      +{p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <h5 className="text-sm font-semibold text-foreground">
-                  DialNexa Interactive Agent Testing Console
-                </h5>
-                <p className="text-xs text-muted-foreground">
-                  Simulate in-browser or dispatch a live telephone call to your mobile with your
-                  custom prompt.
+              <Textarea
+                rows={3}
+                value={value.first_message || ""}
+                onChange={(e) => onChange({ ...value, first_message: e.target.value })}
+                placeholder="Hi {{candidate_name}}, this is the recruiting team at ScalePods..."
+                className="text-xs bg-background leading-relaxed shadow-inner"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Spoken immediately when candidate picks up the phone. Keep it natural, warm, and
+                concise (under 20 seconds).
+              </p>
+            </div>
+
+            {/* Duration & Voicemail Handling */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2">
+                <div className="flex justify-between text-xs items-center">
+                  <span className="font-semibold text-foreground flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    Maximum Call Duration
+                    <InfoTooltip
+                      title="Maximum Call Duration"
+                      content="Hard timeout cap for the interview. If the call reaches this duration, the AI politely concludes and disconnects."
+                      tip="5-10 minutes (300-600 sec) is standard for phone screening."
+                    />
+                  </span>
+                  <span className="font-mono text-amber-500 font-bold">
+                    {Math.round((value.max_duration_seconds || 300) / 60)} minutes
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="60"
+                  max="1800"
+                  step="60"
+                  value={value.max_duration_seconds || 300}
+                  onChange={(e) =>
+                    onChange({ ...value, max_duration_seconds: parseInt(e.target.value, 10) })
+                  }
+                  className="w-full accent-amber-500 cursor-pointer"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Maximum call cap before safe wrap-up and hangup.
                 </p>
+              </div>
+
+              <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground flex items-center">
+                    Voicemail Detection & Handling
+                    <InfoTooltip
+                      title="Voicemail & AMD"
+                      content="Answering Machine Detection (AMD) identifies automated carrier greetings, voicemail boxes, or IVRs so the AI doesn't waste screening time."
+                      tip="Enable 'Hang up immediately' if you do not want to leave voicemail messages."
+                    />
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={value.voicemail_detection ?? true}
+                    onChange={(e) => onChange({ ...value, voicemail_detection: e.target.checked })}
+                    className="h-4 w-4 accent-primary rounded cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="hangup_voicemail"
+                    checked={value.hangup_on_voicemail ?? false}
+                    onChange={(e) => onChange({ ...value, hangup_on_voicemail: e.target.checked })}
+                    className="h-3.5 w-3.5 accent-primary rounded cursor-pointer"
+                  />
+                  <label
+                    htmlFor="hangup_voicemail"
+                    className="text-[11px] text-muted-foreground cursor-pointer"
+                  >
+                    Hang up immediately if answering machine is detected
+                  </label>
+                </div>
               </div>
             </div>
 
-            {/* Mode Switcher */}
-            <div className="inline-flex rounded-lg border border-border/80 bg-background/60 p-0.5">
-              <button
-                type="button"
-                onClick={() => setTestMode("simulator")}
-                className={cn(
-                  "rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
-                  testMode === "simulator"
-                    ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+            {/* DialNexa Post-Call Structured Extraction Fields */}
+            <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-emerald-500" />
+                  DialNexa Post-Call Analysis Extraction Schema ({postCallList.length} Fields)
+                </span>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  Auto-Extracted Post Call
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {postCallList.map((f) => (
+                  <span
+                    key={f.field_name}
+                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] font-mono text-muted-foreground border border-border/50"
+                  >
+                    <span className="font-semibold text-foreground">{f.field_name}</span>
+                    <span className="text-[10px] text-primary">({f.field_type})</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-between pt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveNavTab("prompt")}
+                className="gap-1 text-xs"
               >
-                Web Simulator
-              </button>
-              <button
-                type="button"
-                onClick={() => setTestMode("phone")}
-                className={cn(
-                  "rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
-                  testMode === "phone"
-                    ? "bg-emerald-600 text-white font-semibold shadow-xs"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+                <ChevronLeft className="h-3.5 w-3.5" /> Back: System Prompt
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setActiveNavTab("eagerness")}
+                className="gap-1 text-xs"
               >
-                Live Phone Call Test
-              </button>
+                Next: Eagerness & Latency <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
             </div>
           </div>
 
-          {/* Mode 1: Web Simulator */}
-          {testMode === "simulator" && (
+          {/* ── Section 4: Turn-Taking & Response Eagerness ── */}
+          <div
+            className={cn(
+              "space-y-4",
+              activeNavTab !== "eagerness" && activeNavTab !== "all" && "hidden",
+            )}
+          >
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                    <Flame className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-semibold text-foreground">
+                      DialNexa Turn-Taking & Response Eagerness
+                    </h5>
+                    <p className="text-xs text-muted-foreground">
+                      Controls how eagerly the AI replies to candidate speech. Shaves conversational
+                      latency and prevents awkward pauses.
+                    </p>
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 font-mono text-xs"
+                >
+                  {currentEagerness >= 0.85
+                    ? "Ultra-Eager (Fast)"
+                    : currentEagerness >= 0.65
+                      ? "Conversational (Balanced)"
+                      : "Patient (Deliberate)"}
+                </Badge>
+              </div>
+
+              {/* Quick Presets */}
+              <div className="flex flex-wrap gap-2">
+                {[
+                  {
+                    label: "Patient (0.10)",
+                    val: 0.1,
+                    desc: "Default patient turn-taking, allows thinking pauses",
+                  },
+                  { label: "Conversational (0.50)", val: 0.5, desc: "Balanced natural flow" },
+                  { label: "Fast (0.75)", val: 0.75, desc: "Great for rapid-fire screening" },
+                  {
+                    label: "Ultra-Eager (0.95)",
+                    val: 0.95,
+                    desc: "Near-zero pause, interrupts naturally",
+                  },
+                ].map((p) => (
+                  <button
+                    key={p.val}
+                    type="button"
+                    onClick={() =>
+                      onChange({
+                        ...value,
+                        response_eagerness: p.val,
+                        responsiveness: Math.min(1.0, p.val + 0.1),
+                      })
+                    }
+                    className={cn(
+                      "rounded-lg px-3 py-1.5 text-xs font-medium border text-left transition-colors cursor-pointer",
+                      Math.abs(currentEagerness - p.val) < 0.05
+                        ? "bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/50 font-semibold"
+                        : "bg-background border-border/70 hover:bg-muted text-muted-foreground",
+                    )}
+                  >
+                    <div>{p.label}</div>
+                    <div className="text-[10px] text-muted-foreground">{p.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-4 pt-2">
+                <div>
+                  <div className="flex justify-between text-xs mb-1 items-center">
+                    <span className="font-semibold text-foreground flex items-center">
+                      Response Eagerness (Turn-Taking)
+                      <InfoTooltip
+                        title="Response Eagerness"
+                        content="Controls how quickly the AI begins responding once it detects the candidate stopped speaking. Higher values feel rapid and energetic; lower values let thoughtful candidates pause without interruption."
+                        tip="0.10 (10%) is the default patient setting so candidates can pause and think without being cut off."
+                      />
+                    </span>
+                    <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
+                      {(currentEagerness * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1.0"
+                    step="0.05"
+                    value={currentEagerness}
+                    onChange={(e) =>
+                      onChange({ ...value, response_eagerness: parseFloat(e.target.value) })
+                    }
+                    className="w-full accent-amber-500 cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>0.1 (Wait for complete silence)</span>
+                    <span>0.7 (Default)</span>
+                    <span>1.0 (Jump in immediately)</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs mb-1 items-center">
+                    <span className="font-semibold text-foreground flex items-center">
+                      Responsiveness & Latency
+                      <InfoTooltip
+                        title="Responsiveness & Latency"
+                        content="Balances processing speed versus reasoning depth. Higher responsiveness lowers latency for lightning-fast voice replies."
+                        tip="0.80 provides natural phone conversation cadence."
+                      />
+                    </span>
+                    <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
+                      {(currentResponsiveness * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1.0"
+                    step="0.05"
+                    value={currentResponsiveness}
+                    onChange={(e) =>
+                      onChange({ ...value, responsiveness: parseFloat(e.target.value) })
+                    }
+                    className="w-full accent-amber-500 cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs mb-1 items-center">
+                    <span className="font-semibold text-foreground flex items-center">
+                      Interruption Sensitivity (Candidate cut-off)
+                      <InfoTooltip
+                        title="Interruption Sensitivity"
+                        content="Controls how easily the candidate can cut off the AI when speaking over it. At higher values, the AI stops speaking the millisecond candidate audio is detected."
+                        tip="0.50 (50%) prevents accidental stops from brief coughs while allowing natural human dialogue."
+                      />
+                    </span>
+                    <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
+                      {(currentInterruption * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.0"
+                    max="1.0"
+                    step="0.05"
+                    value={currentInterruption}
+                    onChange={(e) =>
+                      onChange({ ...value, interruption_sensitivity: parseFloat(e.target.value) })
+                    }
+                    className="w-full accent-amber-500 cursor-pointer"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Higher sensitivity allows candidate to speak over the AI and stop its voice
+                    instantly.
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-amber-500/20 flex flex-wrap gap-4 text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={value.backchanneling ?? true}
+                      onChange={(e) => onChange({ ...value, backchanneling: e.target.checked })}
+                      className="h-4 w-4 accent-amber-500 rounded"
+                    />
+                    <span className="font-medium text-foreground">
+                      Backchanneling (&ldquo;mm-hmm&rdquo;, &ldquo;got it&rdquo;)
+                    </span>
+                  </label>
+
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px]">
+                      Nudge: {value.reminder_message_interval ?? 10}s
+                    </span>
+                    <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px]">
+                      Hangup: {value.end_call_on_silence_sec ?? 20}s
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between pt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveNavTab("greeting")}
+                className="gap-1 text-xs"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Back: Opening Greeting
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setActiveNavTab("functions")}
+                className="gap-1 text-xs"
+              >
+                Next: Functions & Tools <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+
+          {/* ── Section 5: Functions & Tool Calling ── */}
+          <div
+            className={cn(
+              "space-y-4",
+              activeNavTab !== "functions" && activeNavTab !== "all" && "hidden",
+            )}
+          >
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Candidate Name"
-                    value={testCandidateName}
-                    onChange={(e) => setTestCandidateName(e.target.value)}
-                    className="h-8 w-44 text-xs bg-background"
-                  />
-                  <Badge variant="outline" className="text-[11px] font-mono">
-                    Voice: {selectedVoiceMeta?.label || value.voice}
-                  </Badge>
-                </div>
-
-                {!simActive ? (
-                  <Button
-                    size="sm"
-                    onClick={startSimulator}
-                    className="gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer"
-                  >
-                    <Play className="h-3.5 w-3.5 fill-current" />
-                    Start Test Conversation
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={endSimulator}
-                    className="gap-1.5 text-xs font-semibold cursor-pointer"
-                  >
-                    <Square className="h-3.5 w-3.5 fill-current" />
-                    End Call Simulation
-                  </Button>
-                )}
-              </div>
-
-              {/* Chat Simulation Feed */}
-              <div className="h-64 overflow-y-auto rounded-xl border border-border/80 bg-background/80 p-3 space-y-2.5">
-                {simMessages.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center text-center p-6 text-muted-foreground">
-                    <Bot className="h-8 w-8 mb-2 text-muted-foreground/50" />
-                    <p className="text-xs font-medium">Testing session idle</p>
-                    <p className="text-[11px] mt-1 max-w-sm">
-                      Click &ldquo;Start Test Conversation&rdquo; to simulate how DialNexa conducts
-                      the preliminary voice interview with &ldquo;{testCandidateName}&rdquo;.
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/20 text-purple-600 dark:text-purple-400">
+                    <Zap className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-semibold text-foreground flex items-center">
+                      DialNexa Agent Functions & Live Tools
+                      <InfoTooltip
+                        title="Live Agent Functions"
+                        content="Tools the voice agent can autonomously execute during the call, such as transferring to a human recruiter, checking calendar slots, or concluding the call."
+                      />
+                    </h5>
+                    <p className="text-xs text-muted-foreground">
+                      Empower the AI to trigger real actions during candidate calls: warm recruiter
+                      transfers, calendar scheduling, and wrap-ups.
                     </p>
                   </div>
-                ) : (
-                  simMessages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={cn(
-                        "flex flex-col text-xs space-y-0.5",
-                        m.sender === "candidate"
-                          ? "items-end"
-                          : m.sender === "agent"
-                            ? "items-start"
-                            : "items-center",
-                      )}
-                    >
-                      {m.sender === "system" ? (
-                        <div className="rounded-full bg-muted/80 px-2.5 py-0.5 text-[10px] font-mono text-muted-foreground border border-border/50">
-                          {m.text}
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-1 text-[10px] text-muted-foreground px-1">
-                            <span className="font-semibold">
-                              {m.sender === "candidate"
-                                ? testCandidateName
-                                : "ScalePods Voice Agent"}
-                            </span>
-                            <span>· {m.time}</span>
-                            {m.fnTrigger && (
-                              <span className="rounded bg-purple-500/20 text-purple-600 dark:text-purple-400 px-1 py-0 font-mono text-[9px] border border-purple-500/30">
-                                tool:{m.fnTrigger}
-                              </span>
-                            )}
-                          </div>
-                          <div
-                            className={cn(
-                              "rounded-2xl px-3 py-2 max-w-[82%] leading-relaxed",
-                              m.sender === "candidate"
-                                ? "bg-primary text-primary-foreground rounded-br-xs shadow-xs"
-                                : "bg-card border border-border/80 text-foreground rounded-bl-xs shadow-xs",
-                            )}
-                          >
-                            {m.text}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))
-                )}
-                {isAgentThinking && (
-                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs italic py-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.15s]" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.3s]" />
-                    <span className="text-[11px]">
-                      DialNexa agent synthesizing reply (pacing:{" "}
-                      {Math.round((1 - currentEagerness) * 1100 + 300)}ms)…
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Simulation Candidate Input */}
-              {simActive && (
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Type candidate answer (e.g. 'I have 5 years with React and TypeScript', or 'Can you transfer me to a recruiter?')..."
-                    value={candidateInput}
-                    onChange={(e) => setCandidateInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") sendCandidateMessage();
-                    }}
-                    className="h-10 text-xs bg-background"
-                  />
-                  <Button size="sm" onClick={sendCandidateMessage} className="gap-1 text-xs">
-                    <Send className="h-3.5 w-3.5" /> Send
-                  </Button>
                 </div>
-              )}
-
-              {/* Post-Call Analysis Output Preview */}
-              {simScorecard && (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
-                      <CheckCircle2 className="h-4 w-4" />
-                      Simulated DialNexa Post-Call Analysis Scorecard
-                    </span>
-                    <Badge
-                      variant="outline"
-                      className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px]"
-                    >
-                      Extracted
-                    </Badge>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2 text-xs">
-                    <div className="p-2 rounded bg-card/60 border border-border/60">
-                      <span className="text-[10px] text-muted-foreground uppercase">
-                        Recommendation
-                      </span>
-                      <p className="font-semibold text-emerald-600 dark:text-emerald-400 capitalize">
-                        {String(simScorecard.overall_recommendation).replace(/_/g, " ")}
-                      </p>
-                    </div>
-                    <div className="p-2 rounded bg-card/60 border border-border/60">
-                      <span className="text-[10px] text-muted-foreground uppercase">
-                        Technical Qualification Score
-                      </span>
-                      <p className="font-semibold text-foreground">
-                        {simScorecard.technical_qualification_score} / 10
-                      </p>
-                    </div>
-                    <div className="p-2 rounded bg-card/60 border border-border/60">
-                      <span className="text-[10px] text-muted-foreground uppercase">
-                        Notice Period
-                      </span>
-                      <p className="font-semibold text-foreground">
-                        {simScorecard.notice_period_days} Days
-                      </p>
-                    </div>
-                    <div className="p-2 rounded bg-card/60 border border-border/60">
-                      <span className="text-[10px] text-muted-foreground uppercase">
-                        Candidate Interest
-                      </span>
-                      <p className="font-semibold text-foreground">
-                        {simScorecard.candidate_interest_level}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Mode 2: Live Phone Call Test */}
-          {testMode === "phone" && (
-            <div className="space-y-3 rounded-xl border border-border/80 bg-card/80 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                <PhoneCall className="h-4 w-4 text-emerald-500" />
-                Trigger Live Telephony Call to Your Phone
+                <Badge
+                  variant="outline"
+                  className="bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 font-mono text-xs"
+                >
+                  {functionsList.filter((f) => f.enabled).length} Active Tools
+                </Badge>
               </div>
-              <p className="text-xs text-muted-foreground">
-                DialNexa will initiate an actual outbound telephone call to your mobile number with
-                your current agent prompt, voice, eagerness, and tools.
-              </p>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <label htmlFor="test-phone-input" className="text-xs font-medium text-foreground">
-                    Your Mobile Number (with country code)
-                  </label>
-                  <Input
-                    id="test-phone-input"
-                    placeholder="+91 98765 43210"
-                    value={testPhoneNumber}
-                    onChange={(e) => setTestPhoneNumber(e.target.value)}
-                    className="h-10 text-xs font-mono bg-background"
-                  />
+                {/* End Call Function */}
+                <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <PhoneOff className="h-3.5 w-3.5 text-rose-500" />
+                      End Call (`end_call`)
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={functionsList.find((f) => f.type === "end_call")?.enabled ?? true}
+                      onChange={() => toggleFunction("end_call")}
+                      className="h-4 w-4 accent-primary rounded cursor-pointer"
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Hangs up politely once the candidate interview is finished or caller asks to
+                    leave.
+                  </p>
                 </div>
+
+                {/* Call Transfer Function */}
+                <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <PhoneForwarded className="h-3.5 w-3.5 text-cyan-500" />
+                      Warm Recruiter Transfer (`call_transfer`)
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={
+                        functionsList.find((f) => f.type === "call_transfer")?.enabled ?? false
+                      }
+                      onChange={() => toggleFunction("call_transfer")}
+                      className="h-4 w-4 accent-primary rounded cursor-pointer"
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Bridges the active telephone call to a live recruiter if the candidate is VIP.
+                  </p>
+                  {functionsList.find((f) => f.type === "call_transfer")?.enabled && (
+                    <Input
+                      placeholder="Transfer Phone (e.g. +91 98765 00000)"
+                      value={
+                        (
+                          functionsList.find((f) => f.type === "call_transfer")?.config as {
+                            transfer_phone_number?: string;
+                          }
+                        )?.transfer_phone_number || ""
+                      }
+                      onChange={(e) =>
+                        updateFunctionConfig("call_transfer", {
+                          transfer_phone_number: e.target.value,
+                        })
+                      }
+                      className="h-8 text-xs font-mono bg-background"
+                    />
+                  )}
+                </div>
+
+                {/* Calendar Scheduling Function */}
+                <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-purple-500" />
+                      Check Calendar (`check_calendar_availability`)
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={
+                        functionsList.find((f) => f.type === "check_calendar_availability")
+                          ?.enabled ?? true
+                      }
+                      onChange={() => toggleFunction("check_calendar_availability")}
+                      className="h-4 w-4 accent-primary rounded cursor-pointer"
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Inquires live open calendar slots to schedule round 2 directly on the phone
+                    call.
+                  </p>
+                </div>
+
+                {/* Book Calendar Slot Function */}
+                <div className="rounded-xl border border-border/80 bg-card/80 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-emerald-500" />
+                      Book Interview Slot (`book_calendar`)
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={
+                        functionsList.find((f) => f.type === "book_calendar")?.enabled ?? false
+                      }
+                      onChange={() => toggleFunction("book_calendar")}
+                      className="h-4 w-4 accent-primary rounded cursor-pointer"
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Locks in an agreed date/time slot directly into the hiring team&apos;s calendar
+                    before hanging up.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between pt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveNavTab("eagerness")}
+                className="gap-1 text-xs"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Back: Eagerness & Latency
+              </Button>
+              <Button size="sm" onClick={() => setActiveNavTab("stt")} className="gap-1 text-xs">
+                Next: STT & Boost <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+
+          {/* ── Section 6: Speech-to-Text & Transcriber ── */}
+          <div
+            className={cn(
+              "space-y-4",
+              activeNavTab !== "stt" && activeNavTab !== "all" && "hidden",
+            )}
+          >
+            <div className="rounded-xl border border-border/80 bg-card/80 p-4 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Cpu className="h-4 w-4 text-cyan-500" />
+                  DialNexa Real-Time Transcriber (STT) & Vocabulary Biasing
+                  <InfoTooltip
+                    title="STT Speech Engine"
+                    content="Converts candidate audio to text in real-time. Deepgram Nova-2 is tuned for phone-grade audio, background noise resistance, and diverse accents."
+                  />
+                </span>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  Deepgram Nova 2
+                </Badge>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label htmlFor="stt-selector" className="text-[11px] font-medium text-foreground">
+                    Primary Transcriber Engine
+                  </label>
+                  <Select
+                    value={currentTranscriber}
+                    onValueChange={(val) => onChange({ ...value, transcriber_id: val })}
+                  >
+                    <SelectTrigger id="stt-selector" className="h-9 bg-background text-xs">
+                      <span>
+                        {selectedTranscriberMeta?.label || currentTranscriber} ·{" "}
+                        {selectedTranscriberMeta?.badge}
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DIALNEXA_TRANSCRIBERS.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-xs font-medium">{t.label}</span>
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              {t.badge}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-1">
                   <label
-                    htmlFor="test-cand-name-input"
-                    className="text-xs font-medium text-foreground"
+                    htmlFor="dialnexa-boosted-terms"
+                    className="text-[11px] font-medium text-foreground flex items-center"
                   >
-                    Test Candidate Name
+                    Boosted Keywords (Specialized Tech & Terms)
+                    <InfoTooltip
+                      title="Vocabulary Biasing"
+                      content="Comma-separated jargon, tech stacks, or company acronyms (e.g. Kubernetes, PyTorch, GraphQL). Biases speech recognition toward accurately identifying these words."
+                      tip="Add specific technical frameworks or role requirements relevant to this position."
+                    />
                   </label>
-                  <Input
-                    id="test-cand-name-input"
-                    placeholder="Alex Morgan"
-                    value={testCandidateName}
-                    onChange={(e) => setTestCandidateName(e.target.value)}
-                    className="h-10 text-xs bg-background"
+                  <Textarea
+                    id="dialnexa-boosted-terms"
+                    rows={3}
+                    value={value.boosted_keywords ?? DEFAULT_BOOSTED_KEYWORDS}
+                    onChange={(e) => onChange({ ...value, boosted_keywords: e.target.value })}
+                    className="text-xs bg-background font-mono leading-relaxed"
+                    placeholder="Comma-separated words: React, TypeScript, Kafka, Docker..."
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <div>
+                    <p className="text-xs font-medium text-foreground">Boost Dynamic Variables</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Inject candidate and role names into STT bias
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={value.boost_dynamic_variables ?? true}
+                    onChange={(e) =>
+                      onChange({ ...value, boost_dynamic_variables: e.target.checked })
+                    }
+                    className="h-4 w-4 accent-primary rounded cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-foreground">Predictive Preprocessing</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Speculative LLM inference (cuts 200ms latency)
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={value.predictive_preprocessing_enabled ?? true}
+                    onChange={(e) =>
+                      onChange({ ...value, predictive_preprocessing_enabled: e.target.checked })
+                    }
+                    className="h-4 w-4 accent-primary rounded cursor-pointer"
                   />
                 </div>
               </div>
+            </div>
 
-              {callError && (
-                <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 p-2.5 text-xs text-rose-600 dark:text-rose-400">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>
-                    {typeof callError === "string"
-                      ? callError
-                      : typeof (callError as { message?: string }).message === "string"
-                        ? (callError as { message: string }).message
-                        : JSON.stringify(callError)}
-                  </span>
-                </div>
-              )}
-
-              {phoneCallStatus && (
-                <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-700 dark:text-emerald-300">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                  <span>
-                    {phoneCallStatus}
-                    {phoneCallId && (
-                      <span className="ml-1.5 font-mono text-[11px] underline">
-                        (Tracking ID: {phoneCallId})
-                      </span>
-                    )}
-                  </span>
-                </div>
-              )}
-
+            <div className="flex justify-between pt-2">
               <Button
-                onClick={dispatchRealPhoneCall}
-                disabled={isDispatchingCall}
-                className="gap-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer"
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveNavTab("functions")}
+                className="gap-1 text-xs"
               >
-                {isDispatchingCall ? (
-                  <>
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    <span>Dialing Telephony Carrier…</span>
-                  </>
-                ) : (
-                  <>
-                    <PhoneCall className="h-3.5 w-3.5" />
-                    <span>Call My Phone Now</span>
-                  </>
-                )}
+                <ChevronLeft className="h-3.5 w-3.5" /> Back: Functions & Tools
               </Button>
+              <Button size="sm" onClick={() => setActiveNavTab("test")} className="gap-1 text-xs">
+                Next: Live Test Console <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
 
-              {/* Live Test Call Telemetry, Recording & Transcript Viewer */}
-              {(phoneCallId || testCallResult) && (
-                <div className="space-y-3.5 pt-4 border-t border-border/70">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                        <Activity className="h-4 w-4 text-emerald-500" />
-                        Call Telemetry
-                      </span>
-                      {testCallResult?.status ? (
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-[10px] font-mono capitalize",
-                            testCallResult.status === "completed"
-                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-                              : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
-                          )}
-                        >
-                          {testCallResult.status.replace(/_/g, " ")}
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] font-mono"
-                        >
-                          Calling…
-                        </Badge>
-                      )}
-                      {testCallResult?.duration != null && testCallResult.duration > 0 && (
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
-                          <Clock className="h-3 w-3" /> {testCallResult.duration}s
-                        </span>
-                      )}
-                      {testCallResult?.sentiment && (
-                        <Badge variant="outline" className="text-[10px] capitalize">
-                          Sentiment: {testCallResult.sentiment.replace(/_/g, " ")}
-                        </Badge>
-                      )}
+          {/* ── Section 7: Live Test Console (Interactive Simulator & Real Outbound Call) ── */}
+          <div
+            className={cn(
+              "space-y-4",
+              activeNavTab !== "test" && activeNavTab !== "all" && "hidden",
+            )}
+          >
+            <div className="rounded-xl border border-emerald-500/40 bg-gradient-to-b from-emerald-500/10 via-card to-card p-4 space-y-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-xs">
+                    <Activity className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-semibold text-foreground">
+                      DialNexa Interactive Agent Testing Console
+                    </h5>
+                    <p className="text-xs text-muted-foreground">
+                      Simulate in-browser or dispatch a live telephone call to your mobile with your
+                      custom prompt.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Mode Switcher */}
+                <div className="inline-flex rounded-lg border border-border/80 bg-background/60 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setTestMode("simulator")}
+                    className={cn(
+                      "rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                      testMode === "simulator"
+                        ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Web Simulator
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTestMode("phone")}
+                    className={cn(
+                      "rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                      testMode === "phone"
+                        ? "bg-emerald-600 text-white font-semibold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Live Phone Call Test
+                  </button>
+                </div>
+              </div>
+
+              {/* Mode 1: Web Simulator */}
+              {testMode === "simulator" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="Candidate Name"
+                        value={testCandidateName}
+                        onChange={(e) => setTestCandidateName(e.target.value)}
+                        className="h-8 w-44 text-xs bg-background"
+                      />
+                      <Badge variant="outline" className="text-[11px] font-mono">
+                        Voice: {selectedVoiceMeta?.label || value.voice}
+                      </Badge>
                     </div>
 
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => fetchCallStatus(phoneCallId, testPhoneNumber)}
-                      disabled={isPollingCall}
-                      className="h-7 text-xs gap-1.5 cursor-pointer"
-                    >
-                      <RefreshCw className={cn("h-3 w-3", isPollingCall && "animate-spin")} />
-                      <span>
-                        {isPollingCall ? "Fetching Audio..." : "Refresh Recording & Transcript"}
-                      </span>
-                    </Button>
+                    {!simActive ? (
+                      <Button
+                        size="sm"
+                        onClick={startSimulator}
+                        className="gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer"
+                      >
+                        <Play className="h-3.5 w-3.5 fill-current" />
+                        Start Test Conversation
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={endSimulator}
+                        className="gap-1.5 text-xs font-semibold cursor-pointer"
+                      >
+                        <Square className="h-3.5 w-3.5 fill-current" />
+                        End Call Simulation
+                      </Button>
+                    )}
                   </div>
 
-                  {/* Audio Recording Player */}
-                  {testCallResult?.recording_url ? (
-                    <div className="space-y-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-3.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                          <Headphones className="h-4 w-4 text-cyan-500" />
-                          Call Audio Recording
-                        </span>
-                        <a
-                          href={testCallResult.recording_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          download
-                          className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
-                        >
-                          Download MP3 <ExternalLink className="h-3 w-3" />
-                        </a>
+                  {/* Chat Simulation Feed */}
+                  <div className="h-64 overflow-y-auto rounded-xl border border-border/80 bg-background/80 p-3 space-y-2.5">
+                    {simMessages.length === 0 ? (
+                      <div className="flex h-full flex-col items-center justify-center text-center p-6 text-muted-foreground">
+                        <Bot className="h-8 w-8 mb-2 text-muted-foreground/50" />
+                        <p className="text-xs font-medium">Testing session idle</p>
+                        <p className="text-[11px] mt-1 max-w-sm">
+                          Click &ldquo;Start Test Conversation&rdquo; to simulate how DialNexa
+                          conducts the preliminary voice interview with &ldquo;{testCandidateName}
+                          &rdquo;.
+                        </p>
                       </div>
-                      <audio
-                        controls
-                        src={testCallResult.recording_url}
-                        className="w-full h-8 rounded-md bg-muted/60"
-                      >
-                        <track kind="captions" />
-                      </audio>
+                    ) : (
+                      simMessages.map((m) => (
+                        <div
+                          key={m.id}
+                          className={cn(
+                            "flex flex-col text-xs space-y-0.5",
+                            m.sender === "candidate"
+                              ? "items-end"
+                              : m.sender === "agent"
+                                ? "items-start"
+                                : "items-center",
+                          )}
+                        >
+                          {m.sender === "system" ? (
+                            <div className="rounded-full bg-muted/80 px-2.5 py-0.5 text-[10px] font-mono text-muted-foreground border border-border/50">
+                              {m.text}
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground px-1">
+                                <span className="font-semibold">
+                                  {m.sender === "candidate"
+                                    ? testCandidateName
+                                    : "ScalePods Voice Agent"}
+                                </span>
+                                <span>· {m.time}</span>
+                                {m.fnTrigger && (
+                                  <span className="rounded bg-purple-500/20 text-purple-600 dark:text-purple-400 px-1 py-0 font-mono text-[9px] border border-purple-500/30">
+                                    tool:{m.fnTrigger}
+                                  </span>
+                                )}
+                              </div>
+                              <div
+                                className={cn(
+                                  "rounded-2xl px-3 py-2 max-w-[82%] leading-relaxed",
+                                  m.sender === "candidate"
+                                    ? "bg-primary text-primary-foreground rounded-br-xs shadow-xs"
+                                    : "bg-card border border-border/80 text-foreground rounded-bl-xs shadow-xs",
+                                )}
+                              >
+                                {m.text}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))
+                    )}
+                    {isAgentThinking && (
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-xs italic py-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.15s]" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.3s]" />
+                        <span className="text-[11px]">
+                          DialNexa agent synthesizing reply (pacing:{" "}
+                          {Math.round((1 - currentEagerness) * 1100 + 300)}ms)…
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Simulation Candidate Input */}
+                  {simActive && (
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Type candidate answer (e.g. 'I have 5 years with React and TypeScript', or 'Can you transfer me to a recruiter?')..."
+                        value={candidateInput}
+                        onChange={(e) => setCandidateInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") sendCandidateMessage();
+                        }}
+                        className="h-10 text-xs bg-background"
+                      />
+                      <Button size="sm" onClick={sendCandidateMessage} className="gap-1 text-xs">
+                        <Send className="h-3.5 w-3.5" /> Send
+                      </Button>
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-2 rounded-lg bg-muted/30 border border-border/50 p-2.5 text-xs text-muted-foreground">
-                      <Clock className="h-3.5 w-3.5 shrink-0" />
+                  )}
+
+                  {/* Post-Call Analysis Output Preview */}
+                  {simScorecard && (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                          <CheckCircle2 className="h-4 w-4" />
+                          Simulated DialNexa Post-Call Analysis Scorecard
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px]"
+                        >
+                          Extracted
+                        </Badge>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2 text-xs">
+                        <div className="p-2 rounded bg-card/60 border border-border/60">
+                          <span className="text-[10px] text-muted-foreground uppercase">
+                            Recommendation
+                          </span>
+                          <p className="font-semibold text-emerald-600 dark:text-emerald-400 capitalize">
+                            {String(simScorecard.overall_recommendation).replace(/_/g, " ")}
+                          </p>
+                        </div>
+                        <div className="p-2 rounded bg-card/60 border border-border/60">
+                          <span className="text-[10px] text-muted-foreground uppercase">
+                            Technical Qualification Score
+                          </span>
+                          <p className="font-semibold text-foreground">
+                            {simScorecard.technical_qualification_score} / 10
+                          </p>
+                        </div>
+                        <div className="p-2 rounded bg-card/60 border border-border/60">
+                          <span className="text-[10px] text-muted-foreground uppercase">
+                            Notice Period
+                          </span>
+                          <p className="font-semibold text-foreground">
+                            {simScorecard.notice_period_days} Days
+                          </p>
+                        </div>
+                        <div className="p-2 rounded bg-card/60 border border-border/60">
+                          <span className="text-[10px] text-muted-foreground uppercase">
+                            Candidate Interest
+                          </span>
+                          <p className="font-semibold text-foreground">
+                            {simScorecard.candidate_interest_level}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Mode 2: Live Phone Call Test */}
+              {testMode === "phone" && (
+                <div className="space-y-3 rounded-xl border border-border/80 bg-card/80 p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                    <PhoneCall className="h-4 w-4 text-emerald-500" />
+                    Trigger Live Telephony Call to Your Phone
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    DialNexa will initiate an actual outbound telephone call to your mobile number
+                    with your current agent prompt, voice, eagerness, and tools.
+                  </p>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label
+                        htmlFor="test-phone-input"
+                        className="text-xs font-medium text-foreground"
+                      >
+                        Your Mobile Number (with country code)
+                      </label>
+                      <Input
+                        id="test-phone-input"
+                        placeholder="+91 98765 43210"
+                        value={testPhoneNumber}
+                        onChange={(e) => setTestPhoneNumber(e.target.value)}
+                        className="h-10 text-xs font-mono bg-background"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label
+                        htmlFor="test-cand-name-input"
+                        className="text-xs font-medium text-foreground"
+                      >
+                        Test Candidate Name
+                      </label>
+                      <Input
+                        id="test-cand-name-input"
+                        placeholder="Alex Morgan"
+                        value={testCandidateName}
+                        onChange={(e) => setTestCandidateName(e.target.value)}
+                        className="h-10 text-xs bg-background"
+                      />
+                    </div>
+                  </div>
+
+                  {callError && (
+                    <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 p-2.5 text-xs text-rose-600 dark:text-rose-400">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
                       <span>
-                        {testCallResult?.duration && testCallResult.duration > 0
-                          ? "Call finished! Processing and uploading audio recording to cloud storage…"
-                          : "Call in progress. Once you hang up, the recording player and AI transcript will appear here automatically."}
+                        {typeof callError === "string"
+                          ? callError
+                          : typeof (callError as { message?: string }).message === "string"
+                            ? (callError as { message: string }).message
+                            : JSON.stringify(callError)}
                       </span>
                     </div>
                   )}
 
-                  {/* Turn-by-Turn Dialogue Transcript */}
-                  {testCallResult?.turns && testCallResult.turns.length > 0 ? (
-                    <div className="space-y-2 rounded-xl border border-border/80 bg-muted/20 p-3.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                          <MessageSquareText className="h-4 w-4 text-primary" />
-                          Turn-by-Turn Dialogue Transcript ({testCallResult.turns.length} turns)
-                        </span>
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] bg-primary/10 text-primary border-primary/20"
-                        >
-                          AI Diarized
-                        </Badge>
-                      </div>
-                      <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                        {testCallResult.turns.map((turn) => (
-                          <div
-                            key={`test-turn-${turn.speaker}-${turn.start}-${turn.end}`}
-                            className={cn(
-                              "flex flex-col text-xs space-y-1",
-                              turn.speaker === "candidate" ? "items-end" : "items-start",
-                            )}
-                          >
-                            <span className="text-[10px] text-muted-foreground px-1 font-medium">
-                              {turn.speaker === "candidate"
-                                ? testCandidateName || "Candidate"
-                                : "AI Talent Partner"}{" "}
-                              · {turn.start.toFixed(1)}s
-                            </span>
-                            <div
+                  {phoneCallStatus && (
+                    <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                      <span>
+                        {phoneCallStatus}
+                        {phoneCallId && (
+                          <span className="ml-1.5 font-mono text-[11px] underline">
+                            (Tracking ID: {phoneCallId})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={dispatchRealPhoneCall}
+                    disabled={isDispatchingCall}
+                    className="gap-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer"
+                  >
+                    {isDispatchingCall ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Dialing Telephony Carrier…</span>
+                      </>
+                    ) : (
+                      <>
+                        <PhoneCall className="h-3.5 w-3.5" />
+                        <span>Call My Phone Now</span>
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Live Test Call Telemetry, Recording & Transcript Viewer */}
+                  {(phoneCallId || testCallResult) && (
+                    <div className="space-y-3.5 pt-4 border-t border-border/70">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                            <Activity className="h-4 w-4 text-emerald-500" />
+                            Call Telemetry
+                          </span>
+                          {testCallResult?.status ? (
+                            <Badge
+                              variant="outline"
                               className={cn(
-                                "rounded-xl px-3.5 py-2 max-w-[85%] text-xs leading-relaxed shadow-2xs",
-                                turn.speaker === "candidate"
-                                  ? "bg-primary text-primary-foreground rounded-br-xs"
-                                  : "bg-card border border-border/80 text-foreground rounded-bl-xs",
+                                "text-[10px] font-mono capitalize",
+                                testCallResult.status === "completed"
+                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
                               )}
                             >
-                              {turn.text}
-                            </div>
+                              {testCallResult.status.replace(/_/g, " ")}
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] font-mono"
+                            >
+                              Calling…
+                            </Badge>
+                          )}
+                          {testCallResult?.duration != null && testCallResult.duration > 0 && (
+                            <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                              <Clock className="h-3 w-3" /> {testCallResult.duration}s
+                            </span>
+                          )}
+                          {testCallResult?.sentiment && (
+                            <Badge variant="outline" className="text-[10px] capitalize">
+                              Sentiment: {testCallResult.sentiment.replace(/_/g, " ")}
+                            </Badge>
+                          )}
+                        </div>
+
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => fetchCallStatus(phoneCallId, testPhoneNumber)}
+                          disabled={isPollingCall}
+                          className="h-7 text-xs gap-1.5 cursor-pointer"
+                        >
+                          <RefreshCw className={cn("h-3 w-3", isPollingCall && "animate-spin")} />
+                          <span>
+                            {isPollingCall ? "Fetching Audio..." : "Refresh Recording & Transcript"}
+                          </span>
+                        </Button>
+                      </div>
+
+                      {/* Audio Recording Player */}
+                      {testCallResult?.recording_url ? (
+                        <div className="space-y-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-3.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                              <Headphones className="h-4 w-4 text-cyan-500" />
+                              Call Audio Recording
+                            </span>
+                            <a
+                              href={testCallResult.recording_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              download
+                              className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
+                            >
+                              Download MP3 <ExternalLink className="h-3 w-3" />
+                            </a>
                           </div>
-                        ))}
-                      </div>
+                          <audio
+                            controls
+                            src={testCallResult.recording_url}
+                            className="w-full h-8 rounded-md bg-muted/60"
+                          >
+                            <track kind="captions" />
+                          </audio>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 rounded-lg bg-muted/30 border border-border/50 p-2.5 text-xs text-muted-foreground">
+                          <Clock className="h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            {testCallResult?.duration && testCallResult.duration > 0
+                              ? "Call finished! Processing and uploading audio recording to cloud storage…"
+                              : "Call in progress. Once you hang up, the recording player and AI transcript will appear here automatically."}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Turn-by-Turn Dialogue Transcript */}
+                      {testCallResult?.turns && testCallResult.turns.length > 0 ? (
+                        <div className="space-y-2 rounded-xl border border-border/80 bg-muted/20 p-3.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                              <MessageSquareText className="h-4 w-4 text-primary" />
+                              Turn-by-Turn Dialogue Transcript ({testCallResult.turns.length} turns)
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-primary/10 text-primary border-primary/20"
+                            >
+                              AI Diarized
+                            </Badge>
+                          </div>
+                          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                            {testCallResult.turns.map((turn) => (
+                              <div
+                                key={`test-turn-${turn.speaker}-${turn.start}-${turn.end}`}
+                                className={cn(
+                                  "flex flex-col text-xs space-y-1",
+                                  turn.speaker === "candidate" ? "items-end" : "items-start",
+                                )}
+                              >
+                                <span className="text-[10px] text-muted-foreground px-1 font-medium">
+                                  {turn.speaker === "candidate"
+                                    ? testCandidateName || "Candidate"
+                                    : "AI Talent Partner"}{" "}
+                                  · {turn.start.toFixed(1)}s
+                                </span>
+                                <div
+                                  className={cn(
+                                    "rounded-xl px-3.5 py-2 max-w-[85%] text-xs leading-relaxed shadow-2xs",
+                                    turn.speaker === "candidate"
+                                      ? "bg-primary text-primary-foreground rounded-br-xs"
+                                      : "bg-card border border-border/80 text-foreground rounded-bl-xs",
+                                  )}
+                                >
+                                  {turn.text}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : testCallResult?.transcript ? (
+                        <div className="space-y-2 rounded-xl border border-border/80 bg-muted/20 p-3.5">
+                          <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                            <FileText className="h-4 w-4 text-primary" />
+                            Call Transcript
+                          </span>
+                          <div className="rounded-lg border border-border/60 bg-background/60 p-3 font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap max-h-60 overflow-y-auto">
+                            {testCallResult.transcript}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
-                  ) : testCallResult?.transcript ? (
-                    <div className="space-y-2 rounded-xl border border-border/80 bg-muted/20 p-3.5">
-                      <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                        <FileText className="h-4 w-4 text-primary" />
-                        Call Transcript
-                      </span>
-                      <div className="rounded-lg border border-border/60 bg-background/60 p-3 font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap max-h-60 overflow-y-auto">
-                        {testCallResult.transcript}
-                      </div>
-                    </div>
-                  ) : null}
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
 
-        <div className="flex justify-between items-center pt-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setActiveNavTab("stt")}
-            className="gap-1 text-xs"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" /> Back: STT & Boost
-          </Button>
-          <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-            <CheckCircle2 className="h-4 w-4" />
-            <span>Voice Agent Ready for Campaign</span>
+            <div className="flex justify-between items-center pt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveNavTab("stt")}
+                className="gap-1 text-xs"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Back: STT & Boost
+              </Button>
+              <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Voice Agent Ready for Campaign</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <CustomVoiceGuideModal
         open={isVoiceGuideOpen}

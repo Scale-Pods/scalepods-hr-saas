@@ -5,6 +5,7 @@ import {
   DIALNEXA_MODELS,
   DIALNEXA_VOICES,
   dialnexaVoiceConfigSchema,
+  VOICE_CALL_TYPES,
 } from "./index";
 
 describe("DialNexa voice configurations & schema", () => {
@@ -79,7 +80,7 @@ describe("DialNexa voice configurations & schema", () => {
   });
 
   it("validates transcribers and eagerness support", () => {
-    expect(DEFAULT_DIALNEXA_CONFIG.response_eagerness).toBe(0.7);
+    expect(DEFAULT_DIALNEXA_CONFIG.response_eagerness).toBe(0.1);
     expect(DEFAULT_DIALNEXA_CONFIG.transcriber_id).toBe("trs_deepgram_nova_2");
     expect(DEFAULT_DIALNEXA_CONFIG.agent_functions?.length).toBeGreaterThanOrEqual(3);
     expect(DEFAULT_DIALNEXA_CONFIG.post_call_analysis?.length).toBeGreaterThanOrEqual(5);
@@ -123,5 +124,32 @@ describe("DialNexa voice configurations & schema", () => {
     };
     const parsed = dialnexaVoiceConfigSchema.safeParse(validWithFunctions);
     expect(parsed.success).toBe(true);
+  });
+
+  it("exports the 3 fixed voice call types with predefined configurations", () => {
+    expect(VOICE_CALL_TYPES).toHaveLength(3);
+    const typeIds = VOICE_CALL_TYPES.map((t) => t.id);
+    expect(typeIds).toEqual(["technical", "general_screening", "cultural_fit"]);
+
+    for (const callType of VOICE_CALL_TYPES) {
+      expect(callType.name).toBeDefined();
+      expect(callType.emoji).toBeDefined();
+      expect(callType.model).toBeDefined();
+      expect(callType.max_duration_seconds).toBeGreaterThan(0);
+      expect(callType.response_eagerness).toBeGreaterThan(0);
+      expect(callType.transcriber_id).toBeDefined();
+      expect(callType.defaultTopics.length).toBeGreaterThanOrEqual(3);
+
+      const samplePrompt = callType.buildPrompt(callType.defaultTopics);
+      expect(samplePrompt).toContain("{{job_title}}");
+      expect(samplePrompt).toContain("{{candidate_name}}");
+      expect(samplePrompt).toContain("{{job_description}}");
+      expect(samplePrompt).toContain("{{candidate_resume}}");
+      expect(samplePrompt).toContain("ANTI-PROMPT INJECTION");
+      expect(samplePrompt).toContain("VOICE TELEPHONY RULES");
+
+      const sampleFirstMsg = callType.buildFirstMessage();
+      expect(sampleFirstMsg).toContain("{{candidate_name}}");
+    }
   });
 });
