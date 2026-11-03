@@ -1,12 +1,71 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_DIALNEXA_AGENT_ID,
+  DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER,
+  DEFAULT_DIALNEXA_PHONE_NUMBER_ID,
+  formatE164PhoneNumber,
   interpolateDialnexaVariables,
   resolveDialnexaVoiceId,
+  resolveOutboundFromNumber,
   syncDialnexaAgentConfig,
 } from "./dialnexa";
 
 describe("DialNexa Integration Lib", () => {
+  describe("formatE164PhoneNumber", () => {
+    it("returns empty string on empty/null/undefined input", () => {
+      expect(formatE164PhoneNumber(undefined)).toBe("");
+      expect(formatE164PhoneNumber(null)).toBe("");
+      expect(formatE164PhoneNumber("")).toBe("");
+      expect(formatE164PhoneNumber("   ")).toBe("");
+    });
+
+    it("formats 10-digit phone number with default Indian country code (+91)", () => {
+      expect(formatE164PhoneNumber("2264233051")).toBe("+912264233051");
+      expect(formatE164PhoneNumber("9876543210")).toBe("+919876543210");
+    });
+
+    it("cleans up formatting spaces, dashes, and parentheses", () => {
+      expect(formatE164PhoneNumber("+91 (22) 6423-3051")).toBe("+912264233051");
+      expect(formatE164PhoneNumber("98765-43210")).toBe("+919876543210");
+    });
+
+    it("preserves already formatted E.164 numbers", () => {
+      expect(formatE164PhoneNumber("+912264233051")).toBe("+912264233051");
+      expect(formatE164PhoneNumber("+14155552671")).toBe("+14155552671");
+      expect(formatE164PhoneNumber("+447911123456")).toBe("+447911123456");
+    });
+
+    it("handles 00 international prefix and country code without +", () => {
+      expect(formatE164PhoneNumber("00912264233051")).toBe("+912264233051");
+      expect(formatE164PhoneNumber("912264233051")).toBe("+912264233051");
+    });
+  });
+
+  describe("resolveOutboundFromNumber", () => {
+    it("returns custom from number formatted with country code", () => {
+      const res = resolveOutboundFromNumber("2264233051");
+      expect(res.fromNumber).toBe("+912264233051");
+    });
+
+    it("extracts and formats first outbound number from DialNexa agent profile", () => {
+      const res = resolveOutboundFromNumber(undefined, [
+        {
+          id: "phn_custom_001",
+          phone_number: "2264233051",
+          country_iso: "91",
+        },
+      ]);
+      expect(res.fromNumber).toBe("+912264233051");
+      expect(res.phoneNumberId).toBe("phn_custom_001");
+    });
+
+    it("falls back to default ScalePods DialNexa outbound number and phone ID", () => {
+      const res = resolveOutboundFromNumber(undefined, []);
+      expect(res.fromNumber).toBe(DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER);
+      expect(res.phoneNumberId).toBe(DEFAULT_DIALNEXA_PHONE_NUMBER_ID);
+    });
+  });
+
   describe("resolveDialnexaVoiceId", () => {
     it("returns undefined for empty input", () => {
       expect(resolveDialnexaVoiceId(undefined)).toBeUndefined();

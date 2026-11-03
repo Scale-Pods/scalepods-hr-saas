@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import {
   DEFAULT_DIALNEXA_AGENT_ID,
   DEFAULT_DIALNEXA_API_KEY,
+  DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER,
+  DEFAULT_DIALNEXA_PHONE_NUMBER_ID,
+  formatE164PhoneNumber,
+  resolveOutboundFromNumber,
   syncDialnexaAgentConfig,
 } from "@/lib/dialnexa";
 
@@ -17,10 +21,7 @@ export async function POST(req: Request) {
       );
     }
 
-    let phone = String(phone_number).replace(/[\s-]/g, "");
-    if (!phone.startsWith("+")) {
-      phone = phone.length === 10 ? `+91${phone}` : `+${phone}`;
-    }
+    const phone = formatE164PhoneNumber(phone_number, "91");
 
     const n8nBase = (process.env.NEXT_PUBLIC_N8N_BASE_URL || "https://n8n.srv1711190.hstgr.cloud")
       .replace(/\/+$/, "")
@@ -33,10 +34,13 @@ export async function POST(req: Request) {
       "agent_Lg812J59k27OXl";
     const authHeader = req.headers.get("authorization");
 
+    let outboundFromNumber = DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER;
+    let outboundPhoneNumberId = DEFAULT_DIALNEXA_PHONE_NUMBER_ID;
+
     // DialNexa loads prompt & welcome_message from the agent entity, not the call dispatch payload.
-    // Sync the customized prompt, greeting, and latency settings to DialNexa before placing the call.
+    // Sync the customized prompt, greeting, latency settings, and caller ID before placing the call.
     try {
-      await syncDialnexaAgentConfig({
+      const syncResult = await syncDialnexaAgentConfig({
         agent_id: targetAgentId,
         voice: voice_call_config?.voice,
         voice_speed: voice_call_config?.voice_speed,
@@ -61,12 +65,38 @@ export async function POST(req: Request) {
           body.candidate_resume ||
           body.resume_text ||
           "Seasoned software engineer with 6+ years building distributed applications, modern web interfaces, and backend systems.",
+        outbound_from_number:
+          voice_call_config?.outbound_from_number ||
+          voice_call_config?.from_phone_number ||
+          voice_call_config?.from_number ||
+          body.from_phone_number ||
+          body.from_number,
       });
+
+      if (syncResult.outbound_from_number) {
+        outboundFromNumber = syncResult.outbound_from_number;
+      }
+      if (syncResult.phone_number_id) {
+        outboundPhoneNumberId = syncResult.phone_number_id;
+      }
     } catch (syncErr) {
       console.warn(
         "[api/voice-screen/test-call] Failed to sync agent config to DialNexa:",
         syncErr,
       );
+    }
+
+    const resolvedCaller = resolveOutboundFromNumber(
+      voice_call_config?.outbound_from_number ||
+        voice_call_config?.from_phone_number ||
+        voice_call_config?.from_number ||
+        body.from_phone_number ||
+        body.from_number ||
+        outboundFromNumber,
+    );
+    outboundFromNumber = resolvedCaller.fromNumber;
+    if (resolvedCaller.phoneNumberId) {
+      outboundPhoneNumberId = resolvedCaller.phoneNumberId;
     }
 
     // Try dedicated n8n test webhook (/webhook/voice-screen-test), then legacy /webhook/voice-screen
@@ -92,6 +122,11 @@ export async function POST(req: Request) {
             candidate_name: candidate_name || "Recruiter Test",
             role_title: role_title || "ScalePods Voice Agent Test",
             company_name: "ScalePods",
+            from_phone_number: outboundFromNumber,
+            from_number: outboundFromNumber,
+            from: outboundFromNumber,
+            caller_id: outboundFromNumber,
+            phone_number_id: outboundPhoneNumberId,
             job_description:
               body.job_description ||
               body.jd_text ||
@@ -114,6 +149,11 @@ export async function POST(req: Request) {
             voice_call_config: {
               ...voice_call_config,
               agent_id: targetAgentId,
+              outbound_from_number: outboundFromNumber,
+              from_phone_number: outboundFromNumber,
+              from_number: outboundFromNumber,
+              caller_id: outboundFromNumber,
+              phone_number_id: outboundPhoneNumberId,
             },
           }),
         });
@@ -172,6 +212,9 @@ export async function POST(req: Request) {
         mode: "n8n_backend",
         call_id: callId,
         to_phone_number: phone,
+        from_phone_number: outboundFromNumber,
+        from_number: outboundFromNumber,
+        caller_id: outboundFromNumber,
         agent_id: targetAgentId,
         message: "Outbound test call dispatched successfully via n8n.",
         detail: n8nData,
@@ -193,11 +236,19 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         phone_number: phone,
         agent_id: targetAgentId,
+        from_number: outboundFromNumber,
+        from_phone_number: outboundFromNumber,
+        from: outboundFromNumber,
+        caller_id: outboundFromNumber,
+        phone_number_id: outboundPhoneNumberId,
         metadata: {
           candidate_phone: phone,
           candidate_name: candidate_name || "Recruiter Test",
           company_name: "ScalePods",
           role_title: role_title || "ScalePods Voice Agent Test",
+          from_phone_number: outboundFromNumber,
+          from_number: outboundFromNumber,
+          caller_id: outboundFromNumber,
           is_test_call: true,
           source: "scalepods_test_call_fallback",
         },
@@ -205,6 +256,9 @@ export async function POST(req: Request) {
           candidate_phone: phone,
           candidate_name: candidate_name || "Recruiter Test",
           role_title: role_title || "ScalePods Voice Agent Test",
+          from_phone_number: outboundFromNumber,
+          from_number: outboundFromNumber,
+          caller_id: outboundFromNumber,
           is_test_call: true,
           source: "scalepods_test_call_fallback",
         },
@@ -253,6 +307,9 @@ export async function POST(req: Request) {
       mode: "dialnexa_direct",
       call_id: callId,
       to_phone_number: phone,
+      from_phone_number: outboundFromNumber,
+      from_number: outboundFromNumber,
+      caller_id: outboundFromNumber,
       agent_id: targetAgentId,
       message: "Outbound test call dispatched successfully via DialNexa.",
       detail: dialnexaData,

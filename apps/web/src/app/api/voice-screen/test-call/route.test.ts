@@ -62,6 +62,8 @@ describe("Voice Screen Test Call API Route", () => {
       expect(data.mode).toBe("n8n_backend");
       expect(data.call_id).toBe("test_webhook_call_777");
       expect(data.to_phone_number).toBe("+919876543210");
+      expect(data.from_phone_number).toBe("+912264233051");
+      expect(data.caller_id).toBe("+912264233051");
       expect(urlsCalled.some((u) => u.includes("/webhook/voice-screen-test"))).toBe(true);
     } finally {
       global.fetch = originalFetch;
@@ -109,6 +111,8 @@ describe("Voice Screen Test Call API Route", () => {
       expect(data.success).toBe(true);
       expect(data.mode).toBe("dialnexa_direct");
       expect(data.call_id).toBe("dialnexa_fallback_call_999");
+      expect(data.from_phone_number).toBe("+912264233051");
+      expect(data.caller_id).toBe("+912264233051");
     } finally {
       global.fetch = originalFetch;
     }

@@ -743,7 +743,18 @@ export function DialnexaConfigEditor({
           phone_number: testPhoneNumber,
           candidate_name: testCandidateName.trim() || "Alex Morgan",
           role_title: jobTitle || "ScalePods Voice Agent Test",
-          voice_call_config: value,
+          from_phone_number:
+            value.outbound_from_number || value.from_phone_number || "+912264233051",
+          from_number: value.outbound_from_number || value.from_number || "+912264233051",
+          voice_call_config: {
+            ...value,
+            outbound_from_number:
+              value.outbound_from_number || value.from_phone_number || "+912264233051",
+            from_phone_number:
+              value.from_phone_number || value.outbound_from_number || "+912264233051",
+            from_number: value.from_number || value.outbound_from_number || "+912264233051",
+            caller_id: value.caller_id || value.outbound_from_number || "+912264233051",
+          },
         }),
       });
 
@@ -1356,9 +1367,12 @@ export function DialnexaConfigEditor({
                       tip="Use a real mobile number — the call rings within 15 seconds."
                     />
                   </h5>
-                  <p className="text-xs text-muted-foreground">
-                    Dial your phone to hear the AI before going live.
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>Dial your phone to hear the AI before going live.</span>
+                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 border border-border/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground font-medium">
+                      From: +91 22 6423 3051
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -3033,9 +3047,14 @@ export function DialnexaConfigEditor({
               {/* Mode 2: Live Phone Call Test */}
               {testMode === "phone" && (
                 <div className="space-y-3 rounded-xl border border-border/80 bg-card/80 p-4">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                    <PhoneCall className="h-4 w-4 text-emerald-500" />
-                    Trigger Live Telephony Call to Your Phone
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                      <PhoneCall className="h-4 w-4 text-emerald-500" />
+                      Trigger Live Telephony Call to Your Phone
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 border border-border/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground font-medium">
+                      Caller ID: +91 22 6423 3051
+                    </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     DialNexa will initiate an actual outbound telephone call to your mobile number

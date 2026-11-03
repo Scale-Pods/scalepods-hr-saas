@@ -827,6 +827,11 @@ export const DEFAULT_BOOSTED_KEYWORDS =
 
 export const DEFAULT_DIALNEXA_CONFIG: DialnexaVoiceConfig = {
   agent_id: "agent_Lg812J59k27OXl",
+  outbound_from_number: "+912264233051",
+  from_phone_number: "+912264233051",
+  from_number: "+912264233051",
+  caller_id: "+912264233051",
+  phone_number_id: "phn_0HMYGFLppLskmB",
   model: "gpt-4o-mini",
   voice: "rachel",
   first_message: DIALNEXA_TEMPLATES[0].first_message,

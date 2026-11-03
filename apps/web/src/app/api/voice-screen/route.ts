@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
-import { syncDialnexaAgentConfig } from "@/lib/dialnexa";
+import {
+  DEFAULT_DIALNEXA_AGENT_ID,
+  DEFAULT_DIALNEXA_API_KEY,
+  DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER,
+  DEFAULT_DIALNEXA_PHONE_NUMBER_ID,
+  formatE164PhoneNumber,
+  resolveOutboundFromNumber,
+  syncDialnexaAgentConfig,
+} from "@/lib/dialnexa";
 
 export async function POST(req: Request) {
   try {
@@ -10,10 +18,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Candidate phone number is required" }, { status: 400 });
     }
 
-    let phone = String(candidate_phone).replace(/\s+/g, "");
-    if (!phone.startsWith("+")) {
-      phone = phone.length === 10 ? `+91${phone}` : `+${phone}`;
-    }
+    const phone = formatE164PhoneNumber(candidate_phone, "91");
 
     const n8nBase = (process.env.NEXT_PUBLIC_N8N_BASE_URL || "https://n8n.srv1711190.hstgr.cloud")
       .replace(/\/+$/, "")
@@ -151,29 +156,62 @@ export async function POST(req: Request) {
 
     const isEnterprise = String(planTier || "").toLowerCase() === "enterprise";
 
+    let outboundFromNumber = DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER;
+    let outboundPhoneNumberId = DEFAULT_DIALNEXA_PHONE_NUMBER_ID;
+
     if (voiceCallConfig) {
-      await syncDialnexaAgentConfig({
-        agent_id: voiceCallConfig.agent_id,
-        voice: voiceCallConfig.voice,
-        voice_speed: voiceCallConfig.voice_speed,
-        voice_pitch: voiceCallConfig.voice_pitch,
-        voice_temperature: voiceCallConfig.voice_temperature,
-        prompt: voiceCallConfig.prompt,
-        first_message: voiceCallConfig.first_message,
-        response_eagerness: voiceCallConfig.response_eagerness,
-        responsiveness: voiceCallConfig.responsiveness,
-        interruption_sensitivity: voiceCallConfig.interruption_sensitivity,
-        max_duration_seconds: voiceCallConfig.max_duration_seconds,
-        end_call_on_silence_sec: voiceCallConfig.end_call_on_silence_sec,
-        ambient_noise: voiceCallConfig.ambient_noise,
-        candidate_name: body.candidate_name,
-        role_title: roleTitle,
-        company_name: body.company_name || "ScalePods",
-        job_description: campaignJdText,
-        candidate_resume: candidateResumeText,
-        questions: roundQuestions,
-        evaluation_criteria: roundCriteria,
-      });
+      try {
+        const syncResult = await syncDialnexaAgentConfig({
+          agent_id: voiceCallConfig.agent_id,
+          voice: voiceCallConfig.voice,
+          voice_speed: voiceCallConfig.voice_speed,
+          voice_pitch: voiceCallConfig.voice_pitch,
+          voice_temperature: voiceCallConfig.voice_temperature,
+          prompt: voiceCallConfig.prompt,
+          first_message: voiceCallConfig.first_message,
+          response_eagerness: voiceCallConfig.response_eagerness,
+          responsiveness: voiceCallConfig.responsiveness,
+          interruption_sensitivity: voiceCallConfig.interruption_sensitivity,
+          max_duration_seconds: voiceCallConfig.max_duration_seconds,
+          end_call_on_silence_sec: voiceCallConfig.end_call_on_silence_sec,
+          ambient_noise: voiceCallConfig.ambient_noise,
+          candidate_name: body.candidate_name,
+          role_title: roleTitle,
+          company_name: body.company_name || "ScalePods",
+          job_description: campaignJdText,
+          candidate_resume: candidateResumeText,
+          questions: roundQuestions,
+          evaluation_criteria: roundCriteria,
+          outbound_from_number:
+            voiceCallConfig?.outbound_from_number ||
+            voiceCallConfig?.from_phone_number ||
+            voiceCallConfig?.from_number ||
+            body.from_phone_number ||
+            body.from_number,
+        });
+
+        if (syncResult.outbound_from_number) {
+          outboundFromNumber = syncResult.outbound_from_number;
+        }
+        if (syncResult.phone_number_id) {
+          outboundPhoneNumberId = syncResult.phone_number_id;
+        }
+      } catch (syncErr) {
+        console.warn("[api/voice-screen] Failed to sync agent config to DialNexa:", syncErr);
+      }
+    }
+
+    const resolvedCaller = resolveOutboundFromNumber(
+      voiceCallConfig?.outbound_from_number ||
+        voiceCallConfig?.from_phone_number ||
+        voiceCallConfig?.from_number ||
+        body.from_phone_number ||
+        body.from_number ||
+        outboundFromNumber,
+    );
+    outboundFromNumber = resolvedCaller.fromNumber;
+    if (resolvedCaller.phoneNumberId) {
+      outboundPhoneNumberId = resolvedCaller.phoneNumberId;
     }
 
     // Try n8n first
@@ -191,9 +229,23 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           ...body,
           candidate_phone: phone,
+          from_phone_number: outboundFromNumber,
+          from_number: outboundFromNumber,
+          from: outboundFromNumber,
+          caller_id: outboundFromNumber,
+          phone_number_id: outboundPhoneNumberId,
           round_instance_id: isUuid(roundInstanceId) ? roundInstanceId : null,
           account_id: isUuid(accountId) ? accountId : "00000000-0000-0000-0000-000000000000",
-          voice_call_config: voiceCallConfig || undefined,
+          voice_call_config: voiceCallConfig
+            ? {
+                ...voiceCallConfig,
+                outbound_from_number: outboundFromNumber,
+                from_phone_number: outboundFromNumber,
+                from_number: outboundFromNumber,
+                caller_id: outboundFromNumber,
+                phone_number_id: outboundPhoneNumberId,
+              }
+            : undefined,
           role_title: roleTitle || undefined,
           job_description: campaignJdText || undefined,
           candidate_resume: candidateResumeText || undefined,
@@ -239,7 +291,6 @@ export async function POST(req: Request) {
 
     // Resilient fallback: Direct DialNexa API call dispatch
     console.log("[api/voice-screen] Initiating direct DialNexa call dispatch fallback...");
-    const { DEFAULT_DIALNEXA_API_KEY, DEFAULT_DIALNEXA_AGENT_ID } = await import("@/lib/dialnexa");
     const dialnexaApiKey = process.env.DIALNEXA_API_KEY || DEFAULT_DIALNEXA_API_KEY;
     const targetAgentId = voiceCallConfig?.agent_id || DEFAULT_DIALNEXA_AGENT_ID;
 
@@ -252,8 +303,16 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         phone_number: phone,
         agent_id: targetAgentId,
+        from_number: outboundFromNumber,
+        from_phone_number: outboundFromNumber,
+        from: outboundFromNumber,
+        caller_id: outboundFromNumber,
+        phone_number_id: outboundPhoneNumberId,
         metadata: {
           candidate_phone: phone,
+          from_phone_number: outboundFromNumber,
+          from_number: outboundFromNumber,
+          caller_id: outboundFromNumber,
           candidate_name: body.candidate_name || "Candidate",
           company_name: body.company_name || "ScalePods",
           role_title: roleTitle || "Open Position",
@@ -265,6 +324,9 @@ export async function POST(req: Request) {
         },
         notes: {
           candidate_phone: phone,
+          from_phone_number: outboundFromNumber,
+          from_number: outboundFromNumber,
+          caller_id: outboundFromNumber,
           candidate_name: body.candidate_name || "Candidate",
           role_title: roleTitle || "Open Position",
           candidate_id: body.candidate_id || null,
@@ -325,6 +387,9 @@ export async function POST(req: Request) {
       success: true,
       source: "dialnexa_direct",
       status: "call_initiated",
+      to_phone_number: phone,
+      from_phone_number: outboundFromNumber,
+      caller_id: outboundFromNumber,
       call: dialnexaData.data || dialnexaData,
     });
   } catch (error) {

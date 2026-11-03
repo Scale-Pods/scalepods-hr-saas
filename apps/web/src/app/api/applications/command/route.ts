@@ -377,36 +377,67 @@ async function triggerImmediateVoiceCallIfEligible(
     }
 
     // Format phone number to E.164 standard
-    let phone = String(candidatePhone).replace(/\s+/g, "");
-    if (!phone.startsWith("+")) {
-      phone = phone.length === 10 ? `+91${phone}` : `+${phone}`;
-    }
+    const {
+      syncDialnexaAgentConfig,
+      DEFAULT_DIALNEXA_API_KEY,
+      DEFAULT_DIALNEXA_AGENT_ID,
+      DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER,
+      DEFAULT_DIALNEXA_PHONE_NUMBER_ID,
+      formatE164PhoneNumber,
+      resolveOutboundFromNumber,
+    } = await import("@/lib/dialnexa");
+
+    const phone = formatE164PhoneNumber(candidatePhone, "91");
+    let outboundFromNumber = DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER;
+    let outboundPhoneNumberId = DEFAULT_DIALNEXA_PHONE_NUMBER_ID;
 
     // 1. Sync agent config to DialNexa with is_published: true
-    const { syncDialnexaAgentConfig, DEFAULT_DIALNEXA_API_KEY, DEFAULT_DIALNEXA_AGENT_ID } =
-      await import("@/lib/dialnexa");
-
     if (voiceConfig) {
-      await syncDialnexaAgentConfig({
-        agent_id: voiceConfig.agent_id || DEFAULT_DIALNEXA_AGENT_ID,
-        voice: voiceConfig.voice,
-        voice_speed: voiceConfig.voice_speed,
-        voice_pitch: voiceConfig.voice_pitch,
-        voice_temperature: voiceConfig.voice_temperature,
-        prompt: voiceConfig.prompt,
-        first_message: voiceConfig.first_message,
-        response_eagerness: voiceConfig.response_eagerness,
-        responsiveness: voiceConfig.responsiveness,
-        interruption_sensitivity: voiceConfig.interruption_sensitivity,
-        max_duration_seconds: voiceConfig.max_duration_seconds,
-        end_call_on_silence_sec: voiceConfig.end_call_on_silence_sec,
-        ambient_noise: voiceConfig.ambient_noise,
-        candidate_name: app.candidate_name ?? undefined,
-        role_title: roleTitle,
-        company_name: "ScalePods",
-        questions: roundQuestions,
-        evaluation_criteria: roundCriteria,
-      });
+      try {
+        const syncRes = await syncDialnexaAgentConfig({
+          agent_id: voiceConfig.agent_id || DEFAULT_DIALNEXA_AGENT_ID,
+          voice: voiceConfig.voice,
+          voice_speed: voiceConfig.voice_speed,
+          voice_pitch: voiceConfig.voice_pitch,
+          voice_temperature: voiceConfig.voice_temperature,
+          prompt: voiceConfig.prompt,
+          first_message: voiceConfig.first_message,
+          response_eagerness: voiceConfig.response_eagerness,
+          responsiveness: voiceConfig.responsiveness,
+          interruption_sensitivity: voiceConfig.interruption_sensitivity,
+          max_duration_seconds: voiceConfig.max_duration_seconds,
+          end_call_on_silence_sec: voiceConfig.end_call_on_silence_sec,
+          ambient_noise: voiceConfig.ambient_noise,
+          candidate_name: app.candidate_name ?? undefined,
+          role_title: roleTitle,
+          company_name: "ScalePods",
+          questions: roundQuestions,
+          evaluation_criteria: roundCriteria,
+          outbound_from_number:
+            voiceConfig?.outbound_from_number ||
+            voiceConfig?.from_phone_number ||
+            voiceConfig?.from_number,
+        });
+        if (syncRes.outbound_from_number) {
+          outboundFromNumber = syncRes.outbound_from_number;
+        }
+        if (syncRes.phone_number_id) {
+          outboundPhoneNumberId = syncRes.phone_number_id;
+        }
+      } catch (syncErr) {
+        console.warn("[api/applications/command] Failed to sync agent config:", syncErr);
+      }
+    }
+
+    const resolvedCaller = resolveOutboundFromNumber(
+      voiceConfig?.outbound_from_number ||
+        voiceConfig?.from_phone_number ||
+        voiceConfig?.from_number ||
+        outboundFromNumber,
+    );
+    outboundFromNumber = resolvedCaller.fromNumber;
+    if (resolvedCaller.phoneNumberId) {
+      outboundPhoneNumberId = resolvedCaller.phoneNumberId;
     }
 
     // 2. Dispatch to n8n Voice Screening Webhook first
@@ -430,10 +461,24 @@ async function triggerImmediateVoiceCallIfEligible(
         candidate_id: app.candidate_id,
         candidate_name: app.candidate_name || "Candidate",
         candidate_phone: phone,
+        from_phone_number: outboundFromNumber,
+        from_number: outboundFromNumber,
+        from: outboundFromNumber,
+        caller_id: outboundFromNumber,
+        phone_number_id: outboundPhoneNumberId,
         round_instance_id: targetRiId,
         role_title: roleTitle,
         company_name: "ScalePods",
-        voice_call_config: voiceConfig || undefined,
+        voice_call_config: voiceConfig
+          ? {
+              ...voiceConfig,
+              outbound_from_number: outboundFromNumber,
+              from_phone_number: outboundFromNumber,
+              from_number: outboundFromNumber,
+              caller_id: outboundFromNumber,
+              phone_number_id: outboundPhoneNumberId,
+            }
+          : undefined,
         plan_tier: planTier,
         tier: planTier,
         is_enterprise: isEnterprise,
@@ -483,8 +528,16 @@ async function triggerImmediateVoiceCallIfEligible(
         body: JSON.stringify({
           phone_number: phone,
           agent_id: agentId,
+          from_number: outboundFromNumber,
+          from_phone_number: outboundFromNumber,
+          from: outboundFromNumber,
+          caller_id: outboundFromNumber,
+          phone_number_id: outboundPhoneNumberId,
           metadata: {
             candidate_phone: phone,
+            from_phone_number: outboundFromNumber,
+            from_number: outboundFromNumber,
+            caller_id: outboundFromNumber,
             candidate_name: app.candidate_name || "Candidate",
             company_name: "ScalePods",
             role_title: roleTitle,
@@ -497,6 +550,9 @@ async function triggerImmediateVoiceCallIfEligible(
           },
           notes: {
             candidate_phone: phone,
+            from_phone_number: outboundFromNumber,
+            from_number: outboundFromNumber,
+            caller_id: outboundFromNumber,
             candidate_name: app.candidate_name || "Candidate",
             role_title: roleTitle,
             candidate_id: app.candidate_id,

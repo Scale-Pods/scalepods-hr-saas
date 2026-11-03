@@ -38,6 +38,11 @@ export interface DialnexaVoiceConfig {
   language?: string;
   max_duration_seconds?: number;
   agent_id?: string;
+  outbound_from_number?: string;
+  from_phone_number?: string;
+  from_number?: string;
+  caller_id?: string;
+  phone_number_id?: string;
 
   // Turn-Taking & Latency (Eagerness & Responsiveness)
   response_eagerness?: number; // 0.0 (patient) to 1.0 (eager)

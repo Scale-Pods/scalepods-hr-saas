@@ -1,6 +1,72 @@
 export const DEFAULT_DIALNEXA_API_KEY =
   "rb0665oacdbt33:7f1d56728f43ab2e3274e928785d840e08457909852df246ae2cae0a8e2350c0";
 export const DEFAULT_DIALNEXA_AGENT_ID = "agent_Lg812J59k27OXl";
+export const DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER = "+912264233051";
+export const DEFAULT_DIALNEXA_PHONE_NUMBER_ID = "phn_0HMYGFLppLskmB";
+
+/**
+ * Normalizes any phone number (recipient or caller ID / from number) into E.164
+ * format with a country code prefix (e.g. +912264233051).
+ */
+export function formatE164PhoneNumber(raw?: string | null, defaultIso = "91"): string {
+  if (!raw || typeof raw !== "string") return "";
+  const cleaned = raw.trim().replace(/[\s\-()]/g, "");
+  if (!cleaned) return "";
+
+  if (cleaned.startsWith("+")) {
+    return cleaned;
+  }
+  if (cleaned.startsWith("00")) {
+    return `+${cleaned.slice(2)}`;
+  }
+  const cleanIso = defaultIso.replace(/^\+/, "");
+  if (cleaned.startsWith(cleanIso) && cleaned.length > cleanIso.length + 6) {
+    return `+${cleaned}`;
+  }
+  // Standard 10-digit number without country code
+  if (cleaned.length === 10) {
+    return `+${cleanIso}${cleaned}`;
+  }
+  return `+${cleanIso}${cleaned}`;
+}
+
+/**
+ * Resolves the outbound caller ID / from number with an E.164 country code (+91).
+ */
+export function resolveOutboundFromNumber(
+  customFrom?: string | null,
+  agentOutboundNumbers?: Array<{ phone_number?: string; country_iso?: string; id?: string }>,
+): { fromNumber: string; phoneNumberId?: string } {
+  if (customFrom && typeof customFrom === "string" && customFrom.trim()) {
+    return {
+      fromNumber: formatE164PhoneNumber(customFrom),
+    };
+  }
+
+  if (agentOutboundNumbers && agentOutboundNumbers.length > 0) {
+    const first = agentOutboundNumbers[0];
+    if (first?.phone_number) {
+      const iso = first.country_iso || "91";
+      return {
+        fromNumber: formatE164PhoneNumber(first.phone_number, iso),
+        phoneNumberId: first.id,
+      };
+    }
+  }
+
+  const envFrom = process.env.DIALNEXA_OUTBOUND_FROM_NUMBER;
+  if (envFrom?.trim()) {
+    return {
+      fromNumber: formatE164PhoneNumber(envFrom),
+      phoneNumberId: DEFAULT_DIALNEXA_PHONE_NUMBER_ID,
+    };
+  }
+
+  return {
+    fromNumber: DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER,
+    phoneNumberId: DEFAULT_DIALNEXA_PHONE_NUMBER_ID,
+  };
+}
 
 /**
  * Maps ScalePods voice options and names to DialNexa voice IDs.
@@ -109,6 +175,18 @@ export interface SyncDialnexaAgentParams {
   resume_text?: string;
   questions?: string[];
   evaluation_criteria?: string[];
+  outbound_from_number?: string;
+  from_phone_number?: string;
+  from_number?: string;
+  caller_id?: string;
+}
+
+export interface SyncDialnexaAgentResult {
+  success: boolean;
+  version_number?: number;
+  outbound_from_number?: string;
+  phone_number_id?: string;
+  error?: string;
 }
 
 /**
@@ -146,9 +224,12 @@ export function interpolateDialnexaVariables(
  */
 export async function syncDialnexaAgentConfig(
   params: SyncDialnexaAgentParams,
-): Promise<{ success: boolean; version_number?: number; error?: string }> {
+): Promise<SyncDialnexaAgentResult> {
   const agentId = params.agent_id || DEFAULT_DIALNEXA_AGENT_ID;
   const apiKey = process.env.DIALNEXA_API_KEY || DEFAULT_DIALNEXA_API_KEY;
+
+  let outboundFromNumber = DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER;
+  let outboundPhoneNumberId = DEFAULT_DIALNEXA_PHONE_NUMBER_ID;
 
   try {
     // 1. Fetch current agent version number and published state
@@ -165,6 +246,11 @@ export async function syncDialnexaAgentConfig(
             current_version_number?: number | string;
             current_version?: { version_number?: number | string; is_published?: boolean };
             versions?: Array<{ version_number?: number | string; is_published?: boolean }>;
+            outbound_phone_numbers?: Array<{
+              phone_number?: string;
+              country_iso?: string;
+              id?: string;
+            }>;
           };
         };
         const currentVersionNum = Number(
@@ -181,6 +267,21 @@ export async function syncDialnexaAgentConfig(
           targetVersion = Number(unpublishedVersion.version_number);
         } else {
           targetVersion = currentVersionNum;
+        }
+
+        const agentNumbers = getData.data?.outbound_phone_numbers;
+        if (Array.isArray(agentNumbers) && agentNumbers.length > 0) {
+          const resolved = resolveOutboundFromNumber(
+            params.outbound_from_number ||
+              params.from_phone_number ||
+              params.from_number ||
+              params.caller_id,
+            agentNumbers,
+          );
+          outboundFromNumber = resolved.fromNumber;
+          if (resolved.phoneNumberId) {
+            outboundPhoneNumberId = resolved.phoneNumberId;
+          }
         }
       }
     } catch (getErr) {
@@ -323,13 +424,28 @@ export async function syncDialnexaAgentConfig(
         patchData.error ||
         `DialNexa PATCH failed with HTTP ${patchRes.status}`;
       console.warn("DialNexa agent sync warning:", errMsg);
-      return { success: false, error: errMsg };
+      return {
+        success: false,
+        error: errMsg,
+        outbound_from_number: outboundFromNumber,
+        phone_number_id: outboundPhoneNumberId,
+      };
     }
 
-    return { success: true, version_number: targetVersion };
+    return {
+      success: true,
+      version_number: targetVersion,
+      outbound_from_number: outboundFromNumber,
+      phone_number_id: outboundPhoneNumberId,
+    };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.warn("DialNexa agent sync exception:", errMsg);
-    return { success: false, error: errMsg };
+    return {
+      success: false,
+      error: errMsg,
+      outbound_from_number: outboundFromNumber,
+      phone_number_id: outboundPhoneNumberId,
+    };
   }
 }
