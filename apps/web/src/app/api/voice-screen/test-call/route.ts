@@ -38,6 +38,10 @@ export async function POST(req: Request) {
     try {
       await syncDialnexaAgentConfig({
         agent_id: targetAgentId,
+        voice: voice_call_config?.voice,
+        voice_speed: voice_call_config?.voice_speed,
+        voice_pitch: voice_call_config?.voice_pitch,
+        voice_temperature: voice_call_config?.voice_temperature,
         prompt: voice_call_config?.prompt,
         first_message: voice_call_config?.first_message,
         response_eagerness: voice_call_config?.response_eagerness,

@@ -1,4 +1,8 @@
-import { applicationDecisionSchema, updateApplicationContactSchema } from "@scalepods/core";
+import {
+  applicationDecisionSchema,
+  type DialnexaVoiceConfig,
+  updateApplicationContactSchema,
+} from "@scalepods/core";
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
@@ -353,19 +357,7 @@ async function triggerImmediateVoiceCallIfEligible(
           name?: string;
           voice_call_config?: Record<string, unknown>;
         });
-    const voiceConfig = camp?.voice_call_config as
-      | {
-          agent_id?: string;
-          prompt?: string;
-          first_message?: string;
-          response_eagerness?: number;
-          responsiveness?: number;
-          interruption_sensitivity?: number;
-          max_duration_seconds?: number;
-          end_call_on_silence_sec?: number;
-          ambient_noise?: boolean;
-        }
-      | undefined;
+    const voiceConfig = camp?.voice_call_config as DialnexaVoiceConfig | undefined;
     const roleTitle = camp?.name || "Open Position";
 
     // Fetch round questions & evaluation criteria
@@ -397,6 +389,10 @@ async function triggerImmediateVoiceCallIfEligible(
     if (voiceConfig) {
       await syncDialnexaAgentConfig({
         agent_id: voiceConfig.agent_id || DEFAULT_DIALNEXA_AGENT_ID,
+        voice: voiceConfig.voice,
+        voice_speed: voiceConfig.voice_speed,
+        voice_pitch: voiceConfig.voice_pitch,
+        voice_temperature: voiceConfig.voice_temperature,
         prompt: voiceConfig.prompt,
         first_message: voiceConfig.first_message,
         response_eagerness: voiceConfig.response_eagerness,
