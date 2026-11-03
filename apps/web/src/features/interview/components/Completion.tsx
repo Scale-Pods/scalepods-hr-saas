@@ -24,7 +24,7 @@ function ConfettiParticle({ delay, left }: { delay: number; left: number }) {
   );
 }
 
-export function Completion() {
+export function Completion({ isEndedEarly = false }: { isEndedEarly?: boolean } = {}) {
   const [showContent, setShowContent] = useState(false);
   const [particles] = useState(() =>
     Array.from({ length: 30 }, (_, i) => ({
@@ -72,14 +72,15 @@ export function Completion() {
             WebkitTextFillColor: "transparent",
           }}
         >
-          Thank You!
+          {isEndedEarly ? "Interview Submitted" : "Thank You!"}
         </h1>
         <p
           className="mb-8 max-w-sm mx-auto leading-relaxed"
           style={{ color: "var(--label-secondary)" }}
         >
-          Your interview has been submitted successfully. We appreciate the time and effort you put
-          into your responses.
+          {isEndedEarly
+            ? "Your interview has been concluded. Your recorded responses have been securely saved and submitted for evaluation."
+            : "Your interview has been submitted successfully. We appreciate the time and effort you put into your responses."}
         </p>
 
         <div className="card p-6 mb-6 text-left animate-fade-in">

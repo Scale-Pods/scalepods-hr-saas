@@ -190,9 +190,19 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       )
         return;
       completionStartedRef.current = true;
+      setEndEarly(true);
+      endEarlyRef.current = true;
+
+      // Abort speech immediately so the interviewer stops talking
+      cancel();
+      isAiSpeakingRef.current = false;
+      setIsAiSpeaking(false);
+      setCurrentlySpeakingText("");
+      setSpeakingPhase(null);
+      stopProctoring();
+
       setCompleting(true);
       setCompletingError("");
-      stopProctoring();
       try {
         await completeInterview(isEndedEarly);
       } catch (err) {
@@ -201,7 +211,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         setCompleting(false);
       }
     },
-    [completeInterview, session?.status, stopProctoring],
+    [completeInterview, session?.status, stopProctoring, cancel],
   );
 
   const onSpeakCompleteRef = useRef<() => void>(undefined);
@@ -239,7 +249,14 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   }, [cancel]);
 
   useEffect(() => {
-    if (currentTurn && avStream && !completionStartedRef.current) {
+    if (
+      currentTurn &&
+      avStream &&
+      !completionStartedRef.current &&
+      !endEarlyRef.current &&
+      session?.status !== "completed" &&
+      session?.status !== "incomplete"
+    ) {
       const acknowledgment = (currentTurn.interviewer_text || "").trim();
       const questionText = currentTurn.question_text?.trim() || "";
 
@@ -249,7 +266,14 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       setIsAiSpeaking(true);
 
       const speakQuestion = () => {
-        if (turnIdRef.current !== turnId) return;
+        if (
+          turnIdRef.current !== turnId ||
+          completionStartedRef.current ||
+          endEarlyRef.current ||
+          session?.status === "completed" ||
+          session?.status === "incomplete"
+        )
+          return;
         const ackId = currentAckBubbleIdRef.current;
         if (ackId) {
           setChatMessages((prev) =>
@@ -264,7 +288,11 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         setSpeakingPhase("question");
         setCurrentlySpeakingText(questionText);
         speak(questionText, () => {
-          if (turnIdRef.current === turnId) {
+          if (
+            turnIdRef.current === turnId &&
+            !completionStartedRef.current &&
+            !endEarlyRef.current
+          ) {
             onSpeakCompleteRef.current?.();
           }
         });
@@ -274,7 +302,11 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         setSpeakingPhase("acknowledgment");
         setCurrentlySpeakingText(acknowledgment);
         speak(acknowledgment, () => {
-          if (turnIdRef.current === turnId) {
+          if (
+            turnIdRef.current === turnId &&
+            !completionStartedRef.current &&
+            !endEarlyRef.current
+          ) {
             setTimeout(speakQuestion, 400);
           }
         });
@@ -285,7 +317,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     return () => {
       cancel();
     };
-  }, [currentTurn, avStream, cancel, speak]);
+  }, [currentTurn, avStream, cancel, speak, session?.status]);
 
   useEffect(() => {
     if (!currentTurn || !avStream) return;
@@ -402,6 +434,16 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
 
   const handleAnswerComplete = useCallback(
     async (text: string, audioBlob?: Blob) => {
+      // If already completing or interview ended, do not process further answers or generate turns
+      if (
+        completionStartedRef.current ||
+        endEarlyRef.current ||
+        session?.status === "completed" ||
+        session?.status === "incomplete"
+      ) {
+        return;
+      }
+
       if (!currentQuestionId) {
         setAnswerState("error");
         setLastError(
@@ -428,11 +470,12 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         await submitAnswer(qId, text, audioUrl);
         setAnswerState("saved");
 
-        if (endEarly || currentTurn?.turn_type === "closing") {
-          setEndEarly(false);
-          setTimeout(() => finishInterview(), 1500);
+        if (endEarlyRef.current || endEarly || currentTurn?.turn_type === "closing") {
+          setTimeout(() => finishInterview(endEarlyRef.current || endEarly), 500);
           return;
         }
+
+        if (completionStartedRef.current || endEarlyRef.current) return;
 
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
         await generateNextTurn();
@@ -442,7 +485,15 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         setLastError((err as Error).message || "Unable to save this answer");
       }
     },
-    [currentQuestionId, currentTurn, submitAnswer, generateNextTurn, endEarly, finishInterview],
+    [
+      currentQuestionId,
+      currentTurn,
+      submitAnswer,
+      generateNextTurn,
+      endEarly,
+      finishInterview,
+      session?.status,
+    ],
   );
 
   if (loading || !session) {
@@ -464,9 +515,9 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     return <LoadingSpinner text="Loading interview room parameters..." />;
   }
 
-  if (completing || session.status === "completed") {
-    if (!completing && session.status === "completed") {
-      return <Completion />;
+  if (completing || session.status === "completed" || session.status === "incomplete") {
+    if (!completing && (session.status === "completed" || session.status === "incomplete")) {
+      return <Completion isEndedEarly={session.status === "incomplete"} />;
     }
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -515,7 +566,12 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     );
   }
 
-  if (!avStream) {
+  if (
+    !avStream &&
+    session.status !== "completed" &&
+    session.status !== "incomplete" &&
+    !completing
+  ) {
     return (
       <div className="space-y-4">
         {startError && (
@@ -935,6 +991,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
                   onClick={() => {
                     setShowEndConfirm(false);
                     setEndEarly(true);
+                    endEarlyRef.current = true;
+                    cancel();
                     finishInterview(true);
                   }}
                   className="flex-1 py-1.5 px-3 rounded-lg text-xs font-bold text-white transition-all shadow-sm active:scale-95"
