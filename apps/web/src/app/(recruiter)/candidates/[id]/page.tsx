@@ -905,7 +905,12 @@ export default function CandidateProfilePage() {
       </SectionCard>
 
       {/* Take-Home Assignments */}
-      {assignments.length > 0 && <TakeHomeAssignmentsSection assignments={assignments} />}
+      {assignments.length > 0 && (
+        <TakeHomeAssignmentsSection
+          assignments={assignments}
+          submissions={data?.assignmentSubmissions ?? []}
+        />
+      )}
 
       {/* Human Interviewer Feedback */}
       {interviewerFeedback.length > 0 && (
@@ -3122,7 +3127,13 @@ function VoiceScreenCallSection({
   );
 }
 
-function TakeHomeAssignmentsSection({ assignments }: { assignments: AssignmentsRow[] }) {
+function TakeHomeAssignmentsSection({
+  assignments,
+  submissions = [],
+}: {
+  assignments: AssignmentsRow[];
+  submissions?: any[];
+}) {
   if (assignments.length === 0) return null;
   return (
     <SectionCard
@@ -3130,40 +3141,87 @@ function TakeHomeAssignmentsSection({ assignments }: { assignments: AssignmentsR
       subtitle="Candidate brief, submission status, and reviewer evaluation scores"
     >
       <div className="space-y-4">
-        {assignments.map((a) => (
-          <div key={a.id} className="rounded-xl border border-border/70 bg-card p-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <FileCheck className="h-4 w-4 text-primary" />
-                <span className="text-xs font-semibold text-foreground">Take-Home Assignment</span>
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    "text-[11px] capitalize",
-                    a.status === "submitted"
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                      : a.status === "issued"
-                        ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
-                        : "bg-destructive/15 text-destructive",
-                  )}
-                >
-                  {a.status.replace(/_/g, " ")}
-                </Badge>
+        {assignments.map((a) => {
+          const sub = submissions.find(
+            (s: any) => s.round_instance_id === a.round_instance_id || s.assignment_id === a.id,
+          );
+          return (
+            <div key={a.id} className="rounded-xl border border-border/70 bg-card p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <FileCheck className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-semibold text-foreground">Take-Home Assignment</span>
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "text-[11px] capitalize",
+                      a.status === "submitted" || sub
+                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                        : a.status === "issued"
+                          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                          : "bg-destructive/15 text-destructive",
+                    )}
+                  >
+                    {sub || a.status === "submitted" ? "Submitted" : a.status.replace(/_/g, " ")}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  Deadline: {formatDateTime(a.deadline_at)}
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Clock className="h-3.5 w-3.5" />
-                Deadline: {formatDateTime(a.deadline_at)}
-              </div>
-            </div>
 
-            <div className="rounded-lg bg-muted/20 border border-border/40 p-3 text-xs space-y-1">
-              <span className="font-semibold text-muted-foreground block text-[11px] uppercase tracking-wide">
-                Assignment Prompt / Brief:
-              </span>
-              <p className="text-foreground whitespace-pre-wrap">{a.brief_text}</p>
+              <div className="rounded-lg bg-muted/20 border border-border/40 p-3 text-xs space-y-1">
+                <span className="font-semibold text-muted-foreground block text-[11px] uppercase tracking-wide">
+                  Assignment Prompt / Brief:
+                </span>
+                <p className="text-foreground whitespace-pre-wrap">{a.brief_text}</p>
+              </div>
+
+              {sub && (
+                <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-emerald-500 block text-[11px] uppercase tracking-wide">
+                      Candidate Submission
+                    </span>
+                    {sub.submitted_at && (
+                      <span className="text-[11px] text-muted-foreground">
+                        {formatDateTime(sub.submitted_at)}
+                      </span>
+                    )}
+                  </div>
+                  {sub.text_response && (
+                    <div className="p-2.5 rounded bg-background/80 border border-border/50 text-foreground whitespace-pre-wrap">
+                      {sub.text_response}
+                    </div>
+                  )}
+                  {sub.signedFiles && sub.signedFiles.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[11px] font-semibold text-muted-foreground block">
+                        Uploaded Attachments:
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {sub.signedFiles.map((file: any, idx: number) => (
+                          <a
+                            key={idx}
+                            href={file.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/80 bg-background text-xs font-medium text-foreground hover:bg-muted/50 transition-colors"
+                          >
+                            <FileText className="h-3.5 w-3.5 text-primary" />
+                            <span className="max-w-[200px] truncate">{file.name}</span>
+                            <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </SectionCard>
   );

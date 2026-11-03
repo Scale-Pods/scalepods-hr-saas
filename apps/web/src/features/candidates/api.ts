@@ -111,6 +111,7 @@ export interface CandidateProfile {
   latestScorecard?: ScorecardRow | null;
   interviewSessionId?: string | null;
   assignments?: AssignmentsRow[];
+  assignmentSubmissions?: any[];
   interviewerFeedback?: InterviewerFeedbackRow[];
   offers?: OffersRow[];
   roundInstances?: RoundInstancesRow[];
@@ -932,15 +933,45 @@ export async function fetchCandidateProfile(
   }
 
   let assignments: AssignmentsRow[] = [];
+  let assignmentSubmissions: any[] = [];
   let offers: OffersRow[] = [];
 
   if (matchedApplication?.id) {
-    const [assignRes, offersRes] = await Promise.all([
+    const [assignRes, offersRes, subRes] = await Promise.all([
       supabase.from("assignments").select("*").eq("application_id", matchedApplication.id),
       supabase.from("offers").select("*").eq("application_id", matchedApplication.id),
+      supabase.from("assignment_submissions").select("*").eq("application_id", matchedApplication.id),
     ]);
     assignments = (assignRes.data ?? []) as AssignmentsRow[];
     offers = (offersRes.data ?? []) as OffersRow[];
+
+    let rawSubs = (subRes.data ?? []) as any[];
+    if (rawSubs.length === 0 && roundIds.length > 0) {
+      const { data: altSubs } = await supabase
+        .from("assignment_submissions")
+        .select("*")
+        .in("round_instance_id", roundIds);
+      rawSubs = (altSubs ?? []) as any[];
+    }
+
+    assignmentSubmissions = await Promise.all(
+      rawSubs.map(async (sub) => {
+        const signedFiles: { name: string; url: string }[] = [];
+        const paths = Array.isArray(sub.file_paths) ? sub.file_paths : [];
+        for (const fp of paths) {
+          if (!fp || typeof fp !== "string") continue;
+          try {
+            const { data } = await supabase.storage.from(BUCKETS.assignments).createSignedUrl(fp, 86400);
+            const fileName = fp.split("/").pop() || fp;
+            signedFiles.push({ name: fileName, url: data?.signedUrl || fp });
+          } catch {
+            const fileName = fp.split("/").pop() || fp;
+            signedFiles.push({ name: fileName, url: fp });
+          }
+        }
+        return { ...sub, signedFiles };
+      }),
+    );
   }
 
   return {
@@ -959,6 +990,7 @@ export async function fetchCandidateProfile(
     voiceScreenTranscripts,
     latestScorecard,
     assignments,
+    assignmentSubmissions,
     interviewerFeedback,
     offers,
     roundInstances: roundRows,

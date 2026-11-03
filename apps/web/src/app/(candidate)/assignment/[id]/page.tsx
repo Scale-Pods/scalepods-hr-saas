@@ -82,9 +82,14 @@ export default function AssignmentPage() {
           token,
         );
         const puts = files.map((f) => {
-          const target = uploads.find((u) => u.name === f.name.replace(/[^A-Za-z0-9._-]/g, "_"));
+          const safeName = f.name.replace(/[^A-Za-z0-9._-]/g, "_");
+          const target = uploads.find((u) => u.name === safeName || (u as any).path?.endsWith(safeName));
           return target
-            ? fetch(target.url, { method: "PUT", body: f }).then(() => target.name)
+            ? fetch(target.url, {
+                method: "PUT",
+                body: f,
+                headers: { "Content-Type": f.type || "application/octet-stream" },
+              }).then(() => (target as any).path || target.name)
             : Promise.resolve<string | null>(null);
         });
         filePaths = (await Promise.all(puts)).filter((p): p is string => !!p);

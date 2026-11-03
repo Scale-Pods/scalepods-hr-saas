@@ -299,9 +299,20 @@ export async function signUploads(
   resourceId: string,
   fileNames: string[],
   token?: string,
-): Promise<{ bucket: string; uploads: { name: string; url: string }[] }> {
+): Promise<{ bucket: string; uploads: { name: string; url: string; path?: string }[] }> {
+  try {
+    const res = await fetch("/api/sign-upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token ?? "", kind, resource_id: resourceId, file_names: fileNames }),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {}
+
   const { callEdge } = await import("@/lib/edge");
-  return callEdge<{ bucket: string; uploads: { name: string; url: string }[] }>("sign-upload", {
+  return callEdge<{ bucket: string; uploads: { name: string; url: string; path?: string }[] }>("sign-upload", {
     body: { token: token ?? "", kind, resource_id: resourceId, file_names: fileNames },
   });
 }
@@ -327,6 +338,14 @@ export async function scoreAssignment(
   submissionId: string,
   token: string,
 ): Promise<void> {
+  const n8n = n8nBase();
+  if (n8n) {
+    void fetch(`${n8n.replace(/\/+$/, "")}/webhook/hiring/assignment-score`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ round_instance_id: roundInstanceId, submission_id: submissionId, token }),
+    }).catch(() => {});
+  }
   const { callEdge } = await import("@/lib/edge");
   void callEdge("score-assignment", {
     body: { round_instance_id: roundInstanceId, submission_id: submissionId, token },
