@@ -10,6 +10,7 @@ import { useInterviewContext } from "../context/InterviewContext";
 import { useProctoringContext } from "../context/ProctoringContext";
 import { useInterviewTimer } from "../hooks/useInterviewTimer";
 import type { InterviewQuestion } from "../types";
+import { inferQuestionType } from "../utils/llm";
 import { getMediaDevicesStream, getScreenStream } from "../utils/mediaHelpers";
 import { useTTSEngine } from "../utils/tts";
 import type { AnswerRecorderState } from "./AnswerRecorder";
@@ -122,6 +123,9 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         if (msg.includes("entire_screen_required")) {
           setStartError(
             "For proctoring compliance, you must share your Entire Screen. Sharing a single window or browser tab is not permitted. Please click 'Start Interview' again and select 'Entire Screen'.",
+          );
+          toast.error(
+            "Entire Screen required: Sharing a single tab or window is not allowed for proctoring compliance.",
           );
           startingRef.current = false;
           return;
@@ -313,7 +317,10 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         role: "alex",
         text: questionText,
         phase: currentTurn.turn_type === "closing" ? "closing" : "question",
-        questionType: (currentTurn.question_type as ChatMessage["questionType"]) || "technical",
+        questionType: inferQuestionType(
+          questionText,
+          (currentTurn.question_type as ChatMessage["questionType"]) || "technical",
+        ),
         isFollowUp: currentTurn.turn_type === "follow_up",
         status: "speaking",
         timestamp: now + 1,

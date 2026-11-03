@@ -104,7 +104,24 @@ export async function getScreenStream(
     setTimeout(() => reject(new Error("timeout")), timeoutMs),
   );
   try {
-    const displayMediaOptions = {
+    // Use CaptureController if supported to prevent the browser from switching focus away to another tab
+    let controller: unknown;
+    try {
+      if (typeof window !== "undefined" && "CaptureController" in window) {
+        const CC = (
+          window as unknown as {
+            CaptureController: new () => { setFocusBehavior: (b: string) => void };
+          }
+        ).CaptureController;
+        const c = new CC();
+        if (typeof c.setFocusBehavior === "function") {
+          c.setFocusBehavior("no-focus-change");
+        }
+        controller = c;
+      }
+    } catch {}
+
+    const displayMediaOptions: Record<string, unknown> = {
       video: {
         displaySurface: "monitor",
       },
@@ -112,10 +129,16 @@ export async function getScreenStream(
       selfBrowserSurface: "exclude",
       surfaceSwitching: "exclude",
       systemAudio: "exclude",
-    } as unknown as MediaStreamConstraints;
+      preferCurrentTab: false,
+    };
+    if (controller) {
+      displayMediaOptions.controller = controller;
+    }
 
     const stream = (await Promise.race([
-      navigator.mediaDevices.getDisplayMedia(displayMediaOptions),
+      navigator.mediaDevices.getDisplayMedia(
+        displayMediaOptions as unknown as MediaStreamConstraints,
+      ),
       tmr,
     ])) as MediaStream;
 

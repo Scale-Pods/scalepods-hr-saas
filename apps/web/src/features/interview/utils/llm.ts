@@ -144,70 +144,261 @@ export function isVagueOrUncertainAnswer(answer: string): boolean {
   return vaguePhrases.some((phrase) => text.includes(phrase));
 }
 
-export function generateProbingFollowUp(_question: string, answer: string): string {
-  const ans = (answer || "").toLowerCase();
+export function inferQuestionType(
+  questionText: string,
+  rawType?: string,
+): "technical" | "behavioral" | "situational" | "cultural" {
+  const text = (questionText || "").toLowerCase();
+
+  // Intro greeting turn
+  if (text.includes("how are you doing today") || text.includes("welcome to your interview")) {
+    return "cultural";
+  }
+
+  // Technical keywords
   if (
-    ans.includes("cache") ||
-    ans.includes("redis") ||
-    ans.includes("latency") ||
-    ans.includes("performance") ||
-    ans.includes("optimiz")
+    text.includes("technical") ||
+    text.includes("technically") ||
+    text.includes("hands-on") ||
+    text.includes("code") ||
+    text.includes("coding") ||
+    text.includes("architect") ||
+    text.includes("database") ||
+    text.includes("sql") ||
+    text.includes("nosql") ||
+    text.includes("postgres") ||
+    text.includes("api") ||
+    text.includes("endpoint") ||
+    text.includes("debug") ||
+    text.includes("bottleneck") ||
+    text.includes("performance") ||
+    text.includes("latency") ||
+    text.includes("cache") ||
+    text.includes("framework") ||
+    text.includes("library") ||
+    text.includes("system") ||
+    text.includes("trade-off") ||
+    text.includes("automation") ||
+    text.includes("workflow") ||
+    text.includes("tools") ||
+    text.includes("pipeline") ||
+    text.includes("microservice") ||
+    text.includes("distributed") ||
+    text.includes("cloud") ||
+    text.includes("docker") ||
+    text.includes("kubernetes") ||
+    text.includes("react") ||
+    text.includes("software engineering") ||
+    text.includes("n8n")
   ) {
-    return "What specific cache invalidation strategy or metrics did you use to evaluate those performance gains?";
+    return "technical";
+  }
+
+  // Behavioral keywords
+  if (
+    text.includes("teammate") ||
+    text.includes("disagree") ||
+    text.includes("conflict") ||
+    text.includes("collaborat") ||
+    text.includes("feedback") ||
+    text.includes("stakeholder") ||
+    text.includes("communication")
+  ) {
+    return "behavioral";
+  }
+
+  // Situational keywords
+  if (
+    text.includes("tell me about a time") ||
+    text.includes("describe a time") ||
+    text.includes("describe a complex problem") ||
+    text.includes("how would you handle")
+  ) {
+    return "situational";
+  }
+
+  // Cultural keywords
+  if (
+    text.includes("team environment") ||
+    text.includes("work culture") ||
+    text.includes("values") ||
+    text.includes("culture")
+  ) {
+    return "cultural";
+  }
+
+  const validTypes: Array<"technical" | "behavioral" | "situational" | "cultural"> = [
+    "technical",
+    "behavioral",
+    "situational",
+    "cultural",
+  ];
+  if (rawType && validTypes.includes(rawType as "technical")) {
+    return rawType as "technical" | "behavioral" | "situational" | "cultural";
+  }
+
+  return "technical";
+}
+
+export interface ExtractedAnswerDetails {
+  matchedKeywords: string[];
+  primaryTopic: string;
+}
+
+export function extractAnswerEntities(answer: string): ExtractedAnswerDetails {
+  const ans = (answer || "").toLowerCase();
+  const candidates: Array<{ key: string; match: RegExp }> = [
+    { key: "Redis and caching", match: /\b(redis|cache|caching|memcached)\b/i },
+    {
+      key: "latency and performance optimization",
+      match: /\b(latency|throughput|performance|bottleneck|optimiz)\b/i,
+    },
+    {
+      key: "database queries and data modeling",
+      match:
+        /\b(database|sql|postgres|postgresql|mysql|mongo|mongodb|schema|indexing|query|queries)\b/i,
+    },
+    {
+      key: "microservices and API architecture",
+      match: /\b(microservice|microservices|api|apis|rest|graphql|grpc|endpoint|endpoints)\b/i,
+    },
+    {
+      key: "Kafka and asynchronous messaging",
+      match: /\b(kafka|rabbitmq|queue|queues|event-driven|pubsub|pub-sub)\b/i,
+    },
+    {
+      key: "Kubernetes and container orchestration",
+      match: /\b(kubernetes|k8s|docker|container|containers|helm)\b/i,
+    },
+    {
+      key: "CI/CD and deployment pipelines",
+      match: /\b(ci\/cd|pipeline|pipelines|deploy|deployment|github actions|jenkins|terraform)\b/i,
+    },
+    {
+      key: "debugging and production incident resolution",
+      match: /\b(debug|debugging|incident|outage|root cause|datadog|sentry|logs|monitoring)\b/i,
+    },
+    {
+      key: "React and frontend state management",
+      match: /\b(react|next\.js|nextjs|vue|angular|frontend|state management|tailwind|css)\b/i,
+    },
+    {
+      key: "automated testing and test suites",
+      match: /\b(test|testing|unit test|integration test|jest|vitest|cypress|coverage)\b/i,
+    },
+    {
+      key: "team collaboration and code reviews",
+      match: /\b(code review|pr|pull request|stakeholder|teammate|mentor|leadership)\b/i,
+    },
+    { key: "n8n and workflow automation", match: /\b(n8n|automation|webhook|webhooks)\b/i },
+    { key: "Python and backend services", match: /\b(python|django|fastapi|flask)\b/i },
+    { key: "Node.js and TypeScript services", match: /\b(node|nodejs|typescript|express|nest)\b/i },
+  ];
+
+  const matched: string[] = [];
+  for (const c of candidates) {
+    if (c.match.test(ans)) {
+      matched.push(c.key);
+    }
+  }
+
+  const primaryTopic = matched[0] || "";
+  return { matchedKeywords: matched, primaryTopic };
+}
+
+export function isGenericAcknowledgment(text: string): boolean {
+  if (!text) return true;
+  const lower = text.toLowerCase().trim();
+  const canned = [
+    "thank you",
+    "thanks",
+    "understood",
+    "got it",
+    "great",
+    "thanks for sharing that",
+    "thank you for explaining that",
+    "thank you for walking me through your approach",
+    "i appreciate you sharing those details",
+    "let's move to our next topic",
+    "moving on to the next question",
+    "that makes sense",
+    "thanks for your response",
+  ];
+  return canned.some((c) => lower === c || lower.startsWith(c));
+}
+
+export function generateProbingFollowUp(_question: string, answer: string): string {
+  const { matchedKeywords, primaryTopic } = extractAnswerEntities(answer);
+  const ans = (answer || "").toLowerCase();
+
+  if (
+    ans.includes("redis") ||
+    ans.includes("cache") ||
+    matchedKeywords.includes("Redis and caching")
+  ) {
+    return "When implementing Redis caching to reduce latency, what cache invalidation or TTL strategy did you use, and how did you verify the performance gains?";
   }
   if (
-    ans.includes("database") ||
-    ans.includes("sql") ||
     ans.includes("postgres") ||
-    ans.includes("mongo") ||
-    ans.includes("schema") ||
-    ans.includes("index")
+    ans.includes("sql") ||
+    ans.includes("database") ||
+    matchedKeywords.includes("database queries and data modeling")
   ) {
-    return "How did you handle data consistency, indexing, or migration challenges in that implementation?";
+    return "How did you handle query indexing, schema migrations, or data consistency guarantees in that database setup?";
   }
   if (
     ans.includes("microservice") ||
-    ans.includes("service") ||
-    ans.includes("architecture") ||
-    ans.includes("kafka") ||
-    ans.includes("queue")
+    ans.includes("api") ||
+    matchedKeywords.includes("microservices and API architecture")
   ) {
-    return "How did you manage failure handling, retries, or network timeouts across those services?";
+    return "How did you design failure handling, circuit breaking, or backwards compatibility across those API endpoints?";
   }
   if (
-    ans.includes("debug") ||
-    ans.includes("issue") ||
-    ans.includes("incident") ||
-    ans.includes("error") ||
-    ans.includes("bug")
+    ans.includes("kafka") ||
+    ans.includes("queue") ||
+    matchedKeywords.includes("Kafka and asynchronous messaging")
   ) {
-    return "What preventive monitoring or regression testing did you put in place to ensure the issue wouldn't recur?";
+    return "How did you guarantee message delivery, handle consumer offset commits, or manage retry dead-letter queues?";
+  }
+  if (
+    ans.includes("kubernetes") ||
+    ans.includes("docker") ||
+    matchedKeywords.includes("Kubernetes and container orchestration")
+  ) {
+    return "How did you manage container health probes, resource limits, and zero-downtime rolling updates?";
   }
   if (
     ans.includes("pipeline") ||
-    ans.includes("deploy") ||
-    ans.includes("ci") ||
-    ans.includes("docker") ||
-    ans.includes("kubernetes")
+    ans.includes("ci/cd") ||
+    matchedKeywords.includes("CI/CD and deployment pipelines")
   ) {
     return "How did you balance deployment velocity against system stability and rollback safety in that pipeline?";
   }
   if (
-    ans.includes("test") ||
-    ans.includes("testing") ||
-    ans.includes("unit test") ||
-    ans.includes("qa")
+    ans.includes("debug") ||
+    ans.includes("incident") ||
+    matchedKeywords.includes("debugging and production incident resolution")
   ) {
-    return "How did you prioritize critical test coverage without slowing down development momentum?";
+    return "Once you identified the root cause, what preventive alerts, observability metrics, or regression tests did you put in place?";
   }
   if (
     ans.includes("react") ||
     ans.includes("frontend") ||
-    ans.includes("state") ||
-    ans.includes("ui")
+    matchedKeywords.includes("React and frontend state management")
   ) {
-    return "How did you manage state complexity and rendering performance as the user interface scaled?";
+    return "How did you manage component state synchronization and rendering performance as the user interface scaled?";
   }
+  if (ans.includes("test") || matchedKeywords.includes("automated testing and test suites")) {
+    return "How did you balance mock dependencies against realistic integration tests in that test suite?";
+  }
+  if (ans.includes("n8n") || matchedKeywords.includes("n8n and workflow automation")) {
+    return "When connecting n8n workflows, how did you handle asynchronous worker execution, retry logic, and webhook failure fallbacks?";
+  }
+
+  if (primaryTopic) {
+    return `Looking closer at your work with ${primaryTopic}, what was one of the key trade-offs you had to make, and what alternative approach did you consider?`;
+  }
+
   return "What was one key technical trade-off or constraint you faced in that approach, and how did you navigate it?";
 }
 
@@ -224,6 +415,7 @@ export function generateContextualAcknowledgment(
 
   const ans = (answer || "").toLowerCase().trim();
   const q = (question || "").toLowerCase().trim();
+  const { primaryTopic } = extractAnswerEntities(answer);
 
   // Handle intro question acknowledgment
   if (
@@ -245,51 +437,8 @@ export function generateContextualAcknowledgment(
   }
 
   if (turnType === "follow_up") {
-    if (
-      ans.includes("cache") ||
-      ans.includes("redis") ||
-      ans.includes("latency") ||
-      ans.includes("performance") ||
-      ans.includes("optimiz")
-    ) {
-      return "Thanks for detailing your caching and performance strategy. Let's look a bit deeper into that approach.";
-    }
-    if (
-      ans.includes("database") ||
-      ans.includes("sql") ||
-      ans.includes("postgres") ||
-      ans.includes("mongo") ||
-      ans.includes("schema") ||
-      ans.includes("query")
-    ) {
-      return "Got it, that clarifies how you structured the data layer. I'd like to probe a bit further on that.";
-    }
-    if (
-      ans.includes("service") ||
-      ans.includes("api") ||
-      ans.includes("architecture") ||
-      ans.includes("microservice") ||
-      ans.includes("system design")
-    ) {
-      return "Appreciate you explaining that architecture. Let's dig deeper into the design choices and trade-offs.";
-    }
-    if (
-      ans.includes("debug") ||
-      ans.includes("issue") ||
-      ans.includes("incident") ||
-      ans.includes("error") ||
-      ans.includes("outage")
-    ) {
-      return "Thanks for walking through that troubleshooting workflow. Let's examine one specific detail a bit further.";
-    }
-    if (
-      ans.includes("test") ||
-      ans.includes("pipeline") ||
-      ans.includes("ci") ||
-      ans.includes("deploy") ||
-      ans.includes("docker")
-    ) {
-      return "Understood, that gives good context on your deployment pipeline. Let's explore one aspect in more detail.";
+    if (primaryTopic) {
+      return `Thanks for breaking down your work with ${primaryTopic}. I'd like to probe a bit deeper into that specific point.`;
     }
     const followUpAcks = [
       "Thanks for sharing that overview. Let's dig a bit deeper into that specific point.",
@@ -301,89 +450,14 @@ export function generateContextualAcknowledgment(
   }
 
   // Standard turn acknowledgment: dynamically echo candidate's topic
-  if (
-    ans.includes("cache") ||
-    ans.includes("redis") ||
-    ans.includes("latency") ||
-    ans.includes("performance") ||
-    ans.includes("throughput") ||
-    ans.includes("optimiz")
-  ) {
-    return "Thank you for detailing your approach to caching and latency optimization.";
-  }
-  if (
-    ans.includes("microservice") ||
-    ans.includes("architecture") ||
-    ans.includes("kafka") ||
-    ans.includes("event-driven") ||
-    ans.includes("distributed") ||
-    ans.includes("monolith")
-  ) {
-    return "Appreciate you breaking down your architectural design and service boundaries.";
-  }
-  if (
-    ans.includes("postgres") ||
-    ans.includes("mysql") ||
-    ans.includes("database") ||
-    ans.includes("sql") ||
-    ans.includes("schema") ||
-    ans.includes("index") ||
-    ans.includes("queries")
-  ) {
-    return "Got it, that gives great clarity on how you structured the database queries and data model.";
-  }
-  if (
-    ans.includes("debug") ||
-    ans.includes("incident") ||
-    ans.includes("outage") ||
-    ans.includes("root cause") ||
-    ans.includes("datadog") ||
-    ans.includes("sentry") ||
-    ans.includes("logs")
-  ) {
-    return "Thanks for walking through your debugging workflow and root-cause analysis.";
-  }
-  if (
-    ans.includes("docker") ||
-    ans.includes("kubernetes") ||
-    ans.includes("k8s") ||
-    ans.includes("ci/cd") ||
-    ans.includes("pipeline") ||
-    ans.includes("terraform") ||
-    ans.includes("github actions")
-  ) {
-    return "Understood, having automated pipelines and reliable deployments is critical.";
-  }
-  if (
-    ans.includes("react") ||
-    ans.includes("next.js") ||
-    ans.includes("frontend") ||
-    ans.includes("component") ||
-    ans.includes("tailwind") ||
-    ans.includes("state management")
-  ) {
-    return "Thanks for explaining how you handled component structure and frontend state.";
-  }
-  if (
-    ans.includes("test") ||
-    ans.includes("unit test") ||
-    ans.includes("integration") ||
-    ans.includes("jest") ||
-    ans.includes("vitest") ||
-    ans.includes("cypress") ||
-    ans.includes("coverage")
-  ) {
-    return "Understood, that highlights your commitment to automated testing and code quality.";
-  }
-  if (
-    ans.includes("team") ||
-    ans.includes("conflict") ||
-    ans.includes("disagree") ||
-    ans.includes("code review") ||
-    ans.includes("mentor") ||
-    ans.includes("stakeholder")
-  ) {
-    return "I appreciate that thoughtful perspective on team collaboration and technical communication.";
+  if (primaryTopic) {
+    const acks = [
+      `Thank you for walking me through your approach with ${primaryTopic}.`,
+      `Got it, that gives great context on how you handled ${primaryTopic}.`,
+      `Appreciate you breaking down your reasoning around ${primaryTopic}.`,
+      `Understood, that highlights your practical experience with ${primaryTopic} well.`,
+    ];
+    return acks[index % acks.length];
   }
 
   const standardAcks = [
@@ -519,7 +593,11 @@ export async function analyzeAnswerInRealtime(
         recommendedAction === "follow_up" || recommendedAction === "rephrase_primary",
       follow_up_question:
         recommendedAction === "follow_up"
-          ? parsed.follow_up_direction || fallback.follow_up_question || probingFollowUp
+          ? parsed.follow_up_direction &&
+            !parsed.follow_up_direction.includes("fundamental concepts you do know") &&
+            !parsed.follow_up_direction.includes("Could you share any related experience")
+            ? parsed.follow_up_direction
+            : fallback.follow_up_question || probingFollowUp
           : undefined,
       rephrased_question:
         recommendedAction === "rephrase_primary"
@@ -552,6 +630,7 @@ export async function generateTargetedFollowUp(
   jdText: string,
   mode: "follow_up" | "rephrase_primary" = "follow_up",
 ): Promise<string> {
+  const dynamicProbing = generateProbingFollowUp(originalQuestion, candidateAnswer);
   try {
     const response = await fetch(`${n8nBase()}/webhook/interview-engine`, {
       method: "POST",
@@ -570,13 +649,18 @@ export async function generateTargetedFollowUp(
 
     if (!response.ok) throw new Error(`Status ${response.status}`);
     const parsed = await response.json();
-    return (
-      parsed.question_text ||
-      gapDirection ||
-      "Could you share a specific example that illustrates that?"
-    );
+    const candidateQ = (parsed.question_text || gapDirection || "").trim();
+    if (
+      !candidateQ ||
+      candidateQ.includes("Could you share a specific example that illustrates that?") ||
+      candidateQ.includes("Could you walk me through a specific implementation example") ||
+      candidateQ.includes("Could you share any related experience")
+    ) {
+      return dynamicProbing;
+    }
+    return candidateQ;
   } catch {
-    return gapDirection || "Could you walk me through a specific implementation example of that?";
+    return dynamicProbing;
   }
 }
 
@@ -613,13 +697,13 @@ const STAGE_QUESTIONS: Array<{ q: string; type: QuestionResponse["question_type"
   },
   {
     q: "How do you handle disagreement with a teammate over an engineering approach or code review feedback?",
-    type: "cultural",
+    type: "behavioral",
   },
   {
     q: "What kind of team environment and work culture helps you do your best, highest-impact work?",
     type: "cultural",
   },
-  { q: "Where do you see yourself growing technically over the next year?", type: "cultural" },
+  { q: "Where do you see yourself growing technically over the next year?", type: "technical" },
 ];
 
 function normalizeQuestion(text: string): string {
@@ -841,9 +925,10 @@ export async function generateInterviewerTurn(
       const questionText = parsed.question_text || parsed.prompt || targetQuestion || "";
       const rawAck = (parsed.interviewer_text || "").trim();
 
-      // For any turn answering a question (turns > 0 or with history), never repeat opening greeting
+      // For any turn answering a question, prioritize dynamic topic-matched acknowledgments
+      // over canned 2-3 word responses from n8n ("Understood", "Thanks for sharing", etc.)
       const interviewerText =
-        isGreetingText(rawAck) || !rawAck
+        isGreetingText(rawAck) || !rawAck || isGenericAcknowledgment(rawAck)
           ? generateContextualAcknowledgment(
               lastAnswer,
               lastQ,
@@ -883,7 +968,7 @@ export async function generateInterviewerTurn(
           interviewer_text: interviewerText,
           question_text: fallback.question_text,
           turn_type: "question",
-          question_type: fallback.question_type,
+          question_type: inferQuestionType(fallback.question_text, fallback.question_type),
           should_continue: true,
         };
       }
@@ -892,7 +977,7 @@ export async function generateInterviewerTurn(
         interviewer_text: interviewerText,
         question_text: questionText,
         turn_type: parsed.turn_type || "question",
-        question_type: parsed.question_type || "technical",
+        question_type: inferQuestionType(questionText, parsed.question_type || "technical"),
         should_continue: parsed.should_continue !== false,
       };
     }
@@ -918,7 +1003,7 @@ export async function generateInterviewerTurn(
       ),
       question_text: targetQuestion,
       turn_type: "question",
-      question_type: "technical",
+      question_type: inferQuestionType(targetQuestion, "technical"),
       should_continue: true,
     };
   }
@@ -939,7 +1024,7 @@ export async function generateInterviewerTurn(
     ),
     question_text: fallbackQ.question_text,
     turn_type: "question",
-    question_type: fallbackQ.question_type,
+    question_type: inferQuestionType(fallbackQ.question_text, fallbackQ.question_type),
     should_continue: true,
   };
 }

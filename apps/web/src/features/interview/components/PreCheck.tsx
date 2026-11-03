@@ -55,7 +55,9 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
         navigator.mediaDevices.getUserMedia({ video: true }),
         tmr,
       ])) as MediaStream;
-      stream.getTracks().forEach((t) => t.stop());
+      for (const t of stream.getTracks()) {
+        t.stop();
+      }
       return true;
     } catch (e) {
       console.log("PreCheck camera failed:", (e as Error)?.message);
@@ -72,7 +74,9 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
         navigator.mediaDevices.getUserMedia({ audio: OPTIMAL_AUDIO_CONSTRAINTS }),
         tmr,
       ])) as MediaStream;
-      stream.getTracks().forEach((t) => t.stop());
+      for (const t of stream.getTracks()) {
+        t.stop();
+      }
       return true;
     } catch (e) {
       console.log("PreCheck microphone failed:", (e as Error)?.message);
@@ -271,6 +275,7 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
                 </div>
                 {!checking && failed && (key === "microphone" || key === "camera") && (
                   <button
+                    type="button"
                     onClick={key === "microphone" ? retryMicrophone : retryCamera}
                     disabled={isRetrying}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition disabled:opacity-50 shrink-0"
@@ -380,6 +385,22 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
           </div>
         </div>
 
+        <div
+          className="flex items-start gap-3 p-3.5 rounded-xl mb-4 text-xs animate-fade-in"
+          style={{
+            background: "color-mix(in srgb, var(--blue) 8%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--blue) 25%, transparent)",
+            color: "var(--label-primary)",
+          }}
+        >
+          <Monitor size={18} className="shrink-0 mt-0.5" style={{ color: "var(--blue)" }} />
+          <div>
+            <span className="font-semibold text-blue-400">Proctoring Notice:</span> When your
+            browser prompts for screen sharing, select <strong>Entire Screen</strong>. Sharing a
+            single tab or single window is prohibited and will be rejected.
+          </div>
+        </div>
+
         <label
           className="flex items-start gap-3 px-4 py-3 rounded-xl mb-6 cursor-pointer group animate-fade-in"
           style={{ background: "var(--fill-quaternary)", border: "1px solid var(--separator)" }}
@@ -406,6 +427,7 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
           </div>
         ) : (
           <button
+            type="button"
             onClick={() => {
               if (canStart) onComplete();
             }}

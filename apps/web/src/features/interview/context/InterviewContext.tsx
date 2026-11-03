@@ -20,6 +20,7 @@ import {
   extractJdToolsAndTech,
   generateInterviewerTurn,
   generateTargetedFollowUp,
+  inferQuestionType,
 } from "../utils/llm";
 
 interface InterviewContextType {
@@ -291,6 +292,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
     const firstQ = questions[0];
     const initialQuestionText = firstQ?.question_text || INTRO_QUESTION_TEXT;
+    const initialQuestionType = inferQuestionType(initialQuestionText, firstQ?.question_type);
     if (firstQ?.id) {
       setCurrentQuestionId(firstQ.id);
     }
@@ -299,7 +301,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       interviewer_text: "",
       question_text: initialQuestionText,
       turn_type: "question",
-      question_type: firstQ?.question_type || "cultural",
+      question_type: initialQuestionType,
       should_continue: true,
     });
   }, [session, questions]);
@@ -342,6 +344,11 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             type: q.source === "llm_ts_followup" ? "follow_up" : q.question_type,
           }));
 
+        const inferredQType = inferQuestionType(
+          currentQuestion.question_text,
+          currentQuestion.question_type,
+        );
+
         const note = await analyzeAnswerInRealtime(
           currentQuestion.question_text,
           answerText,
@@ -351,7 +358,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           questionId,
           blueprint,
           currentQuestion.competency_ids || [],
-          currentQuestion.question_type,
+          inferredQType,
           isAlreadyFollowUp,
           session.id,
           session.account_id,
@@ -514,17 +521,33 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       if (turn.question_text) {
         const isFollowUp = turn.turn_type === "follow_up";
         if (!isFollowUp && nextPlannedQuestion) {
+          // Guarantee that the spoken question, chat question, and recorded answer question ID match 100%
+          turn.question_text = nextPlannedQuestion.question_text;
+          const inferredType = inferQuestionType(
+            nextPlannedQuestion.question_text,
+            nextPlannedQuestion.question_type,
+          );
+          turn.question_type = inferredType;
           setCurrentQuestionId(nextPlannedQuestion.id);
           const plannedIdx = questions.findIndex((q) => q.id === nextPlannedQuestion.id);
           if (plannedIdx !== -1) {
             setCurrentQuestionIndex(plannedIdx);
           }
+          if (nextPlannedQuestion.question_type !== inferredType) {
+            setQuestions((prev) =>
+              prev.map((q) =>
+                q.id === nextPlannedQuestion.id ? { ...q, question_type: inferredType } : q,
+              ),
+            );
+          }
         } else {
+          const inferredType = inferQuestionType(turn.question_text, turn.question_type);
+          turn.question_type = inferredType;
           let nextQ: InterviewQuestion = {
             id: `q-turn-${Date.now()}`,
             session_id: session.id,
             question_text: turn.question_text,
-            question_type: turn.question_type || "technical",
+            question_type: inferredType,
             order_index: questions.length,
             source: isFollowUp ? "llm_ts_followup" : "llm_ts_dynamic",
           };
@@ -538,7 +561,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
                 action: "insert_question",
                 sessionId: session.id,
                 questionText: turn.question_text,
-                questionType: turn.question_type || "technical",
+                questionType: inferredType,
                 orderIndex: questions.length,
                 source: isFollowUp ? "llm_ts_followup" : "llm_ts_dynamic",
                 parentQuestionId: lastNote?.question_id || null,
