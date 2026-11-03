@@ -435,12 +435,13 @@ export const assignmentContextSchema = z.object({
     id: z.string(),
     name: z.string(),
     jd_text: z.string().nullable(),
-    number_of_rounds: z.number(),
+    number_of_rounds: z.coerce.number().optional().default(1),
   }),
   round: z.object({
     round_number: z.number(),
     round_type: z.enum(ROUND_TYPES),
     cutoff_score: z.number().nullable(),
+    brief_text: z.string().nullable().optional(),
   }),
   submission: z
     .object({
