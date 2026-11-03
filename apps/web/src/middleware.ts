@@ -62,9 +62,23 @@ export async function middleware(request: NextRequest) {
       return res;
     }
 
+    // Do not block lightweight RSC prefetch requests on remote auth network verification
+    const isPrefetch =
+      request.headers.get("purpose") === "prefetch" ||
+      request.headers.get("next-router-prefetch") === "1" ||
+      request.headers.get("x-middleware-prefetch") === "1";
+
+    if (isPrefetch) {
+      return response;
+    }
+
+    const timeoutPromise = new Promise<{ data: { user: null }; error: Error }>((resolve) =>
+      setTimeout(() => resolve({ data: { user: null }, error: new Error("Auth timeout") }), 2500),
+    );
+
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await Promise.race([supabase.auth.getUser(), timeoutPromise]);
 
     if (!user) {
       const redirect = request.nextUrl.clone();

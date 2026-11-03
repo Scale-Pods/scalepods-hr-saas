@@ -21,11 +21,10 @@ export function useAccount() {
     queryKey: accountKey(userId),
     queryFn: () => fetchAccount(userId as string),
     enabled: Boolean(userId),
-    // Plan and billing fields are also changed administratively in Supabase.
-    // Avoid showing a stale tier for five minutes after those changes.
-    staleTime: 0,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: "always",
+    // Cache account details across page transitions for fast shell rendering
+    staleTime: 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   const refreshAccount = useCallback(() => {

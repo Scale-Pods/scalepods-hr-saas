@@ -9,8 +9,8 @@ export function useCampaigns() {
   return useQuery({
     queryKey: campaignsKey,
     queryFn: fetchCampaigns,
-    staleTime: 5_000,
-    refetchInterval: 6_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 }
 
@@ -19,8 +19,8 @@ export function useCampaignDetail(id: string | undefined) {
     queryKey: ["campaigns", "detail", id],
     queryFn: () => fetchCampaignDetail(id as string),
     enabled: Boolean(id),
-    staleTime: 4_000,
-    refetchInterval: 5_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 }
 

@@ -23,8 +23,8 @@ export function useDashboardKpis() {
   return useQuery({
     queryKey: dashboardKeys.kpis,
     queryFn: fetchDashboardKpis,
-    staleTime: 5_000,
-    refetchInterval: 6_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 }
 
@@ -32,8 +32,8 @@ export function useUpcomingInterviews() {
   return useQuery({
     queryKey: dashboardKeys.upcoming,
     queryFn: fetchUpcomingInterviews,
-    staleTime: 5_000,
-    refetchInterval: 6_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 }
 
@@ -41,8 +41,8 @@ export function useLedger() {
   return useQuery({
     queryKey: dashboardKeys.ledger,
     queryFn: () => fetchLedger(200),
-    staleTime: 4_000,
-    refetchInterval: 5_000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 }
 

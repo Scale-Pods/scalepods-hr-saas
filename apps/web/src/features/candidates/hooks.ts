@@ -13,7 +13,7 @@ export function useCandidateProfile(
     queryKey: ["candidates", "profile", id, accountId ?? "anon", campaignId ?? "default"],
     queryFn: () => fetchCandidateProfile(id as string, tier, campaignId, accountId),
     enabled: Boolean(id),
-    staleTime: 4_000,
-    refetchInterval: 5_000,
+    staleTime: 30_000,
+    refetchInterval: false,
   });
 }
