@@ -528,10 +528,6 @@ async function triggerImmediateVoiceCallIfEligible(
         body: JSON.stringify({
           phone_number: phone,
           agent_id: agentId,
-          from_number: outboundFromNumber,
-          from_phone_number: outboundFromNumber,
-          from: outboundFromNumber,
-          caller_id: outboundFromNumber,
           phone_number_id: outboundPhoneNumberId,
           metadata: {
             candidate_phone: phone,

@@ -236,10 +236,6 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         phone_number: phone,
         agent_id: targetAgentId,
-        from_number: outboundFromNumber,
-        from_phone_number: outboundFromNumber,
-        from: outboundFromNumber,
-        caller_id: outboundFromNumber,
         phone_number_id: outboundPhoneNumberId,
         metadata: {
           candidate_phone: phone,
@@ -247,7 +243,6 @@ export async function POST(req: Request) {
           company_name: "ScalePods",
           role_title: role_title || "ScalePods Voice Agent Test",
           from_phone_number: outboundFromNumber,
-          from_number: outboundFromNumber,
           caller_id: outboundFromNumber,
           is_test_call: true,
           source: "scalepods_test_call_fallback",
@@ -257,7 +252,6 @@ export async function POST(req: Request) {
           candidate_name: candidate_name || "Recruiter Test",
           role_title: role_title || "ScalePods Voice Agent Test",
           from_phone_number: outboundFromNumber,
-          from_number: outboundFromNumber,
           caller_id: outboundFromNumber,
           is_test_call: true,
           source: "scalepods_test_call_fallback",

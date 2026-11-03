@@ -72,45 +72,32 @@ export function resolveOutboundFromNumber(
  * Maps ScalePods voice options and names to DialNexa voice IDs.
  */
 export const DIALNEXA_VOICE_ID_MAP: Record<string, string> = {
-  // Indian English & Hinglish
-  aditi: "voice_mfgsys96smn4c7", // Aditi (SmallestAI, female, Indian)
-  rohan: "voice_18662c83888c43", // Rohan (SmallestAI, male, Indian)
+  // Indian English & Hinglish (mapped to high-reliability ElevenLabs telephony voices)
+  aditi: "voice_94226a7ff47a43", // Apsara/Aditi (ElevenLabs, female, Indian)
+  rohan: "voice_4897321fb9ef4e", // Amit Gupta/Rohan (ElevenLabs, male, Indian)
   ananya: "voice_mfl4legvvrugxy", // Ananya (ElevenLabs, female, Indian)
-  aarav: "voice_2f4c1b31555b44", // Aarav (Soniox, male, Indian)
-  priya: "voice_4f1cea5ad4dc43", // Priya (SmallestAI, female, Indian)
-  kabir: "voice_b8aab06c476e46", // Dev/Kabir (Soniox, male, Indian)
-  neerja: "voice_3f8842f6fcda49", // Nisha/Neerja (Soniox, female, Indian)
+  aarav: "voice_e031f06ade5049", // Raju/Aarav (ElevenLabs, male, Indian)
+  priya: "voice_mol2pruwhpAXKK", // Noor/Priya (ElevenLabs, female, Indian)
+  kabir: "voice_818d336ca3904c", // Viraj/Kabir (ElevenLabs, male, Indian)
+  neerja: "voice_94226a7ff47a43", // Apsara/Neerja (ElevenLabs, female, Indian)
   vikram: "voice_4897321fb9ef4e", // Amit Gupta/Vikram (ElevenLabs, male, Indian)
   tara: "voice_mfl4lefxlt42jt", // Tara (ElevenLabs, female, Indian)
   anika: "voice_mfl4lefoa7t7zc", // Anika (ElevenLabs, female, Indian)
   maya: "voice_113c227072ad4a", // Maya (ElevenLabs, female, Indian)
-  neha: "voice_f1f2fc7355d34c", // Neha (Cartesia, female, Indian)
-  kavya: "voice_114759d061544c", // Kavya (Cartesia, female, Indian)
-  manav: "voice_4dac547a55634e", // Manav (Soniox, male, Indian)
-  dev: "voice_b8aab06c476e46", // Dev (Soniox, male, Indian)
-  nisha: "voice_3f8842f6fcda49", // Nisha (Soniox, female, Indian)
-  shalini: "voice_9cd6a2e9b82a4e", // Shalini (Soniox, female, Indian)
-  sunny: "voice_40963643c0c344", // Sunny (Sarvam, male, Indian)
-  aayan: "voice_6c3acdcf089f40", // Aayan (Sarvam, male, Indian)
-  roopa: "voice_80c0b38c000040", // Roopa (Sarvam, female, Indian)
-  ashutosh: "voice_9ff5a124b49445", // Ashutosh (Sarvam, male, Indian)
-  ritu: "voice_cb8802f06d9f41", // Ritu (Sarvam, female, Indian)
+  neha: "voice_mtjy6lyYLmNv0H", // Prajakta/Neha (ElevenLabs, female, Indian)
+  kavya: "voice_mtjxyab95MAVkO", // Parnita/Kavya (ElevenLabs, female, Indian)
+  manav: "voice_818d336ca3904c", // Viraj/Manav (ElevenLabs, male, Indian)
+  dev: "voice_4897321fb9ef4e", // Vikram/Dev (ElevenLabs, male, Indian)
+  nisha: "voice_94226a7ff47a43", // Apsara/Nisha (ElevenLabs, female, Indian)
+  shalini: "voice_mol2pruwhpAXKK", // Noor/Shalini (ElevenLabs, female, Indian)
   prajakta: "voice_mtjy6lyYLmNv0H", // Prajakta (ElevenLabs, female, Indian)
   parnita: "voice_mtjxyab95MAVkO", // Parnita (ElevenLabs, female, Indian)
   yazhini: "voice_mtiyeiIqfZn5Pz", // Yazhini (ElevenLabs, female, Indian)
-  ramya: "voice_0726074d3c624a", // Ramya (Cartesia, female, Indian)
   noor: "voice_mol2pruwhpAXKK", // Noor (ElevenLabs, female, Indian)
   apsara: "voice_94226a7ff47a43", // Apsara (ElevenLabs, female)
   viraj: "voice_818d336ca3904c", // Viraj (ElevenLabs, male)
   raju: "voice_e031f06ade5049", // Raju (ElevenLabs, male, Indian)
-  krishna: "voice_1f1980d824a341", // Krishna (Cartesia, male, Indian)
-  aarti: "voice_42d185eb32b649", // Aarti (Cartesia, female, Indian)
-  ayush: "voice_dc0888f1f01c48", // Ayush (Cartesia, male, Indian)
-  meera: "voice_9de03a1a4ffa40", // Meera (SmallestAI, female, Indian)
   khushi: "voice_mgj02qi6r63zmy", // Khushi (ElevenLabs, female, Indian)
-  karan: "voice_mfgsys91vawc0m", // Karan (SmallestAI, male, Indian)
-  dhruv: "voice_mfgsys938i0w8k", // Dhruv (SmallestAI, male, Indian)
-  chirag: "voice_mfgsys8z3ylhzc", // Chirag (SmallestAI, male, Indian)
 
   // American English
   rachel: "voice_mfl4leee3j8ysj", // Chelsea/Rachel (ElevenLabs, female, American)
@@ -332,6 +319,8 @@ export async function syncDialnexaAgentConfig(
 
       if (resolvedVoiceId) {
         body.voice_id = resolvedVoiceId;
+        // Eleven Flash v2.5 model is required for DialNexa outbound telephony SIP audio streams
+        body.voice_model_id = "mfl4be3m9z3xd4";
       }
 
       if (typeof params.voice_speed === "number" && params.voice_speed > 0) {

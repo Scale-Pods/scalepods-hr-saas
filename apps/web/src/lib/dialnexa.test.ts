@@ -77,11 +77,11 @@ describe("DialNexa Integration Lib", () => {
     });
 
     it("resolves popular ScalePods voice names to DialNexa voice IDs", () => {
-      expect(resolveDialnexaVoiceId("aditi")).toBe("voice_mfgsys96smn4c7");
-      expect(resolveDialnexaVoiceId("rohan")).toBe("voice_18662c83888c43");
+      expect(resolveDialnexaVoiceId("aditi")).toBe("voice_94226a7ff47a43");
+      expect(resolveDialnexaVoiceId("rohan")).toBe("voice_4897321fb9ef4e");
       expect(resolveDialnexaVoiceId("ananya")).toBe("voice_mfl4legvvrugxy");
-      expect(resolveDialnexaVoiceId("aarav")).toBe("voice_2f4c1b31555b44");
-      expect(resolveDialnexaVoiceId("priya")).toBe("voice_4f1cea5ad4dc43");
+      expect(resolveDialnexaVoiceId("aarav")).toBe("voice_e031f06ade5049");
+      expect(resolveDialnexaVoiceId("priya")).toBe("voice_mol2pruwhpAXKK");
       expect(resolveDialnexaVoiceId("adam")).toBe("voice_mfl4leg14bh4of");
       expect(resolveDialnexaVoiceId("brian")).toBe("voice_mfl4leg8y7do5t");
       expect(resolveDialnexaVoiceId("rachel")).toBe("voice_mfl4leee3j8ysj");
@@ -90,8 +90,8 @@ describe("DialNexa Integration Lib", () => {
     });
 
     it("resolves case-insensitively and handles whitespace", () => {
-      expect(resolveDialnexaVoiceId("  Aditi  ")).toBe("voice_mfgsys96smn4c7");
-      expect(resolveDialnexaVoiceId("ROHAN")).toBe("voice_18662c83888c43");
+      expect(resolveDialnexaVoiceId("  Aditi  ")).toBe("voice_94226a7ff47a43");
+      expect(resolveDialnexaVoiceId("ROHAN")).toBe("voice_4897321fb9ef4e");
     });
   });
 
@@ -158,7 +158,8 @@ describe("DialNexa Integration Lib", () => {
       expect(capturedBody).not.toBeNull();
       expect(capturedBody).toMatchObject({
         is_published: true,
-        voice_id: "voice_mfgsys96smn4c7",
+        voice_id: "voice_94226a7ff47a43",
+        voice_model_id: "mfl4be3m9z3xd4",
         voice_speed: 1.05,
         voice_pitch: 2,
         voice_temperature: 0.9,

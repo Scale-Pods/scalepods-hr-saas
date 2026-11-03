@@ -303,10 +303,6 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         phone_number: phone,
         agent_id: targetAgentId,
-        from_number: outboundFromNumber,
-        from_phone_number: outboundFromNumber,
-        from: outboundFromNumber,
-        caller_id: outboundFromNumber,
         phone_number_id: outboundPhoneNumberId,
         metadata: {
           candidate_phone: phone,
