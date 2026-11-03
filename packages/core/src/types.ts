@@ -103,6 +103,7 @@ export type WorkflowOutboxRow = Tables["workflow_outbox"]["Row"];
 export type RoundInstancesRow = Tables["round_instances"]["Row"];
 export type DecisionLedgerRow = Tables["decision_ledger"]["Row"];
 export type OutreachLogRow = Tables["outreach_log"]["Row"];
+export type TeamMemberInvitesRow = Tables["team_member_invites"]["Row"];
 export type TeamMemberRow = Tables["team_members"]["Row"];
 export type CalendarConnectionRow = Tables["calendar_connections"]["Row"];
 export type InterviewSessionRow = Tables["interview_sessions"]["Row"];

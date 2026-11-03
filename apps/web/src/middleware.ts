@@ -41,6 +41,13 @@ export async function middleware(request: NextRequest) {
     const hasAuthCookie = request.cookies.getAll().some((c) => c.name.startsWith("sb-"));
     const fullTarget = pathname + search;
     if (!hasAuthCookie) {
+      if (pathname === "/settings" && request.nextUrl.searchParams.get("calendar") === "connected") {
+        const redirect = request.nextUrl.clone();
+        redirect.pathname = "/calendar/connect";
+        redirect.search = "?status=connected";
+        return NextResponse.redirect(redirect);
+      }
+
       const redirect = request.nextUrl.clone();
       redirect.pathname = "/auth";
       redirect.search = "";

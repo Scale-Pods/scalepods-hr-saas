@@ -1,7 +1,7 @@
 "use client";
 
 import { type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
-import { ArrowLeft, Loader2, Mail, MessageSquare, Phone, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Link2, Loader2, Mail, MessageSquare, Phone, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -70,7 +70,10 @@ function SettingsPageInner() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
   const [adding, setAdding] = useState(false);
+  const [sendInviteOnAdd, setSendInviteOnAdd] = useState(true);
   const [connectingMemberId, setConnectingMemberId] = useState<string | null>(null);
+  const [invitingMemberId, setInvitingMemberId] = useState<string | null>(null);
+  const [copiedMemberId, setCopiedMemberId] = useState<string | null>(null);
 
   const [quietStart, setQuietStart] = useState(account?.quiet_hours_start ?? "21:00");
   const [quietEnd, setQuietEnd] = useState(account?.quiet_hours_end ?? "09:00");
@@ -120,6 +123,25 @@ function SettingsPageInner() {
     void load();
   }, [load]);
 
+  // Real-time synchronization: Update teammate calendar connection status immediately when completed
+  useEffect(() => {
+    const supabase = supabaseBrowser();
+    const channel = supabase
+      .channel("interviewer_connections_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "interviewer_calendar_connections" },
+        () => {
+          void load();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [load]);
+
   const calendarOutcome = params.get("calendar");
   useEffect(() => {
     if (calendarOutcome === "connected") {
@@ -129,6 +151,55 @@ function SettingsPageInner() {
       showErrorToast("The calendar connection did not complete — try again.");
     }
   }, [calendarOutcome, load]);
+
+  const sendTeammateInvite = async (member: TeamMemberRow) => {
+    if (!session?.access_token) return;
+    setInvitingMemberId(member.id);
+    try {
+      const res = await fetch("/api/team-members/invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ team_member_id: member.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to dispatch calendar invite.");
+      showToast(`Calendar invitation link sent to ${member.email}`);
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setInvitingMemberId(null);
+    }
+  };
+
+  const copyTeammateInviteLink = async (member: TeamMemberRow) => {
+    if (!session?.access_token) return;
+    setInvitingMemberId(member.id);
+    try {
+      const res = await fetch("/api/team-members/invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ team_member_id: member.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.invite_link) {
+        throw new Error(data.error || "Failed to generate invitation link.");
+      }
+      await navigator.clipboard.writeText(data.invite_link);
+      setCopiedMemberId(member.id);
+      setTimeout(() => setCopiedMemberId(null), 3000);
+      showToast(`Invitation link copied! You can share it directly with ${member.name}.`);
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setInvitingMemberId(null);
+    }
+  };
 
   const connectCalendar = async (teamMemberId: string) => {
     if (!session?.access_token) return;
@@ -224,7 +295,24 @@ function SettingsPageInner() {
       setEmail("");
       setRole("");
       await load();
-      showToast("Teammate added.");
+
+      if (sendInviteOnAdd && data.team_member?.id) {
+        try {
+          await fetch("/api/team-members/invite", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session?.access_token}`,
+            },
+            body: JSON.stringify({ team_member_id: data.team_member.id }),
+          });
+          showToast(`Teammate added & calendar connection link sent to ${data.team_member.email}`);
+        } catch {
+          showToast("Teammate added.");
+        }
+      } else {
+        showToast("Teammate added.");
+      }
     } catch (err) {
       showErrorToast(err);
     } finally {
@@ -393,9 +481,10 @@ function SettingsPageInner() {
                       {(() => {
                         const connection = calendarByMember[m.id];
                         const status = connection?.status ?? "not_connected";
+                        const isConnected = status === "active" || status === "connected";
                         return (
                           <div className="flex flex-wrap items-center gap-2">
-                            {status === "active" ? (
+                            {isConnected ? (
                               <>
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
                                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -434,6 +523,48 @@ function SettingsPageInner() {
                                 </Button>
                               </>
                             )}
+
+                            {/* Share Link & Send Email Buttons */}
+                            <div className="inline-flex items-center gap-1 border-l border-border/60 pl-2 ml-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                                onClick={() => void sendTeammateInvite(m)}
+                                disabled={invitingMemberId === m.id || !session?.access_token}
+                                title={`Send calendar connection invite to ${m.email}`}
+                              >
+                                {invitingMemberId === m.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Mail className="h-3.5 w-3.5 text-sky-500" />
+                                )}
+                                <span className="hidden sm:inline">Send Invite</span>
+                              </Button>
+
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                                onClick={() => void copyTeammateInviteLink(m)}
+                                disabled={invitingMemberId === m.id || !session?.access_token}
+                                title="Copy secure calendar connection link"
+                              >
+                                {copiedMemberId === m.id ? (
+                                  <>
+                                    <Check className="h-3.5 w-3.5 text-emerald-500" />
+                                    <span className="text-emerald-500 font-medium">Copied!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Link2 className="h-3.5 w-3.5 text-indigo-400" />
+                                    <span className="hidden sm:inline">Copy Link</span>
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           </div>
                         );
                       })()}
@@ -467,29 +598,47 @@ function SettingsPageInner() {
             hint="Add your first teammate below to assign them to Human interview rounds."
           />
         )}
-        <form onSubmit={addTeammate} className="mt-4 grid gap-3 sm:grid-cols-4">
-          <Input
-            placeholder="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            aria-label="Teammate name"
-          />
-          <Input
-            placeholder="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            aria-label="Teammate email"
-          />
-          <Input
-            placeholder="Role (optional)"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            aria-label="Role"
-          />
-          <Button type="submit" disabled={adding || !name || !email}>
-            Add teammate
-          </Button>
+        <form onSubmit={addTeammate} className="mt-4 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Input
+              placeholder="Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-label="Teammate name"
+            />
+            <Input
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              aria-label="Teammate email"
+            />
+            <Input
+              placeholder="Role (optional)"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              aria-label="Role"
+            />
+            <Button type="submit" disabled={adding || !name || !email}>
+              {adding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Add teammate
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 pt-0.5">
+            <input
+              type="checkbox"
+              id="send-invite-on-add"
+              checked={sendInviteOnAdd}
+              onChange={(e) => setSendInviteOnAdd(e.target.checked)}
+              className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+            />
+            <label
+              htmlFor="send-invite-on-add"
+              className="text-xs text-muted-foreground cursor-pointer select-none"
+            >
+              Email a secure Google Calendar connection link to this teammate immediately upon adding
+            </label>
+          </div>
         </form>
         <p className="mt-2 text-xs text-muted-foreground">
           Teammates can be assigned as interviewers for live candidate rounds.

@@ -15,6 +15,8 @@ import {
   Bot,
   Brain,
   Briefcase,
+  Check,
+  CheckCheck,
   CheckCircle,
   CheckCircle2,
   ChevronDown,
@@ -1041,7 +1043,12 @@ export default function CandidateProfilePage() {
         title="Outreach history"
         subtitle="Record of automated candidate notifications, interview invites, and communications."
       >
-        <OutreachTable rows={outreach} roundInstances={data?.roundInstances} />
+        <OutreachTable
+          rows={outreach}
+          roundInstances={data?.roundInstances}
+          candidateEmail={candidate?.email}
+          candidatePhone={candidate?.phone}
+        />
       </SectionCard>
 
       {/* Rejection Confirmation Modal */}
@@ -1619,16 +1626,55 @@ function DeliveryState({ state }: { state: string }) {
       </span>
     );
   }
+  const norm = state.toLowerCase().trim();
+  if (norm === "read") {
+    return (
+      <Badge
+        variant="secondary"
+        className="bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 gap-1 font-medium capitalize"
+      >
+        <CheckCheck className="h-3 w-3 text-sky-500" /> Read
+      </Badge>
+    );
+  }
+  if (norm === "delivered") {
+    return (
+      <Badge
+        variant="secondary"
+        className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 gap-1 font-medium capitalize"
+      >
+        <CheckCheck className="h-3 w-3 text-emerald-500" /> Delivered
+      </Badge>
+    );
+  }
+  if (norm === "sent") {
+    return (
+      <Badge
+        variant="secondary"
+        className="bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 gap-1 font-medium capitalize"
+      >
+        <Check className="h-3 w-3 text-blue-500" /> Sent
+      </Badge>
+    );
+  }
+  if (norm === "accepted") {
+    return (
+      <Badge
+        variant="secondary"
+        className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/30 gap-1 font-medium capitalize"
+      >
+        Accepted
+      </Badge>
+    );
+  }
   return (
     <Badge
       variant="secondary"
       className={cn(
         "capitalize",
-        state === "delivered" || state === "sent"
-          ? "bg-success/15 text-success"
-          : state === "failed"
-            ? "bg-destructive/15 text-destructive"
-            : "bg-fill-tertiary text-secondary-foreground",
+        norm === "failed" || norm === "bounced"
+          ? "bg-destructive/15 text-destructive"
+          : "bg-fill-tertiary text-secondary-foreground",
       )}
     >
       {state.replace(/_/g, " ")}
@@ -1636,21 +1682,34 @@ function DeliveryState({ state }: { state: string }) {
   );
 }
 
+type OutreachRowItem = {
+  id: string;
+  sent_at: string;
+  stage: string;
+  channel: string;
+  delivery_state: string;
+  fallback_used: boolean;
+  round_instance_id?: string | null;
+  subject?: string | null;
+  message_body?: string | null;
+  provider_message_id?: string | null;
+  recipient?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
 function OutreachTable({
   rows,
   roundInstances,
+  candidateEmail,
+  candidatePhone,
 }: {
-  rows: {
-    id: string;
-    sent_at: string;
-    stage: string;
-    channel: string;
-    delivery_state: string;
-    fallback_used: boolean;
-    round_instance_id?: string | null;
-  }[];
+  rows: OutreachRowItem[];
   roundInstances?: RoundInstancesRow[];
+  candidateEmail?: string | null;
+  candidatePhone?: string | null;
 }) {
+  const [selectedMessage, setSelectedMessage] = useState<OutreachRowItem | null>(null);
+
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -1661,46 +1720,185 @@ function OutreachTable({
     );
   }
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>When</TableHead>
-          <TableHead>Stage</TableHead>
-          <TableHead>Channel</TableHead>
-          <TableHead>Delivery</TableHead>
-          <TableHead>Fallback</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((r) => {
-          const matchingRound = r.round_instance_id
-            ? roundInstances?.find((ri) => ri.id === r.round_instance_id)
-            : undefined;
-          const roundType = matchingRound?.round_type;
-          const roundNumber = matchingRound?.round_number;
-          const displayLabel = stageLabel(
-            r.stage,
-            r.channel === "voice_call" ? "ai_voice_call" : roundType,
-            roundNumber,
-          );
-          return (
-            <TableRow key={r.id}>
-              <TableCell className="text-muted-foreground">{formatDateTime(r.sent_at)}</TableCell>
-              <TableCell className="text-foreground font-medium">{displayLabel}</TableCell>
-              <TableCell className="text-muted-foreground capitalize">
-                {r.channel.replace(/_/g, " ")}
-              </TableCell>
-              <TableCell>
-                <DeliveryState state={r.delivery_state} />
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {r.fallback_used ? "Yes" : "No"}
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>When</TableHead>
+            <TableHead>Stage</TableHead>
+            <TableHead>Channel</TableHead>
+            <TableHead>Delivery</TableHead>
+            <TableHead>Fallback</TableHead>
+            <TableHead className="w-[60px] text-right">View</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => {
+            const matchingRound = r.round_instance_id
+              ? roundInstances?.find((ri) => ri.id === r.round_instance_id)
+              : undefined;
+            const roundType = matchingRound?.round_type;
+            const roundNumber = matchingRound?.round_number;
+            const displayLabel = stageLabel(
+              r.stage,
+              r.channel === "voice_call" ? "ai_voice_call" : roundType,
+              roundNumber,
+            );
+            return (
+              <TableRow key={r.id}>
+                <TableCell className="text-muted-foreground">{formatDateTime(r.sent_at)}</TableCell>
+                <TableCell className="text-foreground font-medium">{displayLabel}</TableCell>
+                <TableCell className="text-muted-foreground capitalize">
+                  {r.channel.replace(/_/g, " ")}
+                </TableCell>
+                <TableCell>
+                  <DeliveryState state={r.delivery_state} />
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {r.fallback_used ? "Yes" : "No"}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg inline-flex items-center justify-center"
+                    onClick={() => setSelectedMessage(r)}
+                    title="View what was sent to candidate"
+                    aria-label="View what was sent to candidate"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+      {/* View Message Sent to Candidate Modal */}
+      <Dialog open={!!selectedMessage} onOpenChange={(open) => !open && setSelectedMessage(null)}>
+        <DialogContent className="max-w-lg sm:max-w-xl max-h-[85vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-primary/10 text-primary shrink-0">
+                {selectedMessage?.channel === "whatsapp" ? (
+                  <MessageSquare className="h-5 w-5 text-emerald-500" />
+                ) : selectedMessage?.channel === "voice_call" ? (
+                  <PhoneCall className="h-5 w-5 text-indigo-500" />
+                ) : (
+                  <Mail className="h-5 w-5 text-sky-500" />
+                )}
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold text-foreground">
+                  Dispatched Communication
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  View exact communication sent to this candidate via {selectedMessage?.channel?.replace(/_/g, " ")}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="p-6 space-y-4 overflow-y-auto">
+            {/* Metadata Summary */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3.5 rounded-xl bg-muted/40 border border-border/50 text-xs">
+              <div>
+                <span className="text-muted-foreground block font-medium">Dispatched At</span>
+                <span className="font-semibold text-foreground mt-0.5 block">
+                  {selectedMessage?.sent_at ? formatDateTime(selectedMessage.sent_at) : "N/A"}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block font-medium">Delivery Status</span>
+                <div className="mt-1">
+                  <DeliveryState state={selectedMessage?.delivery_state ?? "sent"} />
+                </div>
+              </div>
+              <div>
+                <span className="text-muted-foreground block font-medium">Recipient</span>
+                <span
+                  className="font-semibold text-foreground mt-0.5 block truncate"
+                  title={selectedMessage?.recipient || (selectedMessage?.channel === "whatsapp" ? candidatePhone : candidateEmail) || "N/A"}
+                >
+                  {selectedMessage?.recipient || (selectedMessage?.channel === "whatsapp" ? candidatePhone : candidateEmail) || "N/A"}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block font-medium">Stage</span>
+                <span className="font-semibold text-foreground mt-0.5 block">
+                  {selectedMessage
+                    ? stageLabel(
+                        selectedMessage.stage,
+                        selectedMessage.channel === "voice_call"
+                          ? "ai_voice_call"
+                          : roundInstances?.find((ri) => ri.id === selectedMessage.round_instance_id)?.round_type,
+                        roundInstances?.find((ri) => ri.id === selectedMessage.round_instance_id)?.round_number,
+                      )
+                    : "N/A"}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block font-medium">Fallback Used</span>
+                <span className="font-semibold text-foreground mt-0.5 block">
+                  {selectedMessage?.fallback_used ? "Yes" : "No"}
+                </span>
+              </div>
+              {selectedMessage?.provider_message_id && (
+                <div className="col-span-2 sm:col-span-1 truncate">
+                  <span className="text-muted-foreground block font-medium">Message ID</span>
+                  <span
+                    className="font-mono text-[10px] text-muted-foreground mt-0.5 block truncate"
+                    title={selectedMessage.provider_message_id}
+                  >
+                    {selectedMessage.provider_message_id}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Subject if present */}
+            {selectedMessage?.subject && (
+              <div className="space-y-1">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Subject / Template
+                </span>
+                <div className="p-3 rounded-lg bg-card border border-border/60 text-sm font-medium text-foreground">
+                  {selectedMessage.subject}
+                </div>
+              </div>
+            )}
+
+            {/* Message Body Content */}
+            <div className="space-y-1.5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Sent Message Body
+              </span>
+              {selectedMessage?.message_body ? (
+                selectedMessage.channel === "email" && /<[a-z][\s\S]*>/i.test(selectedMessage.message_body) ? (
+                  <div className="rounded-xl border border-border/60 overflow-hidden bg-white text-slate-900">
+                    <div
+                      className="p-4 text-xs prose prose-sm max-w-none max-h-72 overflow-y-auto"
+                      dangerouslySetInnerHTML={{ __html: selectedMessage.message_body }}
+                    />
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl bg-card border border-border/60 text-xs sm:text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed max-h-72 overflow-y-auto">
+                    {selectedMessage.message_body}
+                  </div>
+                )
+              ) : (
+                <div className="p-4 rounded-xl bg-muted/30 border border-dashed border-border text-center text-xs text-muted-foreground space-y-1">
+                  <p className="font-medium text-foreground">Message body not saved</p>
+                  <p>This automated dispatch was executed before message archiving was enabled.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

@@ -622,6 +622,11 @@ export type Database = {
           delivery_state: string;
           fallback_used: boolean;
           sent_at: string;
+          subject?: string | null;
+          message_body?: string | null;
+          provider_message_id?: string | null;
+          recipient?: string | null;
+          metadata?: Record<string, unknown> | null;
         };
         Insert: {
           id?: string;
@@ -633,8 +638,34 @@ export type Database = {
           channel: string;
           delivery_state?: string;
           fallback_used?: boolean;
+          sent_at?: string;
+          subject?: string | null;
+          message_body?: string | null;
+          provider_message_id?: string | null;
+          recipient?: string | null;
+          metadata?: Record<string, unknown> | null;
         };
         Update: Partial<Database["public"]["Tables"]["outreach_log"]["Insert"]>;
+        Relationships: [];
+      };
+      team_member_invites: {
+        Row: {
+          id: string;
+          team_member_id: string;
+          account_id: string;
+          token: string;
+          expires_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_member_id: string;
+          account_id: string;
+          token: string;
+          expires_at?: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["team_member_invites"]["Insert"]>;
         Relationships: [];
       };
       interview_sessions: {

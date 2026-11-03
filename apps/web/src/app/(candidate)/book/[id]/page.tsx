@@ -146,7 +146,10 @@ export default function BookPage() {
       );
     } catch (err) {
       let message = err instanceof Error ? err.message : "Something went wrong";
-      if (/error in the workflow|error in workflow|workflow execution failed/i.test(message)) {
+      if (/interview_slot_unavailable|already booked|slot_unavailable|45000/i.test(message)) {
+        message =
+          "This interview slot was just booked by another candidate. Please select another convenient time slot.";
+      } else if (/error in the workflow|error in workflow|workflow execution failed/i.test(message)) {
         message =
           "Unable to book this slot at this time. Please choose another slot or contact the recruiter.";
       }
