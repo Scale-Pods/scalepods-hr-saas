@@ -32,19 +32,28 @@ async function transcribeAudio(
   if (!deepgramKey) return null;
 
   try {
-    const res = await fetch("https://api.deepgram.com/v1/listen?smart_format=true&diarize=true", {
-      method: "POST",
-      headers: {
-        Authorization: `Token ${deepgramKey}`,
-        "Content-Type": "application/json",
+    const res = await fetch(
+      "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true&diarize=true&utterances=true",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Token ${deepgramKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url: audioUrl }),
       },
-      body: JSON.stringify({ url: audioUrl }),
-    });
+    );
 
     if (!res.ok) return null;
 
     const data = (await res.json()) as {
       results?: {
+        utterances?: Array<{
+          speaker: number;
+          transcript: string;
+          start: number;
+          end: number;
+        }>;
         channels?: Array<{
           alternatives?: Array<{
             transcript?: string;
@@ -62,30 +71,94 @@ async function transcribeAudio(
 
     const alt = data.results?.channels?.[0]?.alternatives?.[0];
     const fullText = alt?.transcript || "";
+    const rawUtterances = data.results?.utterances || [];
     const words = alt?.words || [];
 
-    const turns: DialogueTurn[] = [];
-    let currentTurn: DialogueTurn | null = null;
+    // Helper: determine which speaker ID corresponds to the AI agent vs candidate
+    const determineAgentSpeakerId = (s0Text: string, s1Text: string, firstText: string): number => {
+      const agentRegex =
+        /\b(scalepods|calling|interview|screening|position|role|talent\s*partner|application|recruiter|this\s*is|welcome|thanks\s*for\s*taking|can\s*you\s*tell|tell\s*me\s*about|could\s*you\s*share|good\s*time\s*to\s*speak)\b/i;
 
-    for (const w of words) {
-      const speaker: "agent" | "candidate" = w.speaker === 0 ? "agent" : "candidate";
-      const wordStr = w.punctuated_word || w.word || "";
-      if (!currentTurn || currentTurn.speaker !== speaker) {
-        if (currentTurn) turns.push(currentTurn);
-        currentTurn = {
-          speaker,
-          text: wordStr,
-          start: w.start,
-          end: w.end,
-        };
-      } else {
-        currentTurn.text += ` ${wordStr}`;
-        currentTurn.end = w.end;
+      const s0Score =
+        (s0Text.match(agentRegex) ? 2 : 0) + (s0Text.length > 80 && s1Text.length < 30 ? 1 : 0);
+      const s1Score =
+        (s1Text.match(agentRegex) ? 2 : 0) + (s1Text.length > 80 && s0Text.length < 30 ? 1 : 0);
+
+      if (s1Score > s0Score) return 1;
+      if (s0Score > s1Score) return 0;
+
+      // If the opening remark is a typical phone greeting like "Hello?", speaker 0 is candidate answering
+      if (
+        /^(hello|hi|yeah|yes|speaking|hey|who\s*(is|'s)\s*this)[\s.?!]*$/i.test(firstText.trim())
+      ) {
+        return 1;
       }
-    }
-    if (currentTurn) turns.push(currentTurn);
+      return 0;
+    };
 
-    const result = { text: fullText, turns };
+    let turns: DialogueTurn[] = [];
+
+    if (rawUtterances.length > 0) {
+      const s0Text = rawUtterances
+        .filter((u) => u.speaker === 0)
+        .map((u) => u.transcript)
+        .join(" ");
+      const s1Text = rawUtterances
+        .filter((u) => u.speaker === 1)
+        .map((u) => u.transcript)
+        .join(" ");
+      const firstText = rawUtterances[0]?.transcript || "";
+      const agentSpeakerId = determineAgentSpeakerId(s0Text, s1Text, firstText);
+
+      turns = rawUtterances
+        .map((u) => ({
+          speaker: (u.speaker === agentSpeakerId ? "agent" : "candidate") as "agent" | "candidate",
+          text: u.transcript?.trim() || "",
+          start: Math.round(u.start * 10) / 10,
+          end: Math.round(u.end * 10) / 10,
+        }))
+        .filter((t) => Boolean(t.text));
+    } else if (words.length > 0) {
+      const s0Text = words
+        .filter((w) => w.speaker === 0)
+        .map((w) => w.punctuated_word || w.word)
+        .join(" ");
+      const s1Text = words
+        .filter((w) => w.speaker === 1)
+        .map((w) => w.punctuated_word || w.word)
+        .join(" ");
+      const firstText = words
+        .slice(0, 3)
+        .map((w) => w.punctuated_word || w.word)
+        .join(" ");
+      const agentSpeakerId = determineAgentSpeakerId(s0Text, s1Text, firstText);
+
+      let currentTurn: DialogueTurn | null = null;
+      for (const w of words) {
+        const speaker: "agent" | "candidate" = w.speaker === agentSpeakerId ? "agent" : "candidate";
+        const wordStr = w.punctuated_word || w.word || "";
+        if (!currentTurn || currentTurn.speaker !== speaker) {
+          if (currentTurn) turns.push(currentTurn);
+          currentTurn = {
+            speaker,
+            text: wordStr,
+            start: Math.round(w.start * 10) / 10,
+            end: Math.round(w.end * 10) / 10,
+          };
+        } else {
+          currentTurn.text += ` ${wordStr}`;
+          currentTurn.end = Math.round(w.end * 10) / 10;
+        }
+      }
+      if (currentTurn) turns.push(currentTurn);
+    }
+
+    const finalFullText =
+      fullText ||
+      turns.map((t) => `${t.speaker === "agent" ? "Agent" : "Candidate"}: ${t.text}`).join("\n") ||
+      "";
+
+    const result = { text: finalFullText, turns };
     transcriptCache.set(audioUrl, result);
     return result;
   } catch (err) {
@@ -129,6 +202,27 @@ export async function GET(req: Request) {
             transcriptData = await transcribeAudio(recUrl);
           }
 
+          let finalTurns = transcriptData?.turns || [];
+          if (finalTurns.length === 0 && Array.isArray(detail.messages)) {
+            finalTurns = (detail.messages as Array<{ role?: string; content?: string }>).map(
+              (m, i) => ({
+                speaker: (m.role === "assistant" || m.role === "agent" ? "agent" : "candidate") as
+                  | "agent"
+                  | "candidate",
+                text: m.content || "",
+                start: i * 4,
+                end: (i + 1) * 4,
+              }),
+            );
+          }
+
+          const rawTranscript =
+            transcriptData?.text ||
+            (detail.transcript as string) ||
+            (detail.transcript_text as string) ||
+            (postAnalysis.transcript as string) ||
+            null;
+
           const callObj = {
             id: (detail.id as string) || callId,
             duration: Number(detail.duration || 0),
@@ -138,8 +232,8 @@ export async function GET(req: Request) {
             sentiment: (postAnalysis.sentiment as string) || null,
             call_successful: (postAnalysis.call_successful as string) || null,
             recording_url: recUrl,
-            transcript: transcriptData?.text || null,
-            turns: transcriptData?.turns || [],
+            transcript: rawTranscript,
+            turns: finalTurns,
           };
 
           return NextResponse.json({
@@ -429,6 +523,25 @@ export async function GET(req: Request) {
             durationSec < 30 ? ["Brief conversation duration; recommended follow-up inquiry"] : [],
         };
 
+        let finalTurns = transcriptData?.turns || [];
+        if (finalTurns.length === 0 && Array.isArray(c.messages)) {
+          finalTurns = (c.messages as Array<{ role?: string; content?: string }>).map((m, i) => ({
+            speaker: (m.role === "assistant" || m.role === "agent" ? "agent" : "candidate") as
+              | "agent"
+              | "candidate",
+            text: m.content || "",
+            start: i * 4,
+            end: (i + 1) * 4,
+          }));
+        }
+
+        const rawTranscript =
+          transcriptData?.text ||
+          (c.transcript as string) ||
+          (c.transcript_text as string) ||
+          (postAnalysis.transcript as string) ||
+          null;
+
         const callObj = {
           id: c.id as string,
           duration: durationSec,
@@ -438,8 +551,8 @@ export async function GET(req: Request) {
           sentiment: (postAnalysis.sentiment as string) || null,
           call_successful: (postAnalysis.call_successful as string) || null,
           recording_url: recUrl,
-          transcript: transcriptData?.text || null,
-          turns: transcriptData?.turns || [],
+          transcript: rawTranscript,
+          turns: finalTurns,
           scorecard: callScorecard,
         };
 

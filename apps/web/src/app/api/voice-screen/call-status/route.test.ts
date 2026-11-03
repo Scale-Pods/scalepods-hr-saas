@@ -82,6 +82,80 @@ describe("Call Status API Route", () => {
     }
   });
 
+  it("correctly identifies candidate when candidate speaks first to answer the phone", async () => {
+    const originalFetch = global.fetch;
+    const mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/v1/calls/call_cand_first")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: "call_cand_first",
+            duration: "60",
+            status: "completed",
+            recording_sas_url: "https://example.com/recording_cand_first.mp3",
+          }),
+        });
+      }
+      if (url.includes("deepgram.com")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            results: {
+              utterances: [
+                {
+                  speaker: 0,
+                  transcript: "Hello, who is this?",
+                  start: 0.2,
+                  end: 1.5,
+                },
+                {
+                  speaker: 1,
+                  transcript:
+                    "Hi there, this is Alex calling from ScalePods regarding your application for the developer role.",
+                  start: 1.8,
+                  end: 6.2,
+                },
+                {
+                  speaker: 0,
+                  transcript: "Yes, I built full-stack microservices with Docker and PostgreSQL.",
+                  start: 6.5,
+                  end: 10.0,
+                },
+              ],
+            },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+    global.fetch = mockFetch;
+
+    try {
+      const req = new Request(
+        "http://localhost:3000/api/voice-screen/call-status?call_id=call_cand_first",
+      );
+      const res = await GET(req);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.call.turns).toHaveLength(3);
+      // Speaker 0 ("Hello, who is this?") is candidate
+      expect(data.call.turns[0].speaker).toBe("candidate");
+      expect(data.call.turns[0].text).toBe("Hello, who is this?");
+      // Speaker 1 ("Hi there, this is Alex calling from ScalePods...") is agent
+      expect(data.call.turns[1].speaker).toBe("agent");
+      // Speaker 0 ("Yes, I built full-stack microservices with Docker and PostgreSQL.") is candidate
+      expect(data.call.turns[2].speaker).toBe("candidate");
+      expect(data.call.turns[2].text).toBe(
+        "Yes, I built full-stack microservices with Docker and PostgreSQL.",
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it("fetches matching calls by phone number", async () => {
     const originalFetch = global.fetch;
     const mockFetch = vi.fn().mockImplementation((url: string) => {
