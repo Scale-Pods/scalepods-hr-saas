@@ -408,6 +408,7 @@ describe("DialnexaConfigEditor", () => {
       // Check test call
       expect(screen.getByText("Test Call")).toBeInTheDocument();
       expect(screen.getByText("Test Call Now")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Candidate Name (e.g. Alex Morgan)")).toBeInTheDocument();
     });
 
     it("allows seamlessly toggling between Simple Recruiter Setup and Advanced Studio", () => {
@@ -548,6 +549,56 @@ describe("DialnexaConfigEditor", () => {
 
       // Verify the UI does NOT render a raw "error in workflow" error message
       expect(screen.queryByText(/There was an error in the workflow/i)).not.toBeInTheDocument();
+      vi.unstubAllGlobals();
+    });
+
+    it("sends custom candidate name entered in the quick test call bar", async () => {
+      const onChange = vi.fn();
+      let capturedBody: Record<string, unknown> | null = null;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+          if (init?.body) {
+            capturedBody = JSON.parse(init.body as string);
+          }
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              call_id: "test_call_custom_name_123",
+            }),
+          });
+        }),
+      );
+
+      render(
+        <DialnexaConfigEditor
+          value={DEFAULT_DIALNEXA_CONFIG}
+          onChange={onChange}
+          jobTitle="Senior Developer"
+        />,
+      );
+
+      // Change Candidate Name in the test call section
+      const nameInput = screen.getByPlaceholderText("Candidate Name (e.g. Alex Morgan)");
+      fireEvent.change(nameInput, { target: { value: "Sarah Connor" } });
+
+      // Enter phone number
+      const phoneInput = screen.getByPlaceholderText("+91 98765 43210");
+      fireEvent.change(phoneInput, { target: { value: "+919876543210" } });
+
+      const testCallBtn = screen.getByText("Test Call Now");
+      fireEvent.click(testCallBtn);
+
+      await waitFor(() => {
+        expect(capturedBody).not.toBeNull();
+      });
+
+      expect(capturedBody).toMatchObject({
+        candidate_name: "Sarah Connor",
+        phone_number: "+919876543210",
+      });
+
       vi.unstubAllGlobals();
     });
   });

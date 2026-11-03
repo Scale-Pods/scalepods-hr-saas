@@ -741,7 +741,7 @@ export function DialnexaConfigEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone_number: testPhoneNumber,
-          candidate_name: testCandidateName,
+          candidate_name: testCandidateName.trim() || "Alex Morgan",
           role_title: jobTitle || "ScalePods Voice Agent Test",
           voice_call_config: value,
         }),
@@ -1364,11 +1364,20 @@ export function DialnexaConfigEditor({
 
               <div className="flex flex-col sm:flex-row gap-2">
                 <Input
+                  type="text"
+                  value={testCandidateName}
+                  onChange={(e) => setTestCandidateName(e.target.value)}
+                  placeholder="Candidate Name (e.g. Alex Morgan)"
+                  className="h-9 text-sm sm:w-48"
+                  aria-label="Test Candidate Name"
+                />
+                <Input
                   type="tel"
                   value={testPhoneNumber}
                   onChange={(e) => setTestPhoneNumber(e.target.value)}
                   placeholder="+91 98765 43210"
                   className="h-9 text-sm flex-1"
+                  aria-label="Test Phone Number"
                 />
                 <Button
                   type="button"
