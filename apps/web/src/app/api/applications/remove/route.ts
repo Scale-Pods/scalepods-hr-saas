@@ -83,7 +83,9 @@ async function handleRemove(req: NextRequest) {
         targetCandId = appRow.candidate_id;
         targetCampId = appRow.campaign_id;
       }
-    } else if (targetCampId && targetCandId) {
+    }
+
+    if (!targetAppId && targetCampId && targetCandId) {
       const { data: appRow } = await admin
         .from("applications")
         .select("id, account_id, campaign_id, candidate_id")
@@ -106,18 +108,26 @@ async function handleRemove(req: NextRequest) {
         .eq("account_id", user.id);
 
       if (appDelErr) {
-        console.warn("[api/applications/remove] Error deleting application:", appDelErr);
+        console.error("[api/applications/remove] Error deleting application:", appDelErr);
+        return NextResponse.json(
+          { error: appDelErr.message || "Failed to delete candidate application." },
+          { status: 500 },
+        );
       }
     }
 
     // 3. Delete any unlinked round_instances for this campaign and candidate
     if (targetCampId && targetCandId) {
-      await admin
+      const { error: riDelErr } = await admin
         .from("round_instances")
         .delete()
         .eq("campaign_id", targetCampId)
         .eq("candidate_id", targetCandId)
         .eq("account_id", user.id);
+
+      if (riDelErr) {
+        console.error("[api/applications/remove] Error deleting round instances:", riDelErr);
+      }
 
       // Clean decision ledger entries for this candidate and campaign
       if (targetAppId) {

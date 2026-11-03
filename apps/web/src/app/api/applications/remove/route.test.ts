@@ -12,16 +12,23 @@ vi.mock("@supabase/supabase-js", () => ({
       getUser: () => mockGetUser(),
     },
     from: (table: string) => {
+      let isDelete = false;
       const createChain = () => {
         const chain: any = {
           eq: () => chain,
           in: () => chain,
           select: () => chain,
-          delete: () => chain,
+          delete: () => {
+            isDelete = true;
+            return chain;
+          },
           maybeSingle: () => Promise.resolve(mockAdminSelect(table)),
           // biome-ignore lint/suspicious/noThenProperty: supabase chain mock
           then: (resolve: any, reject: any) =>
-            Promise.resolve(mockAdminSelect(table)).then(resolve, reject),
+            Promise.resolve(isDelete ? mockAdminDelete(table) : mockAdminSelect(table)).then(
+              resolve,
+              reject,
+            ),
         };
         return chain;
       };
@@ -145,5 +152,39 @@ describe("Applications Remove API Route", () => {
     const data = await res.json();
     expect(data.success).toBe(true);
     expect(data.removed).toBe(true);
+  });
+
+  it("returns 500 when application deletion fails in database", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { id: "acc-1", email: "recruiter@example.com" } },
+      error: null,
+    });
+
+    mockAdminSelect.mockImplementation((table: string) => {
+      if (table === "applications") {
+        return {
+          data: { id: "app-1", account_id: "acc-1", campaign_id: "camp-1", candidate_id: "cand-1" },
+          error: null,
+        };
+      }
+      return { data: [], error: null };
+    });
+    mockAdminDelete.mockResolvedValue({
+      error: { message: "Assignments cannot be deleted or reopened." },
+    });
+
+    const req = new NextRequest("http://localhost/api/applications/remove", {
+      method: "POST",
+      headers: { Authorization: "Bearer good-token" },
+      body: JSON.stringify({
+        campaignId: "camp-1",
+        candidateId: "cand-1",
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe("Assignments cannot be deleted or reopened.");
   });
 });
