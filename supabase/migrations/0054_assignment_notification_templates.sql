@@ -12,10 +12,10 @@ values (
   null,
   'en'
 )
-on conflict (stage, channel, locale) do update set
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
   body_html = excluded.body_html,
   subject = excluded.subject,
-  approval_state = excluded.approval_state,
   updated_at = now();
 
 -- 2. Update / Insert email template for assignment_reminder_24h with Submit button
@@ -29,10 +29,10 @@ values (
   null,
   'en'
 )
-on conflict (stage, channel, locale) do update set
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
   body_html = excluded.body_html,
   subject = excluded.subject,
-  approval_state = excluded.approval_state,
   updated_at = now();
 
 -- 3. Register WhatsApp template for assignment_issued (assignment_invite_v1)
@@ -46,9 +46,12 @@ values (
   'assignment_invite_v1',
   'en'
 )
-on conflict (stage, channel, locale) do update set
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
   body_html = excluded.body_html,
   meta_template_name = excluded.meta_template_name,
   subject = excluded.subject,
-  approval_state = excluded.approval_state,
   updated_at = now();
+
+-- 4. Reload PostgREST schema cache
+notify pgrst, 'reload schema';
