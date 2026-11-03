@@ -566,12 +566,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     );
   }
 
-  if (
-    !avStream &&
-    session.status !== "completed" &&
-    session.status !== "incomplete" &&
-    !completing
-  ) {
+  if (!avStream) {
     return (
       <div className="space-y-4">
         {startError && (

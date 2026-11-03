@@ -43,7 +43,8 @@ export function parseCriteriaScores(raw: unknown): CriterionScoreItem[] {
   return [];
 }
 
-export interface LedgerView extends DecisionLedgerRow {
+export interface LedgerView extends Omit<DecisionLedgerRow, "source"> {
+  source?: "workflow" | "manual" | "panel" | null;
   session?: InterviewSessionRow;
   scorecard?: ScorecardRow;
   forRound?: RoundInstancesRow;

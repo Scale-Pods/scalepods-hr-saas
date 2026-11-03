@@ -84,11 +84,13 @@ export async function POST(req: Request) {
 
         const targetCandidateId = body.candidate_id || ri?.candidate_id;
         if (targetCandidateId && !candidateResumeText) {
-          const { data: cand } = await supabase
+          const { data: cand } = (await supabase
             .from("candidates")
-            .select("resume_text, metadata")
+            .select("*")
             .eq("id", targetCandidateId)
-            .maybeSingle();
+            .maybeSingle()) as {
+            data: { resume_text?: string; metadata?: Record<string, unknown> } | null;
+          };
           if (cand?.resume_text) {
             candidateResumeText = cand.resume_text;
           } else if (
