@@ -450,6 +450,14 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           !isAlreadyFollowUp,
       );
 
+      // Look for next unanswered planned question from the round configuration
+      const nextPlannedQuestion = questions.find(
+        (q) =>
+          !answeredQuestionIdsRef.current.has(q.id) &&
+          q.source !== "llm_ts_followup" &&
+          q.id !== currentQuestionId,
+      );
+
       if (!candidateAnalysisRef.current && (resumeText || jdText)) {
         try {
           const [analysis, extractedTools, alignment] = await Promise.all([
@@ -475,7 +483,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         null,
         10,
         1,
-        undefined,
+        nextPlannedQuestion?.question_text,
         false,
         0,
         true,
@@ -505,43 +513,51 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
       if (turn.question_text) {
         const isFollowUp = turn.turn_type === "follow_up";
-        let nextQ: InterviewQuestion = {
-          id: `q-turn-${Date.now()}`,
-          session_id: session.id,
-          question_text: turn.question_text,
-          question_type: turn.question_type || "technical",
-          order_index: questions.length,
-          source: isFollowUp ? "llm_ts_followup" : "llm_ts_dynamic",
-        };
-
-        // Persist question to DB
-        try {
-          const qRes = await fetch("/api/interview/session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "insert_question",
-              sessionId: session.id,
-              questionText: turn.question_text,
-              questionType: turn.question_type || "technical",
-              orderIndex: questions.length,
-              source: isFollowUp ? "llm_ts_followup" : "llm_ts_dynamic",
-              parentQuestionId: lastNote?.question_id || null,
-            }),
-          });
-          if (qRes.ok) {
-            const qData = await qRes.json();
-            if (qData?.question?.id) {
-              nextQ = qData.question;
-            }
+        if (!isFollowUp && nextPlannedQuestion) {
+          setCurrentQuestionId(nextPlannedQuestion.id);
+          const plannedIdx = questions.findIndex((q) => q.id === nextPlannedQuestion.id);
+          if (plannedIdx !== -1) {
+            setCurrentQuestionIndex(plannedIdx);
           }
-        } catch (insertErr) {
-          console.warn("Could not insert dynamic question to DB:", insertErr);
-        }
+        } else {
+          let nextQ: InterviewQuestion = {
+            id: `q-turn-${Date.now()}`,
+            session_id: session.id,
+            question_text: turn.question_text,
+            question_type: turn.question_type || "technical",
+            order_index: questions.length,
+            source: isFollowUp ? "llm_ts_followup" : "llm_ts_dynamic",
+          };
 
-        setQuestions((prev) => [...prev, nextQ]);
-        setCurrentQuestionId(nextQ.id);
-        setCurrentQuestionIndex((prev) => prev + 1);
+          // Persist question to DB
+          try {
+            const qRes = await fetch("/api/interview/session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "insert_question",
+                sessionId: session.id,
+                questionText: turn.question_text,
+                questionType: turn.question_type || "technical",
+                orderIndex: questions.length,
+                source: isFollowUp ? "llm_ts_followup" : "llm_ts_dynamic",
+                parentQuestionId: lastNote?.question_id || null,
+              }),
+            });
+            if (qRes.ok) {
+              const qData = await qRes.json();
+              if (qData?.question?.id) {
+                nextQ = qData.question;
+              }
+            }
+          } catch (insertErr) {
+            console.warn("Could not insert dynamic question to DB:", insertErr);
+          }
+
+          setQuestions((prev) => [...prev, nextQ]);
+          setCurrentQuestionId(nextQ.id);
+          setCurrentQuestionIndex((prev) => prev + 1);
+        }
       }
 
       setCurrentTurn(turn);

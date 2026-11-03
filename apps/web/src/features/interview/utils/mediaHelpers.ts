@@ -96,17 +96,53 @@ export async function getAudioStream(timeoutMs = 4000): Promise<MediaStream | nu
   return null;
 }
 
-export async function getScreenStream(timeoutMs = 15000): Promise<MediaStream | null> {
+export async function getScreenStream(
+  timeoutMs = 15000,
+  requireEntireScreen = true,
+): Promise<MediaStream | null> {
   const tmr = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error("timeout")), timeoutMs),
   );
   try {
+    const displayMediaOptions = {
+      video: {
+        displaySurface: "monitor",
+      },
+      audio: false,
+      selfBrowserSurface: "exclude",
+      surfaceSwitching: "exclude",
+      systemAudio: "exclude",
+    } as unknown as MediaStreamConstraints;
+
     const stream = (await Promise.race([
-      navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }),
+      navigator.mediaDevices.getDisplayMedia(displayMediaOptions),
       tmr,
     ])) as MediaStream;
+
+    if (requireEntireScreen && stream) {
+      const videoTrack = stream.getVideoTracks()[0];
+      const settings = videoTrack?.getSettings();
+      const surface = settings?.displaySurface;
+
+      // In modern browsers (Chrome, Edge, Safari, Firefox), displaySurface can be 'monitor' | 'window' | 'browser'
+      // If the candidate selected a single tab or a single application window, reject for proctoring integrity.
+      if (surface && surface !== "monitor") {
+        for (const t of stream.getTracks()) {
+          t.stop();
+        }
+        const err = new Error(
+          "entire_screen_required: For proctoring compliance, you must share your Entire Screen. Sharing a single window or browser tab is not permitted.",
+        );
+        err.name = "EntireScreenRequiredError";
+        throw err;
+      }
+    }
+
     return stream;
   } catch (err: unknown) {
+    if ((err as Error)?.message?.includes("entire_screen_required")) {
+      throw err;
+    }
     if ((err as Error)?.message === "timeout") {
       console.warn(`getScreenStream timed out after ${timeoutMs}ms`);
     }

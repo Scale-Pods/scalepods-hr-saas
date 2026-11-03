@@ -104,24 +104,26 @@ export function useTTSEngine(): TTSEngine {
 
       const currentVoices = voicesRef.current;
       if (currentVoices.length > 0) {
-        const maleVoice = currentVoices.find((v) => {
+        // Prioritize natural, fluent modern neural voices across Edge, Chrome, Safari & Windows/Mac
+        const naturalVoice = currentVoices.find((v) => {
           const name = v.name.toLowerCase();
+          const isEn = v.lang.toLowerCase().startsWith("en");
           return (
-            (name.includes("male") ||
-              name.includes("david") ||
-              name.includes("alex") ||
-              name.includes("mark") ||
-              name.includes("daniel") ||
-              name.includes("george") ||
-              name.includes("natural") ||
-              name.includes("guy")) &&
-            (v.lang.includes("en") || v.lang.includes("EN"))
+            isEn &&
+            (name.includes("natural") ||
+              name.includes("online") ||
+              name.includes("neural") ||
+              name.includes("jenny") ||
+              name.includes("guy") ||
+              name.includes("aria") ||
+              name.includes("samantha") ||
+              name.includes("google us english") ||
+              name.includes("ava"))
           );
         });
-        const fallbackEnglish = currentVoices.find(
-          (v) => v.lang.includes("en") || v.lang.includes("EN"),
-        );
-        utterance.voice = maleVoice || fallbackEnglish || currentVoices[0] || null;
+
+        const fallbackEnglish = currentVoices.find((v) => v.lang.toLowerCase().startsWith("en"));
+        utterance.voice = naturalVoice || fallbackEnglish || currentVoices[0] || null;
       }
 
       let finished = false;
@@ -173,52 +175,98 @@ export function useTTSEngine(): TTSEngine {
 
   const speakWithDeepgram = useCallback(
     async (text: string, apiKey: string, onend?: () => void) => {
+      let audioUrl: string | null = null;
+      let finished = false;
+
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        if (safetyTimerRef.current) {
+          clearTimeout(safetyTimerRef.current);
+          safetyTimerRef.current = null;
+        }
+        isSpeakingRef.current = false;
+        currentAudioRef.current = null;
+        if (audioUrl) {
+          try {
+            URL.revokeObjectURL(audioUrl);
+          } catch {}
+          audioUrl = null;
+        }
+        if (onend) onend();
+      };
+
       try {
         cancel();
         isSpeakingRef.current = true;
 
-        const model = "aura-arcas-en";
-        const speed = 1.1;
+        // "aura-asteria-en" provides a warm, empathetic, and highly clear interview tone
+        // Can be overridden via NEXT_PUBLIC_DEEPGRAM_VOICE_MODEL
+        const model = process.env.NEXT_PUBLIC_DEEPGRAM_VOICE_MODEL || "aura-asteria-en";
+        const speed = 1.0;
         const preparedText = prepareTextForTTS(text);
 
-        const response = await fetch(`https://api.deepgram.com/v1/speak?model=${model}`, {
-          method: "POST",
-          headers: {
-            Authorization: `Token ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ text: preparedText }),
-        });
+        // Enforce 4500ms timeout so network or Deepgram delays never hang the interview
+        const controller = new AbortController();
+        const fetchTimeout = setTimeout(() => controller.abort(), 4500);
+
+        let response: Response;
+        try {
+          response = await fetch(`https://api.deepgram.com/v1/speak?model=${model}`, {
+            method: "POST",
+            headers: {
+              Authorization: `Token ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ text: preparedText }),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(fetchTimeout);
+        }
 
         if (!response.ok) {
           throw new Error(`Deepgram TTS request failed: ${response.status} ${response.statusText}`);
         }
 
         const blob = await response.blob();
-        const audioUrl = URL.createObjectURL(blob);
+        audioUrl = URL.createObjectURL(blob);
         const audio = new Audio(audioUrl);
         audio.playbackRate = speed;
         currentAudioRef.current = audio;
 
         audio.onended = () => {
-          isSpeakingRef.current = false;
-          currentAudioRef.current = null;
-          URL.revokeObjectURL(audioUrl);
-          if (onend) onend();
+          finish();
         };
 
         audio.onerror = (e) => {
           console.warn("Deepgram Audio playback error:", e);
-          isSpeakingRef.current = false;
-          currentAudioRef.current = null;
-          URL.revokeObjectURL(audioUrl);
-          if (onend) onend();
+          finish();
         };
+
+        // Safety timer ensures the interview continues even if audio stalls or autoplay is interrupted
+        const words = text.split(/\s+/).length;
+        const expectedDurationMs = Math.max(3500, Math.min(30000, words * 400 + 2500));
+        safetyTimerRef.current = setTimeout(() => {
+          if (!finished) {
+            console.log("Deepgram playback safety timeout triggered, proceeding");
+            finish();
+          }
+        }, expectedDurationMs);
 
         await audio.play();
       } catch (err) {
         console.warn("Deepgram TTS failed, falling back to Web Speech API:", err);
+        if (safetyTimerRef.current) {
+          clearTimeout(safetyTimerRef.current);
+          safetyTimerRef.current = null;
+        }
         currentAudioRef.current = null;
+        if (audioUrl) {
+          try {
+            URL.revokeObjectURL(audioUrl);
+          } catch {}
+        }
         speakWithWebSpeech(text, onend);
       }
     },

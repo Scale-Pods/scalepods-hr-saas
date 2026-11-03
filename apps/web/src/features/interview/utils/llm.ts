@@ -144,6 +144,258 @@ export function isVagueOrUncertainAnswer(answer: string): boolean {
   return vaguePhrases.some((phrase) => text.includes(phrase));
 }
 
+export function generateProbingFollowUp(_question: string, answer: string): string {
+  const ans = (answer || "").toLowerCase();
+  if (
+    ans.includes("cache") ||
+    ans.includes("redis") ||
+    ans.includes("latency") ||
+    ans.includes("performance") ||
+    ans.includes("optimiz")
+  ) {
+    return "What specific cache invalidation strategy or metrics did you use to evaluate those performance gains?";
+  }
+  if (
+    ans.includes("database") ||
+    ans.includes("sql") ||
+    ans.includes("postgres") ||
+    ans.includes("mongo") ||
+    ans.includes("schema") ||
+    ans.includes("index")
+  ) {
+    return "How did you handle data consistency, indexing, or migration challenges in that implementation?";
+  }
+  if (
+    ans.includes("microservice") ||
+    ans.includes("service") ||
+    ans.includes("architecture") ||
+    ans.includes("kafka") ||
+    ans.includes("queue")
+  ) {
+    return "How did you manage failure handling, retries, or network timeouts across those services?";
+  }
+  if (
+    ans.includes("debug") ||
+    ans.includes("issue") ||
+    ans.includes("incident") ||
+    ans.includes("error") ||
+    ans.includes("bug")
+  ) {
+    return "What preventive monitoring or regression testing did you put in place to ensure the issue wouldn't recur?";
+  }
+  if (
+    ans.includes("pipeline") ||
+    ans.includes("deploy") ||
+    ans.includes("ci") ||
+    ans.includes("docker") ||
+    ans.includes("kubernetes")
+  ) {
+    return "How did you balance deployment velocity against system stability and rollback safety in that pipeline?";
+  }
+  if (
+    ans.includes("test") ||
+    ans.includes("testing") ||
+    ans.includes("unit test") ||
+    ans.includes("qa")
+  ) {
+    return "How did you prioritize critical test coverage without slowing down development momentum?";
+  }
+  if (
+    ans.includes("react") ||
+    ans.includes("frontend") ||
+    ans.includes("state") ||
+    ans.includes("ui")
+  ) {
+    return "How did you manage state complexity and rendering performance as the user interface scaled?";
+  }
+  return "What was one key technical trade-off or constraint you faced in that approach, and how did you navigate it?";
+}
+
+export function generateContextualAcknowledgment(
+  answer: string,
+  question: string,
+  index: number,
+  turnType?: string,
+  candidateRequestedClarification?: boolean,
+): string {
+  if (candidateRequestedClarification) {
+    return "No problem at all! Let me clarify that point for you.";
+  }
+
+  const ans = (answer || "").toLowerCase().trim();
+  const q = (question || "").toLowerCase().trim();
+
+  // Handle intro question acknowledgment
+  if (
+    q.includes("how are you doing") ||
+    q.includes("welcome to your interview") ||
+    q.includes("to start off")
+  ) {
+    if (
+      ans.includes("good") ||
+      ans.includes("great") ||
+      ans.includes("well") ||
+      ans.includes("fine") ||
+      ans.includes("doing well") ||
+      ans.includes("excited")
+    ) {
+      return "Glad to hear that! It's great to have you with us today. Let's dive into your experience.";
+    }
+    return "Thanks for joining us today! It's great to meet you. Let's get started with our first topic.";
+  }
+
+  if (turnType === "follow_up") {
+    if (
+      ans.includes("cache") ||
+      ans.includes("redis") ||
+      ans.includes("latency") ||
+      ans.includes("performance") ||
+      ans.includes("optimiz")
+    ) {
+      return "Thanks for detailing your caching and performance strategy. Let's look a bit deeper into that approach.";
+    }
+    if (
+      ans.includes("database") ||
+      ans.includes("sql") ||
+      ans.includes("postgres") ||
+      ans.includes("mongo") ||
+      ans.includes("schema") ||
+      ans.includes("query")
+    ) {
+      return "Got it, that clarifies how you structured the data layer. I'd like to probe a bit further on that.";
+    }
+    if (
+      ans.includes("service") ||
+      ans.includes("api") ||
+      ans.includes("architecture") ||
+      ans.includes("microservice") ||
+      ans.includes("system design")
+    ) {
+      return "Appreciate you explaining that architecture. Let's dig deeper into the design choices and trade-offs.";
+    }
+    if (
+      ans.includes("debug") ||
+      ans.includes("issue") ||
+      ans.includes("incident") ||
+      ans.includes("error") ||
+      ans.includes("outage")
+    ) {
+      return "Thanks for walking through that troubleshooting workflow. Let's examine one specific detail a bit further.";
+    }
+    if (
+      ans.includes("test") ||
+      ans.includes("pipeline") ||
+      ans.includes("ci") ||
+      ans.includes("deploy") ||
+      ans.includes("docker")
+    ) {
+      return "Understood, that gives good context on your deployment pipeline. Let's explore one aspect in more detail.";
+    }
+    const followUpAcks = [
+      "Thanks for sharing that overview. Let's dig a bit deeper into that specific point.",
+      "Appreciate that explanation. I'd like to explore one detail a bit further.",
+      "That's a helpful starting point. Let's look closer at your reasoning there.",
+      "Got it. I'd like to touch on one specific aspect of that approach.",
+    ];
+    return followUpAcks[index % followUpAcks.length];
+  }
+
+  // Standard turn acknowledgment: dynamically echo candidate's topic
+  if (
+    ans.includes("cache") ||
+    ans.includes("redis") ||
+    ans.includes("latency") ||
+    ans.includes("performance") ||
+    ans.includes("throughput") ||
+    ans.includes("optimiz")
+  ) {
+    return "Thank you for detailing your approach to caching and latency optimization.";
+  }
+  if (
+    ans.includes("microservice") ||
+    ans.includes("architecture") ||
+    ans.includes("kafka") ||
+    ans.includes("event-driven") ||
+    ans.includes("distributed") ||
+    ans.includes("monolith")
+  ) {
+    return "Appreciate you breaking down your architectural design and service boundaries.";
+  }
+  if (
+    ans.includes("postgres") ||
+    ans.includes("mysql") ||
+    ans.includes("database") ||
+    ans.includes("sql") ||
+    ans.includes("schema") ||
+    ans.includes("index") ||
+    ans.includes("queries")
+  ) {
+    return "Got it, that gives great clarity on how you structured the database queries and data model.";
+  }
+  if (
+    ans.includes("debug") ||
+    ans.includes("incident") ||
+    ans.includes("outage") ||
+    ans.includes("root cause") ||
+    ans.includes("datadog") ||
+    ans.includes("sentry") ||
+    ans.includes("logs")
+  ) {
+    return "Thanks for walking through your debugging workflow and root-cause analysis.";
+  }
+  if (
+    ans.includes("docker") ||
+    ans.includes("kubernetes") ||
+    ans.includes("k8s") ||
+    ans.includes("ci/cd") ||
+    ans.includes("pipeline") ||
+    ans.includes("terraform") ||
+    ans.includes("github actions")
+  ) {
+    return "Understood, having automated pipelines and reliable deployments is critical.";
+  }
+  if (
+    ans.includes("react") ||
+    ans.includes("next.js") ||
+    ans.includes("frontend") ||
+    ans.includes("component") ||
+    ans.includes("tailwind") ||
+    ans.includes("state management")
+  ) {
+    return "Thanks for explaining how you handled component structure and frontend state.";
+  }
+  if (
+    ans.includes("test") ||
+    ans.includes("unit test") ||
+    ans.includes("integration") ||
+    ans.includes("jest") ||
+    ans.includes("vitest") ||
+    ans.includes("cypress") ||
+    ans.includes("coverage")
+  ) {
+    return "Understood, that highlights your commitment to automated testing and code quality.";
+  }
+  if (
+    ans.includes("team") ||
+    ans.includes("conflict") ||
+    ans.includes("disagree") ||
+    ans.includes("code review") ||
+    ans.includes("mentor") ||
+    ans.includes("stakeholder")
+  ) {
+    return "I appreciate that thoughtful perspective on team collaboration and technical communication.";
+  }
+
+  const standardAcks = [
+    "Thank you for walking me through your approach and problem-solving process.",
+    "Got it, that gives helpful context on how you tackled that.",
+    "Thanks for explaining that clearly. Let's move to our next topic.",
+    "Understood, that highlights your engineering reasoning well.",
+    "Appreciate you sharing those details. Let's explore another area.",
+  ];
+  return standardAcks[index % standardAcks.length];
+}
+
 export async function analyzeAnswerInRealtime(
   question: string,
   answer: string,
@@ -162,12 +414,14 @@ export async function analyzeAnswerInRealtime(
   const isTechnical = questionType === "technical";
   const isExplicitClarification = isClarificationRequested(answer);
   const isVague = isVagueOrUncertainAnswer(answer);
+  const words = (answer || "").trim().split(/\s+/).filter(Boolean);
   const canAdaptPrimary = isTechnical && !isAlreadyFollowUp;
 
+  const probingFollowUp = generateProbingFollowUp(question, answer);
   const fallbackAction = (
     isExplicitClarification && canAdaptPrimary
       ? "rephrase_primary"
-      : isVague && canAdaptPrimary
+      : canAdaptPrimary && (isVague || words.length >= 8)
         ? "follow_up"
         : "advance"
   ) as LiveAssessmentNote["recommended_action"];
@@ -175,13 +429,13 @@ export async function analyzeAnswerInRealtime(
   const fallback: LiveAssessmentNote = {
     question_id: questionId,
     authenticity_signal: isVague ? "vague" : "genuine",
-    depth_signal: isVague ? "empty" : "surface",
+    depth_signal: isVague ? "empty" : words.length > 20 ? "deep" : "surface",
     red_flags: [],
     note: isExplicitClarification
       ? "Candidate requested clarification."
       : isVague
         ? "Candidate gave a brief or uncertain answer."
-        : "Answer recorded.",
+        : "Answer recorded with substantive technical detail.",
     follow_up_prompted: fallbackAction === "rephrase_primary" || fallbackAction === "follow_up",
     rephrased_question:
       fallbackAction === "rephrase_primary"
@@ -189,9 +443,12 @@ export async function analyzeAnswerInRealtime(
         : undefined,
     follow_up_question:
       fallbackAction === "follow_up"
-        ? `Could you share any related experience or fundamental concepts you do know regarding "${question}"?`
+        ? isVague
+          ? `Could you walk me through a specific concrete example from your past projects regarding "${question}"?`
+          : probingFollowUp
         : undefined,
-    insufficiency_reason: fallbackAction === "follow_up" ? "vague" : null,
+    insufficiency_reason:
+      fallbackAction === "follow_up" ? (isVague ? "vague" : "lacks_depth") : null,
     recommended_action: fallbackAction,
     requested_clarification: isExplicitClarification,
   };
@@ -234,7 +491,9 @@ export async function analyzeAnswerInRealtime(
         ? (rawReason as AnswerInsufficiencyReason)
         : isVague
           ? "vague"
-          : null;
+          : words.length >= 8
+            ? "lacks_depth"
+            : null;
 
     const rawAction = parsed.recommended_action;
     const recommendedAction = (
@@ -243,7 +502,8 @@ export async function analyzeAnswerInRealtime(
         Boolean(parsed.requested_clarification)) &&
       canAdaptPrimary
         ? "rephrase_primary"
-        : (rawAction === "follow_up" || isVague || insufficiencyReason) && canAdaptPrimary
+        : (rawAction === "follow_up" || isVague || insufficiencyReason || words.length >= 8) &&
+            canAdaptPrimary
           ? "follow_up"
           : "advance"
     ) as LiveAssessmentNote["recommended_action"];
@@ -259,7 +519,7 @@ export async function analyzeAnswerInRealtime(
         recommendedAction === "follow_up" || recommendedAction === "rephrase_primary",
       follow_up_question:
         recommendedAction === "follow_up"
-          ? parsed.follow_up_direction || fallback.follow_up_question
+          ? parsed.follow_up_direction || fallback.follow_up_question || probingFollowUp
           : undefined,
       rephrased_question:
         recommendedAction === "rephrase_primary"
@@ -458,8 +718,8 @@ export function getDynamicCandidateQuestion(
 }
 
 export async function generateInterviewerTurn(
-  resumeText: string,
-  jdText: string,
+  _resumeText: string,
+  _jdText: string,
   history: HistoryItem[],
   totalQuestions: number,
   analysis: CandidateAnalysis | null,
@@ -498,50 +758,31 @@ export async function generateInterviewerTurn(
 
   const shouldFollowUp =
     allowFollowUp &&
-    !targetQuestion &&
     lastAssessmentNote?.follow_up_prompted &&
     lastAssessmentNote?.follow_up_question &&
     !hasSimilarQuestionBeenAsked(lastAssessmentNote.follow_up_question, allSessionQuestions) &&
     followUpCount < maxFollowUps;
 
+  const lastItem = history[history.length - 1];
+  const lastAnswer = lastItem?.answer || "";
+  const lastQ = lastItem?.question || "";
+  const lastQuestionId = lastItem?.id || "";
+
   if (shouldFollowUp && lastAssessmentNote?.follow_up_question) {
+    const contextualAck = generateContextualAcknowledgment(
+      lastAnswer,
+      lastQ,
+      totalQuestions,
+      "follow_up",
+      candidateRequestedClarification,
+    );
     return {
-      interviewer_text:
-        "Thanks for explaining that. I'd like to explore one specific detail a bit further.",
+      interviewer_text: contextualAck,
       question_text: lastAssessmentNote.follow_up_question,
       turn_type: "follow_up",
       question_type: "technical",
       should_continue: true,
     };
-  }
-
-  function getDynamicAcknowledgment(
-    index: number,
-    turnType?: string,
-    candidateRequestedClarification?: boolean,
-  ): string {
-    if (candidateRequestedClarification) {
-      return "No problem at all! Let me clarify that point for you.";
-    }
-    if (turnType === "follow_up") {
-      const followUpAcks = [
-        "Thanks for sharing that overview. Let's dig a bit deeper into that specific point.",
-        "Appreciate that explanation. I'd like to explore one detail a bit further.",
-        "That's a helpful starting point. Let's look closer at your reasoning there.",
-        "Got it. I'd like to touch on one specific aspect of that approach.",
-      ];
-      return followUpAcks[index % followUpAcks.length];
-    }
-    const standardAcks = [
-      "Thank you for walking me through your approach.",
-      "Got it, that gives good context on how you handled that.",
-      "Thanks for explaining that clearly. Let's move to our next topic.",
-      "Understood, that highlights your problem-solving process well.",
-      "Great, appreciate you sharing those details.",
-      "Thanks for breaking that down. Let's explore another area.",
-      "Understood, thank you. Let's build on that with the next question.",
-    ];
-    return standardAcks[index % standardAcks.length];
   }
 
   function isGreetingText(text: string): boolean {
@@ -563,11 +804,6 @@ export async function generateInterviewerTurn(
 
   // Attempt backend n8n call
   try {
-    const lastItem = history[history.length - 1];
-    const lastAnswer = lastItem?.answer || "";
-    const lastQ = lastItem?.question || "";
-    const lastQuestionId = lastItem?.id || "";
-
     const response = await fetch(`${n8nBase()}/webhook/interview-engine`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -608,7 +844,9 @@ export async function generateInterviewerTurn(
       // For any turn answering a question (turns > 0 or with history), never repeat opening greeting
       const interviewerText =
         isGreetingText(rawAck) || !rawAck
-          ? getDynamicAcknowledgment(
+          ? generateContextualAcknowledgment(
+              lastAnswer,
+              lastQ,
               totalQuestions,
               parsed.turn_type,
               candidateRequestedClarification,
@@ -671,7 +909,9 @@ export async function generateInterviewerTurn(
     )
   ) {
     return {
-      interviewer_text: getDynamicAcknowledgment(
+      interviewer_text: generateContextualAcknowledgment(
+        lastAnswer,
+        lastQ,
         totalQuestions,
         "question",
         candidateRequestedClarification,
@@ -690,7 +930,9 @@ export async function generateInterviewerTurn(
     planItem,
   );
   return {
-    interviewer_text: getDynamicAcknowledgment(
+    interviewer_text: generateContextualAcknowledgment(
+      lastAnswer,
+      lastQ,
       totalQuestions,
       "question",
       candidateRequestedClarification,

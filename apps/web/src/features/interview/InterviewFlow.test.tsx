@@ -20,7 +20,7 @@ beforeEach(() => {
 
   const mockTrack = {
     stop: vi.fn(),
-    getSettings: () => ({ width: 640, height: 480 }),
+    getSettings: () => ({ width: 640, height: 480, displaySurface: "monitor" }),
   };
 
   const mockStream = {

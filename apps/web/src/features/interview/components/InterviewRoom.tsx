@@ -3,6 +3,8 @@
 import { AlertCircle, CheckCircle, Clock, Loader2, Monitor, PhoneOff, Upload } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { insertProctoringEvent } from "@/features/candidate/api";
 
 import { useInterviewContext } from "../context/InterviewContext";
 import { useProctoringContext } from "../context/ProctoringContext";
@@ -19,7 +21,6 @@ import { Completion } from "./Completion";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { PreCheck } from "./PreCheck";
 import { ProctoringOverlay } from "./ProctoringOverlay";
-import { QuestionDisplay } from "./QuestionDisplay";
 import { RecruiterPersona } from "./RecruiterPersona";
 import { VideoFeed } from "./VideoFeed";
 
@@ -117,7 +118,35 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       try {
         screen = await getScreenStream();
       } catch (screenErr) {
+        const msg = (screenErr as Error)?.message || "";
+        if (msg.includes("entire_screen_required")) {
+          setStartError(
+            "For proctoring compliance, you must share your Entire Screen. Sharing a single window or browser tab is not permitted. Please click 'Start Interview' again and select 'Entire Screen'.",
+          );
+          startingRef.current = false;
+          return;
+        }
         console.warn("Screen sharing not available, continuing without it:", screenErr);
+      }
+
+      if (screen) {
+        const screenTrack = screen.getVideoTracks()[0];
+        if (screenTrack) {
+          screenTrack.onended = () => {
+            console.warn("[InterviewRoom] Candidate stopped screen sharing!");
+            const activeSessionId = session?.id || propSessionId || sessionId;
+            if (activeSessionId) {
+              insertProctoringEvent(
+                activeSessionId,
+                "screen_share_stopped",
+                "Candidate stopped sharing their full screen during the interview.",
+              ).catch((e) => console.warn("Failed to log proctoring event:", e));
+            }
+            toast.error(
+              "Warning: Screen sharing was disconnected. Please keep your entire screen shared for proctoring compliance.",
+            );
+          };
+        }
       }
       await markInterviewStarted();
       setMediaStreams(av, audio, screen);
@@ -661,19 +690,6 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       <div className="interview-chat-layout flex-1">
         {/* Chat column */}
         <div className="chat-column">
-          {/* Active Question Card pinned prominently at top of candidate view */}
-          {currentQuestion && !isClosingTurn && (
-            <div className="px-4 pt-3.5 pb-1 shrink-0 z-10">
-              <QuestionDisplay
-                question={currentQuestion}
-                questionNumber={primaryBarIndex + 1}
-                totalQuestions={progressTarget}
-                isAiSpeaking={isAiSpeaking}
-                speakingPhase={speakingPhase}
-              />
-            </div>
-          )}
-
           {/* Scrollable chat feed */}
           <div className="chat-feed" ref={chatFeedRef}>
             {chatMessages.length === 0 && (
