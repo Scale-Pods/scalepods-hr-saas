@@ -248,27 +248,32 @@ export interface ExtractedAnswerDetails {
 export function extractAnswerEntities(answer: string): ExtractedAnswerDetails {
   const ans = (answer || "").toLowerCase();
   const candidates: Array<{ key: string; match: RegExp }> = [
-    { key: "Redis and caching", match: /\b(redis|cache|caching|memcached)\b/i },
+    // Strict grounding: Only tag specific brand/tools if literally mentioned
+    { key: "Redis caching", match: /\bredis\b/i },
+    { key: "caching and data retrieval", match: /\b(cache|cached|caching|memcached)\b/i },
     {
       key: "latency and performance optimization",
-      match: /\b(latency|throughput|performance|bottleneck|optimiz)\b/i,
+      match: /\b(latency|throughput|performance|bottleneck|optimiz\w*)\b/i,
     },
+    { key: "PostgreSQL", match: /\b(postgres|postgresql)\b/i },
+    { key: "MongoDB", match: /\b(mongo|mongodb)\b/i },
     {
       key: "database queries and data modeling",
-      match:
-        /\b(database|sql|postgres|postgresql|mysql|mongo|mongodb|schema|indexing|query|queries)\b/i,
+      match: /\b(database|databases|sql|mysql|schema|indexing|query|queries)\b/i,
     },
     {
       key: "microservices and API architecture",
       match: /\b(microservice|microservices|api|apis|rest|graphql|grpc|endpoint|endpoints)\b/i,
     },
+    { key: "Kafka streaming", match: /\bkafka\b/i },
     {
-      key: "Kafka and asynchronous messaging",
-      match: /\b(kafka|rabbitmq|queue|queues|event-driven|pubsub|pub-sub)\b/i,
+      key: "asynchronous messaging and queues",
+      match: /\b(rabbitmq|queue|queues|event-driven|pubsub|pub-sub)\b/i,
     },
+    { key: "Kubernetes orchestration", match: /\b(kubernetes|k8s)\b/i },
     {
-      key: "Kubernetes and container orchestration",
-      match: /\b(kubernetes|k8s|docker|container|containers|helm)\b/i,
+      key: "containerization and deployment",
+      match: /\b(docker|container|containers|containerized|helm)\b/i,
     },
     {
       key: "CI/CD and deployment pipelines",
@@ -290,7 +295,7 @@ export function extractAnswerEntities(answer: string): ExtractedAnswerDetails {
       key: "team collaboration and code reviews",
       match: /\b(code review|pr|pull request|stakeholder|teammate|mentor|leadership)\b/i,
     },
-    { key: "n8n and workflow automation", match: /\b(n8n|automation|webhook|webhooks)\b/i },
+    { key: "n8n and workflow automation", match: /\b(n8n|webhook|webhooks)\b/i },
     { key: "Python and backend services", match: /\b(python|django|fastapi|flask)\b/i },
     { key: "Node.js and TypeScript services", match: /\b(node|nodejs|typescript|express|nest)\b/i },
   ];
@@ -327,72 +332,118 @@ export function isGenericAcknowledgment(text: string): boolean {
   return canned.some((c) => lower === c || lower.startsWith(c));
 }
 
+/**
+ * Validates that an AI-generated follow-up question does not hallucinate or introduce
+ * specific brand-name infrastructure, databases, or orchestrators that were never mentioned
+ * by the candidate or in the question prompt.
+ */
+export function isFollowUpGrounded(
+  followUpText: string,
+  candidateAnswer: string,
+  originalQuestion: string,
+): boolean {
+  if (!followUpText) return false;
+  const followUp = followUpText.toLowerCase();
+  const context = `${(candidateAnswer || "").toLowerCase()} ${(originalQuestion || "").toLowerCase()}`;
+
+  // High-risk proprietary technologies that must NOT be hallucinated if absent from context
+  const specificTechTools = [
+    "redis",
+    "kubernetes",
+    "k8s",
+    "kafka",
+    "elasticsearch",
+    "cassandra",
+    "dynamodb",
+    "rabbitmq",
+    "terraform",
+    "ansible",
+  ];
+
+  for (const tool of specificTechTools) {
+    const pattern = new RegExp(`\\b${tool}\\b`, "i");
+    if (pattern.test(followUp) && !pattern.test(context)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function generateProbingFollowUp(_question: string, answer: string): string {
-  const { matchedKeywords, primaryTopic } = extractAnswerEntities(answer);
+  const { primaryTopic } = extractAnswerEntities(answer);
   const ans = (answer || "").toLowerCase();
 
-  if (
-    ans.includes("redis") ||
-    ans.includes("cache") ||
-    matchedKeywords.includes("Redis and caching")
-  ) {
+  // 1. Caching: Only mention Redis if the candidate specifically named Redis
+  if (/\bredis\b/i.test(ans)) {
     return "When implementing Redis caching to reduce latency, what cache invalidation or TTL strategy did you use, and how did you verify the performance gains?";
   }
-  if (
-    ans.includes("postgres") ||
-    ans.includes("sql") ||
-    ans.includes("database") ||
-    matchedKeywords.includes("database queries and data modeling")
-  ) {
+  if (/\b(cache|caching|memcached)\b/i.test(ans)) {
+    return "When implementing caching to reduce latency and system load, what cache invalidation or TTL strategy did you use, and how did you verify the performance gains?";
+  }
+
+  // 2. Containers & Orchestration: Only mention Kubernetes if the candidate specifically named Kubernetes/k8s
+  if (/\b(kubernetes|k8s)\b/i.test(ans)) {
+    return "When managing workloads on Kubernetes, how did you configure container health probes, resource limits, and zero-downtime rolling updates?";
+  }
+  if (/\b(docker|container|containers|helm)\b/i.test(ans)) {
+    return "When containerizing your services, how did you structure your container images, resource constraints, and deployment workflow?";
+  }
+
+  // 3. Queues & Streaming: Only mention Kafka if the candidate specifically named Kafka
+  if (/\bkafka\b/i.test(ans)) {
+    return "When working with Kafka, how did you handle consumer offset commits, partition rebalancing, and retry dead-letter queues?";
+  }
+  if (/\b(queue|queues|rabbitmq|event-driven|pubsub|pub-sub)\b/i.test(ans)) {
+    return "When designing asynchronous messaging or queues, how did you guarantee message delivery, handle retries, and manage queue backpressure?";
+  }
+
+  // 4. Databases
+  if (/\b(postgres|postgresql)\b/i.test(ans)) {
+    return "How did you handle query indexing, schema migrations, and connection pooling in PostgreSQL?";
+  }
+  if (/\b(mongo|mongodb)\b/i.test(ans)) {
+    return "How did you structure your document schemas, indexing strategies, and aggregation pipelines in MongoDB?";
+  }
+  if (/\b(database|sql|mysql|schema|indexing|query|queries)\b/i.test(ans)) {
     return "How did you handle query indexing, schema migrations, or data consistency guarantees in that database setup?";
   }
-  if (
-    ans.includes("microservice") ||
-    ans.includes("api") ||
-    matchedKeywords.includes("microservices and API architecture")
-  ) {
+
+  // 5. APIs and Microservices
+  if (/\b(microservice|microservices|api|apis|rest|graphql|grpc|endpoint|endpoints)\b/i.test(ans)) {
     return "How did you design failure handling, circuit breaking, or backwards compatibility across those API endpoints?";
   }
+
+  // 6. CI/CD & Deployments
   if (
-    ans.includes("kafka") ||
-    ans.includes("queue") ||
-    matchedKeywords.includes("Kafka and asynchronous messaging")
-  ) {
-    return "How did you guarantee message delivery, handle consumer offset commits, or manage retry dead-letter queues?";
-  }
-  if (
-    ans.includes("kubernetes") ||
-    ans.includes("docker") ||
-    matchedKeywords.includes("Kubernetes and container orchestration")
-  ) {
-    return "How did you manage container health probes, resource limits, and zero-downtime rolling updates?";
-  }
-  if (
-    ans.includes("pipeline") ||
-    ans.includes("ci/cd") ||
-    matchedKeywords.includes("CI/CD and deployment pipelines")
+    /\b(ci\/cd|pipeline|pipelines|deploy|deployment|github actions|jenkins|terraform)\b/i.test(ans)
   ) {
     return "How did you balance deployment velocity against system stability and rollback safety in that pipeline?";
   }
+
+  // 7. Debugging & Incidents
   if (
-    ans.includes("debug") ||
-    ans.includes("incident") ||
-    matchedKeywords.includes("debugging and production incident resolution")
+    /\b(debug|debugging|incident|outage|root cause|datadog|sentry|logs|monitoring)\b/i.test(ans)
   ) {
     return "Once you identified the root cause, what preventive alerts, observability metrics, or regression tests did you put in place?";
   }
-  if (
-    ans.includes("react") ||
-    ans.includes("frontend") ||
-    matchedKeywords.includes("React and frontend state management")
-  ) {
+
+  // 8. Frontend & UI
+  if (/\b(react|next\.js|nextjs|vue|angular|frontend|state management|tailwind|css)\b/i.test(ans)) {
     return "How did you manage component state synchronization and rendering performance as the user interface scaled?";
   }
-  if (ans.includes("test") || matchedKeywords.includes("automated testing and test suites")) {
+
+  // 9. Testing
+  if (/\b(test|testing|unit test|integration test|jest|vitest|cypress|coverage)\b/i.test(ans)) {
     return "How did you balance mock dependencies against realistic integration tests in that test suite?";
   }
-  if (ans.includes("n8n") || matchedKeywords.includes("n8n and workflow automation")) {
+
+  // 10. Automation & Workflows
+  if (/\bn8n\b/i.test(ans)) {
     return "When connecting n8n workflows, how did you handle asynchronous worker execution, retry logic, and webhook failure fallbacks?";
+  }
+  if (/\b(automation|webhook|webhooks)\b/i.test(ans)) {
+    return "When designing those automation workflows and webhooks, how did you handle retry policies and failure handling?";
   }
 
   if (primaryTopic) {
@@ -594,6 +645,7 @@ export async function analyzeAnswerInRealtime(
       follow_up_question:
         recommendedAction === "follow_up"
           ? parsed.follow_up_direction &&
+            isFollowUpGrounded(parsed.follow_up_direction, answer, question) &&
             !parsed.follow_up_direction.includes("fundamental concepts you do know") &&
             !parsed.follow_up_direction.includes("Could you share any related experience")
             ? parsed.follow_up_direction
@@ -652,6 +704,7 @@ export async function generateTargetedFollowUp(
     const candidateQ = (parsed.question_text || gapDirection || "").trim();
     if (
       !candidateQ ||
+      !isFollowUpGrounded(candidateQ, candidateAnswer, originalQuestion) ||
       candidateQ.includes("Could you share a specific example that illustrates that?") ||
       candidateQ.includes("Could you walk me through a specific implementation example") ||
       candidateQ.includes("Could you share any related experience")

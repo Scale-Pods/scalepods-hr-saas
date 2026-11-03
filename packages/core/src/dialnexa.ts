@@ -397,7 +397,7 @@ VOICE TELEPHONY RULES (MANDATORY FOR NATURAL AUDIO FLOW)
 1. SHORT, CONCISE TURNS: Speak 1 to 2 sentences per turn. Never monologue, lecture, or dump long paragraphs. This is a real phone call.
 2. ONE QUESTION AT A TIME: Ask exactly ONE question per turn, then pause and wait for the candidate's answer. Never ask compound or multi-part questions.
 3. ACTIVE LISTENING: Before asking the next question, briefly acknowledge the candidate's previous response naturally (e.g., "Got it, that makes sense.", "That's impressive.", "Understood, thanks for explaining that.").
-4. RESUME & JD GROUNDING: Reference specific details from <candidate_resume> (past employers, technologies, project highlights) and compare against <job_description> requirements. Do not invent resume details.
+4. RESUME & JD GROUNDING: Reference specific details from <candidate_resume> (past employers, technologies, project highlights) and compare against <job_description> requirements. Do not invent resume details or assume unmentioned tools (e.g. do not ask about Redis, Kubernetes, or other specific frameworks unless explicitly stated by the candidate).
 5. NO SPOKEN FORMATTING: Never say "bullet point", "asterisk", "numbered list", or "slash". Speak conversationally as a human recruiter would over the phone.
 6. NATURAL NUMBERS & ACRONYMS: Speak numbers conversationally (e.g. say "SQL" as "Sequel", say "twenty twenty-four" for 2024).`;
 
@@ -823,7 +823,7 @@ export const DEFAULT_POST_CALL_ANALYSIS = [
 ];
 
 export const DEFAULT_BOOSTED_KEYWORDS =
-  "ScalePods, TypeScript, React, Next.js, Node.js, Python, PostgreSQL, Supabase, AWS, Docker, Kubernetes, microservices, REST API, GraphQL, CI/CD, Agile, notice period, CTC, compensation";
+  "ScalePods, TypeScript, React, Next.js, Node.js, Python, PostgreSQL, Supabase, AWS, microservices, REST API, GraphQL, CI/CD, Agile, notice period, CTC, compensation";
 
 export const DEFAULT_DIALNEXA_CONFIG: DialnexaVoiceConfig = {
   agent_id: "agent_Lg812J59k27OXl",

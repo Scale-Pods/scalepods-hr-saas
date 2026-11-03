@@ -22,6 +22,14 @@ describe("speechNormalizer", () => {
     expect(normalizeTechnicalSpeech("In 8 in 10 cases this worked well")).toBe(
       "In 8 in 10 cases this worked well",
     );
+
+    // Common phrases with "red is" or "read is" must NOT be converted to "Redis"
+    expect(normalizeTechnicalSpeech("The color red is what we chose")).toBe(
+      "The color red is what we chose",
+    );
+    expect(normalizeTechnicalSpeech("What I read is that the latency improved")).toBe(
+      "What I read is that the latency improved",
+    );
   });
 
   it("accurately normalizes spoken technical terms and phonetic variations", () => {

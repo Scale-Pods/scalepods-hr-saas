@@ -73,6 +73,7 @@ export function AnswerRecorder({
   const audioActivityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVoiceActiveRef = useRef(false);
   const isCountdownActiveRef = useRef(false);
+  const accumulatedWebSpeechRef = useRef("");
 
   const clearAudioActivityMonitor = useCallback(() => {
     if (audioActivityIntervalRef.current) {
@@ -175,6 +176,7 @@ export function AnswerRecorder({
       clearThinkingTimer();
       clearCountdown();
       isRecordingRef.current = false;
+      accumulatedWebSpeechRef.current = "";
 
       if (overrideText && overrideText.trim()) {
         transcriptRef.current = overrideText.trim();
@@ -221,6 +223,7 @@ export function AnswerRecorder({
     clearThinkingTimer();
     clearCountdown();
     isRecordingRef.current = false;
+    accumulatedWebSpeechRef.current = "";
     setTranscript("");
     transcriptRef.current = "";
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
@@ -303,8 +306,10 @@ export function AnswerRecorder({
 
       setSttProvider("webspeech");
 
+      let currentSessionFinal = "";
       const launchInstance = () => {
         if (gen !== generationRef.current || !isRecordingRef.current) return;
+        currentSessionFinal = "";
         try {
           if (recognitionRef.current) {
             try {
@@ -332,26 +337,27 @@ export function AnswerRecorder({
                 interim += event.results[i][0].transcript;
               }
             }
+            currentSessionFinal = final;
 
-            const combined = (final + interim).trim();
+            const base = accumulatedWebSpeechRef.current
+              ? `${accumulatedWebSpeechRef.current} `
+              : "";
+            const combined = (base + final + interim).trim();
             const normalized = normalizeTechnicalSpeech(combined);
 
             if (normalized.trim().length > 0) {
               const prevTranscript = transcriptRef.current;
-              // Only overwrite if this speech recognized is at least as complete
-              if (normalized.length >= prevTranscript.length || prevTranscript.length === 0) {
-                setTranscript(normalized);
-                transcriptRef.current = normalized;
+              setTranscript(normalized);
+              transcriptRef.current = normalized;
 
-                if (isThinkingRef.current) {
-                  clearThinkingTimer();
-                }
+              if (isThinkingRef.current) {
+                clearThinkingTimer();
+              }
 
-                if (isVoiceActiveRef.current || normalized.length > prevTranscript.length) {
-                  clearCountdown();
-                } else {
-                  startCountdown();
-                }
+              if (isVoiceActiveRef.current || normalized.length > prevTranscript.length) {
+                clearCountdown();
+              } else {
+                startCountdown();
               }
             }
           };
@@ -364,6 +370,13 @@ export function AnswerRecorder({
 
           recognition.onend = () => {
             if (gen !== generationRef.current || !isRecordingRef.current) return;
+            if (currentSessionFinal.trim()) {
+              accumulatedWebSpeechRef.current = (
+                (accumulatedWebSpeechRef.current ? `${accumulatedWebSpeechRef.current} ` : "") +
+                currentSessionFinal.trim()
+              ).trim();
+              currentSessionFinal = "";
+            }
             // Short timeout before restart to prevent busy loop on connection glitches
             setTimeout(() => {
               if (gen === generationRef.current && isRecordingRef.current) {
@@ -394,6 +407,7 @@ export function AnswerRecorder({
     clearCountdown();
     setTranscript("");
     transcriptRef.current = "";
+    accumulatedWebSpeechRef.current = "";
     audioBlobRef.current = null;
     try {
       const stream = audioStream || (await getAudioStream());
@@ -531,7 +545,6 @@ export function AnswerRecorder({
 
       // Start STT: Try Deepgram with timeout, fallback immediately to Web Speech API
       let sttConnected = false;
-      let deepgramHasTranscribed = false;
       let accumulatedFinal = "";
 
       if (DeepgramSTT.isConfigured()) {
@@ -542,16 +555,15 @@ export function AnswerRecorder({
               if (isFinal) {
                 if (rawText.trim()) {
                   accumulatedFinal =
-                    (accumulatedFinal ? accumulatedFinal + " " : "") + rawText.trim();
+                    (accumulatedFinal ? `${accumulatedFinal} ` : "") + rawText.trim();
                 }
               }
               const display = isFinal
                 ? accumulatedFinal
-                : ((accumulatedFinal ? accumulatedFinal + " " : "") + rawText.trim()).trim();
+                : ((accumulatedFinal ? `${accumulatedFinal} ` : "") + rawText.trim()).trim();
 
               const normalized = normalizeTechnicalSpeech(display);
               if (normalized.trim().length > 0) {
-                deepgramHasTranscribed = true;
                 const prevTranscript = transcriptRef.current;
                 setTranscript(normalized);
                 transcriptRef.current = normalized;
@@ -570,32 +582,34 @@ export function AnswerRecorder({
             },
             onError: (err) => {
               console.warn("Deepgram WebSocket error, falling back to Web Speech API:", err);
+              if (accumulatedFinal.trim()) {
+                accumulatedWebSpeechRef.current = accumulatedFinal.trim();
+              }
               startWebSpeechFallback(gen);
+            },
+            onClose: () => {
+              if (
+                isRecordingRef.current &&
+                gen === generationRef.current &&
+                !submittedRef.current &&
+                !shouldSubmitRef.current
+              ) {
+                if (accumulatedFinal.trim()) {
+                  accumulatedWebSpeechRef.current = accumulatedFinal.trim();
+                }
+                startWebSpeechFallback(gen);
+              }
             },
           });
           deepgramRef.current = deepgram;
 
           const connectPromise = deepgram.start(stream);
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Deepgram timeout")), 2500),
+            setTimeout(() => reject(new Error("Deepgram timeout")), 3000),
           );
           await Promise.race([connectPromise, timeoutPromise]);
           setSttProvider("deepgram");
           sttConnected = true;
-
-          // Simultaneous watchdog: if candidate speaks and Deepgram has no transcript within 2.5s, engage Web Speech API
-          setTimeout(() => {
-            if (
-              gen === generationRef.current &&
-              isRecordingRef.current &&
-              !deepgramHasTranscribed
-            ) {
-              console.log(
-                "[AnswerRecorder] Starting Web Speech alongside Deepgram for reliability.",
-              );
-              startWebSpeechFallback(gen);
-            }
-          }, 2500);
         } catch (err) {
           console.warn("Deepgram unavailable, falling back to Web Speech API:", err);
         }
@@ -617,6 +631,7 @@ export function AnswerRecorder({
     startCountdown,
     startThinkingTimer,
     startWebSpeechFallback,
+    clearThinkingTimer,
   ]);
 
   useEffect(() => {
@@ -660,6 +675,7 @@ export function AnswerRecorder({
     };
   }, [clearAudioActivityMonitor, clearCountdown, stopSTTEngines]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-resize on transcript change
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -781,6 +797,7 @@ export function AnswerRecorder({
                       viewBox="0 0 16 16"
                       className="transform -rotate-90"
                     >
+                      <title>Thinking time countdown</title>
                       <circle
                         cx={8}
                         cy={8}
@@ -832,6 +849,7 @@ export function AnswerRecorder({
                       viewBox="0 0 16 16"
                       className="transform -rotate-90"
                     >
+                      <title>Silence timer countdown</title>
                       <circle
                         cx={8}
                         cy={8}
@@ -926,6 +944,7 @@ export function AnswerRecorder({
                   : `Auto-submits after ${(SILENCE_TIMEOUT_MS / 1000).toFixed(0)}s of silence`}
               </p>
               <button
+                type="button"
                 onClick={() => stopAndSubmit()}
                 disabled={!transcript.trim()}
                 className="px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-200 disabled:cursor-not-allowed"

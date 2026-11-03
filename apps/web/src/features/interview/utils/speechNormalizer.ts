@@ -48,7 +48,7 @@ export function normalizeTechnicalSpeech(text: string): string {
     [/\b(post\s*gress?|post\s*gres\s*q\s*l|post\s*gray\s*sql)\b/gi, "PostgreSQL"],
     [/\b(supa\s*base|soup\s*a\s*base)\b/gi, "Supabase"],
     [/\b(mongo\s*db)\b/gi, "MongoDB"],
-    [/\b(red\s*is|rediss)\b/gi, "Redis"],
+    [/\b(rediss)\b/gi, "Redis"],
     [/\b(prisma\s*orm|priz\s*ma)\b/gi, "Prisma"],
     [/\b(elastic\s*search)\b/gi, "Elasticsearch"],
 
