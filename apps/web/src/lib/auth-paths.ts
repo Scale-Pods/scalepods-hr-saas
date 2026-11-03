@@ -5,7 +5,15 @@
  */
 const PROTECTED_PREFIXES = ["/dashboard", "/campaigns", "/candidates", "/billing", "/settings"];
 
-const PUBLIC_PREFIXES = ["/auth", "/book", "/interview", "/assignment", "/thanks", "/calendar", "/api"];
+const PUBLIC_PREFIXES = [
+  "/auth",
+  "/book",
+  "/interview",
+  "/assignment",
+  "/thanks",
+  "/calendar",
+  "/api",
+];
 
 function matches(prefixes: string[], pathname: string): boolean {
   return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
