@@ -6,7 +6,15 @@ import { getEnv } from "@/env";
 
 const inviteSchema = z.object({
   team_member_id: z.string().uuid("A valid team member ID is required"),
+  dispatch_email: z.boolean().optional().default(true),
 });
+
+// Cache recently dispatched email timestamps per team_member_id to prevent duplicates
+const recentEmailDispatches = new Map<string, number>();
+
+export function _clearRecentEmailDispatchesForTests() {
+  recentEmailDispatches.clear();
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -72,24 +80,40 @@ export async function POST(req: NextRequest) {
     const companyName = accountRow?.company_name || accountRow?.name || "ScalePods Workspace";
     const recruiterName = accountRow?.name || "Your team lead";
 
-    // 3. Generate cryptographic token (32 bytes = 64 hex chars)
-    const inviteToken = crypto.randomBytes(32).toString("hex");
+    // 3. Generate or retrieve existing active cryptographic token
+    const { data: existingInvite } = await adminSupabase
+      .from("team_member_invites")
+      .select("token, expires_at")
+      .eq("team_member_id", member.id)
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    // Remove any previous active invite token for this team member
-    await adminSupabase.from("team_member_invites").delete().eq("team_member_id", member.id);
+    let inviteToken = existingInvite?.token;
 
-    // Save invite token valid for 7 days
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    const { error: insertErr } = await adminSupabase.from("team_member_invites").insert({
-      account_id: user.id,
-      team_member_id: member.id,
-      token: inviteToken,
-      expires_at: expiresAt,
-    });
+    if (!inviteToken) {
+      inviteToken = crypto.randomBytes(32).toString("hex");
 
-    if (insertErr) {
-      console.error("[api/team-members/invite] Failed to store invite token:", insertErr);
-      return NextResponse.json({ error: "Failed to generate invitation token." }, { status: 500 });
+      // Remove any previous expired invite tokens for this team member
+      await adminSupabase.from("team_member_invites").delete().eq("team_member_id", member.id);
+
+      // Save invite token valid for 7 days
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { error: insertErr } = await adminSupabase.from("team_member_invites").insert({
+        account_id: user.id,
+        team_member_id: member.id,
+        token: inviteToken,
+        expires_at: expiresAt,
+      });
+
+      if (insertErr) {
+        console.error("[api/team-members/invite] Failed to store invite token:", insertErr);
+        return NextResponse.json(
+          { error: "Failed to generate invitation token." },
+          { status: 500 },
+        );
+      }
     }
 
     // 4. Construct secure invite link
@@ -101,31 +125,55 @@ export async function POST(req: NextRequest) {
 
     const inviteLink = `${appBase}/calendar/connect?token=${inviteToken}`;
 
-    // 5. Send invitation email via n8n / notification pipeline
+    // 5. Send invitation email via n8n / notification pipeline only when dispatch_email is true
+    const shouldDispatchEmail = parsed.data.dispatch_email !== false;
     let emailSent = false;
-    try {
-      const n8nBase = env.NEXT_PUBLIC_N8N_BASE_URL.replace(/\/+$/, "").replace(/\/webhook\/?$/, "");
-      const emailPayload = {
-        action: "invite_team_member",
-        email: member.email,
-        name: member.name,
-        company_name: companyName,
-        recruiter_name: recruiterName,
-        invite_link: inviteLink,
-        subject: `[Action Required] Connect your Google Calendar for ${companyName} on ScalePods`,
-      };
 
-      const res = await fetch(`${n8nBase}/webhook/interviewers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(emailPayload),
-      });
+    if (shouldDispatchEmail) {
+      const now = Date.now();
+      const lastDispatch = recentEmailDispatches.get(member.id) ?? 0;
+      const isDebounced = now - lastDispatch < 30_000;
 
-      if (res.ok) {
+      if (!isDebounced) {
+        recentEmailDispatches.set(member.id, now);
+        // Evict entries older than 5 minutes
+        for (const [id, timestamp] of recentEmailDispatches.entries()) {
+          if (now - timestamp > 300_000) {
+            recentEmailDispatches.delete(id);
+          }
+        }
+
+        try {
+          const n8nBase = env.NEXT_PUBLIC_N8N_BASE_URL.replace(/\/+$/, "").replace(
+            /\/webhook\/?$/,
+            "",
+          );
+          const emailPayload = {
+            action: "invite_team_member",
+            email: member.email,
+            name: member.name,
+            company_name: companyName,
+            recruiter_name: recruiterName,
+            invite_link: inviteLink,
+            subject: `[Action Required] Connect your Google Calendar for ${companyName} on ScalePods`,
+          };
+
+          const res = await fetch(`${n8nBase}/webhook/interviewers`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify(emailPayload),
+          });
+
+          if (res.ok) {
+            emailSent = true;
+          }
+        } catch (dispatchErr) {
+          console.warn("[api/team-members/invite] Warning dispatching email via n8n:", dispatchErr);
+        }
+      } else {
+        // Dispatched within the debounce window; consider handled to avoid duplicate spam
         emailSent = true;
       }
-    } catch (dispatchErr) {
-      console.warn("[api/team-members/invite] Warning dispatching email via n8n:", dispatchErr);
     }
 
     return NextResponse.json({
@@ -143,4 +191,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

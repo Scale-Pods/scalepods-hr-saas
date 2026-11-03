@@ -4,7 +4,7 @@ import { type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
 import { ArrowLeft, Check, Link2, Loader2, Mail, MessageSquare, Phone, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -162,7 +162,7 @@ function SettingsPageInner() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ team_member_id: member.id }),
+        body: JSON.stringify({ team_member_id: member.id, dispatch_email: true }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to dispatch calendar invite.");
@@ -184,7 +184,7 @@ function SettingsPageInner() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ team_member_id: member.id }),
+        body: JSON.stringify({ team_member_id: member.id, dispatch_email: false }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.invite_link) {
@@ -270,9 +270,14 @@ function SettingsPageInner() {
     }
   };
 
+  const isAddingTeammateRef = useRef(false);
+
   const addTeammate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAddingTeammateRef.current) return;
     if (!account?.id || !name.trim() || !email.trim()) return;
+
+    isAddingTeammateRef.current = true;
     setAdding(true);
     try {
       const res = await fetch("/api/team-members", {
@@ -304,7 +309,10 @@ function SettingsPageInner() {
               "Content-Type": "application/json",
               Authorization: `Bearer ${session?.access_token}`,
             },
-            body: JSON.stringify({ team_member_id: data.team_member.id }),
+            body: JSON.stringify({
+              team_member_id: data.team_member.id,
+              dispatch_email: true,
+            }),
           });
           showToast(`Teammate added & calendar connection link sent to ${data.team_member.email}`);
         } catch {
@@ -316,6 +324,7 @@ function SettingsPageInner() {
     } catch (err) {
       showErrorToast(err);
     } finally {
+      isAddingTeammateRef.current = false;
       setAdding(false);
     }
   };
@@ -636,7 +645,8 @@ function SettingsPageInner() {
               htmlFor="send-invite-on-add"
               className="text-xs text-muted-foreground cursor-pointer select-none"
             >
-              Email a secure Google Calendar connection link to this teammate immediately upon adding
+              Email a secure Google Calendar connection link to this teammate immediately upon
+              adding
             </label>
           </div>
         </form>
