@@ -4,6 +4,19 @@ import { getEnv } from "@/env";
 
 export const dynamic = "force-dynamic";
 
+function parseRealScore(val: unknown): number | null {
+  if (typeof val === "number" && !Number.isNaN(val)) {
+    return val <= 10 ? Math.round(val * 10) : Math.round(val);
+  }
+  if (typeof val === "string" && val.trim().length > 0) {
+    const num = Number.parseFloat(val);
+    if (!Number.isNaN(num)) {
+      return num <= 10 ? Math.round(num * 10) : Math.round(num);
+    }
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
@@ -57,19 +70,13 @@ export async function POST(req: NextRequest) {
     const accountId = meta.account_id || payload.account_id || null;
     const applicationId = meta.application_id || payload.application_id || null;
     const duration = Number(payload.duration || body.duration || 0);
-    const status = payload.status || body.status || "completed";
-    const endReason = payload.end_reason || body.end_reason || "completed";
+    const _status = payload.status || body.status || "completed";
 
     const postAnalysis = (payload.postcallanalysis ||
       payload.post_call_analysis ||
       body.postcallanalysis ||
       {}) as Record<string, unknown>;
     const sentiment = String(postAnalysis.sentiment || "").toUpperCase();
-    const isSuccessful =
-      String(postAnalysis.call_successful || "").toLowerCase() === "successful" ||
-      status === "completed" ||
-      duration >= 30;
-
     const transcript =
       payload.transcript ||
       body.transcript ||
@@ -118,36 +125,49 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Compute evaluation score
-    let score = 75;
-    if (isSuccessful) {
-      score = 80;
-      if (sentiment === "POSITIVE") score += 10;
-      else if (sentiment === "NEGATIVE") score -= 10;
-      if (duration >= 90) score += 5;
-    } else {
-      score = 45;
-      if (duration > 30) score += 10;
+    // 2. Extract real evaluation score from DialNexa post-call analysis
+    const rawTech = parseRealScore(
+      postAnalysis.technical_qualification_score ??
+        postAnalysis.technical_score ??
+        postAnalysis.tech_score,
+    );
+    const rawComm = parseRealScore(
+      postAnalysis.communication_skills_score ??
+        postAnalysis.communication_score ??
+        postAnalysis.comm_score,
+    );
+    let realScore = parseRealScore(postAnalysis.overall_score ?? postAnalysis.score);
+    if (realScore == null && rawTech != null && rawComm != null) {
+      realScore = Math.round(rawTech * 0.6 + rawComm * 0.4);
+    } else if (realScore == null && (rawTech != null || rawComm != null)) {
+      realScore = rawTech ?? rawComm;
     }
-    score = Math.min(98, Math.max(20, score));
 
-    const rationale = isSuccessful
-      ? `Candidate completed conversational AI voice screening call (duration: ${duration}s). Telephony sentiment was ${sentiment || "NEUTRAL"} with successful objective completion. Metrics breakdown: Verbal Communication (${sentiment === "POSITIVE" ? 88 : 80}/100), Role & Skills Alignment (82/100), Availability & Notice Period (88/100), Engagement & Demeanor (${sentiment === "POSITIVE" ? 92 : 78}/100), Call Completion (${duration >= 90 ? 95 : 82}/100). Recommendation: Advance to next round.`
-      : `AI voice screening call ended with status '${String(endReason || "incomplete").replace(/_/g, " ")}' after ${duration}s. Communication assessment yielded a partial evaluation score of ${score}/100. Recruiter review recommended.`;
+    const rationale =
+      (typeof postAnalysis.screening_summary === "string" &&
+        postAnalysis.screening_summary.trim()) ||
+      (typeof postAnalysis.key_strengths_summary === "string" &&
+        postAnalysis.key_strengths_summary.trim()) ||
+      (realScore != null
+        ? `Candidate completed conversational AI voice screening call (duration: ${duration}s) with verified score ${realScore}/100.`
+        : null);
 
-    // 3. Insert or update decision_ledger
+    // 3. Insert or update decision_ledger ONLY if real evaluation score exists. Only real scores or nothing.
     if (candidateId && resolvedAccountId) {
-      await adminSupabase.from("decision_ledger").insert({
-        account_id: resolvedAccountId,
-        candidate_id: candidateId,
-        application_id: resolvedAppId,
-        round_instance_id: resolvedRiId || null,
-        stage: "voice_screen",
-        score,
-        rationale,
-        raw_text: transcript,
-        source: "workflow",
-      });
+      if (realScore != null) {
+        await adminSupabase.from("decision_ledger").insert({
+          account_id: resolvedAccountId,
+          candidate_id: candidateId,
+          application_id: resolvedAppId,
+          round_instance_id: resolvedRiId || null,
+          stage: "voice_screen",
+          score: realScore,
+          rationale:
+            rationale || `AI voice screening completed with evaluation score of ${realScore}/100.`,
+          raw_text: transcript,
+          source: "dialnexa",
+        });
+      }
 
       if (resolvedRiId) {
         await adminSupabase
@@ -163,7 +183,11 @@ export async function POST(req: NextRequest) {
         .eq("channel", "voice_call");
     }
 
-    return NextResponse.json({ success: true, score, status: "evaluated" });
+    return NextResponse.json({
+      success: true,
+      score: realScore,
+      status: realScore != null ? "evaluated" : "completed",
+    });
   } catch (error) {
     console.error("DialNexa webhook handler error:", error);
     return NextResponse.json(

@@ -222,7 +222,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function evaluateAndPersistSession(
+async function syncExistingScorecardToLedger(
   sessionId: string,
   sessionRow: {
     id: string;
@@ -230,16 +230,14 @@ async function evaluateAndPersistSession(
     candidate_id: string;
     round_instance_id: string;
     application_id?: string | null;
-    recording_url?: string | null;
   },
-  endedEarly: boolean = false,
 ) {
   const supabase = getAdminSupabase();
 
-  // Check if scorecard already exists
+  // Check if real scorecard already exists
   const { data: existingCard } = await supabase
     .from("scorecards")
-    .select("id, overall_score")
+    .select("id, overall_score, rationale")
     .eq("session_id", sessionId)
     .maybeSingle();
 
@@ -250,7 +248,9 @@ async function evaluateAndPersistSession(
         .update({
           score: existingCard.overall_score,
           stage: "round_1",
-          rationale: `AI interview evaluation completed with score ${existingCard.overall_score}/100.`,
+          rationale:
+            existingCard.rationale ||
+            `AI interview evaluation completed with score ${existingCard.overall_score}/100.`,
           score_type: "ai_interview",
           decided_at: new Date().toISOString(),
         })
@@ -258,176 +258,7 @@ async function evaluateAndPersistSession(
     }
     return existingCard;
   }
-
-  // Fetch all candidate answers
-  const { data: answersData } = await supabase
-    .from("interview_answers")
-    .select("id, answer_text, ai_live_note")
-    .eq("session_id", sessionId);
-
-  const answers = (answersData ?? []).filter(
-    (a) => !!a.answer_text && a.answer_text.trim().length > 0,
-  );
-  const totalTurns = answersData?.length ?? 0;
-  const answeredCount = answers.length;
-
-  let techScore = 70;
-  let commScore = 70;
-  let psScore = 70;
-  let cultScore = 75;
-  let authScore = 80;
-
-  if (answeredCount > 0) {
-    const totalWords = answers.reduce(
-      (acc, a) => acc + (a.answer_text?.split(/\s+/).length || 0),
-      0,
-    );
-    const avgWords = Math.round(totalWords / answeredCount);
-
-    if (avgWords > 40) {
-      techScore += 10;
-      commScore += 10;
-    } else if (avgWords > 20) {
-      techScore += 5;
-      commScore += 5;
-    } else {
-      commScore -= 5;
-    }
-
-    const hasGenuine = answers.some(
-      (a) => (a.ai_live_note as any)?.authenticity_signal === "genuine",
-    );
-    if (hasGenuine) authScore = 85;
-
-    if (endedEarly || (totalTurns > 0 && answeredCount < totalTurns)) {
-      psScore = Math.max(50, psScore - 10);
-    }
-  } else {
-    techScore = 50;
-    commScore = 50;
-    psScore = 50;
-    cultScore = 50;
-    authScore = 60;
-  }
-
-  const overallScore = Math.round(
-    techScore * 0.35 + commScore * 0.25 + psScore * 0.2 + cultScore * 0.1 + authScore * 0.1,
-  );
-  const recommendation = overallScore >= 75 ? "advance" : overallScore >= 60 ? "review" : "no_go";
-
-  const strengths = [
-    answeredCount > 0
-      ? `Completed ${answeredCount} interview response(s) with ${techScore >= 75 ? "strong" : "adequate"} technical terminology and depth`
-      : "Connected to interview room",
-    authScore >= 80
-      ? "Demonstrated authentic and candid responses throughout the dialogue"
-      : "Completed preliminary check",
-    commScore >= 75
-      ? "Clear verbal articulation and coherent answer structure"
-      : "Standard response clarity",
-  ];
-  const weaknesses = endedEarly
-    ? [
-        "Candidate ended the session early before all questions were asked",
-        "Incomplete problem-solving and architectural competency demonstration",
-      ]
-    : [
-        techScore < 75
-          ? "Technical depth on complex architecture could be further probed"
-          : "Recommended standard reference verification",
-      ];
-
-  const redFlags = endedEarly ? ["Candidate disconnected or exited interview room early"] : [];
-
-  const rationale = endedEarly
-    ? `Candidate completed a partial interview (${answeredCount}/${totalTurns || answeredCount} question(s) answered). Performance across submitted questions demonstrated competency signals (Technical: ${techScore}/100, Communication: ${commScore}/100), but candidate exited the room before tackling remaining problem-solving scenarios (Problem Solving: ${psScore}/100). Overall evaluation score: ${overallScore}/100. Recruiter review recommended before proceeding.`
-    : `Candidate completed the full AI video interview (${answeredCount} questions evaluated). Demonstrates strong capability in core competencies with overall score of ${overallScore}/100. Key metrics: Technical Depth (${techScore}/100) reflected solid understanding of implementation concepts; Communication & Clarity (${commScore}/100) was structured and articulate; Problem Solving (${psScore}/100) demonstrated logical approach; Authenticity (${authScore}/100) verified genuine responses. Recommendation: ${recommendation === "advance" ? "Advance to next stage" : "Review by hiring team"}.`;
-
-  // 1. Insert or update scorecard
-  const cardPayload = {
-    session_id: sessionId,
-    technical_score: techScore,
-    communication_score: commScore,
-    problem_solving_score: psScore,
-    cultural_fit_score: cultScore,
-    authenticity_score: authScore,
-    overall_score: overallScore,
-    recommendation,
-    strengths,
-    weaknesses,
-    red_flags: redFlags,
-    evaluated_at: new Date().toISOString(),
-  };
-
-  const { data: priorCard } = await supabase
-    .from("scorecards")
-    .select("id")
-    .eq("session_id", sessionId)
-    .maybeSingle();
-
-  let newCard = null;
-  if (priorCard?.id) {
-    const { data: updated } = await supabase
-      .from("scorecards")
-      .update(cardPayload)
-      .eq("id", priorCard.id)
-      .select()
-      .maybeSingle();
-    newCard = updated;
-  } else {
-    const { data: inserted } = await supabase
-      .from("scorecards")
-      .insert(cardPayload)
-      .select()
-      .maybeSingle();
-    newCard = inserted;
-  }
-
-  // 2. Insert or update decision_ledger
-  if (sessionRow.round_instance_id) {
-    const { data: existingDl } = await supabase
-      .from("decision_ledger")
-      .select("id")
-      .eq("round_instance_id", sessionRow.round_instance_id)
-      .maybeSingle();
-
-    if (existingDl) {
-      await supabase
-        .from("decision_ledger")
-        .update({
-          score: overallScore,
-          rationale,
-          score_type: "ai_interview",
-          stage: "round",
-          decided_at: new Date().toISOString(),
-        })
-        .eq("id", existingDl.id);
-    } else {
-      await supabase.from("decision_ledger").insert({
-        account_id: sessionRow.account_id,
-        candidate_id: sessionRow.candidate_id,
-        application_id: sessionRow.application_id,
-        round_instance_id: sessionRow.round_instance_id,
-        stage: "round",
-        score_type: "ai_interview",
-        score: overallScore,
-        rationale,
-        source: "workflow",
-        decided_at: new Date().toISOString(),
-      });
-    }
-
-    // 3. Mark round instance completed
-    await supabase
-      .from("round_instances")
-      .update({ status: "completed" })
-      .eq("id", sessionRow.round_instance_id);
-  }
-
-  // 4. Mark interview session completed
-  await supabase.from("interview_sessions").update({ status: "completed" }).eq("id", sessionId);
-
-  return newCard;
+  return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -605,11 +436,10 @@ export async function POST(request: NextRequest) {
             .eq("id", sessionRow.round_instance_id);
         }
 
-        // Trigger n8n scoring webhook, falling back to autonomous evaluation if n8n is offline or errors
+        // Trigger n8n scoring webhook
         const n8nBase = getN8nBase();
-        let scored = false;
         try {
-          const res = await fetch(`${n8nBase}/webhook/score-interview`, {
+          await fetch(`${n8nBase}/webhook/score-interview`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Accept: "application/json" },
             body: JSON.stringify({
@@ -624,14 +454,12 @@ export async function POST(request: NextRequest) {
               ended_early: Boolean(endedEarly),
             }),
           });
-          if (res.ok) scored = true;
         } catch (err) {
           console.warn("[api/interview/session] score-interview trigger note:", err);
         }
 
-        if (!scored) {
-          await evaluateAndPersistSession(sessionId, sessionRow, Boolean(endedEarly));
-        }
+        // Only sync if real evaluation scorecard already exists in DB; never generate synthetic/dummy scores
+        await syncExistingScorecardToLedger(sessionId, sessionRow);
 
         return NextResponse.json({ success: true, session: updatedSession });
       }
@@ -663,11 +491,13 @@ export async function POST(request: NextRequest) {
           console.warn("[api/interview/session POST score] Error:", n8nErr);
         }
 
-        if (!scored) {
-          result = await evaluateAndPersistSession(sessionId, sessionRow, false);
-        }
+        const existingCard = await syncExistingScorecardToLedger(sessionId, sessionRow);
 
-        return NextResponse.json({ success: true, result });
+        return NextResponse.json({
+          success: scored || !!existingCard,
+          result: result || existingCard || null,
+          status: scored || existingCard ? "evaluated" : "evaluating",
+        });
       }
 
       case "proctoring_event": {

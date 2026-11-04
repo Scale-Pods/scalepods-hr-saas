@@ -130,6 +130,48 @@ function roundNumberFromStage(stage: string): number | null {
   return null;
 }
 
+function isSyntheticScorecard(sc: ScorecardRow): boolean {
+  if (
+    sc.technical_score === 70 &&
+    sc.communication_score === 70 &&
+    sc.problem_solving_score === 70 &&
+    sc.cultural_fit_score === 75 &&
+    sc.authenticity_score === 80
+  ) {
+    return true;
+  }
+  if (
+    sc.technical_score === 50 &&
+    sc.communication_score === 50 &&
+    sc.problem_solving_score === 50 &&
+    sc.cultural_fit_score === 50 &&
+    sc.authenticity_score === 60
+  ) {
+    return true;
+  }
+  const rat = String(sc.rationale || "");
+  if (
+    rat.includes("Candidate completed the full AI video interview (") ||
+    rat.includes("Candidate completed a partial interview (")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isSyntheticLedgerScore(row: DecisionLedgerRow): boolean {
+  const rat = String(row.rationale || "");
+  if (
+    rat.includes("Metrics breakdown: Verbal Communication (") ||
+    (rat.includes("duration:") && rat.includes("Telephony sentiment was")) ||
+    rat.includes("Candidate completed the full AI video interview (") ||
+    rat.includes("Candidate completed a partial interview (")
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export async function fetchCandidateProfile(
   id: string,
   tier: string = "free",
@@ -289,8 +331,10 @@ export async function fetchCandidateProfile(
         recording_path: raw.recording_path ?? null,
         rationale: raw.rationale ?? criteria.detailed_rationale ?? null,
       };
-      if (raw.round_instance_id) scorecardByRoundId.set(raw.round_instance_id, sc);
-      if (raw.session_id) scorecardBySessionId.set(raw.session_id, sc);
+      if (!isSyntheticScorecard(sc)) {
+        if (raw.round_instance_id) scorecardByRoundId.set(raw.round_instance_id, sc);
+        if (raw.session_id) scorecardBySessionId.set(raw.session_id, sc);
+      }
     }
   }
 
@@ -357,26 +401,18 @@ export async function fetchCandidateProfile(
       (forRound ? sessionRows.find((s) => s.round_instance_id === forRound.id) : undefined) ??
       (row.round_instance_id
         ? sessionRows.find((s) => s.round_instance_id === row.round_instance_id)
-        : undefined) ??
-      (roundNum === 1 ? sessionRows[0] : undefined);
+        : undefined);
 
     const scorecard =
       (forRound ? scorecardByRoundId.get(forRound.id) : undefined) ??
       (session ? scorecardBySessionId.get(session.id) : undefined) ??
-      (row.round_instance_id ? scorecardByRoundId.get(row.round_instance_id) : undefined) ??
-      (roundNum === 1 ? Array.from(scorecardByRoundId.values())[0] : undefined) ??
-      (roundNum === 1 ? Array.from(scorecardBySessionId.values())[0] : undefined);
+      (row.round_instance_id ? scorecardByRoundId.get(row.round_instance_id) : undefined);
 
     const matchingFeedback =
       (row.round_instance_id
         ? interviewerFeedback.find((f) => f.round_instance_id === row.round_instance_id)
         : undefined) ??
-      (forRound
-        ? interviewerFeedback.find((f) => f.round_instance_id === forRound.id)
-        : undefined) ??
-      (row.score_type === "human_feedback" || forRound?.round_type === "human_interview"
-        ? interviewerFeedback[0]
-        : undefined);
+      (forRound ? interviewerFeedback.find((f) => f.round_instance_id === forRound.id) : undefined);
 
     let recordingSignedUrl: string | null = null;
     let recordingExpired = false;
@@ -392,19 +428,26 @@ export async function fetchCandidateProfile(
       }
     }
 
+    const isSynthetic = isSyntheticLedgerScore(row);
+    const ledgerScore = isSynthetic ? null : row.score;
+
     const resolvedScore =
       scorecard && scorecard.overall_score != null
         ? scorecard.overall_score
-        : row.score != null
-          ? row.score
+        : ledgerScore != null
+          ? ledgerScore
           : matchingFeedback?.overall_score != null
             ? Number(matchingFeedback.overall_score)
             : null;
 
     let resolvedRationale =
       scorecard && scorecard.overall_score != null
-        ? scorecard.rationale || row.rationale
-        : row.rationale;
+        ? scorecard.rationale || (isSynthetic ? null : row.rationale)
+        : isSynthetic
+          ? row.stage?.includes("voice")
+            ? "AI voice screening call completed."
+            : "AI interview completed. Evaluation in progress."
+          : row.rationale;
 
     if (!resolvedRationale && matchingFeedback) {
       if (matchingFeedback.notes?.trim()) {
@@ -870,16 +913,12 @@ export async function fetchCandidateProfile(
     return false;
   });
 
-  // 13. Latest scorecard for active campaign
-  let latestScorecard =
-    (roundRows[roundRows.length - 1]
-      ? scorecardByRoundId.get(roundRows[roundRows.length - 1].id)
-      : undefined) ??
-    (sessionRows[sessionRows.length - 1]
-      ? scorecardBySessionId.get(sessionRows[sessionRows.length - 1].id)
-      : undefined) ??
-    Array.from(scorecardByRoundId.values())[0] ??
-    Array.from(scorecardBySessionId.values())[0] ??
+  // 13. Latest scorecard strictly for active campaign round or session. Only real scores or nothing.
+  const activeRound = roundRows[roundRows.length - 1];
+  const activeSession = sessionRows[sessionRows.length - 1];
+  const latestScorecard =
+    (activeRound ? scorecardByRoundId.get(activeRound.id) : undefined) ??
+    (activeSession ? scorecardBySessionId.get(activeSession.id) : undefined) ??
     null;
 
   // Ensure rationale is populated from decision_ledger if missing on the scorecard row
@@ -888,38 +927,12 @@ export async function fetchCandidateProfile(
       (l.stage === "ai_interview" ||
         l.stage === "round" ||
         String(l.stage).toLowerCase().includes("round")) &&
-      l.rationale,
+      l.rationale &&
+      !isSyntheticLedgerScore(l),
   );
 
   if (latestScorecard && !latestScorecard.rationale && matchingInterviewLedger?.rationale) {
     latestScorecard.rationale = matchingInterviewLedger.rationale;
-  } else if (!latestScorecard && matchingInterviewLedger && matchingInterviewLedger.score != null) {
-    const s = Math.min(100, Math.max(1, Math.round(Number(matchingInterviewLedger.score))));
-    const tech = Math.min(100, Math.max(1, Math.round(s * 1.02)));
-    const comm = Math.min(100, Math.max(1, Math.round(s * 0.99)));
-    const ps = Math.min(100, Math.max(1, Math.round(s * 0.98)));
-    const cult = Math.min(100, Math.max(1, Math.round(s * 1.01)));
-    const subtotal = 0.35 * tech + 0.25 * comm + 0.2 * ps + 0.1 * cult;
-    const auth = Math.min(100, Math.max(1, Math.round((s - subtotal) / 0.1)));
-
-    latestScorecard = {
-      overall_score: s,
-      technical_score: tech,
-      communication_score: comm,
-      problem_solving_score: ps,
-      cultural_fit_score: cult,
-      authenticity_score: auth,
-      recommendation: s >= 75 ? "advance" : s >= 60 ? "review" : "no_go",
-      rationale:
-        matchingInterviewLedger.rationale ||
-        `AI interview completed with overall evaluation score of ${s}/100.`,
-      evaluated_at: matchingInterviewLedger.created_at,
-      strengths: [
-        "Demonstrated competency signals across technical assessment",
-        "Completed interview session questions",
-      ],
-      weaknesses: s < 70 ? ["Recommended follow-up verification on technical architecture"] : [],
-    } as ScorecardRow;
   }
 
   let activeCampaignRow: CampaignsRow | null = null;
@@ -940,7 +953,10 @@ export async function fetchCandidateProfile(
     const [assignRes, offersRes, subRes] = await Promise.all([
       supabase.from("assignments").select("*").eq("application_id", matchedApplication.id),
       supabase.from("offers").select("*").eq("application_id", matchedApplication.id),
-      supabase.from("assignment_submissions").select("*").eq("application_id", matchedApplication.id),
+      supabase
+        .from("assignment_submissions")
+        .select("*")
+        .eq("application_id", matchedApplication.id),
     ]);
     assignments = (assignRes.data ?? []) as AssignmentsRow[];
     offers = (offersRes.data ?? []) as OffersRow[];
@@ -961,7 +977,9 @@ export async function fetchCandidateProfile(
         for (const fp of paths) {
           if (!fp || typeof fp !== "string") continue;
           try {
-            const { data } = await supabase.storage.from(BUCKETS.assignments).createSignedUrl(fp, 86400);
+            const { data } = await supabase.storage
+              .from(BUCKETS.assignments)
+              .createSignedUrl(fp, 86400);
             const fileName = fp.split("/").pop() || fp;
             signedFiles.push({ name: fileName, url: data?.signedUrl || fp });
           } catch {

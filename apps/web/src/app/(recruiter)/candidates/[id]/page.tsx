@@ -37,12 +37,10 @@ import {
   MessageSquare,
   MessageSquareText,
   Pause,
-  Phone,
   PhoneCall,
   Play,
   Redo2,
   RotateCw,
-  Send,
   ShieldCheck,
   Sparkles,
   Target,
@@ -86,7 +84,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccount } from "@/features/account/hooks";
-import { removeCandidateFromCampaign, type ViewCandidate } from "@/features/campaigns/api";
+import { removeCandidateFromCampaign } from "@/features/campaigns/api";
 import {
   decideApplication,
   type LedgerView,
@@ -1461,10 +1459,10 @@ function Timeline({ rows }: { rows: LedgerView[] }) {
 }
 
 function ScorecardSummary({ row }: { row: LedgerView }) {
-  if (!row.scorecard && !row.score) return null;
+  if (!row.scorecard || row.scorecard.overall_score == null) return null;
   const sc = row.scorecard;
-  const score = sc?.overall_score ?? row.score;
-  const rationale = sc?.rationale || row.rationale;
+  const score = sc.overall_score;
+  const rationale = sc.rationale || row.rationale;
 
   const dims = [
     ["Technical", sc?.technical_score],
@@ -1800,7 +1798,8 @@ function OutreachTable({
                   Dispatched Communication
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
-                  View exact communication sent to this candidate via {selectedMessage?.channel?.replace(/_/g, " ")}
+                  View exact communication sent to this candidate via{" "}
+                  {selectedMessage?.channel?.replace(/_/g, " ")}
                 </DialogDescription>
               </div>
             </div>
@@ -1825,9 +1824,15 @@ function OutreachTable({
                 <span className="text-muted-foreground block font-medium">Recipient</span>
                 <span
                   className="font-semibold text-foreground mt-0.5 block truncate"
-                  title={selectedMessage?.recipient || (selectedMessage?.channel === "whatsapp" ? candidatePhone : candidateEmail) || "N/A"}
+                  title={
+                    selectedMessage?.recipient ||
+                    (selectedMessage?.channel === "whatsapp" ? candidatePhone : candidateEmail) ||
+                    "N/A"
+                  }
                 >
-                  {selectedMessage?.recipient || (selectedMessage?.channel === "whatsapp" ? candidatePhone : candidateEmail) || "N/A"}
+                  {selectedMessage?.recipient ||
+                    (selectedMessage?.channel === "whatsapp" ? candidatePhone : candidateEmail) ||
+                    "N/A"}
                 </span>
               </div>
               <div>
@@ -1838,8 +1843,11 @@ function OutreachTable({
                         selectedMessage.stage,
                         selectedMessage.channel === "voice_call"
                           ? "ai_voice_call"
-                          : roundInstances?.find((ri) => ri.id === selectedMessage.round_instance_id)?.round_type,
-                        roundInstances?.find((ri) => ri.id === selectedMessage.round_instance_id)?.round_number,
+                          : roundInstances?.find(
+                              (ri) => ri.id === selectedMessage.round_instance_id,
+                            )?.round_type,
+                        roundInstances?.find((ri) => ri.id === selectedMessage.round_instance_id)
+                          ?.round_number,
                       )
                     : "N/A"}
                 </span>
@@ -1881,10 +1889,12 @@ function OutreachTable({
                 Sent Message Body
               </span>
               {selectedMessage?.message_body ? (
-                selectedMessage.channel === "email" && /<[a-z][\s\S]*>/i.test(selectedMessage.message_body) ? (
+                selectedMessage.channel === "email" &&
+                /<[a-z][\s\S]*>/i.test(selectedMessage.message_body) ? (
                   <div className="rounded-xl border border-border/60 overflow-hidden bg-white text-slate-900">
                     <div
                       className="p-4 text-xs prose prose-sm max-w-none max-h-72 overflow-y-auto"
+                      // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized outreach email preview
                       dangerouslySetInnerHTML={{ __html: selectedMessage.message_body }}
                     />
                   </div>
@@ -2581,16 +2591,18 @@ function VoiceScreenCallSection({
   }
 
   // Find most relevant voice screen scorecard across calls or transcripts
-  const primaryCallWithScorecard = calls.find((c) => c.scorecard);
+  const primaryCallWithScorecard = calls.find(
+    (c) => c.scorecard && c.scorecard.overall_score != null,
+  );
   const primaryTranscript = transcripts[0];
 
   const overallScore =
-    primaryCallWithScorecard?.scorecard?.overall_score ??
-    primaryTranscript?.score ??
-    (hasCalls && calls[0]?.status === "completed" ? 82 : null);
+    primaryCallWithScorecard?.scorecard?.overall_score ?? primaryTranscript?.score ?? null;
 
   const rawRecommendation =
-    primaryCallWithScorecard?.scorecard?.recommendation ?? primaryTranscript?.recommendation;
+    primaryCallWithScorecard?.scorecard?.recommendation ??
+    primaryTranscript?.recommendation ??
+    null;
 
   const recommendation = rawRecommendation
     ? rawRecommendation === "no_go"
@@ -2600,18 +2612,16 @@ function VoiceScreenCallSection({
         : rawRecommendation === "review"
           ? "Review"
           : rawRecommendation.replace(/_/g, " ")
-    : overallScore && overallScore >= 75
-      ? "Advance to Next Round"
-      : overallScore && overallScore >= 60
-        ? "Review Needed"
-        : "Do Not Advance";
+    : overallScore != null
+      ? overallScore >= 75
+        ? "Advance to Next Round"
+        : overallScore >= 60
+          ? "Review Needed"
+          : "Do Not Advance"
+      : null;
 
   const overallReason =
-    primaryCallWithScorecard?.scorecard?.reason ??
-    primaryTranscript?.rationale ??
-    (hasCalls && calls[0]?.status === "completed"
-      ? "Automated telephone screening completed successfully. Candidate verified availability, communicated core professional background, and expressed high interest in the role."
-      : null);
+    primaryCallWithScorecard?.scorecard?.reason ?? primaryTranscript?.rationale ?? null;
 
   // Structured Voice Screening Metrics parsing (supporting both list and dict shapes)
   const callMetrics = primaryCallWithScorecard?.scorecard?.metrics;
@@ -2650,110 +2660,87 @@ function VoiceScreenCallSection({
   const rawEngage = findMetric(["engagement", "sentiment", "demeanor"]);
   const rawComp = findMetric(["completion", "objective"]);
 
-  const baseScore = overallScore ?? 75;
-  const commScore =
-    rawComm?.score ??
-    transcriptMetrics?.communication ??
-    Math.min(100, Math.max(1, Math.round(baseScore * 1.01)));
-  const roleScore =
-    rawRole?.score ??
-    transcriptMetrics?.role_fit ??
-    Math.min(100, Math.max(1, Math.round(baseScore * 1.02)));
-  const availScore =
-    rawAvail?.score ??
-    transcriptMetrics?.availability ??
-    Math.min(100, Math.max(1, Math.round(baseScore * 0.99)));
-  const engageScore =
-    rawEngage?.score ??
-    transcriptMetrics?.engagement ??
-    Math.min(100, Math.max(1, Math.round(baseScore * 0.98)));
+  const displayMetrics: Array<{
+    key: string;
+    title: string;
+    weight: string;
+    score: number;
+    reason: string;
+    icon: any;
+  }> = [];
 
-  const subtotal = 0.25 * commScore + 0.3 * roleScore + 0.15 * availScore + 0.15 * engageScore;
-  const compScore =
-    rawComp?.score ??
-    transcriptMetrics?.call_completion ??
-    Math.min(100, Math.max(1, Math.round((baseScore - subtotal) / 0.15)));
-
-  // Weighted average exactly matches finalVoiceOverallScore
-  const finalVoiceOverallScore =
-    overallScore ??
-    Math.round(
-      0.25 * commScore +
-        0.3 * roleScore +
-        0.15 * availScore +
-        0.15 * engageScore +
-        0.15 * compScore,
-    );
-
-  const displayMetrics = [
-    {
+  if (rawComm?.score != null || transcriptMetrics?.communication != null) {
+    displayMetrics.push({
       key: "verbal_communication",
       title: "Verbal Communication & Fluency",
       weight: "25%",
-      score: commScore,
+      score: rawComm?.score ?? transcriptMetrics?.communication ?? 0,
       reason:
         rawComm?.reason ??
         callMetrics?.verbal_communication?.reason ??
-        "Clear articulation, natural cadence, and professional tone throughout the phone dialogue.",
+        "Spoken articulation, fluency, and clarity during telephone conversation.",
       icon: Headphones,
-    },
-    {
+    });
+  }
+
+  if (rawRole?.score != null || transcriptMetrics?.role_fit != null) {
+    displayMetrics.push({
       key: "role_alignment",
       title: "Role & Experience Alignment",
       weight: "30%",
-      score: roleScore,
+      score: rawRole?.score ?? transcriptMetrics?.role_fit ?? 0,
       reason:
         rawRole?.reason ??
         callMetrics?.role_alignment?.reason ??
         "Relevant technical background matches key requirements verified during preliminary screening questions.",
       icon: Target,
-    },
-    {
+    });
+  }
+
+  if (rawAvail?.score != null || transcriptMetrics?.availability != null) {
+    displayMetrics.push({
       key: "availability",
       title: "Availability & Notice Period",
       weight: "15%",
-      score: availScore,
+      score: rawAvail?.score ?? transcriptMetrics?.availability ?? 0,
       reason:
         rawAvail?.reason ??
         callMetrics?.availability?.reason ??
-        "Confirmed immediate or standard notice window with high flexibility for upcoming interview rounds.",
+        "Confirmed notice period and availability for upcoming interview stages.",
       icon: Clock,
-    },
-    {
+    });
+  }
+
+  if (rawEngage?.score != null || transcriptMetrics?.engagement != null) {
+    displayMetrics.push({
       key: "engagement",
       title: "Candidate Engagement & Sentiment",
       weight: "15%",
-      score: engageScore,
+      score: rawEngage?.score ?? transcriptMetrics?.engagement ?? 0,
       reason:
         rawEngage?.reason ??
         callMetrics?.engagement?.reason ??
-        (calls[0]?.sentiment
-          ? `Candidate demonstrated ${calls[0].sentiment} sentiment, active listening, and enthusiasm for the team.`
-          : "Enthusiastic responses with genuine interest in the company mission."),
+        "Candidate interest and conversational engagement throughout call turns.",
       icon: Sparkles,
-    },
-    {
+    });
+  }
+
+  if (rawComp?.score != null || transcriptMetrics?.call_completion != null) {
+    displayMetrics.push({
       key: "call_completion",
       title: "Screening Objective Completion",
       weight: "15%",
-      score: compScore,
+      score: rawComp?.score ?? transcriptMetrics?.call_completion ?? 0,
       reason:
         rawComp?.reason ??
         callMetrics?.call_completion?.reason ??
-        (calls[0]?.status === "completed"
-          ? "All automated screening questionnaire objectives were addressed comprehensively."
-          : "Partial telephone screening completed before disconnection."),
+        "Automated screening questionnaire objectives addressed.",
       icon: CheckCircle2,
-    },
-  ];
+    });
+  }
 
-  const strengths = primaryCallWithScorecard?.scorecard?.strengths ??
-    primaryTranscript?.strengths ?? [
-      "Responsive and articulate phone communication",
-      "Confirmed notice period and compensation expectations",
-      "Strong alignment with foundational job requirements",
-    ];
-
+  const strengths =
+    primaryCallWithScorecard?.scorecard?.strengths ?? primaryTranscript?.strengths ?? [];
   const concerns =
     primaryCallWithScorecard?.scorecard?.concerns ?? primaryTranscript?.weaknesses ?? [];
 
@@ -2771,7 +2758,7 @@ function VoiceScreenCallSection({
         ) : (
           <>
             {/* AI Voice Call Scorecard Header & Metrics */}
-            {(overallScore != null || overallReason) && (
+            {overallScore != null ? (
               <div className="rounded-2xl border border-primary/20 bg-linear-to-b from-card via-card to-muted/20 p-5 shadow-sm space-y-5">
                 {/* Scorecard Header Banner */}
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border/60">
@@ -2784,21 +2771,23 @@ function VoiceScreenCallSection({
                         <h4 className="text-sm font-semibold text-foreground">
                           AI Voice Call Scorecard
                         </h4>
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "text-[11px] font-semibold capitalize",
-                            recommendation.toLowerCase().includes("advance") ||
-                              recommendation.toLowerCase().includes("hire")
-                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                              : recommendation.toLowerCase().includes("review") ||
-                                  recommendation.toLowerCase().includes("consider")
-                                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
-                                : "bg-destructive/15 text-destructive border-destructive/30",
-                          )}
-                        >
-                          {recommendation.replace(/_/g, " ")}
-                        </Badge>
+                        {recommendation && (
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              "text-[11px] font-semibold capitalize",
+                              recommendation.toLowerCase().includes("advance") ||
+                                recommendation.toLowerCase().includes("hire")
+                                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                : recommendation.toLowerCase().includes("review") ||
+                                    recommendation.toLowerCase().includes("consider")
+                                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                  : "bg-destructive/15 text-destructive border-destructive/30",
+                            )}
+                          >
+                            {recommendation.replace(/_/g, " ")}
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         Automated AI phone interview evaluation and competency scorecard
@@ -2806,19 +2795,17 @@ function VoiceScreenCallSection({
                     </div>
                   </div>
 
-                  {overallScore != null && (
-                    <div className="flex items-center gap-3 bg-muted/40 rounded-xl px-4 py-2 border border-border/60">
-                      <div className="text-right">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">
-                          Overall Voice Score
-                        </span>
-                        <span className="text-2xl font-black tracking-tight text-primary">
-                          {overallScore}
-                          <span className="text-sm font-normal text-muted-foreground">/100</span>
-                        </span>
-                      </div>
+                  <div className="flex items-center gap-3 bg-muted/40 rounded-xl px-4 py-2 border border-border/60">
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">
+                        Overall Voice Score
+                      </span>
+                      <span className="text-2xl font-black tracking-tight text-primary">
+                        {overallScore}
+                        <span className="text-sm font-normal text-muted-foreground">/100</span>
+                      </span>
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 {/* Overall Rationale & Evaluation Reason */}
@@ -2835,78 +2822,80 @@ function VoiceScreenCallSection({
                 )}
 
                 {/* Structured Competency Metrics Grid */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                      <Award className="h-3.5 w-3.5 text-primary" />
-                      Voice Screening Dimension Metrics
-                    </span>
-                    <span className="text-[11px] text-muted-foreground">
-                      Scored out of 100 with evaluative signals
-                    </span>
-                  </div>
+                {displayMetrics.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <Award className="h-3.5 w-3.5 text-primary" />
+                        Voice Screening Dimension Metrics
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Scored out of 100 with evaluative signals
+                      </span>
+                    </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {displayMetrics.map((m) => {
-                      const Icon = m.icon;
-                      return (
-                        <div
-                          key={m.key}
-                          className="rounded-xl border border-border/70 bg-card/60 p-3.5 space-y-2 hover:border-border transition-colors shadow-2xs"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
-                                <Icon className="h-3.5 w-3.5" />
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {displayMetrics.map((m) => {
+                        const Icon = m.icon;
+                        return (
+                          <div
+                            key={m.key}
+                            className="rounded-xl border border-border/70 bg-card/60 p-3.5 space-y-2 hover:border-border transition-colors shadow-2xs"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                                  <Icon className="h-3.5 w-3.5" />
+                                </div>
+                                <div>
+                                  <h5 className="text-xs font-semibold text-foreground leading-tight">
+                                    {m.title}
+                                  </h5>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    Weight: {m.weight}
+                                  </span>
+                                </div>
                               </div>
-                              <div>
-                                <h5 className="text-xs font-semibold text-foreground leading-tight">
-                                  {m.title}
-                                </h5>
-                                <span className="text-[10px] text-muted-foreground">
-                                  Weight: {m.weight}
-                                </span>
-                              </div>
+                              <span
+                                className={cn(
+                                  "text-xs font-bold font-mono px-2 py-0.5 rounded-md",
+                                  m.score >= 80
+                                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                    : m.score >= 65
+                                      ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                                      : "bg-destructive/15 text-destructive",
+                                )}
+                              >
+                                {m.score}/100
+                              </span>
                             </div>
-                            <span
-                              className={cn(
-                                "text-xs font-bold font-mono px-2 py-0.5 rounded-md",
-                                m.score >= 80
-                                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                                  : m.score >= 65
-                                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                                    : "bg-destructive/15 text-destructive",
-                              )}
-                            >
-                              {m.score}/100
-                            </span>
-                          </div>
 
-                          {/* Progress bar */}
-                          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                            <div
-                              className={cn(
-                                "h-full rounded-full transition-all duration-500",
-                                m.score >= 80
-                                  ? "bg-emerald-500"
-                                  : m.score >= 65
-                                    ? "bg-amber-500"
-                                    : "bg-destructive",
-                              )}
-                              style={{ width: `${Math.min(100, Math.max(0, m.score))}%` }}
-                            />
-                          </div>
+                            {/* Progress bar */}
+                            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all duration-500",
+                                  m.score >= 80
+                                    ? "bg-emerald-500"
+                                    : m.score >= 65
+                                      ? "bg-amber-500"
+                                      : "bg-destructive",
+                                )}
+                                style={{ width: `${Math.min(100, Math.max(0, m.score))}%` }}
+                              />
+                            </div>
 
-                          {/* Reason */}
-                          <p className="text-[11px] leading-relaxed text-muted-foreground pt-0.5">
-                            <strong className="text-foreground/80 font-medium">Signal:</strong>{" "}
-                            {m.reason}
-                          </p>
-                        </div>
-                      );
-                    })}
+                            {/* Reason */}
+                            <p className="text-[11px] leading-relaxed text-muted-foreground pt-0.5">
+                              <strong className="text-foreground/80 font-medium">Signal:</strong>{" "}
+                              {m.reason}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Strengths & Concerns Pills */}
                 {(strengths.length > 0 || concerns.length > 0) && (
@@ -2944,7 +2933,18 @@ function VoiceScreenCallSection({
                   </div>
                 )}
               </div>
-            )}
+            ) : hasCalls && calls[0]?.status === "completed" ? (
+              <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-5 text-center space-y-2">
+                <Sparkles className="mx-auto h-7 w-7 text-primary/60" />
+                <p className="text-sm font-semibold text-foreground">
+                  AI Voice Screening Completed — Scorecard Pending
+                </p>
+                <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                  The telephone screening call has finished. Once post-call analysis evaluation is
+                  processed, the scorecard and rating dimensions will appear here.
+                </p>
+              </div>
+            ) : null}
 
             {/* DialNexa Call Recordings & Audio */}
             {hasCalls && (
@@ -3150,7 +3150,9 @@ function TakeHomeAssignmentsSection({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <FileCheck className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-semibold text-foreground">Take-Home Assignment</span>
+                  <span className="text-xs font-semibold text-foreground">
+                    Take-Home Assignment
+                  </span>
                   <Badge
                     variant="secondary"
                     className={cn(
@@ -3203,7 +3205,8 @@ function TakeHomeAssignmentsSection({
                       <div className="flex flex-wrap gap-2">
                         {sub.signedFiles.map((file: any, idx: number) => (
                           <a
-                            key={idx}
+                            // biome-ignore lint/suspicious/noArrayIndexKey: attachments have no unique id
+                            key={`${file.name}-${idx}`}
                             href={file.url}
                             target="_blank"
                             rel="noopener noreferrer"

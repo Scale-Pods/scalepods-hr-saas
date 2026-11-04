@@ -12,6 +12,19 @@ export interface DialogueTurn {
   end: number;
 }
 
+function parseRealScore(val: unknown): number | null {
+  if (typeof val === "number" && !Number.isNaN(val)) {
+    return val <= 10 ? Math.round(val * 10) : Math.round(val);
+  }
+  if (typeof val === "string" && val.trim().length > 0) {
+    const num = Number.parseFloat(val);
+    if (!Number.isNaN(num)) {
+      return num <= 10 ? Math.round(num * 10) : Math.round(num);
+    }
+  }
+  return null;
+}
+
 // In-memory transcript cache to avoid redundant transcription requests
 const transcriptCache = new Map<string, { text: string; turns: DialogueTurn[] }>();
 
@@ -457,71 +470,73 @@ export async function GET(req: Request) {
         }
 
         const postAnalysis = (c.postcallanalysis as Record<string, unknown>) || {};
-        const isSuccess = String(postAnalysis.call_successful || "").toLowerCase() === "successful";
-        const sent = String(postAnalysis.sentiment || "").toUpperCase();
         const durationSec = Number(c.duration || 0);
 
-        let callScore = 75;
-        if (isSuccess || c.status === "completed") {
-          callScore = 80;
-          if (sent === "POSITIVE") callScore += 10;
-          else if (sent === "NEGATIVE") callScore -= 10;
-          if (durationSec >= 90) callScore += 5;
-        } else {
-          callScore = 45;
-          if (durationSec > 30) callScore += 10;
+        // Extract real evaluation score from DialNexa post-call analysis only
+        const rawTech = parseRealScore(
+          postAnalysis.technical_qualification_score ??
+            postAnalysis.technical_score ??
+            postAnalysis.tech_score,
+        );
+        const rawComm = parseRealScore(
+          postAnalysis.communication_skills_score ??
+            postAnalysis.communication_score ??
+            postAnalysis.comm_score,
+        );
+        let realOverall = parseRealScore(postAnalysis.overall_score ?? postAnalysis.score);
+        if (realOverall == null && rawTech != null && rawComm != null) {
+          realOverall = Math.round(rawTech * 0.6 + rawComm * 0.4);
+        } else if (realOverall == null && (rawTech != null || rawComm != null)) {
+          realOverall = rawTech ?? rawComm;
         }
-        callScore = Math.min(98, Math.max(20, callScore));
 
-        const callScorecard = {
-          overall_score: callScore,
-          recommendation: callScore >= 75 ? "advance" : callScore >= 60 ? "review" : "no_go",
-          reason:
-            isSuccess || c.status === "completed"
-              ? `Candidate completed conversational AI voice screening call (${durationSec}s duration). Spoken sentiment was ${sent || "NEUTRAL"} with good verbal responsiveness and objective completion. Spoken responses and availability satisfied initial telephone screening thresholds.`
-              : `AI voice screening call ended with status '${c.end_reason || c.status || "incomplete"}' after ${durationSec}s. Partial telephone engagement observed.`,
-          metrics: [
-            {
-              name: "Verbal Communication & Fluency",
-              score: Math.min(98, Math.max(40, sent === "POSITIVE" ? 88 : 80)),
-              reason:
-                "Clarity of speech, vocabulary, and sentence articulation during live conversation.",
-            },
-            {
-              name: "Role & Skills Alignment",
-              score: Math.min(98, Math.max(40, callScore >= 75 ? 82 : 65)),
-              reason: "Alignment with background expectations and discussed requirements.",
-            },
-            {
-              name: "Availability & Notice Period",
-              score: Math.min(98, Math.max(40, callScore >= 70 ? 88 : 70)),
-              reason: "Candidate confirmation of start readiness and notice period duration.",
-            },
-            {
-              name: "Engagement & Demeanor",
-              score: Math.min(
-                98,
-                Math.max(40, sent === "POSITIVE" ? 92 : sent === "NEGATIVE" ? 52 : 78),
-              ),
-              reason: `Telephony sentiment detected as ${sent || "NEUTRAL"} throughout conversational turns.`,
-            },
-            {
-              name: "Call Objective Completion",
-              score: durationSec >= 90 ? 95 : durationSec >= 45 ? 82 : durationSec >= 20 ? 60 : 35,
-              reason: `Call duration of ${durationSec}s across ${transcriptData?.turns?.length || 0} spoken dialogue turns.`,
-            },
-          ],
-          strengths: [
-            sent === "POSITIVE"
-              ? "Highly positive sentiment and cooperative tone"
-              : "Professional telephony conduct",
-            durationSec >= 60
-              ? `Comprehensive dialogue duration (${Math.floor(durationSec / 60)}m ${durationSec % 60}s)`
-              : "Responsive during initial screening",
-          ],
-          concerns:
-            durationSec < 30 ? ["Brief conversation duration; recommended follow-up inquiry"] : [],
-        };
+        const rawRec =
+          (typeof postAnalysis.overall_recommendation === "string" &&
+            postAnalysis.overall_recommendation.trim()) ||
+          (typeof postAnalysis.recommendation === "string" && postAnalysis.recommendation.trim()) ||
+          null;
+
+        const callScorecard =
+          realOverall != null
+            ? {
+                overall_score: realOverall,
+                recommendation:
+                  rawRec ||
+                  (realOverall >= 75 ? "advance" : realOverall >= 60 ? "review" : "no_go"),
+                reason:
+                  (typeof postAnalysis.screening_summary === "string" &&
+                    postAnalysis.screening_summary.trim()) ||
+                  (typeof postAnalysis.key_strengths_summary === "string" &&
+                    postAnalysis.key_strengths_summary.trim()) ||
+                  `AI voice screening completed. Candidate evaluated with an overall score of ${realOverall}/100.`,
+                metrics: [
+                  ...(rawComm != null
+                    ? [
+                        {
+                          name: "Verbal Communication & Fluency",
+                          score: rawComm,
+                          reason: "Evaluated from candidate spoken responses during screening.",
+                        },
+                      ]
+                    : []),
+                  ...(rawTech != null
+                    ? [
+                        {
+                          name: "Technical Qualification & Alignment",
+                          score: rawTech,
+                          reason: "Evaluated from candidate stated technical depth and background.",
+                        },
+                      ]
+                    : []),
+                ],
+                strengths:
+                  typeof postAnalysis.key_strengths_summary === "string" &&
+                  postAnalysis.key_strengths_summary.trim()
+                    ? [postAnalysis.key_strengths_summary.trim()]
+                    : [],
+                concerns: [],
+              }
+            : null;
 
         let finalTurns = transcriptData?.turns || [];
         if (finalTurns.length === 0 && Array.isArray(c.messages)) {
@@ -572,6 +587,8 @@ export async function GET(req: Request) {
             sentiment: callObj.sentiment,
             callSuccessful: callObj.call_successful,
             transcript: callObj.transcript,
+            realScore: realOverall,
+            realRationale: callScorecard?.reason || null,
           });
         }
 
@@ -600,6 +617,8 @@ async function recordVoiceScreenScoreIfMissing(params: {
   sentiment: string | null;
   callSuccessful: string | null;
   transcript?: string | null;
+  realScore?: number | null;
+  realRationale?: string | null;
 }) {
   const {
     candidateId,
@@ -608,10 +627,9 @@ async function recordVoiceScreenScoreIfMissing(params: {
     callId,
     duration,
     status,
-    endReason,
-    sentiment,
-    callSuccessful,
     transcript,
+    realScore,
+    realRationale,
   } = params;
 
   if (!candidateId || !accountId || status !== "completed") return;
@@ -651,6 +669,23 @@ async function recordVoiceScreenScoreIfMissing(params: {
       }
     }
 
+    // If no real evaluation score was returned by DialNexa post-call analysis,
+    // do NOT insert synthetic/dummy scores into decision_ledger. Only real scores or nothing.
+    if (realScore == null) {
+      if (targetRiId) {
+        await adminSupabase
+          .from("round_instances")
+          .update({ status: "completed" })
+          .eq("id", targetRiId);
+      }
+      await adminSupabase
+        .from("outreach_log")
+        .update({ delivery_state: "connected" })
+        .eq("candidate_id", candidateId)
+        .eq("channel", "voice_call");
+      return;
+    }
+
     // Check if score already recorded in decision_ledger
     let dlQuery = adminSupabase
       .from("decision_ledger")
@@ -667,25 +702,9 @@ async function recordVoiceScreenScoreIfMissing(params: {
       return; // Already scored
     }
 
-    // Compute evaluation score
-    const isSuccess = String(callSuccessful || "").toLowerCase() === "successful";
-    const sent = String(sentiment || "").toUpperCase();
-
-    let score = 75;
-    if (isSuccess) {
-      score = 80;
-      if (sent === "POSITIVE") score += 10;
-      else if (sent === "NEGATIVE") score -= 10;
-      if (duration >= 90) score += 5;
-    } else {
-      score = 45;
-      if (duration > 30) score += 10;
-    }
-    score = Math.min(98, Math.max(20, score));
-
-    const rationale = isSuccess
-      ? `Candidate completed the conversational AI voice screening call (duration: ${duration}s). Telephony sentiment was ${sent || "NEUTRAL"} with successful objective completion. Metrics breakdown: Verbal Communication (${sent === "POSITIVE" ? 88 : 80}/100), Role & Skills Alignment (82/100), Availability & Notice Period (88/100), Engagement & Demeanor (${sent === "POSITIVE" ? 92 : 78}/100), Call Completion (${duration >= 90 ? 95 : 82}/100). Recommendation: Advance to next round.`
-      : `AI voice screening call ended with status '${(endReason || "incomplete").replace(/_/g, " ")}' after ${duration}s. Communication assessment yielded a partial evaluation score of ${score}/100. Recruiter review recommended.`;
+    const rationale =
+      realRationale ||
+      `AI voice screening completed with verified evaluation score of ${realScore}/100.`;
 
     const rawText =
       transcript || `DialNexa call ${callId}: duration ${duration}s, status: ${status}.`;
@@ -696,10 +715,10 @@ async function recordVoiceScreenScoreIfMissing(params: {
       application_id: appId,
       round_instance_id: targetRiId || null,
       stage: "voice_screen",
-      score,
+      score: realScore,
       rationale,
       raw_text: rawText,
-      source: "workflow",
+      source: "dialnexa",
     });
 
     if (targetRiId) {
