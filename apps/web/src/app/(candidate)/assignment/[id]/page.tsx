@@ -190,10 +190,10 @@ export default function AssignmentPage() {
               📝
             </span>
             <h2 className="text-sm font-semibold text-foreground">
-              Assignment Prompt & Instructions
+              Assignment Instructions & Guidelines
             </h2>
           </div>
-          <div className="whitespace-pre-wrap rounded-[14px] bg-muted/40 p-4 text-xs font-mono leading-relaxed text-foreground border border-border/50 max-h-96 overflow-y-auto">
+          <div className="whitespace-pre-wrap rounded-[14px] bg-muted/40 p-4 text-xs font-sans leading-relaxed text-foreground border border-border/50 max-h-96 overflow-y-auto">
             {ctx.round.brief_text}
           </div>
         </div>

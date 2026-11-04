@@ -347,7 +347,7 @@ export function RoundEditor({
                 htmlFor={`brief-${index}`}
                 className="mb-1.5 block text-xs font-semibold text-foreground"
               >
-                Assignment Prompt & Submission Guidelines *
+                Assignment Instructions & Guidelines *
               </label>
               <Textarea
                 id={`brief-${index}`}

@@ -3173,7 +3173,7 @@ function TakeHomeAssignmentsSection({
 
               <div className="rounded-lg bg-muted/20 border border-border/40 p-3 text-xs space-y-1">
                 <span className="font-semibold text-muted-foreground block text-[11px] uppercase tracking-wide">
-                  Assignment Prompt / Brief:
+                  Assignment Instructions & Guidelines:
                 </span>
                 <p className="text-foreground whitespace-pre-wrap">{a.brief_text}</p>
               </div>
