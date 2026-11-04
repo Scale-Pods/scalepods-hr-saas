@@ -228,7 +228,13 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify({
           ...body,
+          candidate_name: body.candidate_name || "Candidate",
           candidate_phone: phone,
+          dynamic_variables: {
+            candidate_name: body.candidate_name || "Candidate",
+            job_title: roleTitle || "Open Position",
+            company_name: body.company_name || "ScalePods",
+          },
           from_phone_number: outboundFromNumber,
           from_number: outboundFromNumber,
           from: outboundFromNumber,
@@ -304,6 +310,11 @@ export async function POST(req: Request) {
         phone_number: phone,
         agent_id: targetAgentId,
         phone_number_id: outboundPhoneNumberId,
+        dynamic_variables: {
+          candidate_name: body.candidate_name || "Candidate",
+          job_title: roleTitle || "Open Position",
+          company_name: body.company_name || "ScalePods",
+        },
         metadata: {
           candidate_phone: phone,
           from_phone_number: outboundFromNumber,
