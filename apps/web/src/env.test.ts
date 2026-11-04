@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseEnv } from "./env";
+import { getEnv, parseEnv } from "./env";
 
 const complete = {
   NEXT_PUBLIC_SUPABASE_URL: "https://x.supabase.co",
@@ -26,5 +26,12 @@ describe("parseEnv", () => {
     expect(() => parseEnv({ ...complete, NEXT_PUBLIC_SUPABASE_URL: "not-a-url" })).toThrow(
       /NEXT_PUBLIC_SUPABASE_URL/,
     );
+  });
+
+  it("provides safe defaults in getEnv if env vars are unset at build time", () => {
+    const env = getEnv();
+    expect(env.NEXT_PUBLIC_SUPABASE_URL).toBeDefined();
+    expect(env.NEXT_PUBLIC_SUPABASE_ANON_KEY).toBeDefined();
+    expect(env.NEXT_PUBLIC_N8N_BASE_URL).toBeDefined();
   });
 });
