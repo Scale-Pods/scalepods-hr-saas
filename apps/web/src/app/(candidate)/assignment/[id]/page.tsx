@@ -13,11 +13,35 @@ import {
   signUploads,
 } from "@/features/candidate/api";
 
-function ErrorCard({ message }: { message?: string }) {
+function ErrorCard({ message, title }: { message?: string; title?: string }) {
+  const isDeadlinePassed =
+    message?.toLowerCase().includes("deadline") ||
+    title?.toLowerCase().includes("deadline");
+
+  if (isDeadlinePassed) {
+    return (
+      <Card className="w-full">
+        <CardContent className="py-10 text-center space-y-2">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-500 text-xl">
+            ⏱️
+          </div>
+          <h1 className="text-base font-semibold text-foreground">
+            {title ?? "The assignment deadline has passed"}
+          </h1>
+          <p className="mx-auto max-w-sm text-sm text-muted-foreground">
+            The submission window for this assignment has closed. Please contact the recruiter if you need assistance or an extension.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full">
       <CardContent className="py-10 text-center">
-        <h1 className="text-sm font-semibold text-foreground">This link isn&apos;t working</h1>
+        <h1 className="text-sm font-semibold text-foreground">
+          {title ?? "Unable to load assignment"}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {message ?? "The link may have expired. Ask the recruiter for a fresh link."}
         </p>
@@ -49,9 +73,13 @@ export default function AssignmentPage() {
       .then((c) => {
         if (cancelled) return;
         setCtx(c);
-        if (c.submission?.submitted_at) setSubmitted(true);
-        if (new Date(c.round_instance.deadline_at ?? 0).getTime() < Date.now())
-          setError("This assignment's deadline has passed.");
+        if (c.submission?.submitted_at) {
+          setSubmitted(true);
+          return;
+        }
+        if (new Date(c.round_instance.deadline_at ?? 0).getTime() < Date.now()) {
+          setError("The assignment deadline has passed.");
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Link invalid or expired.");
@@ -83,13 +111,13 @@ export default function AssignmentPage() {
         );
         const puts = files.map((f) => {
           const safeName = f.name.replace(/[^A-Za-z0-9._-]/g, "_");
-          const target = uploads.find((u) => u.name === safeName || (u as any).path?.endsWith(safeName));
+          const target = uploads.find((u) => u.name === safeName || u.path?.endsWith(safeName));
           return target
             ? fetch(target.url, {
                 method: "PUT",
                 body: f,
                 headers: { "Content-Type": f.type || "application/octet-stream" },
-              }).then(() => (target as any).path || target.name)
+              }).then(() => target.path || target.name)
             : Promise.resolve<string | null>(null);
         });
         filePaths = (await Promise.all(puts)).filter((p): p is string => !!p);
@@ -111,13 +139,6 @@ export default function AssignmentPage() {
     }
   }, [ctx, files, roundInstanceId, text, token]);
 
-  if (error) return <ErrorCard message={error} />;
-  if (!ctx) {
-    return (
-      <div className="py-20 text-center text-sm text-label-secondary">Loading assignment…</div>
-    );
-  }
-
   if (submitted) {
     return (
       <div className="py-12 text-center">
@@ -128,10 +149,17 @@ export default function AssignmentPage() {
           Assignment submitted
         </h1>
         <p className="mx-auto mt-2 max-w-sm text-sm text-label-secondary">
-          Thanks! We&apos;ve received your submission for round {ctx.round.round_number}. The
+          Thanks! We&apos;ve received your submission for round {ctx?.round.round_number ?? 1}. The
           recruiter will get back to you within a few business days.
         </p>
       </div>
+    );
+  }
+
+  if (error) return <ErrorCard message={error} />;
+  if (!ctx) {
+    return (
+      <div className="py-20 text-center text-sm text-label-secondary">Loading assignment…</div>
     );
   }
 

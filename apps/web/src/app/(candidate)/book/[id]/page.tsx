@@ -19,11 +19,34 @@ import { bookSlot, fetchAvailableSlots, fetchBookingContext } from "@/features/c
 type View = "loading" | "pick" | "booked" | "error";
 
 function ErrorCard({ message, title }: { message?: string; title?: string }) {
+  const isDeadline =
+    message?.toLowerCase().includes("deadline") ||
+    title?.toLowerCase().includes("deadline");
+
+  if (isDeadline) {
+    return (
+      <Card className="w-full">
+        <CardContent className="py-10 text-center space-y-2">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-500 text-xl">
+            ⏱️
+          </div>
+          <h1 className="text-base font-semibold text-foreground">
+            {title ?? "The booking deadline has passed"}
+          </h1>
+          <p className="mx-auto max-w-sm text-sm text-muted-foreground">
+            {message ??
+              "The booking window for this round has closed. Please contact the recruiter for assistance."}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full">
       <CardContent className="py-10 text-center">
         <h1 className="text-sm font-semibold text-foreground">
-          {title ?? "This link isn't working"}
+          {title ?? "Unable to load booking"}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {message ??
