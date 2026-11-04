@@ -122,6 +122,11 @@ export async function POST(req: Request) {
             candidate_name: candidate_name || "Recruiter Test",
             role_title: role_title || "ScalePods Voice Agent Test",
             company_name: "ScalePods",
+            dynamic_variables: {
+              candidate_name: candidate_name || "Recruiter Test",
+              job_title: role_title || "ScalePods Voice Agent Test",
+              company_name: "ScalePods",
+            },
             from_phone_number: outboundFromNumber,
             from_number: outboundFromNumber,
             from: outboundFromNumber,
@@ -237,6 +242,11 @@ export async function POST(req: Request) {
         phone_number: phone,
         agent_id: targetAgentId,
         phone_number_id: outboundPhoneNumberId,
+        dynamic_variables: {
+          candidate_name: candidate_name || "Recruiter Test",
+          job_title: role_title || "ScalePods Voice Agent Test",
+          company_name: "ScalePods",
+        },
         metadata: {
           candidate_phone: phone,
           candidate_name: candidate_name || "Recruiter Test",

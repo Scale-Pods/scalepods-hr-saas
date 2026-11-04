@@ -85,6 +85,11 @@ describe("DialNexa Integration Lib", () => {
       expect(resolveDialnexaVoiceId("adam")).toBe("voice_mfl4leg14bh4of");
       expect(resolveDialnexaVoiceId("brian")).toBe("voice_mfl4leg8y7do5t");
       expect(resolveDialnexaVoiceId("rachel")).toBe("voice_mfl4leee3j8ysj");
+      expect(resolveDialnexaVoiceId("shimmer")).toBe("voice_94226a7ff47a43");
+      expect(resolveDialnexaVoiceId("alloy")).toBe("voice_4897321fb9ef4e");
+      expect(resolveDialnexaVoiceId("echo")).toBe("voice_mfl4leg14bh4of");
+      expect(resolveDialnexaVoiceId("nova")).toBe("voice_mfl4leee3j8ysj");
+      expect(resolveDialnexaVoiceId("charlotte")).toBe("voice_mfl4lef889jqu8");
       expect(resolveDialnexaVoiceId("lucy")).toBe("voice_mfl4lef889jqu8");
       expect(resolveDialnexaVoiceId("marcus")).toBe("voice_mt8ijdI5VUkm5I");
     });
@@ -163,7 +168,8 @@ describe("DialNexa Integration Lib", () => {
         voice_speed: 1.05,
         voice_pitch: 2,
         voice_temperature: 0.9,
-        welcome_message: "Hi John Doe!",
+        welcome_message: "Hi {{candidate_name}}!",
+        boost_dynamic_variables: true,
       });
 
       vi.unstubAllGlobals();

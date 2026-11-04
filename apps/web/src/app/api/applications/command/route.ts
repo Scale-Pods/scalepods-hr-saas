@@ -461,6 +461,11 @@ async function triggerImmediateVoiceCallIfEligible(
         candidate_id: app.candidate_id,
         candidate_name: app.candidate_name || "Candidate",
         candidate_phone: phone,
+        dynamic_variables: {
+          candidate_name: app.candidate_name || "Candidate",
+          job_title: roleTitle || "Open Position",
+          company_name: "ScalePods",
+        },
         from_phone_number: outboundFromNumber,
         from_number: outboundFromNumber,
         from: outboundFromNumber,
@@ -529,6 +534,11 @@ async function triggerImmediateVoiceCallIfEligible(
           phone_number: phone,
           agent_id: agentId,
           phone_number_id: outboundPhoneNumberId,
+          dynamic_variables: {
+            candidate_name: app.candidate_name || "Candidate",
+            job_title: roleTitle || "Open Position",
+            company_name: "ScalePods",
+          },
           metadata: {
             candidate_phone: phone,
             from_phone_number: outboundFromNumber,

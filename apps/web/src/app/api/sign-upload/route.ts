@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
@@ -72,7 +72,10 @@ export async function POST(req: NextRequest) {
     pathBase = `${accountId}/${resource_id}`;
   } else {
     if (!token) {
-      return NextResponse.json({ error: "token is required for assignment uploads" }, { status: 400 });
+      return NextResponse.json(
+        { error: "token is required for assignment uploads" },
+        { status: 400 },
+      );
     }
 
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
@@ -120,7 +123,7 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await supabase.storage
       .from(bucket)
-      .createSignedUploadUrl(fullPath, { expiresIn: 3600 });
+      .createSignedUploadUrl(fullPath, { upsert: true });
 
     if (error || !data) {
       return NextResponse.json(
@@ -143,4 +146,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ bucket, uploads });
 }
-

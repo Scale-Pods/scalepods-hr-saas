@@ -113,16 +113,32 @@ export const DIALNEXA_VOICE_ID_MAP: Record<string, string> = {
   victoria: "voice_mfl4legqajn7vj", // Victoria (ElevenLabs, female, American)
   ryan: "voice_mfl4leglq0abrf", // Ryan (ElevenLabs, male, American)
   brad: "voice_mfl4leer7z5p9e", // Brad (ElevenLabs, male, American)
+  nova: "voice_mfl4leee3j8ysj", // Nova (female, American)
+  alloy: "voice_4897321fb9ef4e", // Alloy (neutral/clear, Indian/American)
+  echo: "voice_mfl4leg14bh4of", // Echo (male, American)
+  shimmer: "voice_94226a7ff47a43", // Shimmer (expressive female)
+  nicole: "voice_mfl4leg5yi6v0g", // Nicole (female, American)
 
   // British English
   lucy: "voice_mfl4lef889jqu8", // Lucy (ElevenLabs, female, British)
   marcus: "voice_mt8ijdI5VUkm5I", // Marcus (ElevenLabs, male, British)
   archer: "voice_mfl4lef3nfna4n", // Archer (ElevenLabs, male, British)
+  george: "voice_mt8ijdI5VUkm5I", // George (ElevenLabs, male, British)
+  charlotte: "voice_mfl4lef889jqu8", // Charlotte (ElevenLabs, female, British)
+  oliver: "voice_mt8ijdI5VUkm5I", // Oliver (ElevenLabs, male, British)
+  alice: "voice_mfl4lef889jqu8", // Alice (ElevenLabs, female, British)
+
+  // Australian English
+  liam: "voice_mfl4leg8y7do5t", // Liam (ElevenLabs, male, Australian)
+  matilda: "voice_mfl4leg5yi6v0g", // Matilda (ElevenLabs, female, Australian)
 };
 
 export function resolveDialnexaVoiceId(voice?: string): string | undefined {
-  if (!voice || typeof voice !== "string") return undefined;
+  if (!voice || typeof voice !== "string") {
+    return undefined;
+  }
   const trimmed = voice.trim();
+  if (!trimmed) return undefined;
   if (trimmed.startsWith("voice_")) return trimmed;
 
   const key = trimmed.toLowerCase();
@@ -253,7 +269,11 @@ export async function syncDialnexaAgentConfig(
         if (unpublishedVersion?.version_number) {
           targetVersion = Number(unpublishedVersion.version_number);
         } else {
-          targetVersion = currentVersionNum;
+          const maxVersion =
+            versions.length > 0
+              ? Math.max(...versions.map((v) => Number(v.version_number) || 0))
+              : currentVersionNum;
+          targetVersion = Math.max(currentVersionNum, maxVersion + 1);
         }
 
         const agentNumbers = getData.data?.outbound_phone_numbers;
@@ -275,53 +295,83 @@ export async function syncDialnexaAgentConfig(
       console.warn("Could not fetch current agent version, defaulting to version 13:", getErr);
     }
 
-    // 2. Interpolate dynamic variables
-    const vars = {
-      candidate_name: params.candidate_name || "Candidate",
-      job_title: params.role_title || "Open Position",
-      company_name: params.company_name || "ScalePods",
-      job_description:
-        params.job_description || params.jd_text || "Refer to requirements for this role.",
-      candidate_resume:
-        params.candidate_resume ||
-        params.resume_text ||
-        "Refer to candidate profile and qualifications.",
-    };
+    // 2. Prepare dynamic variable-preserving greeting and prompt
+    const company = params.company_name?.trim() || "ScalePods";
+    const role = params.role_title?.trim() || "Open Position";
 
-    let fullPrompt = params.prompt || "";
+    let welcomeMsg = params.first_message?.trim() || "";
+    if (!welcomeMsg) {
+      welcomeMsg = `Hi {{candidate_name}}, this is Alex from ${company} calling regarding your application for the ${role} position. Do you have a few minutes for a brief screening conversation?`;
+    } else {
+      // Ensure candidate name is a dynamic variable template placeholder, never baked with a static name
+      welcomeMsg = welcomeMsg
+        .replace(/\b(Gandla Manish|Alex Morgan|Shubhodeep|John Doe)\b/gi, "{{candidate_name}}")
+        .replace(/\{\{company_name\}\}/g, company)
+        .replace(/\{\{job_title\}\}/g, role);
+      if (
+        !welcomeMsg.includes("{{candidate_name}}") &&
+        !welcomeMsg.toLowerCase().includes("candidate")
+      ) {
+        welcomeMsg = `Hi {{candidate_name}}, ${welcomeMsg.replace(/^Hi\s*,?\s*/i, "")}`;
+      }
+    }
+
+    let fullPrompt = params.prompt?.trim() || "";
+    if (!fullPrompt) {
+      fullPrompt = `You are Alex, an AI Talent Screener representing ${company} conducting a preliminary voice screening phone call with candidate {{candidate_name}} for the ${role} position.`;
+    } else {
+      fullPrompt = fullPrompt
+        .replace(/\b(Gandla Manish|Alex Morgan|Shubhodeep|John Doe)\b/gi, "{{candidate_name}}")
+        .replace(/\{\{company_name\}\}/g, company)
+        .replace(/\{\{job_title\}\}/g, role);
+    }
+
+    if (params.job_description || params.jd_text) {
+      const jd = (params.job_description || params.jd_text || "").trim();
+      if (jd && !fullPrompt.includes(jd.slice(0, 40))) {
+        fullPrompt += `\n\nRole & Job Description:\n${jd}`;
+      }
+    }
+
     if (params.questions && params.questions.length > 0) {
       const formattedQuestions = params.questions
         .filter((q) => Boolean(q?.trim()))
         .map((q, idx) => `${idx + 1}. ${q.trim()}`)
         .join("\n");
-      if (formattedQuestions) {
+      if (formattedQuestions && !fullPrompt.includes(formattedQuestions.slice(0, 30))) {
         fullPrompt += `\n\nSpecific Interview Questions to ask the candidate:\n${formattedQuestions}`;
       }
     }
+
     if (params.evaluation_criteria && params.evaluation_criteria.length > 0) {
       const formattedCriteria = params.evaluation_criteria
         .filter((c) => Boolean(c?.trim()))
         .map((c) => `- ${c.trim()}`)
         .join("\n");
-      if (formattedCriteria) {
+      if (formattedCriteria && !fullPrompt.includes(formattedCriteria.slice(0, 30))) {
         fullPrompt += `\n\nEvaluation Criteria to evaluate:\n${formattedCriteria}`;
       }
     }
 
+    fullPrompt += `\n\nInstructions for Telephony Call:\n- Address the candidate warmly by their dynamic variable name {{candidate_name}}.\n- Keep all responses conversational, concise (1-2 sentences), and ask one question at a time.\n- Under no circumstances address the candidate as Gandla Manish unless their name is explicitly Gandla Manish.`;
+
     // 3. Resolve Voice ID
-    const resolvedVoiceId = params.voice_id || resolveDialnexaVoiceId(params.voice);
+    const resolvedVoiceId =
+      params.voice_id ||
+      resolveDialnexaVoiceId(params.voice) ||
+      DIALNEXA_VOICE_ID_MAP.aditi ||
+      "voice_94226a7ff47a43";
 
     const buildPatchBody = (vNum: number): Record<string, unknown> => {
       const body: Record<string, unknown> = {
         version_number: vNum,
         is_published: true, // Must be published for DialNexa outbound calls to execute this prompt and voice
+        voice_id: resolvedVoiceId,
+        voice_model_id: "mfl4be3m9z3xd4", // Eleven Flash v2.5 model is required for DialNexa outbound telephony SIP audio streams
+        prompt_text: fullPrompt,
+        welcome_message: welcomeMsg,
+        boost_dynamic_variables: true,
       };
-
-      if (resolvedVoiceId) {
-        body.voice_id = resolvedVoiceId;
-        // Eleven Flash v2.5 model is required for DialNexa outbound telephony SIP audio streams
-        body.voice_model_id = "mfl4be3m9z3xd4";
-      }
 
       if (typeof params.voice_speed === "number" && params.voice_speed > 0) {
         body.voice_speed = params.voice_speed;
@@ -333,14 +383,6 @@ export async function syncDialnexaAgentConfig(
 
       if (typeof params.voice_temperature === "number" && params.voice_temperature > 0) {
         body.voice_temperature = params.voice_temperature;
-      }
-
-      if (fullPrompt) {
-        body.prompt_text = interpolateDialnexaVariables(fullPrompt, vars);
-      }
-
-      if (params.first_message) {
-        body.welcome_message = interpolateDialnexaVariables(params.first_message, vars);
       }
 
       if (typeof params.response_eagerness === "number") {
@@ -390,12 +432,15 @@ export async function syncDialnexaAgentConfig(
     };
     patchData = await parseRes(patchRes);
 
-    // If 403 "cannot patch an already published agent version", bump version and retry once
-    if (
+    // If 403 "cannot patch an already published agent version", bump version and retry
+    let retries = 0;
+    while (
       !patchRes.ok &&
+      retries < 2 &&
       (patchRes.status === 403 || String(patchData.message).toLowerCase().includes("published"))
     ) {
       targetVersion += 1;
+      retries += 1;
       patchRes = await fetch(`https://api.dialnexa.com/v1/agents/${agentId}`, {
         method: "PATCH",
         headers: {
