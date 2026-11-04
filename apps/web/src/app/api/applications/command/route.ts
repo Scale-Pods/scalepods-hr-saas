@@ -390,6 +390,10 @@ async function triggerImmediateVoiceCallIfEligible(
     const phone = formatE164PhoneNumber(candidatePhone, "91");
     let outboundFromNumber = DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER;
     let outboundPhoneNumberId = DEFAULT_DIALNEXA_PHONE_NUMBER_ID;
+    let publishedAgentVersion: number | undefined =
+      typeof voiceConfig?.agent_version_number === "number"
+        ? voiceConfig.agent_version_number
+        : undefined;
 
     // 1. Sync agent config to DialNexa with is_published: true
     if (voiceConfig) {
@@ -418,6 +422,9 @@ async function triggerImmediateVoiceCallIfEligible(
             voiceConfig?.from_phone_number ||
             voiceConfig?.from_number,
         });
+        if (syncRes.version_number) {
+          publishedAgentVersion = syncRes.version_number;
+        }
         if (syncRes.outbound_from_number) {
           outboundFromNumber = syncRes.outbound_from_number;
         }
@@ -461,6 +468,7 @@ async function triggerImmediateVoiceCallIfEligible(
         candidate_id: app.candidate_id,
         candidate_name: app.candidate_name || "Candidate",
         candidate_phone: phone,
+        agent_version_number: publishedAgentVersion,
         dynamic_variables: {
           candidate_name: app.candidate_name || "Candidate",
           job_title: roleTitle || "Open Position",
@@ -477,6 +485,7 @@ async function triggerImmediateVoiceCallIfEligible(
         voice_call_config: voiceConfig
           ? {
               ...voiceConfig,
+              agent_version_number: publishedAgentVersion,
               outbound_from_number: outboundFromNumber,
               from_phone_number: outboundFromNumber,
               from_number: outboundFromNumber,
@@ -534,6 +543,7 @@ async function triggerImmediateVoiceCallIfEligible(
           phone_number: phone,
           agent_id: agentId,
           phone_number_id: outboundPhoneNumberId,
+          ...(publishedAgentVersion ? { agent_version_number: publishedAgentVersion } : {}),
           dynamic_variables: {
             candidate_name: app.candidate_name || "Candidate",
             job_title: roleTitle || "Open Position",

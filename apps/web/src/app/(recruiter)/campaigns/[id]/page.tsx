@@ -18,18 +18,15 @@ import {
   DollarSign,
   Flame,
   Loader2,
-  Lock,
   MapPin,
   Mic,
   PhoneCall,
   PhoneOff,
   Settings2,
-  Sliders,
   Sparkles,
   Trash2,
   Users,
   Volume2,
-  XCircle,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -39,7 +36,6 @@ import { DialnexaConfigEditor } from "@/components/campaigns/DialnexaConfigEdito
 import { PipelineBoard } from "@/components/campaigns/PipelineBoard";
 import { ResumeUploader } from "@/components/campaigns/ResumeUploader";
 import { RoundStepper } from "@/components/campaigns/RoundStepper";
-import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
@@ -149,9 +145,9 @@ export default function CampaignDetailPage() {
   const [bulkCutoff, _setBulkCutoff] = useState<number>(60);
   const [_isBulkSending, setIsBulkSending] = useState(false);
 
-  const [postRoundCutoff, setPostRoundCutoff] = useState<number>(70);
-  const [isApplyingCutoff, setIsApplyingCutoff] = useState(false);
-  const [reviewingCandidateId, setReviewingCandidateId] = useState<string | null>(null);
+  const [postRoundCutoff, _setPostRoundCutoff] = useState<number>(70);
+  const [_isApplyingCutoff, setIsApplyingCutoff] = useState(false);
+  const [_reviewingCandidateId, setReviewingCandidateId] = useState<string | null>(null);
 
   const awaitingReviewCandidates = useMemo(() => {
     return candidates.filter(
@@ -162,7 +158,7 @@ export default function CampaignDetailPage() {
     );
   }, [candidates]);
 
-  const handleReviewCandidate = async (
+  const _handleReviewCandidate = async (
     cand: ViewCandidate,
     decision: "passed" | "failed",
     cutoff: number = postRoundCutoff,
@@ -195,7 +191,7 @@ export default function CampaignDetailPage() {
     }
   };
 
-  const handleApplyPostRoundCutoff = async () => {
+  const _handleApplyPostRoundCutoff = async () => {
     if (awaitingReviewCandidates.length === 0 || !id) return;
     setIsApplyingCutoff(true);
     let passedCount = 0;
@@ -266,7 +262,7 @@ export default function CampaignDetailPage() {
   const [voiceConfigDraft, setVoiceConfigDraft] =
     useState<DialnexaVoiceConfig>(effectiveVoiceConfig);
   const [isSavingVoiceConfig, setIsSavingVoiceConfig] = useState(false);
-  const [callingCandidateId, setCallingCandidateId] = useState<string | null>(null);
+  const [_callingCandidateId, setCallingCandidateId] = useState<string | null>(null);
   const [isCallingAll, setIsCallingAll] = useState(false);
 
   useEffect(() => {
@@ -275,7 +271,7 @@ export default function CampaignDetailPage() {
     }
   }, [effectiveVoiceConfig, isEditingVoiceConfig]);
 
-  const handleTriggerVoiceCall = async (cand: (typeof candidates)[number]) => {
+  const _handleTriggerVoiceCall = async (cand: (typeof candidates)[number]) => {
     if (!isVoiceSupported) {
       showToast(
         "AI Voice Screening is available on Basic, Growth, and Enterprise plans. Please upgrade your plan to use this feature.",
@@ -439,7 +435,7 @@ export default function CampaignDetailPage() {
     }
   };
 
-  const handleBulkAdvance = async () => {
+  const _handleBulkAdvance = async () => {
     if (!account?.id || !session?.access_token || !campaign) return;
 
     // Find candidates who scored at least the cutoff in resume screening
@@ -534,10 +530,38 @@ export default function CampaignDetailPage() {
     if (!id || !campaign) return;
     setIsSavingVoiceConfig(true);
     try {
+      let publishedVersion: number | undefined;
+      try {
+        const syncRes = await fetch("/api/voice-screen/sync-agent", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+          },
+          body: JSON.stringify({
+            campaign_id: id,
+            voice_call_config: voiceConfigDraft,
+            role_title: campaign.name,
+            job_description: campaign.jd_text,
+          }),
+        });
+        const syncData = await syncRes.json().catch(() => ({}));
+        if (syncData?.version_number) {
+          publishedVersion = syncData.version_number;
+        }
+      } catch (syncErr) {
+        console.warn("DialNexa agent direct sync warning:", syncErr);
+      }
+
+      const finalConfig = {
+        ...voiceConfigDraft,
+        ...(publishedVersion ? { agent_version_number: publishedVersion } : {}),
+      };
+
       const supabase = supabaseBrowser();
       const { error } = await supabase
         .from("campaigns")
-        .update({ voice_call_config: voiceConfigDraft as unknown as Json })
+        .update({ voice_call_config: finalConfig as unknown as Json })
         .eq("id", id);
       if (error) throw error;
 
@@ -547,7 +571,7 @@ export default function CampaignDetailPage() {
             action: "update",
             account_id: account.id,
             campaign_id: id,
-            voice_call_config: voiceConfigDraft,
+            voice_call_config: finalConfig,
           },
           accessToken: session?.access_token,
         }).catch((err) => {
@@ -555,7 +579,12 @@ export default function CampaignDetailPage() {
         });
       }
 
-      showToast("DialNexa voice call configuration updated successfully.", { kind: "success" });
+      showToast(
+        publishedVersion
+          ? `DialNexa voice configuration saved & published (v${publishedVersion}) successfully!`
+          : "DialNexa voice call configuration updated successfully.",
+        { kind: "success" },
+      );
       setIsEditingVoiceConfig(false);
       await queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
     } catch (err) {
@@ -908,6 +937,8 @@ export default function CampaignDetailPage() {
                 value={voiceConfigDraft}
                 onChange={setVoiceConfigDraft}
                 jobTitle={campaign.name}
+                onSave={handleSaveVoiceConfig}
+                isSaving={isSavingVoiceConfig}
               />
             </div>
           ) : (
@@ -1032,7 +1063,7 @@ export default function CampaignDetailPage() {
   );
 }
 
-function DecisionBadge({ decision }: { decision: string | null }) {
+function _DecisionBadge({ decision }: { decision: string | null }) {
   if (!decision) return <span className="text-xs text-muted-foreground">Pending</span>;
   if (decision === "awaiting_review") {
     return (

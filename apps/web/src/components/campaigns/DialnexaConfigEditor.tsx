@@ -123,6 +123,8 @@ export interface DialnexaConfigEditorProps {
   jobTitle?: string;
   className?: string;
   defaultMode?: "quick" | "advanced";
+  onSave?: (value: DialnexaVoiceConfig) => Promise<void> | void;
+  isSaving?: boolean;
 }
 
 const VARIABLE_PILLS = [
@@ -147,6 +149,8 @@ export function DialnexaConfigEditor({
   jobTitle,
   className,
   defaultMode = "quick",
+  onSave,
+  isSaving = false,
 }: DialnexaConfigEditorProps) {
   const [editorMode, setEditorMode] = useState<"quick" | "advanced">(defaultMode);
 
@@ -1411,6 +1415,26 @@ export function DialnexaConfigEditor({
                     </>
                   )}
                 </Button>
+                {onSave && (
+                  <Button
+                    type="button"
+                    onClick={() => onSave(value)}
+                    disabled={isSaving}
+                    className="h-9 gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold cursor-pointer shrink-0"
+                  >
+                    {isSaving ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Save to Campaign
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
 
               {phoneCallStatus && (
@@ -1459,6 +1483,40 @@ export function DialnexaConfigEditor({
                 </div>
               );
             })()}
+
+          {/* Save & Apply Confirmation Callout */}
+          {onSave && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 shadow-2xs">
+              <div className="space-y-0.5">
+                <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  Ready to deploy these voice screening settings?
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Saves the selected voice, questions, and parameters to the campaign and publishes
+                  them live to DialNexa.
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={() => onSave(value)}
+                disabled={isSaving}
+                className="h-9 gap-2 text-xs font-semibold cursor-pointer shrink-0"
+              >
+                {isSaving ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Saving & Publishing…
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Save & Publish Configuration
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
 
           {/* Footer CTA: Switch to Advanced Studio */}
           <div className="rounded-xl border border-border/70 bg-muted/30 p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -3305,9 +3363,31 @@ export function DialnexaConfigEditor({
               >
                 <ChevronLeft className="h-3.5 w-3.5" /> Back: STT & Boost
               </Button>
-              <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                <CheckCircle2 className="h-4 w-4" />
-                <span>Voice Agent Ready for Campaign</span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Voice Agent Ready</span>
+                </div>
+                {onSave && (
+                  <Button
+                    size="sm"
+                    onClick={() => onSave(value)}
+                    disabled={isSaving}
+                    className="gap-1.5 text-xs font-semibold"
+                  >
+                    {isSaving ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Save Configuration
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           </div>

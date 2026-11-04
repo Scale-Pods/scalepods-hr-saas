@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { _clearRecentEmailDispatchesForTests, POST } from "./route";
+import { clearRecentEmailDispatchesForTests } from "./cache";
+import { POST } from "./route";
 
 const mockGetUser = vi.fn();
 const mockAdminFrom = vi.fn();
@@ -33,7 +34,7 @@ const TEST_MEMBER_ID = "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 describe("POST /api/team-members/invite", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    _clearRecentEmailDispatchesForTests();
+    clearRecentEmailDispatchesForTests();
   });
 
   it("returns 401 when unauthorized", async () => {

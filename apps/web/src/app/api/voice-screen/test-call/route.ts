@@ -36,6 +36,10 @@ export async function POST(req: Request) {
 
     let outboundFromNumber = DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER;
     let outboundPhoneNumberId = DEFAULT_DIALNEXA_PHONE_NUMBER_ID;
+    let publishedAgentVersion: number | undefined =
+      typeof voice_call_config?.agent_version_number === "number"
+        ? voice_call_config.agent_version_number
+        : undefined;
 
     // DialNexa loads prompt & welcome_message from the agent entity, not the call dispatch payload.
     // Sync the customized prompt, greeting, latency settings, and caller ID before placing the call.
@@ -73,6 +77,9 @@ export async function POST(req: Request) {
           body.from_number,
       });
 
+      if (syncResult.version_number) {
+        publishedAgentVersion = syncResult.version_number;
+      }
       if (syncResult.outbound_from_number) {
         outboundFromNumber = syncResult.outbound_from_number;
       }
@@ -122,6 +129,7 @@ export async function POST(req: Request) {
             candidate_name: candidate_name || "Recruiter Test",
             role_title: role_title || "ScalePods Voice Agent Test",
             company_name: "ScalePods",
+            agent_version_number: publishedAgentVersion,
             dynamic_variables: {
               candidate_name: candidate_name || "Recruiter Test",
               job_title: role_title || "ScalePods Voice Agent Test",
@@ -154,6 +162,7 @@ export async function POST(req: Request) {
             voice_call_config: {
               ...voice_call_config,
               agent_id: targetAgentId,
+              agent_version_number: publishedAgentVersion,
               outbound_from_number: outboundFromNumber,
               from_phone_number: outboundFromNumber,
               from_number: outboundFromNumber,
@@ -242,6 +251,7 @@ export async function POST(req: Request) {
         phone_number: phone,
         agent_id: targetAgentId,
         phone_number_id: outboundPhoneNumberId,
+        ...(publishedAgentVersion ? { agent_version_number: publishedAgentVersion } : {}),
         dynamic_variables: {
           candidate_name: candidate_name || "Recruiter Test",
           job_title: role_title || "ScalePods Voice Agent Test",

@@ -114,9 +114,9 @@ export const DIALNEXA_VOICE_ID_MAP: Record<string, string> = {
   ryan: "voice_mfl4leglq0abrf", // Ryan (ElevenLabs, male, American)
   brad: "voice_mfl4leer7z5p9e", // Brad (ElevenLabs, male, American)
   nova: "voice_mfl4leee3j8ysj", // Nova (female, American)
-  alloy: "voice_4897321fb9ef4e", // Alloy (neutral/clear, Indian/American)
+  alloy: "voice_mfl4leg14bh4of", // Alloy (neutral/clear, American)
   echo: "voice_mfl4leg14bh4of", // Echo (male, American)
-  shimmer: "voice_94226a7ff47a43", // Shimmer (expressive female)
+  shimmer: "voice_mfl4leg5yi6v0g", // Shimmer (expressive female, American)
   nicole: "voice_mfl4leg5yi6v0g", // Nicole (female, American)
 
   // British English

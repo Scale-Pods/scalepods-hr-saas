@@ -223,11 +223,13 @@ describe("Voice Screen Test Call API Route", () => {
       expect(patchCall).toBeDefined();
 
       const patchBody = JSON.parse(String(patchCall?.options?.body));
-      expect(patchBody.version_number).toBe(13);
-      expect(patchBody.prompt_text).toBe(
-        "Interview candidate Manish for the Sales and Marketing intern role at ScalePods.",
+      expect(patchBody.version_number).toBe(14);
+      expect(patchBody.prompt_text).toContain(
+        "Interview candidate {{candidate_name}} for the Sales and Marketing intern role",
       );
-      expect(patchBody.welcome_message).toBe("Hello Manish, welcome to ScalePods!");
+      expect(patchBody.welcome_message).toContain(
+        "Hello {{candidate_name}}, welcome to ScalePods!",
+      );
       expect(patchBody.response_eagerness).toBe(0.85);
       expect(patchBody.responsiveness).toBe(0.9);
     } finally {

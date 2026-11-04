@@ -4,17 +4,12 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getEnv } from "@/env";
 
+import { recentEmailDispatches } from "./cache";
+
 const inviteSchema = z.object({
   team_member_id: z.string().uuid("A valid team member ID is required"),
   dispatch_email: z.boolean().optional().default(true),
 });
-
-// Cache recently dispatched email timestamps per team_member_id to prevent duplicates
-const recentEmailDispatches = new Map<string, number>();
-
-export function _clearRecentEmailDispatchesForTests() {
-  recentEmailDispatches.clear();
-}
 
 export async function POST(req: NextRequest) {
   try {

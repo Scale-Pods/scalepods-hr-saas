@@ -158,6 +158,10 @@ export async function POST(req: Request) {
 
     let outboundFromNumber = DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER;
     let outboundPhoneNumberId = DEFAULT_DIALNEXA_PHONE_NUMBER_ID;
+    let publishedAgentVersion: number | undefined =
+      typeof voiceCallConfig?.agent_version_number === "number"
+        ? voiceCallConfig.agent_version_number
+        : undefined;
 
     if (voiceCallConfig) {
       try {
@@ -190,6 +194,9 @@ export async function POST(req: Request) {
             body.from_number,
         });
 
+        if (syncResult.version_number) {
+          publishedAgentVersion = syncResult.version_number;
+        }
         if (syncResult.outbound_from_number) {
           outboundFromNumber = syncResult.outbound_from_number;
         }
@@ -230,6 +237,7 @@ export async function POST(req: Request) {
           ...body,
           candidate_name: body.candidate_name || "Candidate",
           candidate_phone: phone,
+          agent_version_number: publishedAgentVersion,
           dynamic_variables: {
             candidate_name: body.candidate_name || "Candidate",
             job_title: roleTitle || "Open Position",
@@ -245,6 +253,7 @@ export async function POST(req: Request) {
           voice_call_config: voiceCallConfig
             ? {
                 ...voiceCallConfig,
+                agent_version_number: publishedAgentVersion,
                 outbound_from_number: outboundFromNumber,
                 from_phone_number: outboundFromNumber,
                 from_number: outboundFromNumber,
@@ -310,6 +319,7 @@ export async function POST(req: Request) {
         phone_number: phone,
         agent_id: targetAgentId,
         phone_number_id: outboundPhoneNumberId,
+        ...(publishedAgentVersion ? { agent_version_number: publishedAgentVersion } : {}),
         dynamic_variables: {
           candidate_name: body.candidate_name || "Candidate",
           job_title: roleTitle || "Open Position",

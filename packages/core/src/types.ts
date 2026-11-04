@@ -38,6 +38,7 @@ export interface DialnexaVoiceConfig {
   language?: string;
   max_duration_seconds?: number;
   agent_id?: string;
+  agent_version_number?: number;
   outbound_from_number?: string;
   from_phone_number?: string;
   from_number?: string;
