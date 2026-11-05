@@ -9,10 +9,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { InterviewSession } from "../types";
-import { OPTIMAL_AUDIO_CONSTRAINTS } from "../utils/mediaHelpers";
 
-// 60-second window to give candidates ample time to notice, read, and click 'Allow' on browser permission prompts
-const DEVICE_CHECK_TIMEOUT_MS = 60000;
+// 90-second window to give candidates ample time to notice, read, and click 'Allow' on browser permission prompts
+const DEVICE_CHECK_TIMEOUT_MS = 90000;
 
 interface DeviceCheck {
   camera: boolean | null;
@@ -80,10 +79,21 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
         setTimeout(() => reject(new Error("Permission prompt timed out")), timeoutMs),
       );
       try {
-        const stream = (await Promise.race([
-          navigator.mediaDevices.getUserMedia({ audio: OPTIMAL_AUDIO_CONSTRAINTS }),
-          tmr,
-        ])) as MediaStream;
+        let stream: MediaStream;
+        try {
+          stream = (await Promise.race([
+            navigator.mediaDevices.getUserMedia({
+              audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            }),
+            tmr,
+          ])) as MediaStream;
+        } catch {
+          // Fallback to simple audio: true if complex audio constraints fail
+          stream = (await Promise.race([
+            navigator.mediaDevices.getUserMedia({ audio: true }),
+            tmr,
+          ])) as MediaStream;
+        }
         for (const t of stream.getTracks()) {
           t.stop();
         }
@@ -118,7 +128,7 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
       const combinedStream = (await Promise.race([
         navigator.mediaDevices.getUserMedia({
           video: true,
-          audio: OPTIMAL_AUDIO_CONSTRAINTS,
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         }),
         new Promise<never>((_, reject) =>
           setTimeout(
@@ -145,7 +155,7 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
         cameraResult = false;
         micResult = false;
       } else {
-        // Fall back to checking devices individually with generous 60-second window
+        // Fall back to checking devices individually with generous 90-second window
         const [camOk, micOk] = await Promise.all([
           checkCamera(DEVICE_CHECK_TIMEOUT_MS),
           checkMicrophone(DEVICE_CHECK_TIMEOUT_MS),

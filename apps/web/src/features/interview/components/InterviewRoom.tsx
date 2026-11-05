@@ -61,6 +61,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     isGeneratingTurn,
     isAnalyzingAnswer,
     liveAssessmentNotes,
+    answeredCount,
   } = useInterviewContext();
 
   const { violations, startProctoring, stopProctoring } = useProctoringContext();
@@ -553,53 +554,61 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
 
   if (completing || session.status === "completed" || session.status === "incomplete") {
     if (!completing && (session.status === "completed" || session.status === "incomplete")) {
-      return <Completion isEndedEarly={session.status === "incomplete"} />;
-    }
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full text-center">
-          <div className="w-20 h-20 mx-auto mb-6 relative">
-            <div
-              className="absolute inset-0 rounded-full opacity-20 animate-ping"
-              style={{ background: "var(--blue)" }}
-            />
-            <div
-              className="relative w-20 h-20 rounded-full flex items-center justify-center"
-              style={{ background: "var(--blue)" }}
-            >
-              <Upload size={32} className="text-white" />
+      // Guard: If 0 answers were recorded and candidate never actually started the interview,
+      // allow PreCheck to continue rather than locking them into an empty completed screen
+      if (answeredCount > 0 || hasStartedRef.current) {
+        return <Completion isEndedEarly={session.status === "incomplete"} />;
+      }
+    } else {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <div className="max-w-md w-full text-center">
+            <div className="w-20 h-20 mx-auto mb-6 relative">
+              <div
+                className="absolute inset-0 rounded-full opacity-20 animate-ping"
+                style={{ background: "var(--blue)" }}
+              />
+              <div
+                className="relative w-20 h-20 rounded-full flex items-center justify-center"
+                style={{ background: "var(--blue)" }}
+              >
+                <Upload size={32} className="text-white" />
+              </div>
             </div>
-          </div>
-          <h2 className="text-xl font-bold mb-2" style={{ color: "var(--label-primary)" }}>
-            Completing Your Interview
-          </h2>
-          <p className="text-sm mb-6 max-w-sm mx-auto" style={{ color: "var(--label-secondary)" }}>
-            Please wait while we securely save your responses and finalize the recording.
-          </p>
-          <div
-            className="flex items-center justify-center gap-2 text-sm mt-4"
-            style={{ color: "var(--blue)" }}
-          >
-            <Loader2 size={18} className="animate-spin" />
-            <span>Processing...</span>
-          </div>
-          {completingError && (
-            <div
-              className="mt-4 flex items-center gap-2 px-4 py-3 rounded-xl"
-              style={{
-                background: "color-mix(in srgb, var(--red) 10%, transparent)",
-                border: "1px solid color-mix(in srgb, var(--red) 20%, transparent)",
-              }}
+            <h2 className="text-xl font-bold mb-2" style={{ color: "var(--label-primary)" }}>
+              Completing Your Interview
+            </h2>
+            <p
+              className="text-sm mb-6 max-w-sm mx-auto"
+              style={{ color: "var(--label-secondary)" }}
             >
-              <AlertCircle size={14} className="shrink-0" style={{ color: "var(--red)" }} />
-              <p className="text-sm" style={{ color: "var(--red)" }}>
-                {completingError}
-              </p>
+              Please wait while we securely save your responses and finalize the recording.
+            </p>
+            <div
+              className="flex items-center justify-center gap-2 text-sm mt-4"
+              style={{ color: "var(--blue)" }}
+            >
+              <Loader2 size={18} className="animate-spin" />
+              <span>Processing...</span>
             </div>
-          )}
+            {completingError && (
+              <div
+                className="mt-4 flex items-center gap-2 px-4 py-3 rounded-xl"
+                style={{
+                  background: "color-mix(in srgb, var(--red) 10%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--red) 20%, transparent)",
+                }}
+              >
+                <AlertCircle size={14} className="shrink-0" style={{ color: "var(--red)" }} />
+                <p className="text-sm" style={{ color: "var(--red)" }}>
+                  {completingError}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   }
 
   if (!avStream) {

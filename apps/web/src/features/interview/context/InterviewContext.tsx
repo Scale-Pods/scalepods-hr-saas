@@ -39,6 +39,7 @@ interface InterviewContextType {
   blueprint: InterviewBlueprint | null;
   resumeText: string;
   jdText: string;
+  answeredCount: number;
   avStream: MediaStream | null;
   audioStream: MediaStream | null;
   screenStream: MediaStream | null;
@@ -72,6 +73,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const [currentTurn, setCurrentTurn] = useState<InterviewerTurn | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [currentQuestionId, setCurrentQuestionId] = useState("");
+  const [answeredCount, setAnsweredCount] = useState(0);
   const [scorecard, setScorecard] = useState<Scorecard | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -156,9 +158,12 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       }> = Array.isArray(data.answers) ? data.answers : [];
 
       let rawStatus = (data.session.status as InterviewSession["status"]) || "invited";
-      // If session was prematurely marked incomplete without any answers (e.g. reload on precheck),
+      // If session was prematurely marked incomplete or completed without any answers (e.g. reload on precheck),
       // recover it so the candidate can proceed with precheck instead of being locked out
-      if (rawStatus === "incomplete" && existingAnswers.length === 0) {
+      if (
+        (rawStatus === "incomplete" || rawStatus === "completed") &&
+        existingAnswers.length === 0
+      ) {
         rawStatus = "invited";
       }
 
@@ -222,6 +227,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         liveAssessmentNotesRef.current = persistedNotes;
         setAuthenticitySignals(persistedSignals);
         authenticitySignalsRef.current = persistedSignals;
+        setAnsweredCount(answeredQuestionIdsRef.current.size);
       }
 
       if (existingQuestions.length > 0) {
@@ -319,6 +325,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       if (!session) return;
 
       answeredQuestionIdsRef.current.add(questionId);
+      setAnsweredCount(answeredQuestionIdsRef.current.size);
       localAnswersMapRef.current.set(questionId, answerText);
 
       // Persist raw answer immediately to database
@@ -680,6 +687,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         blueprint,
         resumeText,
         jdText,
+        answeredCount,
         avStream,
         audioStream,
         screenStream,

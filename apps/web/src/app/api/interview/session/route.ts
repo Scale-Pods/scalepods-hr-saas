@@ -57,9 +57,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Recovery Guard: If session was prematurely marked 'incomplete' without any recorded answers
+    // Recovery Guard: If session was prematurely marked 'incomplete' or 'completed' without any recorded answers
     // (e.g. accidental browser reload during device precheck), recover it back to 'pending'
-    if (session.status === "incomplete") {
+    if (session.status === "incomplete" || session.status === "completed") {
       const { count: answerCount } = await supabase
         .from("interview_answers")
         .select("id", { count: "exact", head: true })
