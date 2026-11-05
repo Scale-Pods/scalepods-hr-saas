@@ -115,12 +115,9 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     completionStartedRef.current = false;
   }, []);
 
-  const [startError, setStartError] = useState("");
-
   const handleStart = useCallback(async () => {
     if (startingRef.current) return;
     startingRef.current = true;
-    setStartError("");
     try {
       const { camera: av, audio } = await getMediaDevicesStream();
       let screen: MediaStream | null = null;
@@ -129,11 +126,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       } catch (screenErr) {
         const msg = (screenErr as Error)?.message || "";
         if (msg.includes("entire_screen_required")) {
-          setStartError(
-            "For proctoring compliance, you must share your Entire Screen. Sharing a single window or browser tab is not permitted. Please click 'Start Interview' again and select 'Entire Screen'.",
-          );
           toast.error(
-            "Entire Screen required: Sharing a single tab or window is not allowed for proctoring compliance.",
+            "Entire Screen required: Sharing a single tab or window is not allowed for proctoring compliance. Please click 'Start Interview' and select 'Entire Screen'.",
           );
           startingRef.current = false;
           return;
@@ -174,7 +168,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       }
     } catch (err) {
       console.error("Failed to get media streams:", err);
-      setStartError(
+      toast.error(
         (err as Error).message ||
           "Camera permission was denied. Please allow device access to proceed.",
       );
@@ -612,25 +606,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   }
 
   if (!avStream) {
-    return (
-      <div className="space-y-4">
-        {startError && (
-          <div
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 rounded-xl animate-fade-in max-w-lg"
-            style={{
-              background: "color-mix(in srgb, var(--red) 15%, transparent)",
-              border: "1px solid color-mix(in srgb, var(--red) 30%, transparent)",
-            }}
-          >
-            <AlertCircle size={16} className="shrink-0" style={{ color: "var(--red)" }} />
-            <p className="text-sm" style={{ color: "var(--red)" }}>
-              {startError}
-            </p>
-          </div>
-        )}
-        <PreCheck key={String(startError)} onComplete={handleStart} session={session} />
-      </div>
-    );
+    return <PreCheck onComplete={handleStart} session={session} />;
   }
 
   const timerColor = globalTimer.isExpired
