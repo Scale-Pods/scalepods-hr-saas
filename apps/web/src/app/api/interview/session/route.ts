@@ -126,8 +126,9 @@ export async function GET(request: NextRequest) {
       if (appRow) application = appRow;
     }
 
-    const resolvedCandidateName =
-      (candidate?.name || "").trim() || (application?.candidate_name || "").trim();
+    const rawName = (candidate?.name || "").trim() || (application?.candidate_name || "").trim();
+    // Strip placeholder values so the UI shows blank rather than "Candidate"
+    const resolvedCandidateName = rawName.toLowerCase() === "candidate" ? "" : rawName;
     const resolvedCandidateEmail = candidate?.email || application?.candidate_email || "";
 
     // 4. Fetch Campaign
