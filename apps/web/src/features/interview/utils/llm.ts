@@ -809,43 +809,72 @@ const TOTAL_WANTED_JOB_QUESTIONS = 10;
 
 const STAGE_QUESTIONS: Array<{ q: string; type: QuestionResponse["question_type"] }> = [
   {
-    q: "Could you walk me through your recent hands-on technical experience and the tools you use most frequently?",
+    q: "Looking across the projects and roles on your resume, which system or feature represents your most complex hands-on engineering work, and what technologies did you choose to power it?",
     type: "technical",
   },
   {
-    q: "What is an important technical trade-off or architectural decision you made in a recent project?",
+    q: "In that system, what was a critical architectural trade-off or constraint you faced—such as latency, scaling, or cost—and what led you to your final design?",
     type: "technical",
   },
   {
-    q: "How do you approach debugging a subtle production issue or performance bottleneck?",
+    q: "Can you walk me through a severe production issue, memory leak, or unexpected bottleneck you personally investigated? What observability tools or logs did you rely on to find the root cause?",
     type: "technical",
   },
   {
-    q: "Walk me through how you integrate automation workflows or external APIs into an existing application.",
+    q: "When integrating backend APIs, automated workflows, or third-party webhooks, how do you handle idempotency, retries, and network timeouts when an external provider fails?",
     type: "technical",
   },
   {
-    q: "Describe a complex technical problem where you had to learn an unfamiliar library or framework rapidly.",
+    q: "Tell me about a project where you had to quickly adopt an unfamiliar library, database, or framework under tight delivery deadlines. How did you validate that it met production standards?",
     type: "situational",
   },
   {
-    q: "Looking at the requirements for this role, how does your background in software engineering prepare you for this position?",
+    q: "How have you approached database indexing, query optimization, or schema migrations on live production data without causing downtime or lock contention?",
     type: "technical",
   },
   {
-    q: "Tell me about a time you identified an area where process or test automation could save engineering time.",
+    q: "In your past project implementations, how did you architect services for resilience, rate limiting, and graceful degradation during traffic spikes?",
+    type: "technical",
+  },
+  {
+    q: "Tell me about a time you identified an operational inefficiency and automated a manual workflow or test suite to save engineering hours.",
     type: "situational",
   },
   {
-    q: "How do you approach database schema design, indexing, and migration strategies when handling growing data volume?",
-    type: "technical",
+    q: "When collaborating with product managers or other engineers, tell me about a time you strongly advocated for a technical approach or refactoring. How did you resolve the trade-offs?",
+    type: "behavioral",
   },
   {
-    q: "How do you design API endpoints for resilience, rate limiting, and graceful degradation during service spikes?",
-    type: "technical",
+    q: "Considering the core technical challenges outlined for this position, what specific area of your experience do you feel translates most directly to driving impact here?",
+    type: "cultural",
   },
-  { q: "Where do you see yourself growing technically over the next year?", type: "technical" },
 ];
+
+export function extractProjectsFromResume(resumeText: string): string[] {
+  if (!resumeText) return [];
+  const projects: string[] = [];
+  const patterns = [
+    /(?:project[s]?\s*[:\-–]\s*|\bbuilt\s+|\bdeveloped\s+|\barchitected\s+|\bdesigned\s+)([A-Z0-9][A-Za-z0-9_\-\s]{2,30}?)(?=[,.\n\r()]|(?:\s+using|\s+with|\s+to|\s+for|\s+at))/gi,
+    /(?:^|\n)\s*[-•*]?\s*([A-Z][A-Za-z0-9_\-\s]{2,25})\s*[:\-–]\s*(?:an?|the|built|developed)/gi,
+  ];
+  for (const pattern of patterns) {
+    let match = pattern.exec(resumeText);
+    while (match !== null) {
+      const name = (match[1] || "").trim();
+      if (
+        name.length >= 3 &&
+        name.length <= 35 &&
+        !/^(the|an?|this|and|with|from|using|which|that|experience|worked|responsible)$/i.test(name)
+      ) {
+        if (!projects.includes(name)) {
+          projects.push(name);
+        }
+      }
+      match = pattern.exec(resumeText);
+    }
+  }
+  return projects.slice(0, 5);
+}
 
 function normalizeQuestion(text: string): string {
   return text
@@ -883,6 +912,8 @@ export function getDynamicCandidateQuestion(
   analysis?: CandidateAnalysis | null,
   planItem?: InterviewPlanItem | null,
   reason = "Dynamic candidate question",
+  resumeText?: string,
+  _jdText?: string,
 ): QuestionResponse {
   if (planItem?.objective && !hasSimilarQuestionBeenAsked(planItem.objective, existingQuestions)) {
     return {
@@ -892,14 +923,45 @@ export function getDynamicCandidateQuestion(
     };
   }
 
-  // Inspect tools from candidate analysis
+  // 1. Inspect specific project mappings from candidate analysis
+  const projectMappings = analysis?.projectMappings || [];
+  const unaskedProjectMapping = projectMappings.find(
+    (p) => p.resumeProject && !hasSimilarQuestionBeenAsked(p.resumeProject, existingQuestions),
+  );
+  if (unaskedProjectMapping) {
+    const text = unaskedProjectMapping.relatedJdRequirement
+      ? `Looking at your work on "${unaskedProjectMapping.resumeProject}", how did you architect that system to meet the demands of ${unaskedProjectMapping.relatedJdRequirement.toLowerCase()}, and what key technical trade-offs did you make?`
+      : `In your project "${unaskedProjectMapping.resumeProject}", could you walk me through the system architecture you designed and one of the toughest technical challenges you personally solved?`;
+    return {
+      question_text: text,
+      question_type: "technical",
+      follow_up_reason: "resume_project_deep_dive",
+    };
+  }
+
+  // 2. Inspect raw extracted projects from resumeText
+  if (resumeText) {
+    const extractedProjects = extractProjectsFromResume(resumeText);
+    const unaskedResumeProject = extractedProjects.find(
+      (proj) => !hasSimilarQuestionBeenAsked(proj, existingQuestions),
+    );
+    if (unaskedResumeProject) {
+      return {
+        question_text: `In your project "${unaskedResumeProject}", could you walk me through the system architecture you designed, the primary tools you selected, and the key engineering trade-offs you navigated?`,
+        question_type: "technical",
+        follow_up_reason: "resume_project_extracted",
+      };
+    }
+  }
+
+  // 3. Inspect tools from candidate analysis
   const tools = analysis?.extractedTools || [];
   const unaskedTool = tools.find(
     (t) => t.name && !hasSimilarQuestionBeenAsked(t.name, existingQuestions),
   );
   if (unaskedTool) {
     const text = unaskedTool.mentioned_in_resume
-      ? `Your background highlights experience with ${unaskedTool.name}. Could you detail how you applied ${unaskedTool.name} in your projects and the outcomes achieved?`
+      ? `Your background highlights experience with ${unaskedTool.name}${unaskedTool.resume_context ? ` in ${unaskedTool.resume_context}` : ""}. Could you detail how you applied ${unaskedTool.name} in your projects and the architectural trade-offs you made?`
       : `This position utilizes ${unaskedTool.name}. How familiar are you with ${unaskedTool.name}, and how would you apply your technical knowledge to adopt it?`;
     return {
       question_text: text,
@@ -908,20 +970,20 @@ export function getDynamicCandidateQuestion(
     };
   }
 
-  // Inspect candidate skills
+  // 4. Inspect candidate skills
   const skills = analysis?.skills || [];
   const unaskedSkill = skills.find(
     (s) => s.skill && !hasSimilarQuestionBeenAsked(s.skill, existingQuestions),
   );
   if (unaskedSkill) {
     return {
-      question_text: `How have you applied ${unaskedSkill.skill} in your past roles, and what key trade-offs or decisions did you handle?`,
+      question_text: `How have you applied ${unaskedSkill.skill} in your past roles or projects, and what key trade-offs or technical decisions did you handle?`,
       question_type: "technical",
       follow_up_reason: reason,
     };
   }
 
-  // Inspect stage questions that have not been asked yet
+  // 5. Inspect stage questions that have not been asked yet
   const unaskedStageQ = STAGE_QUESTIONS.find(
     (sq) => !hasSimilarQuestionBeenAsked(sq.q, existingQuestions),
   );
@@ -943,8 +1005,8 @@ export function getDynamicCandidateQuestion(
 }
 
 export async function generateInterviewerTurn(
-  _resumeText: string,
-  _jdText: string,
+  resumeText: string,
+  jdText: string,
   history: HistoryItem[],
   totalQuestions: number,
   analysis: CandidateAnalysis | null,
@@ -1128,6 +1190,8 @@ export async function generateInterviewerTurn(
           analysis,
           planItem,
           "repeated question prevented",
+          resumeText,
+          jdText,
         );
         return {
           interviewer_text: interviewerText,
@@ -1178,6 +1242,9 @@ export async function generateInterviewerTurn(
     allSessionQuestions,
     analysis,
     planItem,
+    "stage_progression",
+    resumeText,
+    jdText,
   );
   return {
     interviewer_text: generateContextualAcknowledgment(
