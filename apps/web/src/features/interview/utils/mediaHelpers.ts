@@ -15,7 +15,7 @@ export function getMimeType(): string {
 
 export async function getCameraStream(
   constraints?: MediaTrackConstraints,
-  timeoutMs = 6000,
+  timeoutMs = 30000,
 ): Promise<MediaStream> {
   const tmr = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error("timeout")), timeoutMs),
@@ -65,7 +65,7 @@ export const OPTIMAL_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   googEchoCancellation2: true,
 } as unknown as MediaTrackConstraints;
 
-export async function getAudioStream(timeoutMs = 4000): Promise<MediaStream | null> {
+export async function getAudioStream(timeoutMs = 30000): Promise<MediaStream | null> {
   const audioOnlyTimeout = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error("timeout")), timeoutMs),
   );
@@ -97,7 +97,7 @@ export async function getAudioStream(timeoutMs = 4000): Promise<MediaStream | nu
 }
 
 export async function getScreenStream(
-  timeoutMs = 15000,
+  timeoutMs = 45000,
   requireEntireScreen = true,
 ): Promise<MediaStream | null> {
   const tmr = new Promise<never>((_, reject) =>

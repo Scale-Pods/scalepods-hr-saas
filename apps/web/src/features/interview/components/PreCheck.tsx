@@ -11,6 +11,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { InterviewSession } from "../types";
 import { OPTIMAL_AUDIO_CONSTRAINTS } from "../utils/mediaHelpers";
 
+// 60-second window to give candidates ample time to notice, read, and click 'Allow' on browser permission prompts
+const DEVICE_CHECK_TIMEOUT_MS = 60000;
+
 interface DeviceCheck {
   camera: boolean | null;
   microphone: boolean | null;
@@ -46,9 +49,12 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
   const [visibleOrder, setVisibleOrder] = useState(0);
   const [faceDetectorWarning, setFaceDetectorWarning] = useState(false);
 
-  const checkCamera = useCallback(async (timeoutMs: number): Promise<boolean> => {
+  const checkCamera = useCallback(async (timeoutMs = DEVICE_CHECK_TIMEOUT_MS): Promise<boolean> => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      return false;
+    }
     const tmr = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), timeoutMs),
+      setTimeout(() => reject(new Error("Permission prompt timed out")), timeoutMs),
     );
     try {
       const stream = (await Promise.race([
@@ -60,52 +66,102 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
       }
       return true;
     } catch (e) {
-      console.log("PreCheck camera failed:", (e as Error)?.message);
+      console.log("PreCheck camera failed:", (e as Error)?.name || (e as Error)?.message);
       return false;
     }
   }, []);
 
-  const checkMicrophone = useCallback(async (timeoutMs: number): Promise<boolean> => {
-    const tmr = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), timeoutMs),
-    );
-    try {
-      const stream = (await Promise.race([
-        navigator.mediaDevices.getUserMedia({ audio: OPTIMAL_AUDIO_CONSTRAINTS }),
-        tmr,
-      ])) as MediaStream;
-      for (const t of stream.getTracks()) {
-        t.stop();
+  const checkMicrophone = useCallback(
+    async (timeoutMs = DEVICE_CHECK_TIMEOUT_MS): Promise<boolean> => {
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        return false;
       }
-      return true;
-    } catch (e) {
-      console.log("PreCheck microphone failed:", (e as Error)?.message);
-      return false;
-    }
-  }, []);
+      const tmr = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Permission prompt timed out")), timeoutMs),
+      );
+      try {
+        const stream = (await Promise.race([
+          navigator.mediaDevices.getUserMedia({ audio: OPTIMAL_AUDIO_CONSTRAINTS }),
+          tmr,
+        ])) as MediaStream;
+        for (const t of stream.getTracks()) {
+          t.stop();
+        }
+        return true;
+      } catch (e) {
+        console.log("PreCheck microphone failed:", (e as Error)?.name || (e as Error)?.message);
+        return false;
+      }
+    },
+    [],
+  );
 
   const runAllChecks = useCallback(async () => {
-    let hasCamera = false;
-    let hasMic = false;
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      hasCamera = devices.some((d) => d.kind === "videoinput");
-      hasMic = devices.some((d) => d.kind === "audioinput");
-    } catch (e) {
-      console.log("PreCheck: enumerateDevices failed", e);
+    setChecking(true);
+    setChecks({
+      camera: null,
+      microphone: null,
+      network: typeof navigator !== "undefined" ? navigator.onLine : true,
+    });
+
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setChecks({ camera: false, microphone: false, network: false });
+      setChecking(false);
+      return;
     }
 
-    const [cameraOk, micOk] = await Promise.all([
-      hasCamera ? checkCamera(4000) : Promise.resolve(false),
-      hasMic ? checkMicrophone(4000) : Promise.resolve(false),
-    ]);
+    // Attempt to request both video and audio in a single prompt so candidate only needs to click 'Allow' once
+    let cameraResult: boolean | null = null;
+    let micResult: boolean | null = null;
+
+    try {
+      const combinedStream = (await Promise.race([
+        navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: OPTIMAL_AUDIO_CONSTRAINTS,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Permission prompt timed out")),
+            DEVICE_CHECK_TIMEOUT_MS,
+          ),
+        ),
+      ])) as MediaStream;
+
+      for (const track of combinedStream.getTracks()) {
+        track.stop();
+      }
+      cameraResult = true;
+      micResult = true;
+    } catch (combinedErr) {
+      const errName = (combinedErr as Error)?.name;
+      console.log(
+        "PreCheck combined media request deferred or failed, attempting individual checks:",
+        errName || (combinedErr as Error)?.message,
+      );
+
+      // If user explicitly denied permission, both failed
+      if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+        cameraResult = false;
+        micResult = false;
+      } else {
+        // Fall back to checking devices individually with generous 60-second window
+        const [camOk, micOk] = await Promise.all([
+          checkCamera(DEVICE_CHECK_TIMEOUT_MS),
+          checkMicrophone(DEVICE_CHECK_TIMEOUT_MS),
+        ]);
+        cameraResult = camOk;
+        micResult = micOk;
+      }
+    }
 
     setChecks({
-      camera: cameraOk,
-      microphone: micOk,
+      camera: cameraResult ?? false,
+      microphone: micResult ?? false,
       network: typeof navigator !== "undefined" ? navigator.onLine : true,
     });
     setChecking(false);
+
     if (typeof window !== "undefined" && !("FaceDetector" in window)) {
       setFaceDetectorWarning(true);
     }
@@ -113,14 +169,16 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
 
   const retryCamera = async () => {
     setRetrying("camera");
-    const ok = await checkCamera(6000);
+    setChecks((prev) => ({ ...prev, camera: null }));
+    const ok = await checkCamera(DEVICE_CHECK_TIMEOUT_MS);
     setChecks((prev) => ({ ...prev, camera: ok }));
     setRetrying(null);
   };
 
   const retryMicrophone = async () => {
     setRetrying("microphone");
-    const ok = await checkMicrophone(6000);
+    setChecks((prev) => ({ ...prev, microphone: null }));
+    const ok = await checkMicrophone(DEVICE_CHECK_TIMEOUT_MS);
     setChecks((prev) => ({ ...prev, microphone: ok }));
     setRetrying(null);
   };
@@ -136,23 +194,19 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
         return next;
       });
       setChecking(false);
-    }, 8000);
+    }, DEVICE_CHECK_TIMEOUT_MS + 5000);
     return () => {
       clearTimeout(fallback);
     };
   }, [runAllChecks]);
 
   useEffect(() => {
-    if (checking) {
-      setVisibleOrder(0);
-      return;
-    }
     const timers: ReturnType<typeof setTimeout>[] = [];
     CHECK_ITEMS.forEach((_, i) => {
-      timers.push(setTimeout(() => setVisibleOrder(i + 1), i * 300));
+      timers.push(setTimeout(() => setVisibleOrder(i + 1), (i + 1) * 150));
     });
     return () => timers.forEach(clearTimeout);
-  }, [checking]);
+  }, []);
 
   const allRequired = checks.camera === true && checks.network === true;
   const canStart = allRequired && consented;
@@ -270,7 +324,13 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
                     {label}
                   </p>
                   <p className="text-xs" style={{ color: "var(--label-tertiary)" }}>
-                    {desc}
+                    {isRetrying
+                      ? "Requesting permission... Please click 'Allow' in your browser"
+                      : checking && status === null && (key === "camera" || key === "microphone")
+                        ? "Requesting permission... Please click 'Allow' in your browser"
+                        : failed && (key === "camera" || key === "microphone")
+                          ? `${desc}. Please click 'Retry' and allow browser access.`
+                          : desc}
                   </p>
                 </div>
                 {!checking && failed && (key === "microphone" || key === "camera") && (
