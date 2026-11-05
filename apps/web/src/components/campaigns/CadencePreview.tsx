@@ -643,6 +643,15 @@ export function CadencePreview({
           {canEditTiming ? "Timing enabled" : "Available on Growth & Enterprise"}
         </span>
       </div>
+      {/* Meta Messaging Compliance Disclaimer */}
+      <div className="flex items-start sm:items-center gap-2 border-t border-border/40 bg-amber-500/5 px-4 py-2 text-[11px] text-amber-300/90 text-left">
+        <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+        <span>
+          <strong className="text-amber-200">Meta Environment Policy:</strong> Due to Meta
+          environment rules and WhatsApp messaging limits, campaigns cannot dispatch more than{" "}
+          <strong>3 messages</strong> to a candidate. Any additional reminder stages will be capped.
+        </span>
+      </div>
     </div>
   );
 }
