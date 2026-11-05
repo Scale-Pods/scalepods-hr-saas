@@ -606,9 +606,19 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         } else {
           const inferredType = inferQuestionType(turn.question_text, turn.question_type);
           turn.question_type = inferredType;
+          const generatedUuid =
+            typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+              ? crypto.randomUUID()
+              : `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-${Math.floor(
+                  Math.random() * 0xffffffffffff,
+                )
+                  .toString(16)
+                  .padStart(12, "0")}`;
+
           let nextQ: InterviewQuestion = {
-            id: `q-turn-${Date.now()}`,
+            id: generatedUuid,
             session_id: session.id,
+            round_instance_id: session.round_instance_id,
             question_text: turn.question_text,
             question_type: inferredType,
             order_index: questions.length,
@@ -627,6 +637,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
               body: JSON.stringify({
                 action: "insert_question",
                 sessionId: session.id,
+                questionId: generatedUuid,
                 questionText: turn.question_text,
                 questionType: inferredType,
                 orderIndex: questions.length,

@@ -12,7 +12,7 @@ interface ChatInputBarProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
 }
 
-const SILENCE_TIMEOUT_SEC = 7;
+const SILENCE_TIMEOUT_SEC = 5;
 
 export function ChatInputBar({
   recorderState,

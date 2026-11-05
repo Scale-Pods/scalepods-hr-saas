@@ -4,9 +4,9 @@ import { DeepgramSTT } from "../utils/deepgram";
 import { getAudioStream } from "../utils/mediaHelpers";
 import { normalizeTechnicalSpeech } from "../utils/speechNormalizer";
 
-const SILENCE_TIMEOUT_MS = 12000;
+const SILENCE_TIMEOUT_MS = 5000;
 const COUNTDOWN_TENTHS = Math.floor(SILENCE_TIMEOUT_MS / 100);
-const THINKING_TIMEOUT_MS = 35000;
+const THINKING_TIMEOUT_MS = 30000;
 const THINKING_TENTHS = Math.floor(THINKING_TIMEOUT_MS / 100);
 
 export interface AnswerRecorderState {

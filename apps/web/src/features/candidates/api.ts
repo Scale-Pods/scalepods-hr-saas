@@ -799,12 +799,24 @@ export async function fetchCandidateProfile(
       const mappedTranscripts: InterviewTranscriptItem[] = [];
 
       if (answersList.length > 0) {
+        // If genuine answers exist tied to the specific round instance(s), prioritize them and ignore detached ghost rows
+        const hasRoundAnswers =
+          targetRoundIds.length > 0 &&
+          answersList.some(
+            (a) => a.round_instance_id && targetRoundIds.includes(a.round_instance_id),
+          );
+        const effectiveAnswers = hasRoundAnswers
+          ? answersList.filter(
+              (a) => a.round_instance_id && targetRoundIds.includes(a.round_instance_id),
+            )
+          : answersList;
+
         // Identify timestamps of genuine answered turns to eliminate concurrent transition placeholder artifacts
-        const answeredTimestamps = answersList
+        const answeredTimestamps = effectiveAnswers
           .filter((a) => (a.answer_text || "").trim().length > 0)
           .map((a) => new Date(a.answered_at).getTime());
 
-        const meaningfulAnswers = answersList.filter((ans) => {
+        const meaningfulAnswers = effectiveAnswers.filter((ans) => {
           const hasText = (ans.answer_text || "").trim().length > 0;
           if (hasText) return true;
           const ansTime = new Date(ans.answered_at).getTime();
@@ -841,7 +853,8 @@ export async function fetchCandidateProfile(
         for (const ans of cleanAnswers) {
           const q = ans.question_id ? questionById.get(ans.question_id) : undefined;
           const liveNote = (ans.ai_live_note || {}) as Record<string, any>;
-          const qText = (liveNote.question_text || q?.question_text || "Interview Question").trim();
+          // Ground question text in the canonical database question record first
+          const qText = (q?.question_text || liveNote.question_text || "Interview Question").trim();
           const normKey = qText.toLowerCase();
 
           const existing = turnsMap.get(normKey);
@@ -853,14 +866,16 @@ export async function fetchCandidateProfile(
               existing.answered_at = ans.answered_at;
               if (liveNote && Object.keys(liveNote).length > 0) {
                 existing.ai_note = liveNote;
-                if (liveNote.interviewer_text) {
-                  existing.interviewer_text = liveNote.interviewer_text;
+                if (liveNote.interviewer_text || liveNote.interviewer_acknowledgment) {
+                  existing.interviewer_text =
+                    liveNote.interviewer_text || liveNote.interviewer_acknowledgment;
                 }
               }
             }
           } else {
             const ansText = (ans.answer_text || "").trim();
-            const rawAck: string | null = liveNote.interviewer_text || null;
+            const rawAck: string | null =
+              liveNote.interviewer_text || liveNote.interviewer_acknowledgment || null;
 
             turnsMap.set(normKey, {
               id: ans.id,

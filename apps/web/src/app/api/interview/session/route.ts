@@ -452,23 +452,32 @@ export async function POST(request: NextRequest) {
       }
 
       case "insert_question": {
-        const { questionText, questionType, orderIndex } = body;
+        const { questionText, questionType, orderIndex, questionId } = body;
         if (!questionText) {
           return NextResponse.json({ error: "questionText is required" }, { status: 400 });
         }
 
         const qNumber = typeof orderIndex === "number" ? orderIndex + 1 : 1;
+        const insertPayload: Record<string, unknown> = {
+          account_id: sessionRow.account_id,
+          round_instance_id: sessionRow.round_instance_id,
+          session_id: sessionId,
+          question_text: questionText,
+          question_type: questionType || "technical",
+          question_number: qNumber,
+          order_index: typeof orderIndex === "number" ? orderIndex : 0,
+        };
+        if (
+          typeof questionId === "string" &&
+          questionId.length === 36 &&
+          !questionId.startsWith("q-turn")
+        ) {
+          insertPayload.id = questionId;
+        }
+
         const { data, error } = await supabase
           .from("interview_questions")
-          .insert({
-            account_id: sessionRow.account_id,
-            round_instance_id: sessionRow.round_instance_id,
-            session_id: sessionId,
-            question_text: questionText,
-            question_type: questionType || "technical",
-            question_number: qNumber,
-            question_order: typeof orderIndex === "number" ? orderIndex : 0,
-          })
+          .insert(insertPayload)
           .select()
           .single();
 
