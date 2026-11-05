@@ -345,7 +345,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           : null) ||
         "";
 
-      // Persist raw answer immediately to database with current interviewer_text
+      const spokenQuestionText =
+        currentTurn?.question_text?.trim() || currentQuestion?.question_text?.trim() || "";
+
+      // Persist raw answer immediately to database with current interviewer_text and actual question text asked
       try {
         await fetch("/api/interview/session", {
           method: "POST",
@@ -357,7 +360,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             answerText,
             aiLiveNote: {
               interviewer_text: ackText,
-              question_text: currentQuestion?.question_text,
+              question_text: spokenQuestionText,
             },
           }),
         });
@@ -422,7 +425,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         const fullNote = {
           ...note,
           interviewer_text: ackText,
-          question_text: currentQuestion.question_text,
+          question_text: spokenQuestionText,
         };
         lastAssessmentNoteRef.current = fullNote;
         setLiveAssessmentNotes((prev) => [...prev, fullNote]);
@@ -577,7 +580,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       if (turn.question_text) {
         const isFollowUp = turn.turn_type === "follow_up";
         let targetQId = "";
-        if (!isFollowUp && nextPlannedQuestion) {
+        if (!isFollowUp && !isClarification && nextPlannedQuestion) {
           // Guarantee that the spoken question, chat question, and recorded answer question ID match 100%
           turn.question_text = nextPlannedQuestion.question_text;
           const inferredType = inferQuestionType(
@@ -607,7 +610,11 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             question_text: turn.question_text,
             question_type: inferredType,
             order_index: questions.length,
-            source: isFollowUp ? "llm_ts_followup" : "llm_ts_dynamic",
+            source: isFollowUp
+              ? "llm_ts_followup"
+              : isClarification
+                ? "llm_ts_clarification"
+                : "llm_ts_dynamic",
           };
 
           // Persist question to DB
@@ -621,7 +628,11 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
                 questionText: turn.question_text,
                 questionType: inferredType,
                 orderIndex: questions.length,
-                source: isFollowUp ? "llm_ts_followup" : "llm_ts_dynamic",
+                source: isFollowUp
+                  ? "llm_ts_followup"
+                  : isClarification
+                    ? "llm_ts_clarification"
+                    : "llm_ts_dynamic",
                 parentQuestionId: lastNote?.question_id || null,
               }),
             });

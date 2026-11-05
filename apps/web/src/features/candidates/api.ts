@@ -755,9 +755,11 @@ export async function fetchCandidateProfile(
 
       const { data: questionsData } = await (supabase as any)
         .from("interview_questions")
-        .select("id,round_instance_id,session_id,order_index,question_text,question_type")
+        .select(
+          "id,round_instance_id,session_id,order_index,question_number,question_text,question_type",
+        )
         .or(qFilters.join(","))
-        .order("order_index", { ascending: true });
+        .order("question_number", { ascending: true });
 
       const ansFilters = [
         targetRoundIds.length > 0 ? `round_instance_id.in.(${targetRoundIds.join(",")})` : null,
@@ -818,7 +820,7 @@ export async function fetchCandidateProfile(
         for (const ans of meaningfulAnswers) {
           const q = ans.question_id ? questionById.get(ans.question_id) : undefined;
           const liveNote = (ans.ai_live_note || {}) as Record<string, any>;
-          const qText = (q?.question_text || liveNote.question_text || "Interview Question").trim();
+          const qText = (liveNote.question_text || q?.question_text || "Interview Question").trim();
           const normKey = qText.toLowerCase();
 
           const existing = turnsMap.get(normKey);
@@ -853,6 +855,12 @@ export async function fetchCandidateProfile(
         }
 
         const rawTurns = Array.from(turnsMap.values());
+        rawTurns.sort(
+          (a, b) => new Date(a.answered_at).getTime() - new Date(b.answered_at).getTime(),
+        );
+        rawTurns.forEach((t, idx) => {
+          t.question_number = idx + 1;
+        });
         for (let i = 0; i < rawTurns.length; i++) {
           const currentTurn = rawTurns[i];
           if (i === 0) {
