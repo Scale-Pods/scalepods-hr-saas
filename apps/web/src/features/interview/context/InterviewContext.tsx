@@ -511,10 +511,14 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       );
 
       // Look for next unanswered planned question from the round configuration
+      // Exclude intro, follow-ups, and clarifications — only pick blueprint/HR-added questions
       const nextPlannedQuestion = questions.find(
         (q) =>
           !answeredQuestionIdsRef.current.has(q.id) &&
           q.source !== "llm_ts_followup" &&
+          q.source !== "llm_ts_clarification" &&
+          q.source !== "llm_ts_dynamic_intro" &&
+          q.source !== "hr_reviewed_intro" &&
           q.id !== currentQuestionId,
       );
 
@@ -566,7 +570,11 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       }
       lastAssessmentNoteRef.current = null;
 
-      if (turn.turn_type === "closing" || !turn.should_continue) {
+      // Guard: never close if there are still planned questions in the round.
+      // n8n can prematurely signal "closing" after too few answers.
+      const allowClosing =
+        (turn.turn_type === "closing" || !turn.should_continue) && !nextPlannedQuestion;
+      if (allowClosing) {
         setCurrentTurn({
           interviewer_text:
             turn.interviewer_text ||
