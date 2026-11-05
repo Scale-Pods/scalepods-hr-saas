@@ -384,40 +384,45 @@ export async function POST(request: NextRequest) {
             .in("status", ["pending", "scheduled"]);
         }
 
-        // Check if an answer record already exists for this question & round instance
+        // Check if an answer record already exists for this question & session/round instance
         let updatedAnswer = null;
+        let existingAnswersQuery = supabase
+          .from("interview_answers")
+          .select("id, answer_text, ai_live_note")
+          .eq("question_id", questionId);
+
         if (roundInstanceId) {
-          const { data: existingAnswers } = await supabase
+          existingAnswersQuery = existingAnswersQuery.eq("round_instance_id", roundInstanceId);
+        } else {
+          existingAnswersQuery = existingAnswersQuery.eq("session_id", sessionId);
+        }
+
+        const { data: existingAnswers } = await existingAnswersQuery
+          .order("answered_at", { ascending: false })
+          .limit(1);
+
+        if (existingAnswers && existingAnswers.length > 0) {
+          const prevNote =
+            typeof existingAnswers[0].ai_live_note === "object" &&
+            existingAnswers[0].ai_live_note !== null
+              ? (existingAnswers[0].ai_live_note as Record<string, unknown>)
+              : {};
+          const mergedNote = aiLiveNote
+            ? { ...prevNote, ...aiLiveNote }
+            : existingAnswers[0].ai_live_note;
+
+          const { data: updated, error: updateErr } = await supabase
             .from("interview_answers")
-            .select("id, answer_text, ai_live_note")
-            .eq("round_instance_id", roundInstanceId)
-            .eq("question_id", questionId)
-            .order("answered_at", { ascending: false })
-            .limit(1);
+            .update({
+              answer_text: answerText || "",
+              answered_at: nowIso,
+              ...(mergedNote ? { ai_live_note: mergedNote } : {}),
+            })
+            .eq("id", existingAnswers[0].id)
+            .select()
+            .single();
 
-          if (existingAnswers && existingAnswers.length > 0) {
-            const prevNote =
-              typeof existingAnswers[0].ai_live_note === "object" &&
-              existingAnswers[0].ai_live_note !== null
-                ? (existingAnswers[0].ai_live_note as Record<string, unknown>)
-                : {};
-            const mergedNote = aiLiveNote
-              ? { ...prevNote, ...aiLiveNote }
-              : existingAnswers[0].ai_live_note;
-
-            const { data: updated, error: updateErr } = await supabase
-              .from("interview_answers")
-              .update({
-                answer_text: answerText || "",
-                answered_at: nowIso,
-                ...(mergedNote ? { ai_live_note: mergedNote } : {}),
-              })
-              .eq("id", existingAnswers[0].id)
-              .select()
-              .single();
-
-            if (!updateErr) updatedAnswer = updated;
-          }
+          if (!updateErr) updatedAnswer = updated;
         }
 
         // If no existing record was updated, insert a new record

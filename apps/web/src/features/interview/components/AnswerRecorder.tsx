@@ -73,6 +73,7 @@ export function AnswerRecorder({
   const audioActivityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVoiceActiveRef = useRef(false);
   const isCountdownActiveRef = useRef(false);
+  const hasCandidateSpokenRef = useRef(false);
   const accumulatedWebSpeechRef = useRef("");
 
   const clearAudioActivityMonitor = useCallback(() => {
@@ -149,6 +150,7 @@ export function AnswerRecorder({
 
       setTranscript("");
       transcriptRef.current = "";
+      hasCandidateSpokenRef.current = false;
       setDuration(0);
       audioBlobRef.current = null;
     },
@@ -414,6 +416,7 @@ export function AnswerRecorder({
     setTranscript("");
     transcriptRef.current = "";
     accumulatedWebSpeechRef.current = "";
+    hasCandidateSpokenRef.current = false;
     audioBlobRef.current = null;
     try {
       let stream = audioStream;
@@ -493,10 +496,12 @@ export function AnswerRecorder({
 
               if (isSpeaking) {
                 speechStreak++;
+                hasCandidateSpokenRef.current = true;
                 clearCountdown();
               } else {
                 speechStreak = 0;
-                if (transcriptRef.current.trim().length > 0) {
+                // Crucial safeguard: Only start silence auto-submit countdown if candidate ACTUALLY SPOKE during this turn!
+                if (hasCandidateSpokenRef.current && transcriptRef.current.trim().length > 0) {
                   if (isThinkingRef.current) {
                     clearThinkingTimer();
                   }

@@ -888,7 +888,12 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
                 onAnswerComplete={handleAnswerComplete}
                 onStateChange={setRecorderState}
                 externalCanvasRef={waveformCanvasRef}
-                isAiSpeaking={isAiSpeaking}
+                isAiSpeaking={
+                  isAiSpeaking ||
+                  isGeneratingTurn ||
+                  speakingPhase !== null ||
+                  answerState === "saving"
+                }
                 expired={globalTimer.isExpired}
                 endEarly={endEarly}
                 audioStream={audioStream}

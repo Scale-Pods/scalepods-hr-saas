@@ -813,11 +813,32 @@ export async function fetchCandidateProfile(
           return !isSpurious;
         });
 
+        // Eliminate ghost auto-submissions that immediately echoed the prior turn's text within 25 seconds
+        const cleanAnswers: any[] = [];
+        for (let i = 0; i < meaningfulAnswers.length; i++) {
+          const curr = meaningfulAnswers[i];
+          const prev = cleanAnswers[cleanAnswers.length - 1];
+          if (
+            prev &&
+            prev.answer_text?.trim() &&
+            curr.answer_text?.trim() &&
+            prev.answer_text.trim().toLowerCase() === curr.answer_text.trim().toLowerCase()
+          ) {
+            const timeDiff = Math.abs(
+              new Date(curr.answered_at).getTime() - new Date(prev.answered_at).getTime(),
+            );
+            if (timeDiff < 25000) {
+              continue;
+            }
+          }
+          cleanAnswers.push(curr);
+        }
+
         // Collect answers in chronological order, deduplicating identical questions and prioritizing non-empty answer text
         const turnsMap = new Map<string, InterviewTranscriptItem>();
         let counter = 1;
 
-        for (const ans of meaningfulAnswers) {
+        for (const ans of cleanAnswers) {
           const q = ans.question_id ? questionById.get(ans.question_id) : undefined;
           const liveNote = (ans.ai_live_note || {}) as Record<string, any>;
           const qText = (liveNote.question_text || q?.question_text || "Interview Question").trim();
