@@ -58,6 +58,7 @@ import {
   updateCampaignStatus,
 } from "@/features/campaigns/api";
 import { useCampaigns } from "@/features/campaigns/hooks";
+import { clearCampaignDraft, loadCampaignDraft } from "@/lib/campaignDraft";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -104,20 +105,16 @@ function CampaignsContent() {
 
   const clearDraft = useCallback(() => {
     try {
-      localStorage.removeItem("scalepods_campaign_wizard_draft");
-      sessionStorage.removeItem("scalepods_campaign_wizard_draft");
+      clearCampaignDraft(account?.id);
     } catch {}
     setSavedDraft(null);
-  }, []);
+  }, [account?.id]);
 
-  // Sync / validate saved draft. Discard if it already matches an existing campaign.
+  // Sync / validate saved draft (scoped to active account). Discard if it already matches an existing campaign.
   useEffect(() => {
     try {
-      const raw =
-        localStorage.getItem("scalepods_campaign_wizard_draft") ||
-        sessionStorage.getItem("scalepods_campaign_wizard_draft");
-      if (raw) {
-        const parsed = JSON.parse(raw);
+      const parsed = loadCampaignDraft(account?.id);
+      if (parsed) {
         if (parsed.name || parsed.jdText || parsed.location || parsed.numberOfOpenings) {
           const draftName = parsed.name?.trim().toLowerCase();
           const alreadyExists =
@@ -134,7 +131,7 @@ function CampaignsContent() {
     } catch {
       setSavedDraft(null);
     }
-  }, [rows, clearDraft]);
+  }, [rows, account?.id, clearDraft]);
 
   const checkCampaignLimit = (): boolean => {
     const limit = tierConfig.activeCampaigns;

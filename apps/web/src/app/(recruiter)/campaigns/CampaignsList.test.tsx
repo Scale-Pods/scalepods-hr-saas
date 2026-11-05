@@ -132,6 +132,22 @@ describe("CampaignsPage List and Delete", () => {
     expect(localStorage.getItem("scalepods_campaign_wizard_draft")).toBeNull();
   });
 
+  it("does not show draft belonging to another account", () => {
+    localStorage.setItem(
+      "scalepods_campaign_wizard_draft_other_acc",
+      JSON.stringify({ accountId: "other_acc", name: "Secret Role", jdText: "Top Secret" }),
+    );
+    localStorage.setItem(
+      "scalepods_campaign_wizard_draft",
+      JSON.stringify({ accountId: "other_acc", name: "Secret Role", jdText: "Top Secret" }),
+    );
+
+    renderWithClient(<CampaignsPage />);
+
+    expect(screen.queryByText(/Unfinished Campaign Draft/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Secret Role/i)).not.toBeInTheDocument();
+  });
+
   it("hides draft banner when open campaign limit is reached on Free plan", () => {
     mockTier = "free";
     currentCampaigns = [

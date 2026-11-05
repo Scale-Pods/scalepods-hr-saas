@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TimePicker } from "@/components/ui/time-picker";
 import { useAccount } from "@/features/account/hooks";
 import { useSession } from "@/features/auth/hooks";
+import { loadCampaignDraft } from "@/lib/campaignDraft";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 export default function SettingsPage() {
@@ -55,12 +56,12 @@ function SettingsPageInner() {
 
   useEffect(() => {
     try {
-      const draft =
-        localStorage.getItem("scalepods_campaign_wizard_draft") ||
-        sessionStorage.getItem("scalepods_campaign_wizard_draft");
-      if (draft) setHasDraft(true);
-    } catch {}
-  }, []);
+      const draft = loadCampaignDraft(account?.id);
+      setHasDraft(Boolean(draft));
+    } catch {
+      setHasDraft(false);
+    }
+  }, [account?.id]);
 
   const [calendarByMember, setCalendarByMember] = useState<
     Record<string, { status: string; google_email: string | null }>

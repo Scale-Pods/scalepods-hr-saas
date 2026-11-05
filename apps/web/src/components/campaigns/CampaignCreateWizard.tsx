@@ -58,6 +58,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAccount } from "@/features/account/hooks";
 import { campaignsKey } from "@/features/campaigns/hooks";
 import { syncRoundCount } from "@/features/campaigns/rounds";
+import { clearCampaignDraft, loadCampaignDraft, saveCampaignDraft } from "@/lib/campaignDraft";
 import { extractTextFromFile } from "@/lib/extract-text";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -201,15 +202,19 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const isSubmittedRef = useRef(false);
 
-  // Restore draft on refresh / mount
-  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to restore draft
+  const restoredAccountIdRef = useRef<string | null>(null);
+
+  // Restore draft on refresh / mount (account-scoped)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: restore when account becomes available
   useEffect(() => {
+    // Only restore once per account
+    const currentAccId = account?.id || null;
+    if (restoredAccountIdRef.current === currentAccId) return;
+    restoredAccountIdRef.current = currentAccId;
+
     try {
-      const raw =
-        localStorage.getItem("scalepods_campaign_wizard_draft") ||
-        sessionStorage.getItem("scalepods_campaign_wizard_draft");
-      if (raw) {
-        const parsed = JSON.parse(raw);
+      const parsed = loadCampaignDraft(currentAccId);
+      if (parsed) {
         if (parsed.name && !name) setName(parsed.name);
         if (parsed.jdText && !jdText) setJdText(parsed.jdText);
         if (parsed.location) setLocation(parsed.location);
@@ -232,11 +237,12 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           setOfferTemplateVariables(parsed.offerTemplateVariables);
         }
         if (Array.isArray(parsed.rounds) && parsed.rounds.length > 0) {
-          setRounds(parsed.rounds);
+          setRounds(parsed.rounds as RoundDraft[]);
         }
         if (parsed.whatsappOn !== undefined) setWhatsappOn(parsed.whatsappOn);
-        if (parsed.dialnexaConfig) setDialnexaConfig(parsed.dialnexaConfig);
-        if (parsed.customCadence) setCustomCadence(parsed.customCadence);
+        if (parsed.dialnexaConfig)
+          setDialnexaConfig(parsed.dialnexaConfig as typeof dialnexaConfig);
+        if (parsed.customCadence) setCustomCadence(parsed.customCadence as typeof customCadence);
         if (
           typeof parsed.step === "number" &&
           !new URLSearchParams(window.location.search).get("step")
@@ -252,9 +258,9 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         setLastSaved(new Date());
       }
     } catch {}
-  }, []);
+  }, [account?.id]);
 
-  // Save draft on change to localStorage + sessionStorage
+  // Save draft on change (scoped to active account)
   useEffect(() => {
     if (isSubmittedRef.current) return;
     try {
@@ -268,7 +274,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           rounds.length > 1,
       );
       if (hasContent) {
-        const payload = JSON.stringify({
+        saveCampaignDraft(account?.id, {
           step,
           name,
           jdText,
@@ -292,12 +298,11 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           dialnexaConfig,
           customCadence,
         });
-        localStorage.setItem("scalepods_campaign_wizard_draft", payload);
-        sessionStorage.setItem("scalepods_campaign_wizard_draft", payload);
         setLastSaved(new Date());
       }
     } catch {}
   }, [
+    account?.id,
     step,
     name,
     jdText,
@@ -324,8 +329,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
 
   const handleClearDraft = () => {
     try {
-      localStorage.removeItem("scalepods_campaign_wizard_draft");
-      sessionStorage.removeItem("scalepods_campaign_wizard_draft");
+      clearCampaignDraft(account?.id);
     } catch {}
     setName("");
     setJdText("");
@@ -885,8 +889,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
 
       isSubmittedRef.current = true;
       try {
-        localStorage.removeItem("scalepods_campaign_wizard_draft");
-        sessionStorage.removeItem("scalepods_campaign_wizard_draft");
+        clearCampaignDraft(account?.id);
       } catch {}
 
       if (onSuccess) {
