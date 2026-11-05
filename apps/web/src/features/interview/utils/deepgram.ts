@@ -36,7 +36,34 @@ const DEFAULT_TECH_KEYWORDS = [
   "WebSockets",
   "WebRTC",
   "microservices",
+  "RabbitMQ",
+  "Airflow",
+  "Firebase",
+  "BigQuery",
+  "DynamoDB",
+  "Docker",
+  "Kubernetes",
+  "GitHub Actions",
+  "Spring Boot",
 ];
+
+/**
+ * Keyword boost weights for Deepgram. Higher = stronger preference.
+ * Terms with unusual phonetics or that STT frequently mishears get a higher boost.
+ */
+const KEYWORD_BOOST_WEIGHTS: Record<string, number> = {
+  n8n: 10,
+  tRPC: 8,
+  gRPC: 8,
+  "Next.js": 6,
+  WebRTC: 6,
+  LangChain: 6,
+  LlamaIndex: 6,
+  Supabase: 5,
+  PostgreSQL: 5,
+  RabbitMQ: 5,
+  Kubernetes: 4,
+};
 
 export class DeepgramSTT {
   private socket: WebSocket | null = null;
@@ -51,13 +78,17 @@ export class DeepgramSTT {
   private onClose?: () => void;
   private isRunning = false;
   private accumulatedFinalTranscript = "";
+  /** Tracks the last audio stream so reconnects can reattach it */
+  private _lastStream?: MediaStream;
+  /** Reconnect attempt counter — resets to 0 on clean stop() */
+  private _reconnectAttempts = 0;
 
   constructor(options: DeepgramSTTOptions = {}) {
     this.apiKey =
       options.apiKey ||
       (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY : "") ||
       "";
-    this.model = options.model || "nova-2";
+    this.model = options.model || "nova-3";
     this.language = options.language || "en";
     this.keywords = options.keywords || DEFAULT_TECH_KEYWORDS;
     this.onTranscript = options.onTranscript;
@@ -81,6 +112,11 @@ export class DeepgramSTT {
       return Promise.reject(new Error("Deepgram API key not provided"));
     }
 
+    // Store stream reference so automatic reconnects can reattach it
+    if (audioStream) {
+      this._lastStream = audioStream;
+    }
+
     this.accumulatedFinalTranscript = "";
 
     return new Promise((resolve, reject) => {
@@ -92,21 +128,30 @@ export class DeepgramSTT {
           punctuate: "true",
           interim_results: "true",
           vad_events: "true",
-          endpointing: "300",
+          // 900ms gives natural pauses room without cutting off mid-sentence hesitations
+          endpointing: "900",
+          // Wait 2s of complete silence before finalising an utterance
+          utterance_end_ms: "2000",
           no_delay: "true",
+          // Strip filler words ("um", "uh") from the final transcript
+          filler_words: "false",
         });
 
+        // Apply per-keyword boost weights — higher numbers prioritise rare/unusual terms
         for (const kw of this.keywords) {
-          params.append("keywords", kw);
+          const boost = KEYWORD_BOOST_WEIGHTS[kw];
+          params.append("keywords", boost ? `${kw}:${boost}` : kw);
         }
 
         const url = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
         this.socket = new WebSocket(url, ["token", this.apiKey]);
 
         this.socket.onopen = () => {
+          this._reconnectAttempts = 0;
           this.isRunning = true;
-          if (audioStream) {
-            this.startMediaRecorder(audioStream);
+          const streamToRecord = audioStream ?? this._lastStream;
+          if (streamToRecord) {
+            this.startMediaRecorder(streamToRecord);
           }
           this.onOpen?.();
           resolve();
@@ -145,6 +190,23 @@ export class DeepgramSTT {
         this.socket.onclose = (event) => {
           console.log("[DeepgramSTT] WebSocket closed with code:", event.code, event.reason);
           this.isRunning = false;
+          // Attempt exponential-backoff reconnect on unexpected drops (not clean close / no-data)
+          if (
+            event.code !== 1000 &&
+            event.code !== 1005 &&
+            this._reconnectAttempts < 3 &&
+            this._lastStream
+          ) {
+            const delayMs = 1000 * 2 ** this._reconnectAttempts;
+            this._reconnectAttempts++;
+            console.warn(
+              `[DeepgramSTT] Unexpected close (${event.code}). Reconnecting in ${delayMs}ms (attempt ${this._reconnectAttempts}/3)...`,
+            );
+            setTimeout(() => {
+              void this.start(this._lastStream);
+            }, delayMs);
+            return;
+          }
           if (event.code !== 1000 && event.code !== 1005) {
             this.onError?.(new Error(`Deepgram closed: ${event.code}`));
           }
@@ -196,6 +258,8 @@ export class DeepgramSTT {
   }
 
   stop() {
+    // Reset reconnect state so a manual stop doesn't trigger reconnect
+    this._reconnectAttempts = 3;
     this.isRunning = false;
     if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
       try {

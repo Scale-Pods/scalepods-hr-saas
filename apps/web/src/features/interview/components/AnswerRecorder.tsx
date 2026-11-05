@@ -4,7 +4,7 @@ import { DeepgramSTT } from "../utils/deepgram";
 import { getAudioStream } from "../utils/mediaHelpers";
 import { normalizeTechnicalSpeech } from "../utils/speechNormalizer";
 
-const SILENCE_TIMEOUT_MS = 7000;
+const SILENCE_TIMEOUT_MS = 12000;
 const COUNTDOWN_TENTHS = Math.floor(SILENCE_TIMEOUT_MS / 100);
 const THINKING_TIMEOUT_MS = 35000;
 const THINKING_TENTHS = Math.floor(THINKING_TIMEOUT_MS / 100);
@@ -379,10 +379,14 @@ export function AnswerRecorder({
           recognition.onend = () => {
             if (gen !== generationRef.current || !isRecordingRef.current) return;
             if (currentSessionFinal.trim()) {
-              accumulatedWebSpeechRef.current = (
-                (accumulatedWebSpeechRef.current ? `${accumulatedWebSpeechRef.current} ` : "") +
-                currentSessionFinal.trim()
-              ).trim();
+              // Normalize before accumulating so technical terms are corrected
+              // even when chunks are assembled across recognition restarts
+              accumulatedWebSpeechRef.current = normalizeTechnicalSpeech(
+                (
+                  (accumulatedWebSpeechRef.current ? `${accumulatedWebSpeechRef.current} ` : "") +
+                  currentSessionFinal.trim()
+                ).trim(),
+              );
               currentSessionFinal = "";
             }
             // Seamless restart without dropped window
@@ -476,7 +480,7 @@ export function AnswerRecorder({
               }
               const vocalEnergy = vocalBandSum / vocalBinsCount;
 
-              if (calibrationTicks < 10) {
+              if (calibrationTicks < 25) {
                 calibrationTicks++;
                 ambientNoiseFloor =
                   ambientNoiseFloor === 0 ? vocalEnergy : Math.max(ambientNoiseFloor, vocalEnergy);
@@ -583,7 +587,7 @@ export function AnswerRecorder({
       // Start Web Speech API immediately for zero-latency local speech capture
       startWebSpeechFallback(gen);
 
-      // Connect to Deepgram Nova-2 streaming
+      // Connect to Deepgram Nova-3 streaming (nova-3 with optimised endpointing)
       if (DeepgramSTT.isConfigured()) {
         try {
           const deepgram = new DeepgramSTT({

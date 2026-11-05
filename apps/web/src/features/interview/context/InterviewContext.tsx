@@ -484,12 +484,14 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           type: q.source === "llm_ts_followup" ? "follow_up" : q.question_type,
         }));
 
-      // Count only primary questions (exclude intro and follow-ups) for the
-      // progress/closing threshold so the interviewer doesn't report inflated totals.
+      // Count only primary questions (exclude intro, follow-ups, and clarification
+      // rephrases) for the progress/closing threshold so the interviewer doesn't
+      // report inflated totals and the interview doesn't end 3-5 questions early.
       const answeredCount = questions.filter(
         (q) =>
           answeredQuestionIdsRef.current.has(q.id) &&
           q.source !== "llm_ts_followup" &&
+          q.source !== "llm_ts_clarification" &&
           q.source !== "llm_ts_dynamic_intro" &&
           q.source !== "hr_reviewed_intro",
       ).length;

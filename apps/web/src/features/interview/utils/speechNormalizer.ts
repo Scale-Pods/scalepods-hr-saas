@@ -10,9 +10,15 @@ export function normalizeTechnicalSpeech(text: string): string {
 
   const replacements: Array<[RegExp, string]> = [
     // Workflow & Automation Tools
-    [/\b(n\s*[-]?\s*8\s*[-]?\s*n|n8\s*n|n\s*8n)\b/gi, "n8n"],
+    // "air n8n", "n ate n", "en ate en" are common STT hallucinations for n8n
+    [
+      /\b(air\s*n\s*[-]?\s*8\s*[-]?\s*n|n\s*ate\s*n|en\s*ate\s*en|n\s*[-]?\s*8\s*[-]?\s*n|n8\s*n|n\s*8n)\b/gi,
+      "n8n",
+    ],
     [/\b(zap\s*i\s*er)\b/gi, "Zapier"],
     [/\b(integromat)\b/gi, "Integromat"],
+    [/\b(air\s*flow|apache\s*air\s*flow)\b/gi, "Airflow"],
+    [/\b(post\s*man)\b/gi, "Postman"],
 
     // AI, LLM & Agent Frameworks
     [/\b(lang\s*chain)\b/gi, "LangChain"],
@@ -49,12 +55,22 @@ export function normalizeTechnicalSpeech(text: string): string {
     [/\b(supa\s*base)\b/gi, "Supabase"],
     [/\b(mongo\s*db)\b/gi, "MongoDB"],
     [/\b(prisma\s*orm)\b/gi, "Prisma"],
-    [/\b(elastic\s*search)\b/gi, "Elasticsearch"],
+    [/\b(elastic\s*search|open\s*search)\b/gi, "Elasticsearch"],
+    [/\b(dynamo\s*db|dynamo\s*d\.?\s*b\.?)\b/gi, "DynamoDB"],
+
+    // Messaging & Queues
+    [/\b(rabbit\s*m\s*q|rabbit\s*mq)\b/gi, "RabbitMQ"],
+    [/\b(apache\s*kafka)\b/gi, "Kafka"],
 
     // Cloud, Infrastructure & DevOps
     [/\b(k\s*8\s*s|k8s|k-8-s)\b/gi, "Kubernetes"],
+    [/\b(docker\s*compose)\b/gi, "Docker Compose"],
+    [/\b(bit\s*bucket)\b/gi, "Bitbucket"],
+    [/\b(github\s*actions?)\b/gi, "GitHub Actions"],
     [/\b(ver\s*cell|ver\s*sell)\b/gi, "Vercel"],
     [/\b(net\s*li\s*fy)\b/gi, "Netlify"],
+    [/\b(fire\s*base)\b/gi, "Firebase"],
+    [/\b(big\s*query)\b/gi, "BigQuery"],
     [/\b(micro\s*services|micro\s*service)\b/gi, "microservices"],
     [/\b(A\s*W\s*S)\b/g, "AWS"],
     [/\b(G\s*C\s*P)\b/g, "GCP"],
@@ -62,6 +78,7 @@ export function normalizeTechnicalSpeech(text: string): string {
     // Python & Backend
     [/\b(node\s*js)\b/gi, "Node.js"],
     [/\b(express\s*js)\b/gi, "Express.js"],
+    [/\b(java\s*spring|spring\s*boot)\b/gi, "Spring Boot"],
   ];
 
   for (const [pattern, replacement] of replacements) {
