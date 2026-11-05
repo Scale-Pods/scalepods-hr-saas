@@ -295,6 +295,10 @@ export function extractAnswerEntities(answer: string): ExtractedAnswerDetails {
       key: "team collaboration and code reviews",
       match: /\b(code review|pr|pull request|stakeholder|teammate|mentor|leadership)\b/i,
     },
+    {
+      key: "LangChain and AI agent pipelines",
+      match: /\b(langchain|langgraph|agent|agents|rag|prompt chaining)\b/i,
+    },
     { key: "n8n and workflow automation", match: /\b(n8n|webhook|webhooks)\b/i },
     { key: "Python and backend services", match: /\b(python|django|fastapi|flask)\b/i },
     { key: "Node.js and TypeScript services", match: /\b(node|nodejs|typescript|express|nest)\b/i },
@@ -328,6 +332,9 @@ export function isGenericAcknowledgment(text: string): boolean {
     "moving on to the next question",
     "that makes sense",
     "thanks for your response",
+    "let us proceed",
+    "proceed to the next",
+    "let's proceed",
   ];
   return canned.some((c) => lower === c || lower.startsWith(c));
 }
@@ -439,6 +446,12 @@ export function generateProbingFollowUp(_question: string, answer: string): stri
   }
 
   // 10. Automation & Workflows
+  if (/\b(langchain|langgraph)\b/i.test(ans)) {
+    return "When building with LangChain, how did you handle state management, tool execution error recovery, and context window limits?";
+  }
+  if (/\b(agent|agents)\b/i.test(ans)) {
+    return "When architecting those AI agents, how did you manage prompt chaining, tool execution reliability, and token latency trade-offs?";
+  }
   if (/\bn8n\b/i.test(ans)) {
     return "When connecting n8n workflows, how did you handle asynchronous worker execution, retry logic, and webhook failure fallbacks?";
   }
@@ -506,7 +519,7 @@ export function generateContextualAcknowledgment(
       `Thank you for walking me through your approach with ${primaryTopic}.`,
       `Got it, that gives great context on how you handled ${primaryTopic}.`,
       `Appreciate you breaking down your reasoning around ${primaryTopic}.`,
-      `Understood, that highlights your practical experience with ${primaryTopic} well.`,
+      `Makes sense, that highlights your practical experience with ${primaryTopic} well.`,
     ];
     return acks[index % acks.length];
   }
@@ -515,7 +528,7 @@ export function generateContextualAcknowledgment(
     "Thank you for walking me through your approach and problem-solving process.",
     "Got it, that gives helpful context on how you tackled that.",
     "Thanks for explaining that clearly. Let's move to our next topic.",
-    "Understood, that highlights your engineering reasoning well.",
+    "Makes sense, that highlights your engineering reasoning well.",
     "Appreciate you sharing those details. Let's explore another area.",
   ];
   return standardAcks[index % standardAcks.length];
@@ -749,12 +762,12 @@ const STAGE_QUESTIONS: Array<{ q: string; type: QuestionResponse["question_type"
     type: "situational",
   },
   {
-    q: "How do you handle disagreement with a teammate over an engineering approach or code review feedback?",
-    type: "behavioral",
+    q: "How do you approach database schema design, indexing, and migration strategies when handling growing data volume?",
+    type: "technical",
   },
   {
-    q: "What kind of team environment and work culture helps you do your best, highest-impact work?",
-    type: "cultural",
+    q: "How do you design API endpoints for resilience, rate limiting, and graceful degradation during service spikes?",
+    type: "technical",
   },
   { q: "Where do you see yourself growing technically over the next year?", type: "technical" },
 ];
