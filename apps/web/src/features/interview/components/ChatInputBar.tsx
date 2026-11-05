@@ -1,5 +1,5 @@
 import { Brain, Loader2, Mic, MicOff, Send } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import type { AnswerRecorderState } from "./AnswerRecorder";
 
 interface ChatInputBarProps {
@@ -35,6 +35,7 @@ export function ChatInputBar({
 
   const [typedText, setTypedText] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
   // Sync spoken transcript into input when candidate is speaking and not actively editing
   React.useEffect(() => {
@@ -48,10 +49,26 @@ export function ChatInputBar({
     if (isAiSpeaking) {
       setTypedText("");
       setIsEditing(false);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
     }
   }, [isAiSpeaking]);
 
   const effectiveText = isEditing ? typedText : typedText || transcript;
+
+  // Auto-resize textarea height to fit content smoothly as transcript or typedText updates
+  React.useEffect(() => {
+    if (typeof effectiveText !== "string") return;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const newHeight = Math.min(Math.max(el.scrollHeight, 28), 180);
+    el.style.height = `${newHeight}px`;
+    if (el.scrollHeight > 180) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [effectiveText]);
 
   const secondsLeft = (silenceCountdown / 10).toFixed(1);
   const countdownPct = countdownTenths > 0 ? silenceCountdown / countdownTenths : 0;
@@ -88,6 +105,7 @@ export function ChatInputBar({
 
           {onSkipSpeaking && (
             <button
+              type="button"
               onClick={onSkipSpeaking}
               className="text-xs px-3 py-1.5 rounded-lg font-medium transition active:scale-95 flex items-center gap-1"
               style={{
@@ -128,6 +146,9 @@ export function ChatInputBar({
     onManualSubmit(textToSubmit || undefined);
     setTypedText("");
     setIsEditing(false);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
   };
 
   return (
@@ -135,7 +156,7 @@ export function ChatInputBar({
       <div className="chat-input-inner">
         {/* Mic icon / thinking indicator */}
         <div
-          className="shrink-0 flex items-center justify-center mt-0.5"
+          className="shrink-0 flex items-center justify-center self-end mb-1"
           style={{ width: 28, height: 28 }}
         >
           {isThinking ? (
@@ -152,7 +173,7 @@ export function ChatInputBar({
           ref={canvasRef}
           width={200}
           height={36}
-          className="rounded-lg shrink-0 mt-0.5"
+          className="rounded-lg shrink-0 self-end mb-1"
           style={{
             width: 70,
             height: 32,
@@ -161,10 +182,11 @@ export function ChatInputBar({
           }}
         />
 
-        {/* Live transcript or typed answer — candidate can speak or edit/type freely */}
+        {/* Live transcript or typed answer — candidate can speak or edit/type freely with auto-expanding height */}
         <div className="flex-1 min-w-0 px-1.5 flex items-center">
-          <input
-            type="text"
+          <textarea
+            ref={textareaRef}
+            rows={1}
             value={effectiveText}
             onChange={(e) => {
               setIsEditing(true);
@@ -176,7 +198,7 @@ export function ChatInputBar({
               }
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
               }
@@ -184,11 +206,13 @@ export function ChatInputBar({
             placeholder={
               isThinking
                 ? "Start speaking (mic active) or type your answer…"
-                : "Speak your response or type here (Enter to submit)…"
+                : "Speak your response or type here (Enter to submit, Shift+Enter for new line)…"
             }
-            className="w-full bg-transparent text-sm font-medium outline-none transition"
+            className="w-full bg-transparent text-sm font-medium outline-none resize-none leading-relaxed transition-all duration-75 overflow-y-auto py-1"
             style={{
               color: "var(--label-primary)",
+              minHeight: "26px",
+              maxHeight: "180px",
             }}
           />
         </div>
@@ -196,10 +220,11 @@ export function ChatInputBar({
         {/* Silence countdown */}
         {showCountdown && (
           <div
-            className="shrink-0 flex items-center gap-1.5 mt-0.5"
+            className="shrink-0 flex items-center gap-1.5 self-end mb-1.5"
             title="Auto-submits after silence"
           >
             <svg width={20} height={20} viewBox="0 0 20 20" className="transform -rotate-90">
+              <title>Silence countdown</title>
               <circle
                 cx={10}
                 cy={10}
@@ -244,10 +269,11 @@ export function ChatInputBar({
 
         {isThinking && (
           <div
-            className="shrink-0 flex items-center gap-1.5 mt-0.5"
+            className="shrink-0 flex items-center gap-1.5 self-end mb-1.5"
             title="Thinking time remaining"
           >
             <svg width={20} height={20} viewBox="0 0 20 20" className="transform -rotate-90">
+              <title>Thinking time remaining</title>
               <circle
                 cx={10}
                 cy={10}
@@ -282,9 +308,10 @@ export function ChatInputBar({
           const canSubmit = isRecording || isThinking || hasText;
           return (
             <button
+              type="button"
               onClick={handleSend}
               disabled={!canSubmit}
-              className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 mt-0.5"
+              className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 self-end mb-0.5"
               style={{
                 background: canSubmit ? "var(--blue)" : "var(--fill-tertiary)",
                 color: canSubmit ? "#fff" : "var(--label-quaternary)",
@@ -304,7 +331,7 @@ export function ChatInputBar({
       >
         {isThinking
           ? `Microphone active · Start speaking or typing · Auto-submits after ${SILENCE_TIMEOUT_SEC}s silence once spoken`
-          : `Auto-submits after ${SILENCE_TIMEOUT_SEC}s silence · You can also press Enter or click Submit anytime`}
+          : `Auto-submits after ${SILENCE_TIMEOUT_SEC}s silence · Press Enter to submit (Shift+Enter for newline)`}
       </p>
     </div>
   );
