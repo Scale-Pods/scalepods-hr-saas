@@ -83,19 +83,52 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 2. Fetch Candidate
-    const { data: candidate } = await supabase
-      .from("candidates")
-      .select("id, name, email, phone, metadata")
-      .eq("id", session.candidate_id)
-      .maybeSingle();
-
-    // 3. Fetch Round Instance
+    // 2. Fetch Round Instance
     const { data: roundInstance } = await supabase
       .from("round_instances")
-      .select("id, campaign_id, round_number, round_type, scheduled_at, deadline_at, account_id")
+      .select(
+        "id, campaign_id, candidate_id, application_id, round_number, round_type, scheduled_at, deadline_at, account_id",
+      )
       .eq("id", session.round_instance_id)
       .maybeSingle();
+
+    // 3. Fetch Candidate (resolve candidate_id from session or roundInstance)
+    const effectiveCandidateId = session.candidate_id || roundInstance?.candidate_id;
+    let candidate: {
+      id: string;
+      name: string | null;
+      email: string | null;
+      phone?: string | null;
+    } | null = null;
+
+    if (effectiveCandidateId) {
+      const { data: candRow } = await supabase
+        .from("candidates")
+        .select("id, name, email, phone")
+        .eq("id", effectiveCandidateId)
+        .maybeSingle();
+      if (candRow) candidate = candRow;
+    }
+
+    // Fallback: If candidate not found directly, check application
+    const effectiveAppId = session.application_id || roundInstance?.application_id;
+    let application: {
+      candidate_name?: string | null;
+      candidate_email?: string | null;
+      candidate_phone?: string | null;
+    } | null = null;
+    if (!candidate?.name && effectiveAppId) {
+      const { data: appRow } = await supabase
+        .from("applications")
+        .select("candidate_name, candidate_email, candidate_phone")
+        .eq("id", effectiveAppId)
+        .maybeSingle();
+      if (appRow) application = appRow;
+    }
+
+    const resolvedCandidateName =
+      (candidate?.name || "").trim() || (application?.candidate_name || "").trim();
+    const resolvedCandidateEmail = candidate?.email || application?.candidate_email || "";
 
     // 4. Fetch Campaign
     const campaignId = roundInstance?.campaign_id;
@@ -138,19 +171,13 @@ export async function GET(request: NextRequest) {
       if (accRow?.tier) accountTier = accRow.tier;
     }
 
-    // 7. Resolve Resume Text (from candidate metadata or decision_ledger)
+    // 7. Resolve Resume Text (from decision_ledger or candidate details)
     let resumeText = "";
-    if (candidate) {
-      const candMeta = candidate.metadata as Record<string, unknown> | null;
-      if (typeof candMeta?.resume_text === "string") {
-        resumeText = candMeta.resume_text;
-      }
-    }
-    if (!resumeText && session.candidate_id) {
+    if (effectiveCandidateId) {
       const { data: dlRow } = await supabase
         .from("decision_ledger")
         .select("reason, metadata")
-        .eq("candidate_id", session.candidate_id)
+        .eq("candidate_id", effectiveCandidateId)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -161,8 +188,8 @@ export async function GET(request: NextRequest) {
         resumeText = dlRow.reason;
       }
     }
-    if (!resumeText && candidate) {
-      resumeText = `Candidate: ${candidate.name || "Candidate"}, Email: ${candidate.email || ""}`;
+    if (!resumeText && (resolvedCandidateName || resolvedCandidateEmail)) {
+      resumeText = `Candidate: ${resolvedCandidateName || "Candidate"}, Email: ${resolvedCandidateEmail || ""}`;
     }
 
     // 8. Fetch Questions using valid columns (round_instance_id and question_number/created_at)
@@ -209,9 +236,9 @@ export async function GET(request: NextRequest) {
         recording_url: session.recording_url,
       },
       candidate: {
-        id: candidate?.id || session.candidate_id,
-        name: candidate?.name || "Candidate",
-        email: candidate?.email || "",
+        id: candidate?.id || session.candidate_id || roundInstance?.candidate_id,
+        name: resolvedCandidateName || "",
+        email: resolvedCandidateEmail,
       },
       campaign: {
         id: campaign?.id || campaignId || "",

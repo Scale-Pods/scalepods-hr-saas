@@ -151,7 +151,8 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const candidateName = data.candidate?.name || "Candidate";
+      const rawCandidateName = (data.candidate?.name || "").trim();
+      const candidateName = rawCandidateName.toLowerCase() === "candidate" ? "" : rawCandidateName;
       const existingAnswers: Array<{
         question_id: string;
         answer_text?: string;
@@ -185,7 +186,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         campaign_name: data.campaign?.name,
         jd_text: data.jdText || "",
         resume_text:
-          data.resumeText || `Candidate: ${candidateName}, Email: ${data.candidate?.email || ""}`,
+          data.resumeText ||
+          (candidateName || data.candidate?.email
+            ? `Candidate: ${candidateName || "Candidate"}, Email: ${data.candidate?.email || ""}`
+            : ""),
       };
 
       setSession(resolvedSession);

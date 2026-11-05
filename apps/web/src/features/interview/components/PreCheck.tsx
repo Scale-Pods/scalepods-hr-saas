@@ -489,13 +489,15 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
   const allRequired = checks.camera === true && checks.network === true;
   const canStart = allRequired && consented;
 
-  const candidateName =
+  const rawCandidateName =
     session?.candidate?.name ||
     (session as unknown as { candidates_ai_interview?: { name?: string } })?.candidates_ai_interview
       ?.name ||
     (session as unknown as { candidate_name?: string })?.candidate_name ||
     session?.candidate?.email ||
     "";
+  const candidateName =
+    rawCandidateName.trim().toLowerCase() === "candidate" ? "" : rawCandidateName.trim();
 
   const handleStartInterview = () => {
     stopLivePreview();
@@ -528,25 +530,25 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
           </p>
         </div>
 
-        {/* Candidate Info Card */}
-        {candidateName && (
-          <div className="card p-4 mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+        {/* Info Card */}
+        <div className="card p-4 mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+          {candidateName && (
             <div className="flex items-center gap-2">
               <span style={{ color: "var(--label-tertiary)" }}>Candidate:</span>
               <span className="font-semibold" style={{ color: "var(--label-primary)" }}>
                 {candidateName}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span style={{ color: "var(--label-tertiary)" }}>Questions:</span>
-              <span style={{ color: "var(--label-primary)" }}>10-12 Questions</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span style={{ color: "var(--label-tertiary)" }}>Duration:</span>
-              <span style={{ color: "var(--label-primary)" }}>25 Minutes</span>
-            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <span style={{ color: "var(--label-tertiary)" }}>Questions:</span>
+            <span style={{ color: "var(--label-primary)" }}>10-12 Questions</span>
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <span style={{ color: "var(--label-tertiary)" }}>Duration:</span>
+            <span style={{ color: "var(--label-primary)" }}>25 Minutes</span>
+          </div>
+        </div>
 
         {/* Browser Permission Guidance Banner (if blocked or needed) */}
         {showPermissionGuide && (

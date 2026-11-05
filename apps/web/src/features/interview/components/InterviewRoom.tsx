@@ -648,7 +648,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   const candidateDisplayName =
     session.candidate?.name ||
     (session as unknown as Record<string, { name?: string }>).candidates_ai_interview?.name ||
-    "Candidate";
+    session.candidate?.email ||
+    "";
 
   return (
     <div className="min-h-screen flex flex-col" style={{ height: "100dvh", overflow: "hidden" }}>
@@ -677,9 +678,11 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
                 <h1 className="text-sm font-bold" style={{ color: "var(--label-primary)" }}>
                   AI Interview
                 </h1>
-                <p className="text-[10px]" style={{ color: "var(--label-tertiary)" }}>
-                  {candidateDisplayName}
-                </p>
+                {candidateDisplayName && (
+                  <p className="text-[10px]" style={{ color: "var(--label-tertiary)" }}>
+                    {candidateDisplayName}
+                  </p>
+                )}
               </div>
             </div>
 
