@@ -328,21 +328,21 @@ export function AnswerRecorder({
           recognition.onresult = (event: any) => {
             if (gen !== generationRef.current) return;
 
-            let final = "";
-            let interim = "";
+            let finalPart = "";
+            let interimPart = "";
             for (let i = 0; i < event.results.length; i++) {
               if (event.results[i].isFinal) {
-                final += event.results[i][0].transcript + " ";
+                finalPart += event.results[i][0].transcript + " ";
               } else {
-                interim += event.results[i][0].transcript;
+                interimPart += event.results[i][0].transcript;
               }
             }
-            currentSessionFinal = final;
+            currentSessionFinal = finalPart;
 
             const base = accumulatedWebSpeechRef.current
               ? `${accumulatedWebSpeechRef.current} `
               : "";
-            const combined = (base + final + interim).trim();
+            const combined = (base + finalPart + interimPart).trim();
             const normalized = normalizeTechnicalSpeech(combined);
 
             if (normalized.trim().length > 0) {
@@ -354,7 +354,8 @@ export function AnswerRecorder({
                 clearThinkingTimer();
               }
 
-              if (isVoiceActiveRef.current || normalized.length > prevTranscript.length) {
+              const newWordsAdded = normalized.trim().length > prevTranscript.trim().length;
+              if (isVoiceActiveRef.current || newWordsAdded) {
                 clearCountdown();
               } else {
                 startCountdown();
@@ -377,12 +378,12 @@ export function AnswerRecorder({
               ).trim();
               currentSessionFinal = "";
             }
-            // Short timeout before restart to prevent busy loop on connection glitches
-            setTimeout(() => {
-              if (gen === generationRef.current && isRecordingRef.current) {
+            // Seamless restart without dropped window
+            if (gen === generationRef.current && isRecordingRef.current) {
+              try {
                 launchInstance();
-              }
-            }, 250);
+              } catch {}
+            }
           };
 
           recognition.start();
@@ -503,7 +504,10 @@ export function AnswerRecorder({
         chunksRef.current = [];
 
         recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) chunksRef.current.push(e.data);
+          if (e.data.size > 0) {
+            chunksRef.current.push(e.data);
+            deepgramRef.current?.sendAudio(e.data);
+          }
         };
 
         recorder.onstop = () => {
@@ -545,24 +549,13 @@ export function AnswerRecorder({
 
       // Start STT: Try Deepgram with timeout, fallback immediately to Web Speech API
       let sttConnected = false;
-      let accumulatedFinal = "";
 
       if (DeepgramSTT.isConfigured()) {
         try {
           const deepgram = new DeepgramSTT({
-            onTranscript: (rawText, isFinal) => {
+            onTranscript: (fullText) => {
               if (gen !== generationRef.current) return;
-              if (isFinal) {
-                if (rawText.trim()) {
-                  accumulatedFinal =
-                    (accumulatedFinal ? `${accumulatedFinal} ` : "") + rawText.trim();
-                }
-              }
-              const display = isFinal
-                ? accumulatedFinal
-                : ((accumulatedFinal ? `${accumulatedFinal} ` : "") + rawText.trim()).trim();
-
-              const normalized = normalizeTechnicalSpeech(display);
+              const normalized = normalizeTechnicalSpeech(fullText);
               if (normalized.trim().length > 0) {
                 const prevTranscript = transcriptRef.current;
                 setTranscript(normalized);
@@ -582,9 +575,6 @@ export function AnswerRecorder({
             },
             onError: (err) => {
               console.warn("Deepgram WebSocket error, falling back to Web Speech API:", err);
-              if (accumulatedFinal.trim()) {
-                accumulatedWebSpeechRef.current = accumulatedFinal.trim();
-              }
               startWebSpeechFallback(gen);
             },
             onClose: () => {
@@ -594,18 +584,15 @@ export function AnswerRecorder({
                 !submittedRef.current &&
                 !shouldSubmitRef.current
               ) {
-                if (accumulatedFinal.trim()) {
-                  accumulatedWebSpeechRef.current = accumulatedFinal.trim();
-                }
                 startWebSpeechFallback(gen);
               }
             },
           });
           deepgramRef.current = deepgram;
 
-          const connectPromise = deepgram.start(stream);
+          const connectPromise = deepgram.start();
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Deepgram timeout")), 3000),
+            setTimeout(() => reject(new Error("Deepgram timeout")), 4000),
           );
           await Promise.race([connectPromise, timeoutPromise]);
           setSttProvider("deepgram");

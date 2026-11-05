@@ -640,8 +640,7 @@ export async function analyzeAnswerInRealtime(
         Boolean(parsed.requested_clarification)) &&
       canAdaptPrimary
         ? "rephrase_primary"
-        : (rawAction === "follow_up" || isVague || insufficiencyReason || words.length >= 8) &&
-            canAdaptPrimary
+        : (rawAction === "follow_up" || Boolean(insufficiencyReason)) && canAdaptPrimary
           ? "follow_up"
           : "advance"
     ) as LiveAssessmentNote["recommended_action"];

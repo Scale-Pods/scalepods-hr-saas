@@ -50,6 +50,7 @@ export class DeepgramSTT {
   private onOpen?: () => void;
   private onClose?: () => void;
   private isRunning = false;
+  private accumulatedFinalTranscript = "";
 
   constructor(options: DeepgramSTTOptions = {}) {
     this.apiKey =
@@ -66,26 +67,33 @@ export class DeepgramSTT {
   }
 
   static isConfigured(): boolean {
-    return Boolean(typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY);
+    const key =
+      typeof process !== "undefined" ? process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY : undefined;
+    return Boolean(key && key.trim().length > 0 && !key.includes("your-deepgram-api-key"));
   }
 
   isAvailable(): boolean {
     return Boolean(this.apiKey && typeof WebSocket !== "undefined");
   }
 
-  start(audioStream: MediaStream): Promise<void> {
+  start(audioStream?: MediaStream): Promise<void> {
     if (!this.apiKey) {
       return Promise.reject(new Error("Deepgram API key not provided"));
     }
+
+    this.accumulatedFinalTranscript = "";
 
     return new Promise((resolve, reject) => {
       try {
         const params = new URLSearchParams({
           model: this.model,
           language: this.language,
-          smart_format: "true",
+          smart_formatting: "true",
           punctuate: "true",
           interim_results: "true",
+          vad_events: "true",
+          endpointing: "300",
+          no_delay: "true",
         });
 
         for (const kw of this.keywords) {
@@ -97,7 +105,9 @@ export class DeepgramSTT {
 
         this.socket.onopen = () => {
           this.isRunning = true;
-          this.startMediaRecorder(audioStream);
+          if (audioStream) {
+            this.startMediaRecorder(audioStream);
+          }
           this.onOpen?.();
           resolve();
         };
@@ -106,11 +116,23 @@ export class DeepgramSTT {
           try {
             const data = JSON.parse(event.data);
             const alt = data.channel?.alternatives?.[0];
-            if (alt?.transcript) {
-              const isFinal = Boolean(data.is_final);
-              this.onTranscript?.(alt.transcript, isFinal);
+            const text = alt?.transcript || "";
+            if (!text.trim()) return;
+
+            if (data.is_final) {
+              this.accumulatedFinalTranscript = (
+                this.accumulatedFinalTranscript +
+                " " +
+                text.trim()
+              ).trim();
+              this.onTranscript?.(this.accumulatedFinalTranscript, true);
+            } else {
+              const liveText = (this.accumulatedFinalTranscript + " " + text.trim()).trim();
+              this.onTranscript?.(liveText, false);
             }
-          } catch {}
+          } catch (err) {
+            console.error("[DeepgramSTT] Error parsing socket message:", err);
+          }
         };
 
         this.socket.onerror = (event) => {
@@ -134,18 +156,40 @@ export class DeepgramSTT {
     });
   }
 
+  sendAudio(data: Blob) {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN && data.size > 0) {
+      this.socket.send(data);
+    }
+  }
+
   private startMediaRecorder(audioStream: MediaStream) {
     try {
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      this.mediaRecorder = new MediaRecorder(audioStream, { mimeType: mime });
+      const candidates = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/aac",
+        "audio/wav",
+      ];
+      let mime = "";
+      if (typeof MediaRecorder !== "undefined") {
+        for (const c of candidates) {
+          if (MediaRecorder.isTypeSupported(c)) {
+            mime = c;
+            break;
+          }
+        }
+      }
+      this.mediaRecorder = mime
+        ? new MediaRecorder(audioStream, { mimeType: mime })
+        : new MediaRecorder(audioStream);
+
       this.mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0 && this.socket?.readyState === WebSocket.OPEN) {
           this.socket.send(e.data);
         }
       };
-      this.mediaRecorder.start(250);
+      this.mediaRecorder.start(100);
     } catch (e) {
       console.warn("Failed to start Deepgram MediaRecorder:", e);
     }
