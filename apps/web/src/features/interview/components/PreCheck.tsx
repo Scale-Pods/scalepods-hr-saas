@@ -107,6 +107,15 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
+  // Set preview video element with instant binding
+  const setPreviewVideoRef = useCallback((el: HTMLVideoElement | null) => {
+    previewVideoRef.current = el;
+    if (el && previewStreamRef.current) {
+      el.srcObject = previewStreamRef.current;
+      el.play().catch(() => {});
+    }
+  }, []);
+
   // Setup real-time audio volume monitoring for candidate microphone testing
   const attachAudioMeter = useCallback((stream: MediaStream) => {
     try {
@@ -120,6 +129,9 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
 
       const audioCtx = new AudioCtx();
       audioContextRef.current = audioCtx;
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+      }
 
       const source = audioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
       const analyser = audioCtx.createAnalyser();
@@ -173,6 +185,7 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
     previewStreamRef.current = newStream;
     if (previewVideoRef.current) {
       previewVideoRef.current.srcObject = newStream;
+      previewVideoRef.current.play().catch(() => {});
     }
   }, []);
 
@@ -438,6 +451,32 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
     };
   }, [runAllChecks, stopLivePreview]);
 
+  // Ensure video element receives stream and plays as soon as camera is verified
+  useEffect(() => {
+    if (checks.camera === true && previewVideoRef.current && previewStreamRef.current) {
+      previewVideoRef.current.srcObject = previewStreamRef.current;
+      previewVideoRef.current.play().catch(() => {});
+    }
+  }, [checks.camera]);
+
+  // Resume suspended AudioContext on candidate interaction
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+        audioContextRef.current.resume().catch(() => {});
+      }
+      if (previewVideoRef.current?.paused && previewStreamRef.current) {
+        previewVideoRef.current.play().catch(() => {});
+      }
+    };
+    window.addEventListener("click", handleUserInteraction);
+    window.addEventListener("pointerdown", handleUserInteraction);
+    return () => {
+      window.removeEventListener("click", handleUserInteraction);
+      window.removeEventListener("pointerdown", handleUserInteraction);
+    };
+  }, []);
+
   // Staggered appearance of check list items
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -561,7 +600,7 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
 
             <div className="relative aspect-video rounded-xl overflow-hidden bg-black/80 flex items-center justify-center border border-white/10 shadow-inner">
               <video
-                ref={previewVideoRef}
+                ref={setPreviewVideoRef}
                 autoPlay
                 playsInline
                 muted

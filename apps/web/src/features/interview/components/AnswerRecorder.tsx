@@ -178,7 +178,7 @@ export function AnswerRecorder({
       isRecordingRef.current = false;
       accumulatedWebSpeechRef.current = "";
 
-      if (overrideText && overrideText.trim()) {
+      if (overrideText?.trim()) {
         transcriptRef.current = overrideText.trim();
         setTranscript(transcriptRef.current);
       } else if (!transcriptRef.current.trim()) {
@@ -332,7 +332,7 @@ export function AnswerRecorder({
             let interimPart = "";
             for (let i = 0; i < event.results.length; i++) {
               if (event.results[i].isFinal) {
-                finalPart += event.results[i][0].transcript + " ";
+                finalPart += `${event.results[i][0].transcript} `;
               } else {
                 interimPart += event.results[i][0].transcript;
               }
@@ -347,8 +347,13 @@ export function AnswerRecorder({
 
             if (normalized.trim().length > 0) {
               const prevTranscript = transcriptRef.current;
-              setTranscript(normalized);
-              transcriptRef.current = normalized;
+              if (
+                normalized.trim().length >= prevTranscript.trim().length ||
+                prevTranscript.trim().length === 0
+              ) {
+                setTranscript(normalized);
+                transcriptRef.current = normalized;
+              }
 
               if (isThinkingRef.current) {
                 clearThinkingTimer();
@@ -411,7 +416,20 @@ export function AnswerRecorder({
     accumulatedWebSpeechRef.current = "";
     audioBlobRef.current = null;
     try {
-      const stream = audioStream || (await getAudioStream());
+      let stream = audioStream;
+      const isStreamLive =
+        stream &&
+        stream.getAudioTracks().length > 0 &&
+        stream.getAudioTracks().some((t) => t.readyState === "live" && t.enabled);
+
+      if (!isStreamLive) {
+        try {
+          stream = await getAudioStream();
+        } catch (streamErr) {
+          console.warn("Failed to acquire fresh audio stream:", streamErr);
+        }
+      }
+
       if (!stream) {
         console.warn("No audio stream available");
         startWebSpeechFallback(gen);
@@ -500,11 +518,20 @@ export function AnswerRecorder({
 
       // Start MediaRecorder for capturing answer audio blob
       try {
-        const recorder = new MediaRecorder(stream);
+        const preferredMime = [
+          "audio/webm;codecs=opus",
+          "audio/webm",
+          "audio/ogg;codecs=opus",
+          "audio/mp4",
+        ].find((m) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(m));
+
+        const recorder = preferredMime
+          ? new MediaRecorder(stream, { mimeType: preferredMime })
+          : new MediaRecorder(stream);
         chunksRef.current = [];
 
         recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) {
+          if (e.data && e.data.size > 0) {
             chunksRef.current.push(e.data);
             deepgramRef.current?.sendAudio(e.data);
           }
@@ -513,7 +540,7 @@ export function AnswerRecorder({
         recorder.onstop = () => {
           if (gen !== generationRef.current) return;
 
-          const actualType = recorder.mimeType || "audio/webm";
+          const actualType = recorder.mimeType || preferredMime || "audio/webm";
           const blob = new Blob(chunksRef.current, { type: actualType });
           audioBlobRef.current = blob;
           clearAudioActivityMonitor();
@@ -530,7 +557,8 @@ export function AnswerRecorder({
           }
         };
 
-        recorder.start();
+        // Pass 100ms timeslice so ondataavailable continuously emits chunks to Deepgram
+        recorder.start(100);
         mediaRecorderRef.current = recorder;
       } catch (recErr) {
         console.warn("MediaRecorder audio capture skipped:", recErr);
@@ -547,9 +575,10 @@ export function AnswerRecorder({
 
       intervalRef.current = setInterval(() => setDuration((prev) => prev + 1), 1000);
 
-      // Start STT: Try Deepgram with timeout, fallback immediately to Web Speech API
-      let sttConnected = false;
+      // Start Web Speech API immediately for zero-latency local speech capture
+      startWebSpeechFallback(gen);
 
+      // Connect to Deepgram Nova-2 streaming
       if (DeepgramSTT.isConfigured()) {
         try {
           const deepgram = new DeepgramSTT({
@@ -557,7 +586,7 @@ export function AnswerRecorder({
               if (gen !== generationRef.current) return;
               const normalized = normalizeTechnicalSpeech(fullText);
               if (normalized.trim().length > 0) {
-                const prevTranscript = transcriptRef.current;
+                setSttProvider("deepgram");
                 setTranscript(normalized);
                 transcriptRef.current = normalized;
 
@@ -565,8 +594,7 @@ export function AnswerRecorder({
                   clearThinkingTimer();
                 }
 
-                const newWordsAdded = normalized.trim().length > prevTranscript.trim().length;
-                if (isVoiceActiveRef.current || newWordsAdded) {
+                if (isVoiceActiveRef.current) {
                   clearCountdown();
                 } else {
                   startCountdown();
@@ -574,36 +602,21 @@ export function AnswerRecorder({
               }
             },
             onError: (err) => {
-              console.warn("Deepgram WebSocket error, falling back to Web Speech API:", err);
-              startWebSpeechFallback(gen);
+              console.warn("Deepgram WebSocket error:", err);
             },
-            onClose: () => {
-              if (
-                isRecordingRef.current &&
-                gen === generationRef.current &&
-                !submittedRef.current &&
-                !shouldSubmitRef.current
-              ) {
-                startWebSpeechFallback(gen);
-              }
-            },
+            onClose: () => {},
           });
           deepgramRef.current = deepgram;
 
           const connectPromise = deepgram.start();
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Deepgram timeout")), 4000),
+            setTimeout(() => reject(new Error("Deepgram timeout")), 3000),
           );
           await Promise.race([connectPromise, timeoutPromise]);
           setSttProvider("deepgram");
-          sttConnected = true;
         } catch (err) {
-          console.warn("Deepgram unavailable, falling back to Web Speech API:", err);
+          console.warn("Deepgram unavailable, Web Speech API handling transcription:", err);
         }
-      }
-
-      if (!sttConnected) {
-        startWebSpeechFallback(gen);
       }
     } catch (err) {
       console.error("Failed to start recording stream:", err);
