@@ -389,19 +389,28 @@ export async function POST(request: NextRequest) {
         if (roundInstanceId) {
           const { data: existingAnswers } = await supabase
             .from("interview_answers")
-            .select("id, answer_text")
+            .select("id, answer_text, ai_live_note")
             .eq("round_instance_id", roundInstanceId)
             .eq("question_id", questionId)
             .order("answered_at", { ascending: false })
             .limit(1);
 
           if (existingAnswers && existingAnswers.length > 0) {
+            const prevNote =
+              typeof existingAnswers[0].ai_live_note === "object" &&
+              existingAnswers[0].ai_live_note !== null
+                ? (existingAnswers[0].ai_live_note as Record<string, unknown>)
+                : {};
+            const mergedNote = aiLiveNote
+              ? { ...prevNote, ...aiLiveNote }
+              : existingAnswers[0].ai_live_note;
+
             const { data: updated, error: updateErr } = await supabase
               .from("interview_answers")
               .update({
                 answer_text: answerText || "",
                 answered_at: nowIso,
-                ...(aiLiveNote ? { ai_live_note: aiLiveNote } : {}),
+                ...(mergedNote ? { ai_live_note: mergedNote } : {}),
               })
               .eq("id", existingAnswers[0].id)
               .select()

@@ -14,7 +14,11 @@ import {
 } from "@scalepods/core";
 import { BUCKETS } from "@/lib/storage";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { detectCandidateIntent } from "../interview/utils/llm";
+import {
+  detectCandidateIntent,
+  generateContextualAcknowledgment,
+  isGenericAcknowledgment,
+} from "../interview/utils/llm";
 
 export type { ScorecardRow };
 
@@ -826,32 +830,21 @@ export async function fetchCandidateProfile(
               existing.answered_at = ans.answered_at;
               if (liveNote && Object.keys(liveNote).length > 0) {
                 existing.ai_note = liveNote;
-                let cleanAck: string | null = liveNote.interviewer_text || null;
-                if (cleanAck?.toLowerCase().includes("walking me through")) {
-                  const intent = detectCandidateIntent(existing.answer_text, qText);
-                  if (intent !== "substantive_answer") {
-                    cleanAck = null;
-                  }
+                if (liveNote.interviewer_text) {
+                  existing.interviewer_text = liveNote.interviewer_text;
                 }
-                existing.interviewer_text = cleanAck;
               }
             }
           } else {
             const ansText = (ans.answer_text || "").trim();
-            let cleanAck: string | null = liveNote.interviewer_text || null;
-            if (cleanAck?.toLowerCase().includes("walking me through")) {
-              const intent = detectCandidateIntent(ansText, qText);
-              if (intent !== "substantive_answer") {
-                cleanAck = null;
-              }
-            }
+            const rawAck: string | null = liveNote.interviewer_text || null;
 
             turnsMap.set(normKey, {
               id: ans.id,
               question_number: counter++,
               question_text: qText,
               question_type: q?.question_type || liveNote.question_type || "Technical",
-              interviewer_text: cleanAck,
+              interviewer_text: rawAck,
               answer_text: ansText,
               answered_at: ans.answered_at || new Date().toISOString(),
               ai_note: liveNote,
@@ -859,7 +852,38 @@ export async function fetchCandidateProfile(
           }
         }
 
-        mappedTranscripts.push(...Array.from(turnsMap.values()));
+        const rawTurns = Array.from(turnsMap.values());
+        for (let i = 0; i < rawTurns.length; i++) {
+          const currentTurn = rawTurns[i];
+          if (i === 0) {
+            // Opening question turn (e.g. "How are you doing today?") does not have a preceding acknowledgment
+            currentTurn.interviewer_text = null;
+            continue;
+          }
+
+          const prevTurn = rawTurns[i - 1];
+          const prevAnswer = (prevTurn.answer_text || "").trim();
+          const prevQuestion = prevTurn.question_text || "";
+          const existingAck = (currentTurn.interviewer_text || "").trim();
+
+          const prevIntent = detectCandidateIntent(prevAnswer, prevQuestion);
+          const isGeneric =
+            existingAck.toLowerCase().includes("walking me through") ||
+            isGenericAcknowledgment(existingAck);
+          const needsCorrection = isGeneric && prevIntent !== "substantive_answer";
+
+          if (!existingAck || needsCorrection) {
+            currentTurn.interviewer_text = generateContextualAcknowledgment(
+              prevAnswer,
+              prevQuestion,
+              i,
+              currentTurn.question_type || "technical",
+              prevIntent === "clarification_request",
+            );
+          }
+        }
+
+        mappedTranscripts.push(...rawTurns);
       } else if (questionsList.length > 0) {
         // No answers recorded yet; show deduplicated list of questions
         const seenTexts = new Set<string>();

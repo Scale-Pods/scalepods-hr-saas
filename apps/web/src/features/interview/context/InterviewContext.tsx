@@ -101,6 +101,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const lastAssessmentNoteRef = useRef<LiveAssessmentNote | null>(null);
   const answeredQuestionIdsRef = useRef<Set<string>>(new Set());
   const localAnswersMapRef = useRef<Map<string, string>>(new Map());
+  const questionAckMapRef = useRef<Map<string, string>>(new Map());
   const isGeneratingTurnRef = useRef(false);
   const sessionMetadataRef = useRef<{
     round_number?: number;
@@ -123,6 +124,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
     setLoadError("");
     answeredQuestionIdsRef.current.clear();
     localAnswersMapRef.current.clear();
+    questionAckMapRef.current.clear();
     setLiveAssessmentNotes([]);
     liveAssessmentNotesRef.current = [];
     setAuthenticitySignals([]);
@@ -309,11 +311,13 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         : null,
     );
 
+    questionAckMapRef.current.clear();
     const firstQ = questions[0];
     const initialQuestionText = firstQ?.question_text || INTRO_QUESTION_TEXT;
     const initialQuestionType = inferQuestionType(initialQuestionText, firstQ?.question_type);
     if (firstQ?.id) {
       setCurrentQuestionId(firstQ.id);
+      questionAckMapRef.current.set(firstQ.id, "");
     }
 
     setCurrentTurn({
@@ -333,7 +337,15 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       setAnsweredCount(answeredQuestionIdsRef.current.size);
       localAnswersMapRef.current.set(questionId, answerText);
 
-      // Persist raw answer immediately to database
+      const currentQuestion = questions.find((q) => q.id === questionId);
+      const ackText =
+        questionAckMapRef.current.get(questionId) ||
+        (currentTurn?.question_text === currentQuestion?.question_text
+          ? currentTurn?.interviewer_text
+          : null) ||
+        "";
+
+      // Persist raw answer immediately to database with current interviewer_text
       try {
         await fetch("/api/interview/session", {
           method: "POST",
@@ -343,13 +355,16 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             sessionId: session.id,
             questionId,
             answerText,
+            aiLiveNote: {
+              interviewer_text: ackText,
+              question_text: currentQuestion?.question_text,
+            },
           }),
         });
       } catch (err) {
         console.warn("Failed to persist answer to DB:", err);
       }
 
-      const currentQuestion = questions.find((q) => q.id === questionId);
       if (!currentQuestion || !answerText) return;
 
       const isAlreadyFollowUp = currentQuestion.source === "llm_ts_followup";
@@ -404,9 +419,14 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        lastAssessmentNoteRef.current = note;
-        setLiveAssessmentNotes((prev) => [...prev, note]);
-        liveAssessmentNotesRef.current = [...liveAssessmentNotesRef.current, note];
+        const fullNote = {
+          ...note,
+          interviewer_text: ackText,
+          question_text: currentQuestion.question_text,
+        };
+        lastAssessmentNoteRef.current = fullNote;
+        setLiveAssessmentNotes((prev) => [...prev, fullNote]);
+        liveAssessmentNotesRef.current = [...liveAssessmentNotesRef.current, fullNote];
 
         const signal: AuthenticitySignal = {
           question_id: questionId,
@@ -417,7 +437,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         authenticitySignalsRef.current = [...authenticitySignalsRef.current, signal];
         setAuthenticitySignals((prev) => [...prev, signal]);
 
-        // Update answer row with completed live assessment note
+        // Update answer row with completed live assessment note and interviewer_text
         fetch("/api/interview/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -426,7 +446,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             sessionId: session.id,
             questionId,
             answerText,
-            aiLiveNote: note,
+            aiLiveNote: fullNote,
           }),
         }).catch((err) => console.warn("Failed to persist live assessment note:", err));
       } catch (err) {
@@ -435,7 +455,15 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         setIsAnalyzingAnswer(false);
       }
     },
-    [session, questions, resumeText, jdText, blueprint],
+    [
+      session,
+      questions,
+      resumeText,
+      jdText,
+      blueprint,
+      currentTurn?.interviewer_text,
+      currentTurn?.question_text,
+    ],
   );
 
   const generateNextTurn = useCallback(async () => {
@@ -548,6 +576,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
       if (turn.question_text) {
         const isFollowUp = turn.turn_type === "follow_up";
+        let targetQId = "";
         if (!isFollowUp && nextPlannedQuestion) {
           // Guarantee that the spoken question, chat question, and recorded answer question ID match 100%
           turn.question_text = nextPlannedQuestion.question_text;
@@ -557,6 +586,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           );
           turn.question_type = inferredType;
           setCurrentQuestionId(nextPlannedQuestion.id);
+          targetQId = nextPlannedQuestion.id;
           const plannedIdx = questions.findIndex((q) => q.id === nextPlannedQuestion.id);
           if (plannedIdx !== -1) {
             setCurrentQuestionIndex(plannedIdx);
@@ -607,7 +637,12 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
           setQuestions((prev) => [...prev, nextQ]);
           setCurrentQuestionId(nextQ.id);
+          targetQId = nextQ.id;
           setCurrentQuestionIndex((prev) => prev + 1);
+        }
+
+        if (targetQId && turn.interviewer_text) {
+          questionAckMapRef.current.set(targetQId, turn.interviewer_text.trim());
         }
       }
 

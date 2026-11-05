@@ -2979,18 +2979,22 @@ function InterviewMediaAndTranscriptSection({
                   </div>
 
                   {/* Interviewer Acknowledgment (if present and distinct) */}
-                  {turn.interviewer_text &&
-                    turn.interviewer_text.trim() !== turn.question_text.trim() && (
+                  {(() => {
+                    const ack = (turn.interviewer_text || "").replace(/^["']|["']$/g, "").trim();
+                    if (!ack || ack.toLowerCase() === turn.question_text.trim().toLowerCase())
+                      return null;
+                    return (
                       <div className="rounded-lg bg-muted/20 p-2.5 text-xs text-muted-foreground italic border border-border/20 flex items-start gap-2">
                         <Bot className="h-3.5 w-3.5 mt-0.5 text-primary shrink-0 not-italic" />
                         <div>
                           <span className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground/80 block not-italic">
                             Interviewer Acknowledgment
                           </span>
-                          <span>"{turn.interviewer_text}"</span>
+                          <span>"{ack}"</span>
                         </div>
                       </div>
-                    )}
+                    );
+                  })()}
 
                   {/* Interviewer Question */}
                   <div className="rounded-lg bg-muted/40 p-2.5 text-xs text-foreground leading-relaxed border border-border/30">
