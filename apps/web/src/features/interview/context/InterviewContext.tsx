@@ -154,7 +154,20 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       }
 
       const rawCandidateName = (data.candidate?.name || "").trim();
-      const candidateName = rawCandidateName.toLowerCase() === "candidate" ? "" : rawCandidateName;
+      const candEmail = (data.candidate?.email || "").trim();
+      let candidateName = rawCandidateName.toLowerCase() === "candidate" ? "" : rawCandidateName;
+      if (!candidateName && candEmail && candEmail.includes("@")) {
+        const prefix = candEmail
+          .split("@")[0]
+          .replace(/[0-9._-]+/g, " ")
+          .trim();
+        if (prefix) {
+          candidateName = prefix
+            .split(/\s+/)
+            .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(" ");
+        }
+      }
       const existingAnswers: Array<{
         question_id: string;
         answer_text?: string;

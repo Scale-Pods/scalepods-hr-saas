@@ -19,6 +19,19 @@ function getN8nBase(): string {
   );
 }
 
+function formatNameFromEmail(email: string): string {
+  if (!email?.includes("@")) return "";
+  const prefix = email
+    .split("@")[0]
+    .replace(/[0-9._-]+/g, " ")
+    .trim();
+  if (!prefix) return "";
+  return prefix
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -126,10 +139,32 @@ export async function GET(request: NextRequest) {
       if (appRow) application = appRow;
     }
 
+    // Secondary fallback: lookup application by effectiveCandidateId
+    if (
+      (!candidate?.name || candidate.name.toLowerCase() === "candidate") &&
+      effectiveCandidateId &&
+      !application?.candidate_name
+    ) {
+      const { data: appByCand } = await supabase
+        .from("applications")
+        .select("candidate_name, candidate_email, candidate_phone")
+        .eq("candidate_id", effectiveCandidateId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (appByCand?.candidate_name) application = appByCand;
+    }
+
+    const resolvedEmail = candidate?.email || application?.candidate_email || "";
     const rawName = (candidate?.name || "").trim() || (application?.candidate_name || "").trim();
-    // Strip placeholder values so the UI shows blank rather than "Candidate"
-    const resolvedCandidateName = rawName.toLowerCase() === "candidate" ? "" : rawName;
-    const resolvedCandidateEmail = candidate?.email || application?.candidate_email || "";
+    // Use real name, or construct friendly name from email if placeholder was used
+    const resolvedCandidateName =
+      rawName.toLowerCase() === "candidate" || !rawName
+        ? resolvedEmail
+          ? formatNameFromEmail(resolvedEmail)
+          : ""
+        : rawName;
+    const resolvedCandidateEmail = resolvedEmail;
 
     // 4. Fetch Campaign
     const campaignId = roundInstance?.campaign_id;

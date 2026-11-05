@@ -645,11 +645,25 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   );
   const isClosingTurn = currentTurn?.turn_type === "closing";
 
-  const candidateDisplayName =
+  const rawCandName =
     session.candidate?.name ||
     (session as unknown as Record<string, { name?: string }>).candidates_ai_interview?.name ||
-    session.candidate?.email ||
     "";
+  const candEmail = session.candidate?.email || "";
+  let candidateDisplayName =
+    rawCandName.trim().toLowerCase() === "candidate" ? "" : rawCandName.trim();
+  if (!candidateDisplayName && candEmail && candEmail.includes("@")) {
+    const prefix = candEmail
+      .split("@")[0]
+      .replace(/[0-9._-]+/g, " ")
+      .trim();
+    if (prefix) {
+      candidateDisplayName = prefix
+        .split(/\s+/)
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col" style={{ height: "100dvh", overflow: "hidden" }}>

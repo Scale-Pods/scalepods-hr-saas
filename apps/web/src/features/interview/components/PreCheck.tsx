@@ -489,15 +489,28 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
   const allRequired = checks.camera === true && checks.network === true;
   const canStart = allRequired && consented;
 
+  const candEmail = session?.candidate?.email || "";
   const rawCandidateName =
     session?.candidate?.name ||
     (session as unknown as { candidates_ai_interview?: { name?: string } })?.candidates_ai_interview
       ?.name ||
     (session as unknown as { candidate_name?: string })?.candidate_name ||
-    session?.candidate?.email ||
     "";
-  const candidateName =
+
+  let candidateName =
     rawCandidateName.trim().toLowerCase() === "candidate" ? "" : rawCandidateName.trim();
+  if (!candidateName && candEmail && candEmail.includes("@")) {
+    const prefix = candEmail
+      .split("@")[0]
+      .replace(/[0-9._-]+/g, " ")
+      .trim();
+    if (prefix) {
+      candidateName = prefix
+        .split(/\s+/)
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
+    }
+  }
 
   const handleStartInterview = () => {
     stopLivePreview();
