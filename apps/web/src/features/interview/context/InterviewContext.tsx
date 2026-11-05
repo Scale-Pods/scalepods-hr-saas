@@ -21,6 +21,7 @@ import {
   extractJdToolsAndTech,
   generateInterviewerTurn,
   generateTargetedFollowUp,
+  getDynamicCandidateQuestion,
   inferQuestionType,
 } from "../utils/llm";
 
@@ -583,10 +584,12 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       }
       lastAssessmentNoteRef.current = null;
 
-      // Guard: never close if there are still planned questions in the round.
-      // n8n can prematurely signal "closing" after too few answers.
+      // Guard: never close if there are still planned questions in the round OR if fewer than 10 questions asked.
+      // n8n or LLM can prematurely signal "closing" after too few answers.
       const allowClosing =
-        (turn.turn_type === "closing" || !turn.should_continue) && !nextPlannedQuestion;
+        (turn.turn_type === "closing" || !turn.should_continue) &&
+        !nextPlannedQuestion &&
+        answeredCount >= 10;
       if (allowClosing) {
         setCurrentTurn({
           interviewer_text:
@@ -598,6 +601,35 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           should_continue: false,
         });
         return;
+      }
+
+      // If turn was marked closing prematurely but answeredCount < 10, generate dynamic question
+      if (
+        (turn.turn_type === "closing" || !turn.should_continue || !turn.question_text) &&
+        answeredCount < 10
+      ) {
+        console.warn(
+          `[generateNextTurn] Premature closing prevented at ${answeredCount}/10 questions. Generating dynamic candidate question.`,
+        );
+        const dynamicQ = getDynamicCandidateQuestion(
+          answeredCount,
+          history.map((h) => h.question),
+          candidateAnalysisRef.current,
+          null,
+          "context premature closing prevention",
+          resumeText,
+          jdText,
+        );
+        turn.turn_type = "question";
+        turn.should_continue = true;
+        turn.question_text = dynamicQ.question_text;
+        turn.question_type = dynamicQ.question_type;
+        turn.interviewer_text =
+          turn.interviewer_text &&
+          !turn.interviewer_text.toLowerCase().includes("brings us to the end") &&
+          !turn.interviewer_text.toLowerCase().includes("thank you so much")
+            ? turn.interviewer_text
+            : "Thank you for sharing that. Let's move into another critical technical area.";
       }
 
       if (turn.question_text) {

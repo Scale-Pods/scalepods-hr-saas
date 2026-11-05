@@ -1121,6 +1121,10 @@ export async function generateInterviewerTurn(
         action: "generate-turn",
         account_id: accountId,
         candidate_id: candidateId,
+        resume_text: resumeText,
+        resumeText: resumeText,
+        jd_text: jdText,
+        jdText: jdText,
         question: lastQ,
         answer: lastAnswer,
         history: history.map((h) => ({ question: h.question, answer: h.answer, type: h.type })),
@@ -1165,13 +1169,39 @@ export async function generateInterviewerTurn(
           )
         : rawAck;
 
-      // Guard: n8n sometimes prematurely signals "closing" after very few turns
-      // (e.g. greeting answer only). Never close if fewer than 3 primary questions
-      // were answered, OR if there are still planned questions remaining.
-      const tooFewAnswers = totalQuestions < 3;
-      const hasPlanned = Boolean(targetQuestion);
-      const allowClose = !tooFewAnswers && !hasPlanned;
-      if ((parsed.is_final_question || parsed.turn_type === "closing") && allowClose) {
+      // Guard: n8n or LLM must NEVER prematurely close before the target number of questions
+      // (default 10) have been answered, or if there is still a planned question.
+      const targetQuestions = maxPrimaryQuestions || TOTAL_WANTED_JOB_QUESTIONS;
+      const isPrematureClosing = totalQuestions < targetQuestions;
+
+      if (parsed.is_final_question || parsed.turn_type === "closing") {
+        if (isPrematureClosing || targetQuestion) {
+          console.warn(
+            `[generateInterviewerTurn] Premature closing signal from n8n at turn ${totalQuestions}/${targetQuestions}. Overriding with dynamic project/experience question.`,
+          );
+          const fallback = getDynamicCandidateQuestion(
+            totalQuestions,
+            allSessionQuestions,
+            analysis,
+            planItem,
+            "premature closing override",
+            resumeText,
+            jdText,
+          );
+          return {
+            interviewer_text:
+              interviewerText ||
+              "Thank you for that context. Let us explore another important area of your engineering background.",
+            question_text: targetQuestion || fallback.question_text,
+            turn_type: "question",
+            question_type: inferQuestionType(
+              targetQuestion || fallback.question_text,
+              fallback.question_type,
+            ),
+            should_continue: true,
+          };
+        }
+
         return {
           interviewer_text:
             "Thank you so much for answering all the questions today. Your responses have been recorded.",

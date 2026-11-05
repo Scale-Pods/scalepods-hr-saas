@@ -49,6 +49,7 @@ export type AnswerInsufficiencyReason = "lacks_depth" | "lacks_evidence" | "vagu
 export interface InterviewQuestion {
   id: string;
   session_id: string;
+  round_instance_id?: string;
   question_text: string;
   question_type: "technical" | "behavioral" | "situational" | "cultural";
   source?: string;

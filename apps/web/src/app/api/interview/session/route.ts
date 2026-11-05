@@ -112,12 +112,13 @@ export async function GET(request: NextRequest) {
       name: string | null;
       email: string | null;
       phone?: string | null;
+      resume_url?: string | null;
     } | null = null;
 
     if (effectiveCandidateId) {
       const { data: candRow } = await supabase
         .from("candidates")
-        .select("id, name, email, phone")
+        .select("id, name, email, phone, resume_url")
         .eq("id", effectiveCandidateId)
         .maybeSingle();
       if (candRow) candidate = candRow;
@@ -129,11 +130,12 @@ export async function GET(request: NextRequest) {
       candidate_name?: string | null;
       candidate_email?: string | null;
       candidate_phone?: string | null;
+      resume_path?: string | null;
     } | null = null;
     if (!candidate?.name && effectiveAppId) {
       const { data: appRow } = await supabase
         .from("applications")
-        .select("candidate_name, candidate_email, candidate_phone")
+        .select("candidate_name, candidate_email, candidate_phone, resume_path")
         .eq("id", effectiveAppId)
         .maybeSingle();
       if (appRow) application = appRow;
@@ -147,7 +149,7 @@ export async function GET(request: NextRequest) {
     ) {
       const { data: appByCand } = await supabase
         .from("applications")
-        .select("candidate_name, candidate_email, candidate_phone")
+        .select("candidate_name, candidate_email, candidate_phone, resume_path")
         .eq("candidate_id", effectiveCandidateId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -207,21 +209,69 @@ export async function GET(request: NextRequest) {
       if (accRow?.tier) accountTier = accRow.tier;
     }
 
-    // 7. Resolve Resume Text (from decision_ledger or candidate details)
+    // 7. Resolve Resume Text (from decision_ledger, applications, or candidate profile)
     let resumeText = "";
     if (effectiveCandidateId) {
-      const { data: dlRow } = await supabase
+      // 7a. Look up decision_ledger where resume screening text was recorded
+      const { data: dlRows } = await supabase
         .from("decision_ledger")
-        .select("reason, metadata")
+        .select("raw_text, rationale, score_type")
         .eq("candidate_id", effectiveCandidateId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const dlMeta = dlRow?.metadata as Record<string, unknown> | null;
-      if (typeof dlMeta?.resume_text === "string") {
-        resumeText = dlMeta.resume_text;
-      } else if (typeof dlRow?.reason === "string") {
-        resumeText = dlRow.reason;
+        .order("decided_at", { ascending: false })
+        .limit(10);
+
+      if (dlRows && dlRows.length > 0) {
+        // Priority 1: row with score_type === 'resume' and non-empty raw_text
+        const resumeScoreRow = dlRows.find(
+          (r) => r.score_type === "resume" && typeof r.raw_text === "string" && r.raw_text.trim(),
+        );
+        if (resumeScoreRow?.raw_text && resumeScoreRow.raw_text.trim().length > 30) {
+          resumeText = resumeScoreRow.raw_text.trim();
+        } else {
+          // Priority 2: any row with raw_text
+          const anyRawRow = dlRows.find(
+            (r) => typeof r.raw_text === "string" && r.raw_text.trim().length > 30,
+          );
+          if (anyRawRow?.raw_text) {
+            resumeText = anyRawRow.raw_text.trim();
+          } else {
+            // Priority 3: check rationale from resume screening
+            const resumeRationaleRow = dlRows.find(
+              (r) =>
+                r.score_type === "resume" &&
+                typeof r.rationale === "string" &&
+                r.rationale.trim().length > 50,
+            );
+            if (resumeRationaleRow?.rationale) {
+              resumeText = resumeRationaleRow.rationale.trim();
+            }
+          }
+        }
+      }
+
+      // 7b. If still empty, check applications or candidates table for stored resume
+      if (!resumeText) {
+        const candidateResumePath = application?.resume_path || candidate?.resume_url;
+        if (candidateResumePath && !candidateResumePath.startsWith("http")) {
+          try {
+            const { data: fileBlob, error: downloadErr } = await supabase.storage
+              .from("resumes")
+              .download(candidateResumePath);
+            if (!downloadErr && fileBlob) {
+              const buffer = Buffer.from(await fileBlob.arrayBuffer());
+              const rawStr = buffer.toString("utf-8");
+              const printable = rawStr
+                .replace(/[^\x20-\x7E\n\r\t]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+              if (printable.length > 100) {
+                resumeText = printable.slice(0, 20000);
+              }
+            }
+          } catch (e) {
+            console.warn("[session/route] Fallback download from resumes bucket failed:", e);
+          }
+        }
       }
     }
     if (!resumeText && (resolvedCandidateName || resolvedCandidateEmail)) {
