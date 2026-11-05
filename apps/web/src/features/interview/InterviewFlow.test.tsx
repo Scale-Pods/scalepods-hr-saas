@@ -261,4 +261,41 @@ describe("Interview Room & Flow", () => {
     expect(nextQ.question_text).not.toBe(q1);
     expect(hasSimilarQuestionBeenAsked(nextQ.question_text, existing)).toBe(false);
   });
+
+  it("does not submit or complete session on page reload or beforeunload during PreCheck", async () => {
+    const sendBeaconSpy = vi.fn();
+    Object.defineProperty(globalThis.navigator, "sendBeacon", {
+      value: sendBeaconSpy,
+      configurable: true,
+      writable: true,
+    });
+
+    render(
+      <ProctoringProvider>
+        <InterviewProvider>
+          <InterviewRoom sessionId="test-session-123" />
+        </InterviewProvider>
+      </ProctoringProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Pre-Interview Check/i)).toBeInTheDocument();
+    });
+
+    // Simulate beforeunload and pagehide during PreCheck
+    window.dispatchEvent(new Event("beforeunload"));
+    window.dispatchEvent(new Event("pagehide"));
+
+    // Verify sendBeacon was never invoked with action: "complete"
+    expect(sendBeaconSpy).not.toHaveBeenCalled();
+
+    // Verify fetch was never called with action: "complete"
+    const completeFetchCalls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (call) => {
+        const body = call[1]?.body;
+        return typeof body === "string" && body.includes('"action":"complete"');
+      },
+    );
+    expect(completeFetchCalls).toHaveLength(0);
+  });
 });

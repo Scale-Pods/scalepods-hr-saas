@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export function useInterviewTimer(durationMinutes: number) {
+export function useInterviewTimer(durationMinutes: number, enabled = true) {
   const [remaining, setRemaining] = useState(durationMinutes * 60);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -18,11 +18,16 @@ export function useInterviewTimer(durationMinutes: number) {
   }, []);
 
   useEffect(() => {
+    if (!enabled) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      setRemaining(durationMinutes * 60);
+      return;
+    }
     startTimer();
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [startTimer]);
+  }, [enabled, startTimer, durationMinutes]);
 
   const reset = useCallback(() => {
     setRemaining(durationMinutes * 60);

@@ -57,6 +57,32 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Recovery Guard: If session was prematurely marked 'incomplete' without any recorded answers
+    // (e.g. accidental browser reload during device precheck), recover it back to 'pending'
+    if (session.status === "incomplete") {
+      const { count: answerCount } = await supabase
+        .from("interview_answers")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", session.id);
+
+      if (!answerCount || answerCount === 0) {
+        await supabase
+          .from("interview_sessions")
+          .update({ status: "pending", started_at: null, completed_at: null })
+          .eq("id", session.id);
+
+        if (session.round_instance_id) {
+          await supabase
+            .from("round_instances")
+            .update({ status: "pending" })
+            .eq("id", session.round_instance_id);
+        }
+        session.status = "pending";
+        session.started_at = null;
+        session.completed_at = null;
+      }
+    }
+
     // 2. Fetch Candidate
     const { data: candidate } = await supabase
       .from("candidates")
@@ -272,10 +298,10 @@ export async function POST(request: NextRequest) {
 
     const supabase = getAdminSupabase();
 
-    // Resolve session row to obtain correct foreign keys
+    // Resolve session row to obtain correct foreign keys and lifecycle state
     const { data: sessionRow, error: sessionErr } = await supabase
       .from("interview_sessions")
-      .select("id, account_id, candidate_id, round_instance_id")
+      .select("id, account_id, candidate_id, round_instance_id, status, started_at")
       .eq("id", sessionId)
       .maybeSingle();
 
@@ -414,6 +440,42 @@ export async function POST(request: NextRequest) {
 
       case "complete": {
         const { endedEarly } = body;
+
+        // Safety Guard 1: Do not complete a session that was never started
+        if (sessionRow.status !== "in_progress" && !sessionRow.started_at) {
+          console.warn(
+            "[api/interview/session POST complete] Ignored complete on unstarted session:",
+            sessionId,
+          );
+          return NextResponse.json({
+            success: false,
+            message: "Cannot complete an interview session that has not started yet.",
+            session: sessionRow,
+          });
+        }
+
+        // Safety Guard 2: If early exit is requested but 0 answers were recorded,
+        // candidate closed/reloaded the window right at the start or during setup.
+        // Do not fail/incomplete the interview; allow them to restart cleanly.
+        if (endedEarly) {
+          const { count: answerCount } = await supabase
+            .from("interview_answers")
+            .select("id", { count: "exact", head: true })
+            .eq("session_id", sessionId);
+
+          if (!answerCount || answerCount === 0) {
+            console.warn(
+              "[api/interview/session POST complete] Ignored endedEarly with 0 answers for session:",
+              sessionId,
+            );
+            return NextResponse.json({
+              success: false,
+              message: "Session has no submitted answers; ignoring premature early completion.",
+              session: sessionRow,
+            });
+          }
+        }
+
         const sessionStatus = endedEarly ? "incomplete" : "completed";
         const roundStatus = endedEarly ? "incomplete" : "completed";
 

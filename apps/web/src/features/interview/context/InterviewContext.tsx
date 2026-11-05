@@ -149,12 +149,25 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       }
 
       const candidateName = data.candidate?.name || "Candidate";
+      const existingAnswers: Array<{
+        question_id: string;
+        answer_text?: string;
+        ai_live_note?: LiveAssessmentNote;
+      }> = Array.isArray(data.answers) ? data.answers : [];
+
+      let rawStatus = (data.session.status as InterviewSession["status"]) || "invited";
+      // If session was prematurely marked incomplete without any answers (e.g. reload on precheck),
+      // recover it so the candidate can proceed with precheck instead of being locked out
+      if (rawStatus === "incomplete" && existingAnswers.length === 0) {
+        rawStatus = "invited";
+      }
+
       const resolvedSession: InterviewSession = {
         id: data.session.id,
         account_id: data.session.account_id || data.account?.id,
         candidate_id: data.session.candidate_id || data.candidate?.id || "",
         round_instance_id: data.session.round_instance_id || data.round_instance?.id,
-        status: (data.session.status as InterviewSession["status"]) || "invited",
+        status: rawStatus,
         expires_at: data.session.expires_at,
         created_at: data.session.created_at,
         recording_url: data.session.recording_url,
@@ -186,11 +199,6 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       ).filter((q: { question_type?: string } | null | undefined) =>
         Boolean(q && q.question_type !== "blueprint_meta"),
       );
-      const existingAnswers: Array<{
-        question_id: string;
-        answer_text?: string;
-        ai_live_note?: LiveAssessmentNote;
-      }> = Array.isArray(data.answers) ? data.answers : [];
 
       if (existingAnswers.length > 0) {
         for (const ans of existingAnswers) {

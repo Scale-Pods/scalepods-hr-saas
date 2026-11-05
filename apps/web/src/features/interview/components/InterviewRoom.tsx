@@ -75,8 +75,15 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [completingError, setCompletingError] = useState("");
-  const globalTimer = useInterviewTimer(INTERVIEW_TIME_MINUTES);
+  const globalTimer = useInterviewTimer(INTERVIEW_TIME_MINUTES, Boolean(avStream));
   const turnIdRef = useRef<string | undefined>(undefined);
+  const hasStartedRef = useRef(false);
+
+  useEffect(() => {
+    if (avStream) {
+      hasStartedRef.current = true;
+    }
+  }, [avStream]);
   const [, setCurrentlySpeakingText] = useState("");
   const [speakingPhase, setSpeakingPhase] = useState<"acknowledgment" | "question" | null>(null);
   const [activeVideoTab, setActiveVideoTab] = useState<"camera" | "screen">("camera");
@@ -154,6 +161,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       }
       await markInterviewStarted();
       setMediaStreams(av, audio, screen);
+      hasStartedRef.current = true;
       const activeSessionId = session?.id || propSessionId || sessionId;
       if (activeSessionId) {
         await startRecording(activeSessionId, {
@@ -377,7 +385,12 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   }, [chatMessages]);
 
   useEffect(() => {
-    if (globalTimer.isExpired && session?.status !== "completed" && !completionStartedRef.current) {
+    if (
+      hasStartedRef.current &&
+      globalTimer.isExpired &&
+      session?.status !== "completed" &&
+      !completionStartedRef.current
+    ) {
       speak(
         "Your time has expired. We are wrapping up the interview now. Thank you for your time.",
         () => {
@@ -399,36 +412,59 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     return () => clearTimeout(timer);
   }, [endEarly, finishInterview]);
 
-  // Sync state if candidate closes the window/tab midway
+  // Sync state if candidate closes the window/tab midway through an active interview
   useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // If the candidate is in PreCheck (interview not started yet), never block or submit
+      if (
+        !hasStartedRef.current ||
+        !session?.id ||
+        session.status !== "in_progress" ||
+        completionStartedRef.current
+      ) {
+        return;
+      }
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
     const handlePageHide = () => {
-      if (session?.id && session.status !== "completed" && !completionStartedRef.current) {
+      // ONLY trigger endedEarly if the candidate was actively inside an in-progress interview
+      // and NOT during PreCheck!
+      if (
+        hasStartedRef.current &&
+        session?.id &&
+        session.status === "in_progress" &&
+        !completionStartedRef.current
+      ) {
         const payload = JSON.stringify({
           action: "complete",
           sessionId: session.id,
           endedEarly: true,
         });
         try {
-          fetch("/api/interview/session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: payload,
-            keepalive: true,
-          }).catch(() => {});
-        } catch {}
-        try {
-          navigator.sendBeacon(
-            "/api/interview/session",
-            new Blob([payload], { type: "application/json" }),
-          );
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon(
+              "/api/interview/session",
+              new Blob([payload], { type: "application/json" }),
+            );
+          } else {
+            fetch("/api/interview/session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: payload,
+              keepalive: true,
+            }).catch(() => {});
+          }
         } catch {}
       }
     };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
     window.addEventListener("pagehide", handlePageHide);
-    window.addEventListener("beforeunload", handlePageHide);
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("pagehide", handlePageHide);
-      window.removeEventListener("beforeunload", handlePageHide);
     };
   }, [session?.id, session?.status]);
 
