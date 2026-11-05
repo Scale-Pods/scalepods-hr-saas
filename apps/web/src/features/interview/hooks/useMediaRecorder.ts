@@ -7,11 +7,72 @@ import {
   getScreenStream,
 } from "../utils/mediaHelpers";
 
+/**
+ * 6-second chunk interval for streaming recording patches to storage during the interview.
+ */
+const CHUNK_INTERVAL_MS = 6000;
+
 interface MediaRecorderState {
   status: "idle" | "recording" | "paused" | "stopped";
   duration: number;
   error: string | null;
   recordingId: string | null;
+}
+
+/**
+ * Upload a single Blob chunk patch to Supabase Storage with automatic retry.
+ * Handles transient network glitches with exponential backoff (1s, 2s, 4s).
+ */
+async function uploadChunkWithRetry(
+  sessionId: string,
+  chunkIndex: number,
+  chunkBlob: Blob,
+  accountId?: string,
+  maxRetries = 3,
+): Promise<void> {
+  let attempt = 0;
+  let lastError: Error | null = null;
+
+  while (attempt <= maxRetries) {
+    try {
+      const formData = new FormData();
+      formData.append("action", "upload_chunk");
+      formData.append("sessionId", sessionId);
+      formData.append("chunkIndex", String(chunkIndex));
+      formData.append("chunk", chunkBlob, `chunk_${String(chunkIndex).padStart(5, "0")}.webm`);
+      if (accountId) {
+        formData.append("accountId", accountId);
+      }
+
+      const res = await fetch("/api/interview/recording", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        return; // Upload successful!
+      }
+      const errJson = await res.json().catch(() => ({}));
+      lastError = new Error(errJson.error || `HTTP ${res.status}`);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
+
+    attempt++;
+    if (attempt <= maxRetries) {
+      const delayMs = 2 ** (attempt - 1) * 1000;
+      console.warn(
+        `[useMediaRecorder] Chunk ${chunkIndex} upload attempt ${attempt} failed. Retrying in ${delayMs}ms...`,
+        lastError?.message,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  console.warn(
+    `[useMediaRecorder] Chunk ${chunkIndex} upload failed after ${maxRetries + 1} attempts:`,
+    lastError,
+  );
 }
 
 export function useMediaRecorder() {
@@ -32,7 +93,18 @@ export function useMediaRecorder() {
   const mimeTypeRef = useRef<string>("video/webm");
   const chunksRef = useRef<Blob[]>([]);
   const chunkIndexRef = useRef<number>(0);
-  const inFlightChunksRef = useRef<Promise<any>[]>([]);
+  const uploadQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const enqueueChunkUpload = useCallback(
+    (sessionId: string, chunkIndex: number, chunkBlob: Blob, accountId?: string) => {
+      uploadQueueRef.current = uploadQueueRef.current
+        .then(() => uploadChunkWithRetry(sessionId, chunkIndex, chunkBlob, accountId))
+        .catch((err) => {
+          console.warn("[useMediaRecorder] Background chunk upload queue warning:", err);
+        });
+    },
+    [],
+  );
 
   const start = useCallback(
     async (
@@ -49,7 +121,7 @@ export function useMediaRecorder() {
         accountIdRef.current = accountId || "";
         chunksRef.current = [];
         chunkIndexRef.current = 0;
-        inFlightChunksRef.current = [];
+        uploadQueueRef.current = Promise.resolve();
         setState((prev) => ({ ...prev, status: "recording", error: null }));
 
         const cameraStream = existingStreams?.camera || (await getCameraStream());
@@ -127,29 +199,7 @@ export function useMediaRecorder() {
             const currentAccountId = accountIdRef.current;
 
             if (currentSessionId) {
-              const chunkUploadPromise = (async () => {
-                try {
-                  const formData = new FormData();
-                  formData.append("action", "upload_chunk");
-                  formData.append("sessionId", currentSessionId);
-                  formData.append("chunkIndex", String(index));
-                  formData.append("chunk", chunk, `chunk_${String(index).padStart(5, "0")}.webm`);
-                  if (currentAccountId) {
-                    formData.append("accountId", currentAccountId);
-                  }
-                  const res = await fetch("/api/interview/recording", {
-                    method: "POST",
-                    body: formData,
-                  });
-                  if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    console.warn(`[useMediaRecorder] Chunk ${index} upload failed:`, err);
-                  }
-                } catch (uploadErr) {
-                  console.warn(`[useMediaRecorder] Chunk ${index} upload error:`, uploadErr);
-                }
-              })();
-              inFlightChunksRef.current.push(chunkUploadPromise);
+              enqueueChunkUpload(currentSessionId, index, chunk, currentAccountId);
             }
           }
         };
@@ -159,7 +209,8 @@ export function useMediaRecorder() {
           setState((prev) => ({ ...prev, error: "Recording error" }));
         };
 
-        recorder.start(10000); // 10s chunk slices for real-time background streaming
+        // Emit 6-second chunk patches continuously throughout the interview
+        recorder.start(CHUNK_INTERVAL_MS);
         startTimeRef.current = Date.now();
 
         if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
@@ -175,7 +226,7 @@ export function useMediaRecorder() {
         throw err;
       }
     },
-    [],
+    [enqueueChunkUpload],
   );
 
   const stop = useCallback(async (): Promise<{ blob: Blob | null; filePath: string | null }> => {
@@ -209,18 +260,16 @@ export function useMediaRecorder() {
           compositeCleanupRef.current = null;
         }
 
-        // 1. Wait for all in-flight chunk uploads to settle
-        if (inFlightChunksRef.current.length > 0) {
-          try {
-            await Promise.allSettled(inFlightChunksRef.current);
-          } catch (chunkWaitErr) {
-            console.warn("[useMediaRecorder] Error awaiting chunk uploads:", chunkWaitErr);
-          }
+        // 1. Wait for all queued in-flight chunk uploads to settle
+        try {
+          await uploadQueueRef.current;
+        } catch (chunkWaitErr) {
+          console.warn("[useMediaRecorder] Error awaiting chunk uploads:", chunkWaitErr);
         }
 
         let uploadedFilePath: string | null = null;
 
-        // 2. Finalize streamed chunks on server into a single playable recording.webm
+        // 2. Finalize streamed chunks on server into a playable recording
         if (sessionIdRef.current && chunkIndexRef.current > 0) {
           try {
             const finalizeRes = await fetch("/api/interview/recording", {
@@ -229,6 +278,7 @@ export function useMediaRecorder() {
               body: JSON.stringify({
                 action: "finalize_chunks",
                 sessionId: sessionIdRef.current,
+                totalChunks: chunkIndexRef.current,
               }),
             });
 
@@ -239,10 +289,7 @@ export function useMediaRecorder() {
               setState((prev) => ({ ...prev, recordingId: finData.filePath }));
             } else {
               const finErrData = await finalizeRes.json().catch(() => ({}));
-              console.warn(
-                "[useMediaRecorder] Finalize chunks failed, trying fallback:",
-                finErrData,
-              );
+              console.warn("[useMediaRecorder] Finalize chunks note:", finErrData);
             }
           } catch (finErr) {
             console.warn("[useMediaRecorder] Finalize chunks error:", finErr);

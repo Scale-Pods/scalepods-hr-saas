@@ -23,6 +23,7 @@ import {
   ChevronUp,
   Clock,
   Code2,
+  Download,
   Edit2,
   ExternalLink,
   Eye,
@@ -53,7 +54,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PrepareOfferModal } from "@/components/campaigns/PrepareOfferModal";
 import { ViewOfferLetterModal } from "@/components/campaigns/ViewOfferLetterModal";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -1917,6 +1918,212 @@ function OutreachTable({
   );
 }
 
+function InterviewRecordingPlayerCard({
+  rec,
+}: {
+  rec: {
+    sessionId: string;
+    status: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    recordingSignedUrl: string | null;
+    chunkUrls?: string[];
+    totalChunks?: number;
+  };
+}) {
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [loadingChunks, setLoadingChunks] = useState(false);
+  const [chunkProgress, setChunkProgress] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState<number>(1);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const createdBlobUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const cleanupBlob = () => {
+      if (createdBlobUrlRef.current) {
+        URL.revokeObjectURL(createdBlobUrlRef.current);
+        createdBlobUrlRef.current = null;
+      }
+    };
+
+    // If chunk URLs are available and there are multiple 6-second segments, fetch and stitch them
+    if (rec.chunkUrls && rec.chunkUrls.length > 1) {
+      setLoadingChunks(true);
+      setChunkProgress(`Assembling ${rec.chunkUrls.length} recording segments (6s patches)...`);
+
+      const promises = rec.chunkUrls.map(async (url, idx) => {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
+          return blob;
+        } catch (e) {
+          console.warn(`[RecordingPlayer] Failed chunk ${idx}:`, e);
+          return null;
+        }
+      });
+
+      Promise.all(promises)
+        .then((blobs) => {
+          if (cancelled) return;
+          const validBlobs = blobs.filter((b): b is Blob => Boolean(b && b.size > 0));
+          if (validBlobs.length > 0) {
+            cleanupBlob();
+            const merged = new Blob(validBlobs, { type: "video/webm" });
+            const blobUrl = URL.createObjectURL(merged);
+            createdBlobUrlRef.current = blobUrl;
+            setVideoUrl(blobUrl);
+          } else if (rec.recordingSignedUrl) {
+            setVideoUrl(rec.recordingSignedUrl);
+          }
+        })
+        .catch(() => {
+          if (!cancelled && rec.recordingSignedUrl) {
+            setVideoUrl(rec.recordingSignedUrl);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingChunks(false);
+        });
+    } else if (rec.recordingSignedUrl) {
+      setVideoUrl(rec.recordingSignedUrl);
+      setLoadingChunks(false);
+    }
+
+    return () => {
+      cancelled = true;
+      cleanupBlob();
+    };
+  }, [rec.chunkUrls, rec.recordingSignedUrl]);
+
+  const handleSpeedChange = (speed: number) => {
+    setPlaybackRate(speed);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!videoUrl) return;
+    setDownloading(true);
+    try {
+      const a = document.createElement("a");
+      a.href = videoUrl;
+      a.download = `interview-recording-${rec.sessionId.slice(0, 8)}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const totalSegments = rec.totalChunks || rec.chunkUrls?.length || 0;
+
+  return (
+    <div className="rounded-xl border border-border/70 bg-card p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <Video className="h-4 w-4 text-primary" />
+            AI Interview Video Recording
+          </span>
+          <Badge variant="outline" className="text-[11px] capitalize">
+            {rec.status.replace(/_/g, " ")}
+          </Badge>
+          {totalSegments > 0 && (
+            <Badge variant="secondary" className="text-[11px]">
+              {totalSegments} segments (6s patches)
+            </Badge>
+          )}
+          {rec.completedAt && (
+            <span className="text-xs text-muted-foreground">
+              · {formatDateTime(rec.completedAt)}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {videoUrl && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownload}
+                disabled={downloading}
+                className="h-7 text-xs gap-1 px-2"
+              >
+                <Download className="h-3 w-3" />
+                Download
+              </Button>
+              <a
+                href={videoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                Open video <ExternalLink className="h-3 w-3" />
+              </a>
+            </>
+          )}
+        </div>
+      </div>
+
+      {loadingChunks ? (
+        <div className="flex flex-col items-center justify-center p-8 rounded-lg bg-black/80 border border-border/40 text-center space-y-2">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground">
+            {chunkProgress || "Assembling recording patches..."}
+          </p>
+        </div>
+      ) : videoUrl ? (
+        <div className="space-y-2">
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            controls
+            playsInline
+            preload="metadata"
+            className="w-full max-h-96 rounded-lg bg-black shadow-inner border border-border/40"
+          >
+            <track kind="captions" />
+          </video>
+          <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 px-1">
+            <span className="text-[11px]">
+              Continuous playback stitched from {totalSegments || 1} video{" "}
+              {totalSegments === 1 ? "stream" : "segments"}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px]">Speed:</span>
+              {[1, 1.25, 1.5, 2].map((speed) => (
+                <button
+                  key={speed}
+                  type="button"
+                  onClick={() => handleSpeedChange(speed)}
+                  className={cn(
+                    "px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors",
+                    playbackRate === speed
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted hover:bg-muted/80 text-foreground",
+                  )}
+                >
+                  {speed}x
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="p-4 rounded-lg bg-muted/20 text-center text-xs text-muted-foreground">
+          Recording stream is currently processing. Please refresh in a moment.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InterviewMediaAndTranscriptSection({
   recordings,
   transcripts,
@@ -1930,6 +2137,8 @@ function InterviewMediaAndTranscriptSection({
     startedAt: string | null;
     completedAt: string | null;
     recordingSignedUrl: string | null;
+    chunkUrls?: string[];
+    totalChunks?: number;
   }>;
   transcripts: Array<{
     id: string;
@@ -1968,7 +2177,9 @@ function InterviewMediaAndTranscriptSection({
     }
   };
 
-  const hasRecordings = recordings.some((r) => !!r.recordingSignedUrl);
+  const hasRecordings = recordings.some(
+    (r) => !!r.recordingSignedUrl || (Array.isArray(r.chunkUrls) && r.chunkUrls.length > 0),
+  );
   const hasTranscripts = transcripts.length > 0;
   const hasScorecard = !!scorecard;
   const currentRec = recordings.find((r) => r.sessionId === sessionId) || recordings[0];
@@ -2385,50 +2596,11 @@ function InterviewMediaAndTranscriptSection({
         <div className="space-y-4">
           {hasRecordings ? (
             recordings
-              .filter((r) => !!r.recordingSignedUrl)
-              .map((rec) => (
-                <div
-                  key={rec.sessionId}
-                  className="rounded-xl border border-border/70 bg-card p-4 space-y-3"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                        <Video className="h-4 w-4 text-primary" />
-                        AI Interview Video Recording
-                      </span>
-                      <Badge variant="outline" className="text-[11px] capitalize">
-                        {rec.status.replace(/_/g, " ")}
-                      </Badge>
-                      {rec.completedAt && (
-                        <span className="text-xs text-muted-foreground">
-                          · {formatDateTime(rec.completedAt)}
-                        </span>
-                      )}
-                    </div>
-                    {rec.recordingSignedUrl && (
-                      <a
-                        href={rec.recordingSignedUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                      >
-                        Open video in tab <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
-                  </div>
-
-                  <video
-                    src={rec.recordingSignedUrl || undefined}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    className="w-full max-h-80 rounded-lg bg-black shadow-inner border border-border/40"
-                  >
-                    <track kind="captions" />
-                  </video>
-                </div>
-              ))
+              .filter(
+                (r) =>
+                  !!r.recordingSignedUrl || (Array.isArray(r.chunkUrls) && r.chunkUrls.length > 0),
+              )
+              .map((rec) => <InterviewRecordingPlayerCard key={rec.sessionId} rec={rec} />)
           ) : (
             <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-6 text-center">
               <Video className="mx-auto h-8 w-8 text-muted-foreground/60 mb-2" />

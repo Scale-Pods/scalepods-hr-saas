@@ -33,7 +33,18 @@ async function mergeChunksForSession(
   }
 
   // Sort chunks numerically: chunk_00000.webm, chunk_00001.webm, etc.
-  const sorted = [...chunkFiles].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = [...chunkFiles]
+    .filter((f) => f.name.endsWith(".webm") && !f.name.startsWith("."))
+    .sort((a, b) => {
+      const ai = parseInt(a.name.replace(/[^0-9]/g, ""), 10);
+      const bi = parseInt(b.name.replace(/[^0-9]/g, ""), 10);
+      return (Number.isNaN(ai) ? 0 : ai) - (Number.isNaN(bi) ? 0 : bi);
+    });
+
+  if (sorted.length === 0) {
+    return { filePath: null, error: "No valid chunk files found" };
+  }
+
   const buffers: Buffer[] = [];
 
   for (const file of sorted) {
@@ -50,12 +61,16 @@ async function mergeChunksForSession(
   }
 
   if (buffers.length === 0) {
-    return { filePath: null, error: "Failed to download chunk buffers" };
+    return {
+      filePath: `${chunksFolder}/${sorted[0].name}`,
+      error: "Failed to download chunk buffers",
+    };
   }
 
   const combined = Buffer.concat(buffers);
   const finalFilePath = `${accountId}/${sessionId}/recording.webm`;
 
+  // Attempt to upload merged single file (may be subject to bucket file_size_limit)
   const { error: uploadErr } = await supabaseAdmin.storage
     .from(RECORDINGS_BUCKET)
     .upload(finalFilePath, combined, {
@@ -64,8 +79,11 @@ async function mergeChunksForSession(
     });
 
   if (uploadErr) {
-    console.error("[recording API] Failed to upload merged recording:", uploadErr);
-    return { filePath: null, error: uploadErr.message };
+    console.warn(
+      `[recording API] Merged recording upload notice (${uploadErr.message}). Chunks (${sorted.length}) remain available for direct playback.`,
+    );
+    // Return the first chunk path as valid entry point so the session has a recording path
+    return { filePath: `${chunksFolder}/${sorted[0].name}` };
   }
 
   console.log(
@@ -88,36 +106,47 @@ export async function POST(request: NextRequest) {
         const supabaseAdmin = getAdminSupabase();
         const { data: sessionRow } = await supabaseAdmin
           .from("interview_sessions")
-          .select("id, account_id")
+          .select("id, account_id, candidate_id")
           .eq("id", sessionId)
           .maybeSingle();
 
         const accountId = sessionRow?.account_id || "shared";
-        const { filePath: mergedPath, error: mergeErr } = await mergeChunksForSession(
+        const { filePath: mergedPath } = await mergeChunksForSession(
           supabaseAdmin,
           accountId,
           sessionId,
         );
 
-        if (!mergedPath) {
-          return NextResponse.json(
-            { error: mergeErr || "Failed to finalize chunks" },
-            { status: 500 },
-          );
-        }
+        const resolvedPath = mergedPath || `${accountId}/${sessionId}/chunks/chunk_00000.webm`;
 
-        await supabaseAdmin
-          .from("interview_sessions")
-          .update({ status: "completed" })
-          .eq("id", sessionId);
+        // Update candidate metadata so recruiter UI knows recording is available
+        if (sessionRow?.candidate_id) {
+          const { data: cand } = await supabaseAdmin
+            .from("candidates")
+            .select("id, metadata")
+            .eq("id", sessionRow.candidate_id)
+            .maybeSingle();
+
+          const existingMeta = (cand?.metadata as Record<string, unknown>) || {};
+          await supabaseAdmin
+            .from("candidates")
+            .update({
+              metadata: {
+                ...existingMeta,
+                interview_recording_path: resolvedPath,
+                interview_session_id: sessionId,
+              },
+            })
+            .eq("id", sessionRow.candidate_id);
+        }
 
         const { data: signedData } = await supabaseAdmin.storage
           .from(RECORDINGS_BUCKET)
-          .createSignedUrl(mergedPath, 86400);
+          .createSignedUrl(resolvedPath, 86400);
 
         return NextResponse.json({
           success: true,
-          filePath: mergedPath,
+          filePath: resolvedPath,
           signedUrl: signedData?.signedUrl ?? null,
         });
       }
@@ -355,74 +384,114 @@ export async function GET(request: NextRequest) {
     // B. Resolve playback signed URL
     let targetPath = pathParam;
     let accountId = "shared";
+    const chunkUrls: Array<{ name: string; path: string; url: string }> = [];
 
     if (!targetPath && sessionId) {
       const { data: sessionRow } = await supabaseAdmin
         .from("interview_sessions")
-        .select("id, account_id")
+        .select("id, account_id, candidate_id")
         .eq("id", sessionId)
         .maybeSingle();
 
       accountId = sessionRow?.account_id ?? "shared";
 
-      // Scan storage folder for existing files
+      // 1. First scan for full recording.webm or direct files
+      try {
+        const { data: files } = await supabaseAdmin.storage
+          .from(RECORDINGS_BUCKET)
+          .list(`${accountId}/${sessionId}`, { limit: 10 });
+
+        const recordingFile = files?.find(
+          (f) => f.name.endsWith(".webm") && !f.name.startsWith("."),
+        );
+
+        if (recordingFile) {
+          targetPath = `${accountId}/${sessionId}/${recordingFile.name}`;
+        }
+      } catch (listErr) {
+        console.warn("[recording API GET] Direct file list warning:", listErr);
+      }
+
+      // 2. Scan for streamed 6-second chunk patches in chunks/ subfolder
+      try {
+        const chunksFolder = `${accountId}/${sessionId}/chunks`;
+        const { data: chunkFiles } = await supabaseAdmin.storage
+          .from(RECORDINGS_BUCKET)
+          .list(chunksFolder, { limit: 500 });
+
+        if (chunkFiles && chunkFiles.length > 0) {
+          const sorted = [...chunkFiles]
+            .filter((f) => f.name.endsWith(".webm") && !f.name.startsWith("."))
+            .sort((a, b) => {
+              const ai = parseInt(a.name.replace(/[^0-9]/g, ""), 10);
+              const bi = parseInt(b.name.replace(/[^0-9]/g, ""), 10);
+              return (Number.isNaN(ai) ? 0 : ai) - (Number.isNaN(bi) ? 0 : bi);
+            });
+
+          for (const cf of sorted) {
+            const cp = `${chunksFolder}/${cf.name}`;
+            const { data: signRes } = await supabaseAdmin.storage
+              .from(RECORDINGS_BUCKET)
+              .createSignedUrl(cp, 86400);
+
+            if (signRes?.signedUrl) {
+              chunkUrls.push({
+                name: cf.name,
+                path: cp,
+                url: signRes.signedUrl,
+              });
+            }
+          }
+
+          if (!targetPath && chunkUrls.length > 0) {
+            targetPath = chunkUrls[0].path;
+          }
+        }
+      } catch (chunkScanErr) {
+        console.warn("[recording API GET] Chunk scan warning:", chunkScanErr);
+      }
+
+      // 3. If targetPath still not resolved, check legacy bucket
       if (!targetPath) {
         try {
-          const { data: files } = await supabaseAdmin.storage
-            .from(RECORDINGS_BUCKET)
-            .list(`${accountId}/${sessionId}`, { limit: 10 });
-
-          const recordingFile = files?.find(
-            (f) => f.name.endsWith(".webm") && !f.name.startsWith("."),
-          );
-
-          if (recordingFile) {
-            targetPath = `${accountId}/${sessionId}/${recordingFile.name}`;
-          } else {
-            // If full recording is not yet merged, check if streamed chunks exist and merge on the fly
-            const { filePath: mergedPath } = await mergeChunksForSession(
-              supabaseAdmin,
-              accountId,
-              sessionId,
-            );
-            if (mergedPath) {
-              targetPath = mergedPath;
-            } else {
-              // Check legacy bucket
-              const { data: legacyFiles } = await supabaseAdmin.storage
-                .from("recordings")
-                .list(`${accountId}/${sessionId}`, { limit: 5 });
-              if (legacyFiles && legacyFiles.length > 0 && legacyFiles[0]?.name) {
-                targetPath = `${accountId}/${sessionId}/${legacyFiles[0].name}`;
-              }
-            }
+          const { data: legacyFiles } = await supabaseAdmin.storage
+            .from("recordings")
+            .list(`${accountId}/${sessionId}`, { limit: 5 });
+          if (legacyFiles && legacyFiles.length > 0 && legacyFiles[0]?.name) {
+            targetPath = `${accountId}/${sessionId}/${legacyFiles[0].name}`;
           }
         } catch {}
       }
     }
 
-    if (!targetPath) {
+    if (!targetPath && chunkUrls.length === 0) {
       return NextResponse.json(
         { error: "Recording not found for the given session or path." },
         { status: 404 },
       );
     }
 
-    let signedData = null;
-    const { data: primarySign } = await supabaseAdmin.storage
-      .from(RECORDINGS_BUCKET)
-      .createSignedUrl(targetPath, 86400);
-
-    if (primarySign?.signedUrl) {
-      signedData = primarySign;
-    } else {
-      const { data: fbSign } = await supabaseAdmin.storage
-        .from("recordings")
+    let signedUrl: string | null = null;
+    if (targetPath) {
+      const { data: primarySign } = await supabaseAdmin.storage
+        .from(RECORDINGS_BUCKET)
         .createSignedUrl(targetPath, 86400);
-      signedData = fbSign;
+
+      if (primarySign?.signedUrl) {
+        signedUrl = primarySign.signedUrl;
+      } else {
+        const { data: fbSign } = await supabaseAdmin.storage
+          .from("recordings")
+          .createSignedUrl(targetPath, 86400);
+        signedUrl = fbSign?.signedUrl ?? null;
+      }
     }
 
-    if (!signedData?.signedUrl) {
+    if (!signedUrl && chunkUrls.length > 0) {
+      signedUrl = chunkUrls[0].url;
+    }
+
+    if (!signedUrl) {
       console.warn("[recording API] createSignedUrl error for path:", targetPath);
       return NextResponse.json(
         { error: "Failed to generate video stream signed playback URL." },
@@ -432,8 +501,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      signedUrl: signedData.signedUrl,
+      sessionId,
+      signedUrl,
       path: targetPath,
+      chunks: chunkUrls,
+      totalChunks: chunkUrls.length,
     });
   } catch (err) {
     console.error("[recording API GET] Unexpected error:", err);

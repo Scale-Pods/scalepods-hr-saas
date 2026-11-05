@@ -75,6 +75,8 @@ export interface InterviewRecordingItem {
   startedAt: string | null;
   completedAt: string | null;
   recordingSignedUrl: string | null;
+  chunkUrls?: string[];
+  totalChunks?: number;
 }
 
 export interface VoiceScreenTranscriptItem {
@@ -664,8 +666,39 @@ export async function fetchCandidateProfile(
       let resolvedPath =
         s.recording_url ||
         (s.round_instance_id ? scorecardByRoundId.get(s.round_instance_id)?.recording_path : null);
+      let recordingSignedUrl: string | null = null;
+      let chunkUrls: string[] = [];
+      let totalChunks = 0;
 
-      if (!resolvedPath && s.account_id && s.id) {
+      // Query recording API first to obtain signed URLs for full recording and streamed 6-second patches
+      if (s.id) {
+        try {
+          const recRes = await fetch(`/api/interview/recording?sessionId=${s.id}`);
+          if (recRes.ok) {
+            const recData = await recRes.json();
+            if (recData.signedUrl) {
+              recordingSignedUrl = recData.signedUrl;
+            }
+            if (recData.path) {
+              resolvedPath = recData.path;
+            }
+            if (Array.isArray(recData.chunks)) {
+              chunkUrls = recData.chunks
+                .map((c: { url?: string }) => c?.url)
+                .filter(Boolean) as string[];
+              totalChunks = recData.totalChunks || chunkUrls.length;
+            }
+            if (!recordingSignedUrl && chunkUrls.length > 0) {
+              recordingSignedUrl = chunkUrls[0];
+            }
+          }
+        } catch (apiErr) {
+          console.warn("[candidates API] Error querying recording API for session:", s.id, apiErr);
+        }
+      }
+
+      // Fallback direct storage scan if API was unreachable
+      if (!recordingSignedUrl && !resolvedPath && s.account_id && s.id) {
         try {
           const { data: files } = await supabase.storage
             .from(BUCKETS.recordings)
@@ -677,8 +710,7 @@ export async function fetchCandidateProfile(
         } catch {}
       }
 
-      let recordingSignedUrl: string | null = null;
-      if (resolvedPath) {
+      if (!recordingSignedUrl && resolvedPath) {
         try {
           const { data: signed } = await supabase.storage
             .from(BUCKETS.recordings)
@@ -688,6 +720,7 @@ export async function fetchCandidateProfile(
           console.warn("Could not generate signed URL for recording:", storageErr);
         }
       }
+
       const startMs = s.started_at ? new Date(s.started_at).getTime() : 0;
       const isStale =
         s.status === "in_progress" && startMs > 0 && Date.now() - startMs > 25 * 60 * 1000;
@@ -697,6 +730,8 @@ export async function fetchCandidateProfile(
         startedAt: s.started_at ?? null,
         completedAt: s.completed_at ?? null,
         recordingSignedUrl,
+        chunkUrls,
+        totalChunks,
       };
     }),
   );
