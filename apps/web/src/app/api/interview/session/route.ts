@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
+import { sanitizeQuestionPlaceholders } from "@/features/interview/utils/llm";
 
 function getAdminSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -278,8 +279,8 @@ export async function GET(request: NextRequest) {
       resumeText = `Candidate: ${resolvedCandidateName || "Candidate"}, Email: ${resolvedCandidateEmail || ""}`;
     }
 
-    // 8. Fetch Questions using valid columns (round_instance_id and question_number/created_at)
-    const { data: questions } = await supabase
+    // 8. Fetch and sanitize Questions
+    const { data: rawQuestions } = await supabase
       .from("interview_questions")
       .select("*")
       .or(
@@ -288,6 +289,27 @@ export async function GET(request: NextRequest) {
           : `session_id.eq.${sessionId}`,
       )
       .order("question_number", { ascending: true });
+
+    // Clean any bracketed placeholders like [specific project] or [specific tool]
+    const questions = (rawQuestions || []).map((q) => {
+      if (q.question_type === "blueprint_meta" || !q.question_text) return q;
+      const sanitized = sanitizeQuestionPlaceholders(
+        q.question_text,
+        resumeText,
+        campaign?.jd_text,
+      );
+      if (sanitized !== q.question_text) {
+        // Auto-heal the database row asynchronously so subsequent queries are clean
+        void supabase
+          .from("interview_questions")
+          .update({ question_text: sanitized })
+          .eq("id", q.id);
+      }
+      return {
+        ...q,
+        question_text: sanitized,
+      };
+    });
 
     // 9. Fetch Answers using valid columns (round_instance_id)
     const { data: answers } = session.round_instance_id

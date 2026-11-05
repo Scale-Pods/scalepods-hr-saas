@@ -876,6 +876,84 @@ export function extractProjectsFromResume(resumeText: string): string[] {
   return projects.slice(0, 5);
 }
 
+export function sanitizeQuestionPlaceholders(
+  questionText: string,
+  resumeText?: string,
+  _jdText?: string,
+): string {
+  if (!questionText?.includes("[")) return questionText;
+
+  let text = questionText;
+  const projects = resumeText ? extractProjectsFromResume(resumeText) : [];
+
+  // Find candidate tools/technologies mentioned in resume
+  const candidateTools: string[] = [];
+  if (resumeText) {
+    const techWords = [
+      "React",
+      "Next.js",
+      "Node.js",
+      "TypeScript",
+      "JavaScript",
+      "PostgreSQL",
+      "Python",
+      "Docker",
+      "Redis",
+      "Kafka",
+      "FastAPI",
+      "n8n",
+      "GraphQL",
+      "Supabase",
+      "Kubernetes",
+      "AWS",
+    ];
+    for (const tw of techWords) {
+      if (new RegExp(`\\b${tw}\\b`, "i").test(resumeText)) {
+        candidateTools.push(tw);
+      }
+    }
+  }
+  const primaryTool = candidateTools[0] || "PostgreSQL or Docker";
+  const secondaryTool = candidateTools[1] || candidateTools[0] || "your primary backend frameworks";
+
+  // 1. [specific project] and variations
+  text = text.replace(
+    /\[specific project\/system\]/gi,
+    projects[0] ? `"${projects[0]}"` : "your recent project",
+  );
+  text = text.replace(
+    /\[specific project or technology\]/gi,
+    projects[0] ? `"${projects[0]}"` : primaryTool,
+  );
+  text = text.replace(
+    /\[specific project\]/gi,
+    projects[0] ? `"${projects[0]}"` : "your recent production systems",
+  );
+
+  // 2. [specific tool/framework...] and variations
+  text = text.replace(/\[specific tool\/framework[^\]]*\]/gi, primaryTool);
+  text = text.replace(/\[specific tool[^\]]*\]/gi, primaryTool);
+  text = text.replace(/\[specific framework[^\]]*\]/gi, secondaryTool);
+
+  // 3. [missing technology...]
+  text = text.replace(/\[missing technology[^\]]*\]/gi, "modern distributed architectures");
+
+  // 4. Any remaining [bracketed] placeholders
+  text = text.replace(
+    /\[(?:project|system|application)[^\]]*\]/gi,
+    projects[0] ? `"${projects[0]}"` : "your core system",
+  );
+  text = text.replace(/\[(?:tool|framework|technology|database|library)[^\]]*\]/gi, secondaryTool);
+  text = text.replace(/\[[^\]]+\]/g, ""); // Strip any remaining brackets
+
+  // 5. Clean whitespace and punctuation
+  text = text
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,?.!])/g, "$1")
+    .trim();
+  return text;
+}
+
 function normalizeQuestion(text: string): string {
   return text
     .trim()
@@ -1148,7 +1226,8 @@ export async function generateInterviewerTurn(
 
     if (response.ok) {
       const parsed = await response.json();
-      const questionText = parsed.question_text || parsed.prompt || targetQuestion || "";
+      const rawQuestion = parsed.question_text || parsed.prompt || targetQuestion || "";
+      const questionText = sanitizeQuestionPlaceholders(rawQuestion, resumeText, jdText);
       const rawAck = (parsed.interviewer_text || "").trim();
 
       // Filter out tone-deaf or canned acknowledgments from backend/n8n
@@ -1188,16 +1267,18 @@ export async function generateInterviewerTurn(
             resumeText,
             jdText,
           );
+          const cleanQ = sanitizeQuestionPlaceholders(
+            targetQuestion || fallback.question_text,
+            resumeText,
+            jdText,
+          );
           return {
             interviewer_text:
               interviewerText ||
               "Thank you for that context. Let us explore another important area of your engineering background.",
-            question_text: targetQuestion || fallback.question_text,
+            question_text: cleanQ,
             turn_type: "question",
-            question_type: inferQuestionType(
-              targetQuestion || fallback.question_text,
-              fallback.question_type,
-            ),
+            question_type: inferQuestionType(cleanQ, fallback.question_type),
             should_continue: true,
           };
         }
@@ -1229,11 +1310,16 @@ export async function generateInterviewerTurn(
           resumeText,
           jdText,
         );
+        const cleanFallback = sanitizeQuestionPlaceholders(
+          fallback.question_text,
+          resumeText,
+          jdText,
+        );
         return {
           interviewer_text: interviewerText,
-          question_text: fallback.question_text,
+          question_text: cleanFallback,
           turn_type: "question",
-          question_type: inferQuestionType(fallback.question_text, fallback.question_type),
+          question_type: inferQuestionType(cleanFallback, fallback.question_type),
           should_continue: true,
         };
       }
@@ -1258,6 +1344,7 @@ export async function generateInterviewerTurn(
       history.map((h) => h.question),
     )
   ) {
+    const cleanTarget = sanitizeQuestionPlaceholders(targetQuestion, resumeText, jdText);
     return {
       interviewer_text: generateContextualAcknowledgment(
         lastAnswer,
@@ -1266,9 +1353,9 @@ export async function generateInterviewerTurn(
         "question",
         false,
       ),
-      question_text: targetQuestion,
+      question_text: cleanTarget,
       turn_type: "question",
-      question_type: inferQuestionType(targetQuestion, "technical"),
+      question_type: inferQuestionType(cleanTarget, "technical"),
       should_continue: true,
     };
   }
@@ -1282,6 +1369,7 @@ export async function generateInterviewerTurn(
     resumeText,
     jdText,
   );
+  const cleanFallback = sanitizeQuestionPlaceholders(fallbackQ.question_text, resumeText, jdText);
   return {
     interviewer_text: generateContextualAcknowledgment(
       lastAnswer,
@@ -1290,9 +1378,9 @@ export async function generateInterviewerTurn(
       "question",
       false,
     ),
-    question_text: fallbackQ.question_text,
+    question_text: cleanFallback,
     turn_type: "question",
-    question_type: inferQuestionType(fallbackQ.question_text, fallbackQ.question_type),
+    question_type: inferQuestionType(cleanFallback, fallbackQ.question_type),
     should_continue: true,
   };
 }

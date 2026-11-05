@@ -23,6 +23,7 @@ import {
   generateTargetedFollowUp,
   getDynamicCandidateQuestion,
   inferQuestionType,
+  sanitizeQuestionPlaceholders,
 } from "../utils/llm";
 
 interface InterviewContextType {
@@ -252,14 +253,22 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (existingQuestions.length > 0) {
-        setQuestions(existingQuestions);
+        const cleanExisting = existingQuestions.map((q) => ({
+          ...q,
+          question_text: sanitizeQuestionPlaceholders(
+            q.question_text,
+            data.resumeText,
+            data.jdText,
+          ),
+        }));
+        setQuestions(cleanExisting);
         const answeredCount = answeredQuestionIdsRef.current.size;
         const currentIdx = Math.min(
           answeredCount,
-          existingQuestions.length > 0 ? existingQuestions.length - 1 : 0,
+          cleanExisting.length > 0 ? cleanExisting.length - 1 : 0,
         );
         setCurrentQuestionIndex(currentIdx);
-        setCurrentQuestionId(existingQuestions[currentIdx]?.id || existingQuestions[0]?.id || "");
+        setCurrentQuestionId(cleanExisting[currentIdx]?.id || cleanExisting[0]?.id || "");
       } else {
         const firstQuestion: InterviewQuestion = {
           id: "q-intro-0",
@@ -633,15 +642,18 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (turn.question_text) {
+        turn.question_text = sanitizeQuestionPlaceholders(turn.question_text, resumeText, jdText);
         const isFollowUp = turn.turn_type === "follow_up";
         let targetQId = "";
         if (!isFollowUp && !isClarification && nextPlannedQuestion) {
           // Guarantee that the spoken question, chat question, and recorded answer question ID match 100%
-          turn.question_text = nextPlannedQuestion.question_text;
-          const inferredType = inferQuestionType(
+          const cleanPlanned = sanitizeQuestionPlaceholders(
             nextPlannedQuestion.question_text,
-            nextPlannedQuestion.question_type,
+            resumeText,
+            jdText,
           );
+          turn.question_text = cleanPlanned;
+          const inferredType = inferQuestionType(cleanPlanned, nextPlannedQuestion.question_type);
           turn.question_type = inferredType;
           setCurrentQuestionId(nextPlannedQuestion.id);
           targetQId = nextPlannedQuestion.id;
