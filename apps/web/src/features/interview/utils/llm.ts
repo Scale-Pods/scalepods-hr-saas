@@ -91,6 +91,13 @@ export async function analyzeResumeJdAlignment(
   }
 }
 
+export type CandidateAnswerIntent =
+  | "clarification_request"
+  | "refusal"
+  | "uncertain_or_unknown"
+  | "greeting_or_social"
+  | "substantive_answer";
+
 export function isClarificationRequested(answer: string): boolean {
   const text = (answer || "").toLowerCase().trim();
   if (!text) return false;
@@ -100,6 +107,9 @@ export function isClarificationRequested(answer: string): boolean {
     "explain",
     "explanation",
     "understand",
+    "can't understand",
+    "cannot understand",
+    "don't understand",
     "rephrase",
     "what do you mean",
     "what does that mean",
@@ -109,8 +119,62 @@ export function isClarificationRequested(answer: string): boolean {
     "pardon",
     "elaborate on the question",
     "elaborate",
+    "elaborative",
+    "could you elaborate",
+    "can you elaborate",
   ];
   return keywords.some((k) => text.includes(k));
+}
+
+export function detectCandidateIntent(answer: string, question?: string): CandidateAnswerIntent {
+  const text = (answer || "").toLowerCase().trim();
+  if (!text) return "uncertain_or_unknown";
+  const words = text.split(/\s+/).filter(Boolean);
+
+  // 1. Refusal or Skip request
+  if (
+    /(\bi\s+(will\s+not|won'?t|refuse\s+to|do\s+not\s+want\s+to|prefer\s+not\s+to)\s+answer\b|\b(skip|pass|next\s+question|skip\s+this|pass\s+this)\b|\bno\s+comment\b)/i.test(
+      text,
+    )
+  ) {
+    return "refusal";
+  }
+
+  // 2. Explicit Clarification or Elaboration request
+  if (
+    isClarificationRequested(text) ||
+    /(\b(can('?t|not)|\bdo(n'?t)?)\s+(understand|get\s+it)\b|\b(can|could|please)\s+(you\s+)?(elaborat\w*|explain|clarif\w*|rephrase|repeat|simplify)\b|\bwhat\s+(do\s+you\s+mean|does\s+that\s+mean)\b|\bmore\s+details?\b)/i.test(
+      text,
+    )
+  ) {
+    return "clarification_request";
+  }
+
+  // 3. Unknown / Unsure / No experience
+  if (
+    isVagueOrUncertainAnswer(text) ||
+    /(\b(i\s+)?(don'?t|do\s+not)\s+know\b|\bno\s+idea\b|\bnot\s+sure\b|\bnever\s+worked\s+(with|on)\b|\bhave(n'?t| not)\s+(used|worked|done)\b|\bno\s+experience\b)/i.test(
+      text,
+    )
+  ) {
+    return "uncertain_or_unknown";
+  }
+
+  // 4. Greeting or Social Intro response
+  const q = (question || "").toLowerCase();
+  if (
+    (q.includes("how are you") || q.includes("welcome") || q.includes("start off")) &&
+    words.length <= 15
+  ) {
+    return "greeting_or_social";
+  }
+
+  // 5. Very brief non-answer (1-3 tokens) without any identified topic
+  if (words.length < 4 && !extractAnswerEntities(answer).primaryTopic) {
+    return "uncertain_or_unknown";
+  }
+
+  return "substantive_answer";
 }
 
 export function isVagueOrUncertainAnswer(answer: string): boolean {
@@ -473,33 +537,46 @@ export function generateContextualAcknowledgment(
   turnType?: string,
   candidateRequestedClarification?: boolean,
 ): string {
-  if (candidateRequestedClarification) {
-    return "No problem at all! Let me clarify that point for you.";
+  const intent = detectCandidateIntent(answer, question);
+
+  // 1. Explicit Clarification or Elaboration Request
+  if (candidateRequestedClarification || intent === "clarification_request") {
+    const clarificationAcks = [
+      "No problem at all! Let me clarify that for you.",
+      "Certainly! Let me break that down in simpler terms.",
+      "Of course, happy to elaborate on that for you.",
+    ];
+    return clarificationAcks[index % clarificationAcks.length];
   }
 
-  const ans = (answer || "").toLowerCase().trim();
-  const q = (question || "").toLowerCase().trim();
+  // 2. Explicit Refusal or Skip Request ("I will not answer this", "skip", "pass")
+  if (intent === "refusal") {
+    const refusalAcks = [
+      "Understood, no problem at all. Let's move on to the next question.",
+      "That's completely fine, we can skip that. Let's proceed.",
+      "No worries, let's move forward to our next topic.",
+    ];
+    return refusalAcks[index % refusalAcks.length];
+  }
+
+  // 3. Uncertain / Unknown / No Experience ("I don't know", "not sure", "no idea")
+  if (intent === "uncertain_or_unknown") {
+    const unknownAcks = [
+      "No worries at all, that's completely fine. Let's move on to the next topic.",
+      "Understood. Let's explore a different area of your background.",
+      "That's perfectly okay. Let's shift to our next subject.",
+    ];
+    return unknownAcks[index % unknownAcks.length];
+  }
+
+  // 4. Greeting or Social Intro Response
+  if (intent === "greeting_or_social") {
+    return "Glad to hear that! It's great to have you with us today. Let's dive into your experience.";
+  }
+
   const { primaryTopic } = extractAnswerEntities(answer);
 
-  // Handle intro question acknowledgment
-  if (
-    q.includes("how are you doing") ||
-    q.includes("welcome to your interview") ||
-    q.includes("to start off")
-  ) {
-    if (
-      ans.includes("good") ||
-      ans.includes("great") ||
-      ans.includes("well") ||
-      ans.includes("fine") ||
-      ans.includes("doing well") ||
-      ans.includes("excited")
-    ) {
-      return "Glad to hear that! It's great to have you with us today. Let's dive into your experience.";
-    }
-    return "Thanks for joining us today! It's great to meet you. Let's get started with our first topic.";
-  }
-
+  // 5. Follow-up turn acknowledgment
   if (turnType === "follow_up") {
     if (primaryTopic) {
       return `Thanks for breaking down your work with ${primaryTopic}. I'd like to probe a bit deeper into that specific point.`;
@@ -508,28 +585,27 @@ export function generateContextualAcknowledgment(
       "Thanks for sharing that overview. Let's dig a bit deeper into that specific point.",
       "Appreciate that explanation. I'd like to explore one detail a bit further.",
       "That's a helpful starting point. Let's look closer at your reasoning there.",
-      "Got it. I'd like to touch on one specific aspect of that approach.",
     ];
     return followUpAcks[index % followUpAcks.length];
   }
 
-  // Standard turn acknowledgment: dynamically echo candidate's topic
+  // 6. Substantive Answer with identified primary topic
   if (primaryTopic) {
     const acks = [
+      `Got it, thanks for explaining your work with ${primaryTopic}.`,
       `Thank you for walking me through your approach with ${primaryTopic}.`,
-      `Got it, that gives great context on how you handled ${primaryTopic}.`,
       `Appreciate you breaking down your reasoning around ${primaryTopic}.`,
-      `Makes sense, that highlights your practical experience with ${primaryTopic} well.`,
+      `Makes sense, that gives great context on how you handled ${primaryTopic}.`,
     ];
     return acks[index % acks.length];
   }
 
+  // 7. General substantive technical answer
   const standardAcks = [
-    "Thank you for walking me through your approach and problem-solving process.",
-    "Got it, that gives helpful context on how you tackled that.",
-    "Thanks for explaining that clearly. Let's move to our next topic.",
+    "Got it, thanks for explaining your approach and problem-solving process.",
     "Makes sense, that highlights your engineering reasoning well.",
-    "Appreciate you sharing those details. Let's explore another area.",
+    "Appreciate you sharing that context. Let's move to our next topic.",
+    "Got it, that gives helpful background on how you tackled that.",
   ];
   return standardAcks[index % standardAcks.length];
 }
@@ -916,6 +992,25 @@ export async function generateInterviewerTurn(
   const lastAnswer = lastItem?.answer || "";
   const lastQ = lastItem?.question || "";
   const lastQuestionId = lastItem?.id || "";
+  const intent = detectCandidateIntent(lastAnswer, lastQ);
+  const isClarificationIntent = Boolean(
+    candidateRequestedClarification || intent === "clarification_request",
+  );
+
+  // If candidate asked for clarification or elaboration, rephrase the current question directly
+  if (isClarificationIntent) {
+    const clarifiedQuestion =
+      lastAssessmentNote?.rephrased_question ||
+      `To put that into a simpler context: regarding "${lastQ}", could you describe a practical scenario or project from your past experience and the main approach you took?`;
+
+    return {
+      interviewer_text: "Certainly! Let me clarify that for you:",
+      question_text: clarifiedQuestion,
+      turn_type: "question",
+      question_type: inferQuestionType(lastQ, "technical"),
+      should_continue: true,
+    };
+  }
 
   if (shouldFollowUp && lastAssessmentNote?.follow_up_question) {
     const contextualAck = generateContextualAcknowledgment(
@@ -923,7 +1018,7 @@ export async function generateInterviewerTurn(
       lastQ,
       totalQuestions,
       "follow_up",
-      candidateRequestedClarification,
+      false,
     );
     return {
       interviewer_text: contextualAck,
@@ -990,18 +1085,23 @@ export async function generateInterviewerTurn(
       const questionText = parsed.question_text || parsed.prompt || targetQuestion || "";
       const rawAck = (parsed.interviewer_text || "").trim();
 
-      // For any turn answering a question, prioritize dynamic topic-matched acknowledgments
-      // over canned 2-3 word responses from n8n ("Understood", "Thanks for sharing", etc.)
-      const interviewerText =
-        isGreetingText(rawAck) || !rawAck || isGenericAcknowledgment(rawAck)
-          ? generateContextualAcknowledgment(
-              lastAnswer,
-              lastQ,
-              totalQuestions,
-              parsed.turn_type,
-              candidateRequestedClarification,
-            )
-          : rawAck;
+      // Filter out tone-deaf or canned acknowledgments from backend/n8n
+      const isCannedOrIrrelevant =
+        intent !== "substantive_answer" ||
+        rawAck.toLowerCase().includes("walking me through") ||
+        isGreetingText(rawAck) ||
+        !rawAck ||
+        isGenericAcknowledgment(rawAck);
+
+      const interviewerText = isCannedOrIrrelevant
+        ? generateContextualAcknowledgment(
+            lastAnswer,
+            lastQ,
+            totalQuestions,
+            parsed.turn_type,
+            false,
+          )
+        : rawAck;
 
       if (parsed.is_final_question || parsed.turn_type === "closing") {
         return {
@@ -1064,7 +1164,7 @@ export async function generateInterviewerTurn(
         lastQ,
         totalQuestions,
         "question",
-        candidateRequestedClarification,
+        false,
       ),
       question_text: targetQuestion,
       turn_type: "question",
@@ -1085,7 +1185,7 @@ export async function generateInterviewerTurn(
       lastQ,
       totalQuestions,
       "question",
-      candidateRequestedClarification,
+      false,
     ),
     question_text: fallbackQ.question_text,
     turn_type: "question",

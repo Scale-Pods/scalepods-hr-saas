@@ -17,6 +17,7 @@ import {
   analyzeCandidateFit,
   analyzeResumeJdAlignment,
   type CandidateAnalysis,
+  detectCandidateIntent,
   extractJdToolsAndTech,
   generateInterviewerTurn,
   generateTargetedFollowUp,
@@ -491,6 +492,14 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         } catch {}
       }
 
+      const lastItem = history[history.length - 1];
+      const lastAnswer = lastItem?.answer || "";
+      const lastQ = lastItem?.question || "";
+      const intent = detectCandidateIntent(lastAnswer, lastQ);
+      const isClarification = intent === "clarification_request";
+      const isRefusal = intent === "refusal";
+      const wordsCount = lastAnswer.trim().split(/\s+/).filter(Boolean).length;
+
       const turn = await generateInterviewerTurn(
         resumeText,
         jdText,
@@ -506,10 +515,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         10,
         1,
         nextPlannedQuestion?.question_text,
-        false,
-        0,
+        isClarification,
+        wordsCount,
         true,
-        false,
+        isRefusal,
         session.id,
         session.account_id,
         session.candidate_id,

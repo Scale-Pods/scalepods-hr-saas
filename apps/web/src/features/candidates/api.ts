@@ -14,6 +14,7 @@ import {
 } from "@scalepods/core";
 import { BUCKETS } from "@/lib/storage";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { detectCandidateIntent } from "../interview/utils/llm";
 
 export type { ScorecardRow };
 
@@ -825,19 +826,33 @@ export async function fetchCandidateProfile(
               existing.answered_at = ans.answered_at;
               if (liveNote && Object.keys(liveNote).length > 0) {
                 existing.ai_note = liveNote;
-                if (liveNote.interviewer_text) {
-                  existing.interviewer_text = liveNote.interviewer_text;
+                let cleanAck: string | null = liveNote.interviewer_text || null;
+                if (cleanAck?.toLowerCase().includes("walking me through")) {
+                  const intent = detectCandidateIntent(existing.answer_text, qText);
+                  if (intent !== "substantive_answer") {
+                    cleanAck = null;
+                  }
                 }
+                existing.interviewer_text = cleanAck;
               }
             }
           } else {
+            const ansText = (ans.answer_text || "").trim();
+            let cleanAck: string | null = liveNote.interviewer_text || null;
+            if (cleanAck?.toLowerCase().includes("walking me through")) {
+              const intent = detectCandidateIntent(ansText, qText);
+              if (intent !== "substantive_answer") {
+                cleanAck = null;
+              }
+            }
+
             turnsMap.set(normKey, {
               id: ans.id,
               question_number: counter++,
               question_text: qText,
               question_type: q?.question_type || liveNote.question_type || "Technical",
-              interviewer_text: liveNote.interviewer_text || null,
-              answer_text: (ans.answer_text || "").trim(),
+              interviewer_text: cleanAck,
+              answer_text: ansText,
               answered_at: ans.answered_at || new Date().toISOString(),
               ai_note: liveNote,
             });
