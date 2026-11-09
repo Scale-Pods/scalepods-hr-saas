@@ -46,7 +46,7 @@ export function AnswerRecorder({
   const [silenceCountdown, setSilenceCountdown] = useState(COUNTDOWN_TENTHS);
   const [thinkingCountdown, setThinkingCountdown] = useState(THINKING_TENTHS);
   const [isThinking, setIsThinking] = useState(false);
-  const [sttProvider, setSttProvider] = useState<"deepgram" | "webspeech" | "none">("none");
+  const [isDeepgramConnected, setIsDeepgramConnected] = useState(false);
 
   const isRecordingRef = useRef(false);
   const transcriptRef = useRef("");
@@ -63,7 +63,6 @@ export function AnswerRecorder({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const recognitionRef = useRef<any>(null);
   const deepgramRef = useRef<DeepgramSTT | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -74,8 +73,6 @@ export function AnswerRecorder({
   const isVoiceActiveRef = useRef(false);
   const isCountdownActiveRef = useRef(false);
   const hasCandidateSpokenRef = useRef(false);
-  const accumulatedWebSpeechRef = useRef("");
-  const activeSttRef = useRef<"deepgram" | "webspeech" | "none">("none");
 
   const clearAudioActivityMonitor = useCallback(() => {
     if (audioActivityIntervalRef.current) {
@@ -163,12 +160,7 @@ export function AnswerRecorder({
       deepgramRef.current.stop();
       deepgramRef.current = null;
     }
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch {}
-      recognitionRef.current = null;
-    }
+    setIsDeepgramConnected(false);
   }, []);
 
   const stopAndSubmit = useCallback(
@@ -179,7 +171,6 @@ export function AnswerRecorder({
       clearThinkingTimer();
       clearCountdown();
       isRecordingRef.current = false;
-      accumulatedWebSpeechRef.current = "";
 
       if (overrideText?.trim()) {
         transcriptRef.current = overrideText.trim();
@@ -226,7 +217,6 @@ export function AnswerRecorder({
     clearThinkingTimer();
     clearCountdown();
     isRecordingRef.current = false;
-    accumulatedWebSpeechRef.current = "";
     setTranscript("");
     transcriptRef.current = "";
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
@@ -296,123 +286,6 @@ export function AnswerRecorder({
     }, 100);
   }, [clearThinkingTimer, stopAndSubmit]);
 
-  const startWebSpeechFallback = useCallback(
-    (gen: number) => {
-      const SpeechRecognitionAPI =
-        typeof window !== "undefined"
-          ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-          : null;
-      if (!SpeechRecognitionAPI) {
-        setSttProvider((prev) => (prev === "none" ? "none" : prev));
-        return;
-      }
-
-      setSttProvider("webspeech");
-
-      let currentSessionFinal = "";
-      const launchInstance = () => {
-        if (gen !== generationRef.current || !isRecordingRef.current) return;
-        currentSessionFinal = "";
-        try {
-          if (recognitionRef.current) {
-            try {
-              recognitionRef.current.abort();
-            } catch {}
-            recognitionRef.current = null;
-          }
-
-          const recognition = new SpeechRecognitionAPI();
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.maxAlternatives = 1;
-          recognition.lang =
-            typeof navigator !== "undefined" ? navigator.language || "en-US" : "en-US";
-
-          recognition.onresult = (event: any) => {
-            if (gen !== generationRef.current) return;
-            // If Deepgram is actively streaming high-fidelity audio transcription, do not let WebSpeech overwrite it
-            if (activeSttRef.current === "deepgram") return;
-
-            let finalPart = "";
-            let interimPart = "";
-            for (let i = 0; i < event.results.length; i++) {
-              if (event.results[i].isFinal) {
-                finalPart += `${event.results[i][0].transcript} `;
-              } else {
-                interimPart += event.results[i][0].transcript;
-              }
-            }
-            currentSessionFinal = finalPart;
-
-            const base = accumulatedWebSpeechRef.current
-              ? `${accumulatedWebSpeechRef.current} `
-              : "";
-            const combined = (base + finalPart + interimPart).trim();
-            const normalized = normalizeTechnicalSpeech(combined);
-
-            if (normalized.trim().length > 0) {
-              activeSttRef.current = "webspeech";
-              const prevTranscript = transcriptRef.current;
-              if (
-                normalized.trim().length >= prevTranscript.trim().length ||
-                prevTranscript.trim().length === 0
-              ) {
-                setTranscript(normalized);
-                transcriptRef.current = normalized;
-              }
-
-              if (isThinkingRef.current) {
-                clearThinkingTimer();
-              }
-
-              const newWordsAdded = normalized.trim().length > prevTranscript.trim().length;
-              if (isVoiceActiveRef.current || newWordsAdded) {
-                clearCountdown();
-              } else {
-                startCountdown();
-              }
-            }
-          };
-
-          recognition.onerror = (event: any) => {
-            if (event.error !== "no-speech" && event.error !== "aborted") {
-              console.log("[WebSpeech] Event:", event.error);
-            }
-          };
-
-          recognition.onend = () => {
-            if (gen !== generationRef.current || !isRecordingRef.current) return;
-            if (currentSessionFinal.trim()) {
-              // Normalize before accumulating so technical terms are corrected
-              // even when chunks are assembled across recognition restarts
-              accumulatedWebSpeechRef.current = normalizeTechnicalSpeech(
-                (
-                  (accumulatedWebSpeechRef.current ? `${accumulatedWebSpeechRef.current} ` : "") +
-                  currentSessionFinal.trim()
-                ).trim(),
-              );
-              currentSessionFinal = "";
-            }
-            // Seamless restart without dropped window
-            if (gen === generationRef.current && isRecordingRef.current) {
-              try {
-                launchInstance();
-              } catch {}
-            }
-          };
-
-          recognition.start();
-          recognitionRef.current = recognition;
-        } catch (err) {
-          console.warn("[WebSpeech] Failed to start recognition instance:", err);
-        }
-      };
-
-      launchInstance();
-    },
-    [clearCountdown, clearThinkingTimer, startCountdown],
-  );
-
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current) return;
 
@@ -423,7 +296,6 @@ export function AnswerRecorder({
     clearCountdown();
     setTranscript("");
     transcriptRef.current = "";
-    accumulatedWebSpeechRef.current = "";
     hasCandidateSpokenRef.current = false;
     audioBlobRef.current = null;
     try {
@@ -442,8 +314,7 @@ export function AnswerRecorder({
       }
 
       if (!stream) {
-        console.warn("No audio stream available");
-        startWebSpeechFallback(gen);
+        console.warn("No audio stream available for Deepgram STT");
         return;
       }
 
@@ -588,10 +459,7 @@ export function AnswerRecorder({
 
       intervalRef.current = setInterval(() => setDuration((prev) => prev + 1), 1000);
 
-      // Start Web Speech API immediately for zero-latency local speech capture
-      startWebSpeechFallback(gen);
-
-      // Connect to Deepgram Nova-3 streaming (nova-3 with optimised endpointing)
+      // Connect exclusively to Deepgram Nova-3 streaming (sole STT engine)
       if (DeepgramSTT.isConfigured() && stream) {
         try {
           const deepgram = new DeepgramSTT({
@@ -599,8 +467,7 @@ export function AnswerRecorder({
               if (gen !== generationRef.current) return;
               const normalized = normalizeTechnicalSpeech(fullText);
               if (normalized.trim().length > 0) {
-                activeSttRef.current = "deepgram";
-                setSttProvider("deepgram");
+                setIsDeepgramConnected(true);
                 setTranscript(normalized);
                 transcriptRef.current = normalized;
 
@@ -616,38 +483,28 @@ export function AnswerRecorder({
               }
             },
             onError: (err) => {
-              console.warn("Deepgram WebSocket error:", err);
-              activeSttRef.current = "webspeech";
-              setSttProvider("webspeech");
+              console.warn("[AnswerRecorder] Deepgram STT error:", err);
+              setIsDeepgramConnected(false);
             },
             onClose: () => {
-              if (activeSttRef.current === "deepgram") {
-                activeSttRef.current = "webspeech";
-                setSttProvider("webspeech");
-              }
+              setIsDeepgramConnected(false);
             },
           });
           deepgramRef.current = deepgram;
 
           const connectPromise = deepgram.start(stream);
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Deepgram timeout")), 3000),
+            setTimeout(() => reject(new Error("Deepgram timeout")), 4000),
           );
           await Promise.race([connectPromise, timeoutPromise]);
-          activeSttRef.current = "deepgram";
-          setSttProvider("deepgram");
-          // Deepgram is live; safely pause WebSpeech to prevent concurrent clobbering
-          try {
-            recognitionRef.current?.abort();
-          } catch {}
+          setIsDeepgramConnected(true);
         } catch (err) {
-          console.warn("Deepgram unavailable, Web Speech API handling transcription:", err);
-          activeSttRef.current = "webspeech";
+          console.warn("[AnswerRecorder] Deepgram STT connection error:", err);
+          setIsDeepgramConnected(false);
         }
       }
     } catch (err) {
       console.error("Failed to start recording stream:", err);
-      startWebSpeechFallback(gen);
     }
   }, [
     audioStream,
@@ -657,7 +514,6 @@ export function AnswerRecorder({
     drawWaveform,
     startCountdown,
     startThinkingTimer,
-    startWebSpeechFallback,
     clearThinkingTimer,
   ]);
 
@@ -786,31 +642,27 @@ export function AnswerRecorder({
                   <span className="w-1 h-1 rounded-full bg-emerald-400" />
                   Voice Active
                 </span>
-                {sttProvider === "deepgram" && (
+                <span
+                  className="px-2 py-0.5 text-[10px] font-semibold rounded-md flex items-center gap-1.5"
+                  style={{
+                    background: isDeepgramConnected
+                      ? "rgba(147, 51, 234, 0.12)"
+                      : "rgba(255, 255, 255, 0.05)",
+                    border: isDeepgramConnected
+                      ? "1px solid rgba(147, 51, 234, 0.3)"
+                      : "1px solid var(--separator)",
+                    color: isDeepgramConnected ? "#c084fc" : "var(--label-tertiary)",
+                  }}
+                  title={
+                    isDeepgramConnected ? "Deepgram Nova-3 active" : "Deepgram STT connection ready"
+                  }
+                >
                   <span
-                    className="px-2 py-0.5 text-[10px] font-semibold rounded-md flex items-center gap-1.5"
-                    style={{
-                      background: "rgba(147, 51, 234, 0.12)",
-                      border: "1px solid rgba(147, 51, 234, 0.3)",
-                      color: "#c084fc",
-                    }}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                    Deepgram Nova-2
-                  </span>
-                )}
-                {sttProvider === "webspeech" && (
-                  <span
-                    className="px-2 py-0.5 text-[10px] font-medium rounded-md text-xs"
-                    style={{
-                      background: "var(--fill-tertiary)",
-                      border: "1px solid var(--separator)",
-                      color: "var(--label-secondary)",
-                    }}
-                  >
-                    Speech-to-Text
-                  </span>
-                )}
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ background: isDeepgramConnected ? "#c084fc" : "#888" }}
+                  />
+                  {isDeepgramConnected ? "Deepgram Nova-3" : "Deepgram STT"}
+                </span>
               </div>
               <div className="flex items-center gap-3">
                 {isThinking ? (
