@@ -854,17 +854,21 @@ export function extractProjectsFromResume(resumeText: string): string[] {
   if (!resumeText) return [];
   const projects: string[] = [];
   const patterns = [
+    /(?:^|\n)\s*([A-Z][A-Za-z0-9_\s]{2,35}?)\s*[—–-]\s*(?:AI|Python|FastAPI|React|Smart|Real|End|Built|Designed)/gi,
+    /(?:SkillGap\s*AI|Crop\s*Price\s*and\s*Yield\s*Prediction|ScalePods|Deccan\s*AI)/gi,
     /(?:project[s]?\s*[:\-–]\s*|\bbuilt\s+|\bdeveloped\s+|\barchitected\s+|\bdesigned\s+)([A-Z0-9][A-Za-z0-9_\-\s]{2,30}?)(?=[,.\n\r()]|(?:\s+using|\s+with|\s+to|\s+for|\s+at))/gi,
     /(?:^|\n)\s*[-•*]?\s*([A-Z][A-Za-z0-9_\-\s]{2,25})\s*[:\-–]\s*(?:an?|the|built|developed)/gi,
   ];
   for (const pattern of patterns) {
     let match = pattern.exec(resumeText);
     while (match !== null) {
-      const name = (match[1] || "").trim();
+      const name = (match[1] || match[0] || "").trim().replace(/^PROJECTS?\s*/i, "");
       if (
         name.length >= 3 &&
-        name.length <= 35 &&
-        !/^(the|an?|this|and|with|from|using|which|that|experience|worked|responsible)$/i.test(name)
+        name.length <= 40 &&
+        !/^(the|an?|this|and|with|from|using|which|that|experience|worked|responsible|designed|built)$/i.test(
+          name,
+        )
       ) {
         if (!projects.includes(name)) {
           projects.push(name);
@@ -890,20 +894,24 @@ export function sanitizeQuestionPlaceholders(
   const candidateTools: string[] = [];
   if (resumeText) {
     const techWords = [
+      "n8n",
+      "Groq",
+      "Gemini",
+      "Claude",
+      "FastAPI",
+      "Flask",
+      "Supabase",
+      "PostgreSQL",
+      "Python",
       "React",
       "Next.js",
       "Node.js",
       "TypeScript",
       "JavaScript",
-      "PostgreSQL",
-      "Python",
-      "Docker",
       "Redis",
       "Kafka",
-      "FastAPI",
-      "n8n",
       "GraphQL",
-      "Supabase",
+      "Docker",
       "Kubernetes",
       "AWS",
     ];
@@ -913,7 +921,7 @@ export function sanitizeQuestionPlaceholders(
       }
     }
   }
-  const primaryTool = candidateTools[0] || "PostgreSQL or Docker";
+  const primaryTool = candidateTools[0] || "your core engineering tools";
   const secondaryTool = candidateTools[1] || candidateTools[0] || "your primary backend frameworks";
 
   // 1. [specific project] and variations

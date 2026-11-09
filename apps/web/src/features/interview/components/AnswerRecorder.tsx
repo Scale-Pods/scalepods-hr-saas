@@ -4,7 +4,7 @@ import { DeepgramSTT } from "../utils/deepgram";
 import { getAudioStream } from "../utils/mediaHelpers";
 import { normalizeTechnicalSpeech } from "../utils/speechNormalizer";
 
-const SILENCE_TIMEOUT_MS = 5000;
+const SILENCE_TIMEOUT_MS = 8000;
 const COUNTDOWN_TENTHS = Math.floor(SILENCE_TIMEOUT_MS / 100);
 const THINKING_TIMEOUT_MS = 30000;
 const THINKING_TENTHS = Math.floor(THINKING_TIMEOUT_MS / 100);
@@ -75,6 +75,7 @@ export function AnswerRecorder({
   const isCountdownActiveRef = useRef(false);
   const hasCandidateSpokenRef = useRef(false);
   const accumulatedWebSpeechRef = useRef("");
+  const activeSttRef = useRef<"deepgram" | "webspeech" | "none">("none");
 
   const clearAudioActivityMonitor = useCallback(() => {
     if (audioActivityIntervalRef.current) {
@@ -329,6 +330,8 @@ export function AnswerRecorder({
 
           recognition.onresult = (event: any) => {
             if (gen !== generationRef.current) return;
+            // If Deepgram is actively streaming high-fidelity audio transcription, do not let WebSpeech overwrite it
+            if (activeSttRef.current === "deepgram") return;
 
             let finalPart = "";
             let interimPart = "";
@@ -348,6 +351,7 @@ export function AnswerRecorder({
             const normalized = normalizeTechnicalSpeech(combined);
 
             if (normalized.trim().length > 0) {
+              activeSttRef.current = "webspeech";
               const prevTranscript = transcriptRef.current;
               if (
                 normalized.trim().length >= prevTranscript.trim().length ||
@@ -588,13 +592,14 @@ export function AnswerRecorder({
       startWebSpeechFallback(gen);
 
       // Connect to Deepgram Nova-3 streaming (nova-3 with optimised endpointing)
-      if (DeepgramSTT.isConfigured()) {
+      if (DeepgramSTT.isConfigured() && stream) {
         try {
           const deepgram = new DeepgramSTT({
             onTranscript: (fullText) => {
               if (gen !== generationRef.current) return;
               const normalized = normalizeTechnicalSpeech(fullText);
               if (normalized.trim().length > 0) {
+                activeSttRef.current = "deepgram";
                 setSttProvider("deepgram");
                 setTranscript(normalized);
                 transcriptRef.current = normalized;
@@ -612,19 +617,32 @@ export function AnswerRecorder({
             },
             onError: (err) => {
               console.warn("Deepgram WebSocket error:", err);
+              activeSttRef.current = "webspeech";
+              setSttProvider("webspeech");
             },
-            onClose: () => {},
+            onClose: () => {
+              if (activeSttRef.current === "deepgram") {
+                activeSttRef.current = "webspeech";
+                setSttProvider("webspeech");
+              }
+            },
           });
           deepgramRef.current = deepgram;
 
-          const connectPromise = deepgram.start();
+          const connectPromise = deepgram.start(stream);
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error("Deepgram timeout")), 3000),
           );
           await Promise.race([connectPromise, timeoutPromise]);
+          activeSttRef.current = "deepgram";
           setSttProvider("deepgram");
+          // Deepgram is live; safely pause WebSpeech to prevent concurrent clobbering
+          try {
+            recognitionRef.current?.abort();
+          } catch {}
         } catch (err) {
           console.warn("Deepgram unavailable, Web Speech API handling transcription:", err);
+          activeSttRef.current = "webspeech";
         }
       }
     } catch (err) {

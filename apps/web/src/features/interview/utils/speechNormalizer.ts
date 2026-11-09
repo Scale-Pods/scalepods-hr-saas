@@ -12,25 +12,38 @@ export function normalizeTechnicalSpeech(text: string): string {
     // Workflow & Automation Tools
     // "air n8n", "n ate n", "en ate en" are common STT hallucinations for n8n
     [
-      /\b(air\s*n\s*[-]?\s*8\s*[-]?\s*n|n\s*ate\s*n|en\s*ate\s*en|n\s*[-]?\s*8\s*[-]?\s*n|n8\s*n|n\s*8n)\b/gi,
-      "n8n",
+      /\b(air\s*n\s*[-]?\s*8\s*[-]?\s*n|n\s*ate\s*n|en\s*ate\s*en|n\s*[-]?\s*8\s*[-]?\s*n|n8\s*n|n\s*8n|in\s+anytime\s+workshoot|in\s+it\s+and\s+workers|anytime\s+workshoot)\b/gi,
+      "n8n workflows",
     ],
     [/\b(zap\s*i\s*er)\b/gi, "Zapier"],
     [/\b(integromat)\b/gi, "Integromat"],
     [/\b(air\s*flow|apache\s*air\s*flow)\b/gi, "Airflow"],
     [/\b(post\s*man)\b/gi, "Postman"],
 
-    // AI, LLM & Agent Frameworks
+    // AI, LLM & Agent Frameworks & Hardware
+    [/\b(groq|groc|grok|brock\s+brock|brock|crock|rock)\b/gi, "Groq"],
+    [/\b(gemini|geminize|gemini\s*api)\b/gi, "Gemini"],
+    [/\b(claude|the\s+lord\s+claud|the\s+lord|claud)\b/gi, "Claude"],
+    [/\b(llama\s*3\.?\d*|llama|lama)\b/gi, "Llama"],
     [/\b(lang\s*chain)\b/gi, "LangChain"],
     [/\b(llama\s*index)\b/gi, "LlamaIndex"],
     [/\b(open\s*ai|open\s*A\s*I)\b/gi, "OpenAI"],
     [/\b(chat\s*g\s*p\s*t|chat\s*gpt)\b/gi, "ChatGPT"],
-    [/\b(claude\s*ai)\b/gi, "Claude"],
     [/\b(git\s*hub\s*co\s*pilot)\b/gi, "GitHub Copilot"],
     [/\b(pie\s*torch)\b/gi, "PyTorch"],
     [/\b(tensor\s*flow)\b/gi, "TensorFlow"],
     [/\b(sci\s*kit\s*learn)\b/gi, "scikit-learn"],
     [/\b(hugging\s*face)\b/gi, "Hugging Face"],
+
+    // Candidate Projects & Companies
+    [/\b(skill\s*gap\s*ai|skill\s*gap|screen\s*of\s*air|scale\s*gap)\b/gi, "SkillGap AI"],
+    [/\b(scale\s*pods|scalepods)\b/gi, "ScalePods"],
+    [/\b(deccan\s*ai)\b/gi, "Deccan AI"],
+    [/\b(li\s*dar|lidar|leader\s+point\s+cloud)\b/gi, "LiDAR"],
+
+    // APIs & Protocols
+    [/\b(meta\s*graph\s*api|meta\s*graph)\b/gi, "Meta Graph API"],
+    [/\b(whats\s*app\s*business\s*api|whats\s*app\s*api|whats\s*app)\b/gi, "WhatsApp Business API"],
 
     // APIs & Protocols
     [/\b(fast\s*api)\b/gi, "FastAPI"],

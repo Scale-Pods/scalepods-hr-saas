@@ -260,13 +260,32 @@ export async function GET(request: NextRequest) {
               .download(candidateResumePath);
             if (!downloadErr && fileBlob) {
               const buffer = Buffer.from(await fileBlob.arrayBuffer());
-              const rawStr = buffer.toString("utf-8");
-              const printable = rawStr
-                .replace(/[^\x20-\x7E\n\r\t]/g, " ")
-                .replace(/\s+/g, " ")
-                .trim();
-              if (printable.length > 100) {
-                resumeText = printable.slice(0, 20000);
+              try {
+                // Parse actual text from PDF binary stream using pdfjs-dist
+                const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+                const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
+                let fullText = "";
+                for (let i = 1; i <= doc.numPages; i++) {
+                  const page = await doc.getPage(i);
+                  const content = await page.getTextContent();
+                  const strings = content.items.map(
+                    (item: { str?: string } | Record<string, unknown>) =>
+                      (item as { str?: string }).str || "",
+                  );
+                  fullText += `${strings.join(" ")}\n`;
+                }
+                if (fullText.trim().length > 50) {
+                  resumeText = fullText.trim().slice(0, 20000);
+                }
+              } catch {
+                const rawStr = buffer.toString("utf-8");
+                const printable = rawStr
+                  .replace(/[^\x20-\x7E\n\r\t]/g, " ")
+                  .replace(/\s+/g, " ")
+                  .trim();
+                if (printable.length > 100) {
+                  resumeText = printable.slice(0, 20000);
+                }
               }
             }
           } catch (e) {
