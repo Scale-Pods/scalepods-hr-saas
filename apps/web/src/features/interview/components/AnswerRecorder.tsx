@@ -63,6 +63,7 @@ export function AnswerRecorder({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recognitionRef = useRef<unknown>(null);
   const deepgramRef = useRef<DeepgramSTT | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -73,6 +74,7 @@ export function AnswerRecorder({
   const isVoiceActiveRef = useRef(false);
   const isCountdownActiveRef = useRef(false);
   const hasCandidateSpokenRef = useRef(false);
+  const accumulatedWebSpeechRef = useRef("");
 
   const clearAudioActivityMonitor = useCallback(() => {
     if (audioActivityIntervalRef.current) {
@@ -160,6 +162,12 @@ export function AnswerRecorder({
       deepgramRef.current.stop();
       deepgramRef.current = null;
     }
+    if (recognitionRef.current) {
+      try {
+        (recognitionRef.current as { abort: () => void }).abort();
+      } catch {}
+      recognitionRef.current = null;
+    }
     setIsDeepgramConnected(false);
   }, []);
 
@@ -171,6 +179,7 @@ export function AnswerRecorder({
       clearThinkingTimer();
       clearCountdown();
       isRecordingRef.current = false;
+      accumulatedWebSpeechRef.current = "";
 
       if (overrideText?.trim()) {
         transcriptRef.current = overrideText.trim();
@@ -217,6 +226,7 @@ export function AnswerRecorder({
     clearThinkingTimer();
     clearCountdown();
     isRecordingRef.current = false;
+    accumulatedWebSpeechRef.current = "";
     setTranscript("");
     transcriptRef.current = "";
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
@@ -285,6 +295,132 @@ export function AnswerRecorder({
       });
     }, 100);
   }, [clearThinkingTimer, stopAndSubmit]);
+
+  const startWebSpeechFallback = useCallback(
+    (gen: number) => {
+      type SpeechRecClass = new () => {
+        continuous: boolean;
+        interimResults: boolean;
+        maxAlternatives: number;
+        lang: string;
+        onresult:
+          | ((event: {
+              results: Array<Array<{ transcript: string }> & { isFinal?: boolean }>;
+            }) => void)
+          | null;
+        onerror: ((event: { error: string }) => void) | null;
+        onend: (() => void) | null;
+        start: () => void;
+        abort: () => void;
+      };
+
+      const SpeechRecognitionAPI =
+        typeof window !== "undefined"
+          ? (window as unknown as { SpeechRecognition?: SpeechRecClass }).SpeechRecognition ||
+            (window as unknown as { webkitSpeechRecognition?: SpeechRecClass })
+              .webkitSpeechRecognition
+          : null;
+      if (!SpeechRecognitionAPI) {
+        return;
+      }
+
+      let currentSessionFinal = "";
+      const launchInstance = () => {
+        if (gen !== generationRef.current || !isRecordingRef.current) return;
+        currentSessionFinal = "";
+        try {
+          if (recognitionRef.current) {
+            try {
+              (recognitionRef.current as { abort: () => void }).abort();
+            } catch {}
+            recognitionRef.current = null;
+          }
+
+          const recognition = new SpeechRecognitionAPI();
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.maxAlternatives = 1;
+          recognition.lang =
+            typeof navigator !== "undefined" ? navigator.language || "en-US" : "en-US";
+
+          recognition.onresult = (event) => {
+            if (gen !== generationRef.current) return;
+
+            let finalPart = "";
+            let interimPart = "";
+            for (let i = 0; i < event.results.length; i++) {
+              if (event.results[i].isFinal) {
+                finalPart += `${event.results[i][0].transcript} `;
+              } else {
+                interimPart += event.results[i][0].transcript;
+              }
+            }
+            currentSessionFinal = finalPart;
+
+            const base = accumulatedWebSpeechRef.current
+              ? `${accumulatedWebSpeechRef.current} `
+              : "";
+            const combined = (base + finalPart + interimPart).trim();
+            const normalized = normalizeTechnicalSpeech(combined);
+
+            if (normalized.trim().length > 0) {
+              const prevTranscript = transcriptRef.current;
+              if (
+                normalized.trim().length >= prevTranscript.trim().length ||
+                prevTranscript.trim().length === 0
+              ) {
+                setTranscript(normalized);
+                transcriptRef.current = normalized;
+              }
+
+              if (isThinkingRef.current) {
+                clearThinkingTimer();
+              }
+
+              const newWordsAdded = normalized.trim().length > prevTranscript.trim().length;
+              if (isVoiceActiveRef.current || newWordsAdded) {
+                clearCountdown();
+              } else {
+                startCountdown();
+              }
+            }
+          };
+
+          recognition.onerror = (event) => {
+            if (event.error !== "no-speech" && event.error !== "aborted") {
+              console.log("[WebSpeech] Event:", event.error);
+            }
+          };
+
+          recognition.onend = () => {
+            if (gen !== generationRef.current || !isRecordingRef.current) return;
+            if (currentSessionFinal.trim()) {
+              accumulatedWebSpeechRef.current = normalizeTechnicalSpeech(
+                (
+                  (accumulatedWebSpeechRef.current ? `${accumulatedWebSpeechRef.current} ` : "") +
+                  currentSessionFinal.trim()
+                ).trim(),
+              );
+              currentSessionFinal = "";
+            }
+            if (gen === generationRef.current && isRecordingRef.current) {
+              try {
+                launchInstance();
+              } catch {}
+            }
+          };
+
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch (err) {
+          console.warn("[WebSpeech] Failed to start recognition instance:", err);
+        }
+      };
+
+      launchInstance();
+    },
+    [clearCountdown, clearThinkingTimer, startCountdown],
+  );
 
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current) return;
@@ -504,8 +640,12 @@ export function AnswerRecorder({
       }, 50);
 
       intervalRef.current = setInterval(() => setDuration((prev) => prev + 1), 1000);
+
+      // Start Web Speech API immediately for zero-latency local speech capture
+      startWebSpeechFallback(gen);
     } catch (err) {
       console.error("Failed to start recording stream:", err);
+      startWebSpeechFallback(gen);
     }
   }, [
     audioStream,
@@ -515,6 +655,7 @@ export function AnswerRecorder({
     drawWaveform,
     startCountdown,
     startThinkingTimer,
+    startWebSpeechFallback,
     clearThinkingTimer,
   ]);
 
@@ -549,6 +690,12 @@ export function AnswerRecorder({
       } catch {}
       mediaRecorderRef.current = null;
       stopSTTEngines();
+      if (recognitionRef.current) {
+        try {
+          (recognitionRef.current as { abort: () => void }).abort();
+        } catch {}
+        recognitionRef.current = null;
+      }
       if (intervalRef.current) clearInterval(intervalRef.current);
       clearAudioActivityMonitor();
       cancelAnimationFrame(rafRef.current);
