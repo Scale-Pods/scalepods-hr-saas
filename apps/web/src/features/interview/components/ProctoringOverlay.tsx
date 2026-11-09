@@ -214,6 +214,7 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
               <span className="font-medium text-xs sm:text-sm leading-snug">{warningMessage}</span>
             </div>
             <button
+              type="button"
               onClick={() => setShowWarning(false)}
               className="p-1 rounded-lg hover:bg-white/20 transition-colors shrink-0"
               title="Dismiss warning"

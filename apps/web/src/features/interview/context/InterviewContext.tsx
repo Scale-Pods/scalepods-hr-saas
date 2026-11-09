@@ -270,8 +270,17 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         setCurrentQuestionIndex(currentIdx);
         setCurrentQuestionId(cleanExisting[currentIdx]?.id || cleanExisting[0]?.id || "");
       } else {
+        const firstQuestionId =
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-${Math.floor(
+                Math.random() * 0xffffffffffff,
+              )
+                .toString(16)
+                .padStart(12, "0")}`;
+
         const firstQuestion: InterviewQuestion = {
-          id: "q-intro-0",
+          id: firstQuestionId,
           session_id: id,
           question_text: INTRO_QUESTION_TEXT,
           question_type: "cultural",
@@ -279,16 +288,17 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           source: "llm_ts_dynamic_intro",
         };
         setQuestions([firstQuestion]);
-        setCurrentQuestionId(firstQuestion.id);
+        setCurrentQuestionId(firstQuestionId);
         setCurrentQuestionIndex(0);
 
-        // Persist intro question to database
+        // Persist intro question to database with fixed UUID
         fetch("/api/interview/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "insert_question",
             sessionId: id,
+            questionId: firstQuestionId,
             questionText: INTRO_QUESTION_TEXT,
             questionType: "cultural",
             orderIndex: 0,

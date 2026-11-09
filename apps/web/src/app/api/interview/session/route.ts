@@ -499,6 +499,18 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "questionId is required" }, { status: 400 });
         }
 
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(questionId)) {
+          console.warn(
+            "[api/interview/session POST submit_answer] Non-UUID questionId skipped:",
+            questionId,
+          );
+          return NextResponse.json({
+            success: true,
+            message: "Non-UUID questionId skipped",
+          });
+        }
+
         const nowIso = new Date().toISOString();
         const roundInstanceId = sessionRow.round_instance_id;
 

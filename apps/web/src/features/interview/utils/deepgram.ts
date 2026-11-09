@@ -1,3 +1,5 @@
+import { getEnv } from "@/env";
+
 export interface DeepgramSTTOptions {
   apiKey?: string;
   model?: string;
@@ -7,6 +9,17 @@ export interface DeepgramSTTOptions {
   onError?: (error: Error) => void;
   onOpen?: () => void;
   onClose?: () => void;
+}
+
+export function getDeepgramApiKey(): string {
+  try {
+    const fromEnv = getEnv().NEXT_PUBLIC_DEEPGRAM_API_KEY;
+    if (fromEnv) return fromEnv;
+  } catch {}
+  if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY) {
+    return process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY;
+  }
+  return "";
 }
 
 const DEFAULT_TECH_KEYWORDS = [
@@ -97,10 +110,7 @@ export class DeepgramSTT {
   private _reconnectAttempts = 0;
 
   constructor(options: DeepgramSTTOptions = {}) {
-    this.apiKey =
-      options.apiKey ||
-      (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY : "") ||
-      "";
+    this.apiKey = options.apiKey || getDeepgramApiKey();
     this.model = options.model || "nova-3";
     this.language = options.language || "en";
     this.keywords = options.keywords || DEFAULT_TECH_KEYWORDS;
@@ -111,8 +121,7 @@ export class DeepgramSTT {
   }
 
   static isConfigured(): boolean {
-    const key =
-      typeof process !== "undefined" ? process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY : undefined;
+    const key = getDeepgramApiKey();
     return Boolean(key && key.trim().length > 0 && !key.includes("your-deepgram-api-key"));
   }
 
@@ -121,6 +130,9 @@ export class DeepgramSTT {
   }
 
   start(audioStream?: MediaStream): Promise<void> {
+    if (!this.apiKey) {
+      this.apiKey = getDeepgramApiKey();
+    }
     if (!this.apiKey) {
       return Promise.reject(new Error("Deepgram API key not provided"));
     }
@@ -141,19 +153,20 @@ export class DeepgramSTT {
           punctuate: "true",
           interim_results: "true",
           vad_events: "true",
-          // 900ms gives natural pauses room without cutting off mid-sentence hesitations
-          endpointing: "900",
-          // Wait 2s of complete silence before finalising an utterance
-          utterance_end_ms: "2000",
-          no_delay: "true",
-          // Strip filler words ("um", "uh") from the final transcript
+          endpointing: "1000",
           filler_words: "false",
         });
 
-        // Apply per-keyword boost weights — higher numbers prioritise rare/unusual terms
+        const isNova3 = this.model.startsWith("nova-3");
         for (const kw of this.keywords) {
-          const boost = KEYWORD_BOOST_WEIGHTS[kw];
-          params.append("keywords", boost ? `${kw}:${boost}` : kw);
+          if (isNova3) {
+            // Nova-3 uses keyterm prompting (plain terms without intensifiers)
+            params.append("keyterm", kw);
+          } else {
+            // Older models (nova-2) use keywords with boost intensifier
+            const boost = KEYWORD_BOOST_WEIGHTS[kw];
+            params.append("keywords", boost ? `${kw}:${boost}` : kw);
+          }
         }
 
         const url = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
@@ -185,7 +198,7 @@ export class DeepgramSTT {
               ).trim();
               this.onTranscript?.(this.accumulatedFinalTranscript, true);
             } else {
-              const liveText = (this.accumulatedFinalTranscript + " " + text.trim()).trim();
+              const liveText = `${this.accumulatedFinalTranscript} ${text.trim()}`.trim();
               this.onTranscript?.(liveText, false);
             }
           } catch (err) {
@@ -232,6 +245,10 @@ export class DeepgramSTT {
   }
 
   sendAudio(data: Blob) {
+    // If internal mediaRecorder is active, avoid sending duplicated audio chunks
+    if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
+      return;
+    }
     if (this.socket && this.socket.readyState === WebSocket.OPEN && data.size > 0) {
       this.socket.send(data);
     }
@@ -264,7 +281,7 @@ export class DeepgramSTT {
           this.socket.send(e.data);
         }
       };
-      this.mediaRecorder.start(100);
+      this.mediaRecorder.start(250);
     } catch (e) {
       console.warn("Failed to start Deepgram MediaRecorder:", e);
     }
