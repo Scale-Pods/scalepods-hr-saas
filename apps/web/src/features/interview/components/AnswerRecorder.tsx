@@ -322,7 +322,8 @@ export function AnswerRecorder({
       try {
         const AudioCtxClass =
           typeof window !== "undefined"
-            ? window.AudioContext || (window as any).webkitAudioContext
+            ? window.AudioContext ||
+              (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
             : null;
         if (AudioCtxClass) {
           const audioCtx = new AudioCtxClass();
@@ -400,7 +401,52 @@ export function AnswerRecorder({
         console.warn("AudioContext setup skipped:", audioCtxErr);
       }
 
-      // Start MediaRecorder for capturing answer audio blob
+      // 1. Connect exclusively to Deepgram Nova-3 streaming (sole STT engine) FIRST
+      if (DeepgramSTT.isConfigured() && stream) {
+        try {
+          const deepgram = new DeepgramSTT({
+            onTranscript: (fullText) => {
+              if (gen !== generationRef.current) return;
+              const normalized = normalizeTechnicalSpeech(fullText);
+              if (normalized.trim().length > 0) {
+                setIsDeepgramConnected(true);
+                setTranscript(normalized);
+                transcriptRef.current = normalized;
+
+                if (isThinkingRef.current) {
+                  clearThinkingTimer();
+                }
+
+                if (isVoiceActiveRef.current) {
+                  clearCountdown();
+                } else {
+                  startCountdown();
+                }
+              }
+            },
+            onError: (err) => {
+              console.warn("[AnswerRecorder] Deepgram STT error:", err);
+              setIsDeepgramConnected(false);
+            },
+            onClose: () => {
+              setIsDeepgramConnected(false);
+            },
+          });
+          deepgramRef.current = deepgram;
+
+          const connectPromise = deepgram.start();
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Deepgram timeout")), 4000),
+          );
+          await Promise.race([connectPromise, timeoutPromise]);
+          setIsDeepgramConnected(true);
+        } catch (err) {
+          console.warn("[AnswerRecorder] Deepgram STT connection error:", err);
+          setIsDeepgramConnected(false);
+        }
+      }
+
+      // 2. Start single MediaRecorder for capturing answer audio blob & streaming to Deepgram
       try {
         const preferredMime = [
           "audio/webm;codecs=opus",
@@ -458,51 +504,6 @@ export function AnswerRecorder({
       }, 50);
 
       intervalRef.current = setInterval(() => setDuration((prev) => prev + 1), 1000);
-
-      // Connect exclusively to Deepgram Nova-3 streaming (sole STT engine)
-      if (DeepgramSTT.isConfigured() && stream) {
-        try {
-          const deepgram = new DeepgramSTT({
-            onTranscript: (fullText) => {
-              if (gen !== generationRef.current) return;
-              const normalized = normalizeTechnicalSpeech(fullText);
-              if (normalized.trim().length > 0) {
-                setIsDeepgramConnected(true);
-                setTranscript(normalized);
-                transcriptRef.current = normalized;
-
-                if (isThinkingRef.current) {
-                  clearThinkingTimer();
-                }
-
-                if (isVoiceActiveRef.current) {
-                  clearCountdown();
-                } else {
-                  startCountdown();
-                }
-              }
-            },
-            onError: (err) => {
-              console.warn("[AnswerRecorder] Deepgram STT error:", err);
-              setIsDeepgramConnected(false);
-            },
-            onClose: () => {
-              setIsDeepgramConnected(false);
-            },
-          });
-          deepgramRef.current = deepgram;
-
-          const connectPromise = deepgram.start(stream);
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Deepgram timeout")), 4000),
-          );
-          await Promise.race([connectPromise, timeoutPromise]);
-          setIsDeepgramConnected(true);
-        } catch (err) {
-          console.warn("[AnswerRecorder] Deepgram STT connection error:", err);
-          setIsDeepgramConnected(false);
-        }
-      }
     } catch (err) {
       console.error("Failed to start recording stream:", err);
     }

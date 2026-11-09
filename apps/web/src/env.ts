@@ -39,6 +39,7 @@ export const DEFAULT_PUBLIC_SUPABASE_URL = "https://fvjsaourhzzyvvzrgwan.supabas
 export const DEFAULT_PUBLIC_SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ2anNhb3VyaHp6eXZ2enJnd2FuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzOTYwMDcsImV4cCI6MjEwNzk3MjAwN30.aGcEinp7SkbUpSPDp33NK4HqDameB6ZiCWEdBsZmvpA";
 export const DEFAULT_PUBLIC_N8N_BASE_URL = "https://n8n.srv1711190.hstgr.cloud";
+export const DEFAULT_PUBLIC_DEEPGRAM_API_KEY = "3fd5da7765f12d4c2f2dd91c199828552ab05b56";
 
 /**
  * Reads the public env with literal property access so Next.js can statically
@@ -63,7 +64,8 @@ export function getEnv(): Env {
       NEXT_PUBLIC_N8N_BASE_URL: process.env.NEXT_PUBLIC_N8N_BASE_URL || DEFAULT_PUBLIC_N8N_BASE_URL,
       NEXT_PUBLIC_FRONTEND_URL: defaultFrontendUrl,
       NEXT_PUBLIC_RAZORPAY_KEY_ID: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-      NEXT_PUBLIC_DEEPGRAM_API_KEY: process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY,
+      NEXT_PUBLIC_DEEPGRAM_API_KEY:
+        process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY || DEFAULT_PUBLIC_DEEPGRAM_API_KEY,
       NEXT_PUBLIC_APP_ENV:
         process.env.NEXT_PUBLIC_APP_ENV ||
         (process.env.NODE_ENV === "production" ? "production" : "local"),

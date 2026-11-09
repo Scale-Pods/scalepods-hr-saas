@@ -1,4 +1,4 @@
-import { getEnv } from "@/env";
+import { DEFAULT_PUBLIC_DEEPGRAM_API_KEY, getEnv } from "@/env";
 
 export interface DeepgramSTTOptions {
   apiKey?: string;
@@ -19,7 +19,7 @@ export function getDeepgramApiKey(): string {
   if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY) {
     return process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY;
   }
-  return "";
+  return DEFAULT_PUBLIC_DEEPGRAM_API_KEY;
 }
 
 const DEFAULT_TECH_KEYWORDS = [
@@ -93,7 +93,7 @@ const KEYWORD_BOOST_WEIGHTS: Record<string, number> = {
 
 export class DeepgramSTT {
   private socket: WebSocket | null = null;
-  private mediaRecorder: MediaRecorder | null = null;
+  private _pendingAudio: Blob[] = [];
   private apiKey: string;
   private model: string;
   private language: string;
@@ -175,9 +175,14 @@ export class DeepgramSTT {
         this.socket.onopen = () => {
           this._reconnectAttempts = 0;
           this.isRunning = true;
-          const streamToRecord = audioStream ?? this._lastStream;
-          if (streamToRecord) {
-            this.startMediaRecorder(streamToRecord);
+          // Immediately flush any queued audio chunks (Chunk 0 contains EBML container header!)
+          if (this._pendingAudio.length > 0) {
+            for (const chunk of this._pendingAudio) {
+              if (chunk.size > 0 && this.socket?.readyState === WebSocket.OPEN) {
+                this.socket.send(chunk);
+              }
+            }
+            this._pendingAudio = [];
           }
           this.onOpen?.();
           resolve();
@@ -245,45 +250,21 @@ export class DeepgramSTT {
   }
 
   sendAudio(data: Blob) {
-    // If internal mediaRecorder is active, avoid sending duplicated audio chunks
-    if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
-      return;
-    }
-    if (this.socket && this.socket.readyState === WebSocket.OPEN && data.size > 0) {
-      this.socket.send(data);
-    }
-  }
-
-  private startMediaRecorder(audioStream: MediaStream) {
-    try {
-      const candidates = [
-        "audio/webm;codecs=opus",
-        "audio/webm",
-        "audio/mp4",
-        "audio/aac",
-        "audio/wav",
-      ];
-      let mime = "";
-      if (typeof MediaRecorder !== "undefined") {
-        for (const c of candidates) {
-          if (MediaRecorder.isTypeSupported(c)) {
-            mime = c;
-            break;
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      if (this._pendingAudio.length > 0) {
+        for (const chunk of this._pendingAudio) {
+          if (chunk.size > 0 && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(chunk);
           }
         }
+        this._pendingAudio = [];
       }
-      this.mediaRecorder = mime
-        ? new MediaRecorder(audioStream, { mimeType: mime })
-        : new MediaRecorder(audioStream);
-
-      this.mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0 && this.socket?.readyState === WebSocket.OPEN) {
-          this.socket.send(e.data);
-        }
-      };
-      this.mediaRecorder.start(250);
-    } catch (e) {
-      console.warn("Failed to start Deepgram MediaRecorder:", e);
+      if (data.size > 0) {
+        this.socket.send(data);
+      }
+    } else if (data.size > 0 && this._pendingAudio.length < 50) {
+      // Buffer early chunks while handshake completes so container header is preserved
+      this._pendingAudio.push(data);
     }
   }
 
@@ -291,12 +272,7 @@ export class DeepgramSTT {
     // Reset reconnect state so a manual stop doesn't trigger reconnect
     this._reconnectAttempts = 3;
     this.isRunning = false;
-    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
-      try {
-        this.mediaRecorder.stop();
-      } catch {}
-      this.mediaRecorder = null;
-    }
+    this._pendingAudio = [];
     if (this.socket) {
       try {
         this.socket.close();
