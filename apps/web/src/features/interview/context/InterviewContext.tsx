@@ -445,6 +445,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
               note.follow_up_question || "",
               resumeText,
               jdText,
+              "follow_up",
+              session.id,
+              session.account_id,
+              session.candidate_id,
             );
             note.follow_up_question = targetedQuestion;
           } catch (followUpErr) {
@@ -656,14 +660,26 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         const isFollowUp = turn.turn_type === "follow_up";
         let targetQId = "";
         if (!isFollowUp && !isClarification && nextPlannedQuestion) {
-          // Guarantee that the spoken question, chat question, and recorded answer question ID match 100%
+          // Guarantee that the spoken question, chat question, and recorded answer question ID match 100%.
+          // Prefer Claude's adaptive question if available and substantive; fallback to sanitized planned question.
           const cleanPlanned = sanitizeQuestionPlaceholders(
             nextPlannedQuestion.question_text,
             resumeText,
             jdText,
           );
-          turn.question_text = cleanPlanned;
-          const inferredType = inferQuestionType(cleanPlanned, nextPlannedQuestion.question_type);
+          const dynamicTurnQ = (turn.question_text || "").trim();
+          const chosenQuestionText =
+            dynamicTurnQ.length >= 15 &&
+            !dynamicTurnQ.toLowerCase().startsWith("hello") &&
+            !dynamicTurnQ.toLowerCase().startsWith("welcome")
+              ? dynamicTurnQ
+              : cleanPlanned;
+
+          turn.question_text = chosenQuestionText;
+          const inferredType = inferQuestionType(
+            chosenQuestionText,
+            nextPlannedQuestion.question_type,
+          );
           turn.question_type = inferredType;
           setCurrentQuestionId(nextPlannedQuestion.id);
           targetQId = nextPlannedQuestion.id;
@@ -671,11 +687,28 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           if (plannedIdx !== -1) {
             setCurrentQuestionIndex(plannedIdx);
           }
-          if (nextPlannedQuestion.question_type !== inferredType) {
-            setQuestions((prev) =>
-              prev.map((q) =>
-                q.id === nextPlannedQuestion.id ? { ...q, question_type: inferredType } : q,
-              ),
+          setQuestions((prev) =>
+            prev.map((q) =>
+              q.id === nextPlannedQuestion.id
+                ? { ...q, question_text: chosenQuestionText, question_type: inferredType }
+                : q,
+            ),
+          );
+
+          // Asynchronously sync adapted question text to database so backend logs reflect the actual question asked
+          if (chosenQuestionText !== nextPlannedQuestion.question_text) {
+            void fetch("/api/interview/session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "update_question_text",
+                sessionId: session.id,
+                questionId: nextPlannedQuestion.id,
+                questionText: chosenQuestionText,
+                questionType: inferredType,
+              }),
+            }).catch((err) =>
+              console.warn("[generateNextTurn] Failed to persist adapted question:", err),
             );
           }
         } else {

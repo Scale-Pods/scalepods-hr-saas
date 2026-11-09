@@ -627,6 +627,36 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, question: data });
       }
 
+      case "update_question_text": {
+        const { questionId, questionText, questionType } = body;
+        if (!questionId || !questionText) {
+          return NextResponse.json(
+            { error: "questionId and questionText are required" },
+            { status: 400 },
+          );
+        }
+
+        const updatePayload: Record<string, unknown> = {
+          question_text: questionText,
+        };
+        if (questionType) {
+          updatePayload.question_type = questionType;
+        }
+
+        const { data, error } = await supabase
+          .from("interview_questions")
+          .update(updatePayload)
+          .eq("id", questionId)
+          .select()
+          .maybeSingle();
+
+        if (error) {
+          console.warn("[api/interview/session POST update_question_text] Error:", error);
+          return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+        return NextResponse.json({ success: true, question: data });
+      }
+
       case "complete": {
         const { endedEarly } = body;
 

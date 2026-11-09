@@ -313,6 +313,21 @@ export interface ExtractedAnswerDetails {
 export function extractAnswerEntities(answer: string): ExtractedAnswerDetails {
   const ans = (answer || "").toLowerCase();
   const candidates: Array<{ key: string; match: RegExp }> = [
+    // Multi-model failover & resilience
+    {
+      key: "LLM failover and fallback architecture",
+      match:
+        /\b(groq|gemini|openai|anthropic|claude|llm|model)\b.*\b(fallback|failover|downtime|resilience|timeout)\b|\b(fallback|failover|downtime|resilience|timeout)\b.*\b(groq|gemini|openai|anthropic|claude|llm|model)\b/i,
+    },
+    { key: "Gemini and Groq integration", match: /\b(groq|gemini)\b/i },
+    {
+      key: "LLM engineering and prompt orchestration",
+      match: /\b(llm|llms|gpt-4|gpt|anthropic|claude|openai|genai|generative ai)\b/i,
+    },
+    {
+      key: "AI assessment and interview systems",
+      match: /\b(skillgap|skill gap|authenticity|ai interview)\b/i,
+    },
     // Strict grounding: Only tag specific brand/tools if literally mentioned
     { key: "Redis caching", match: /\bredis\b/i },
     { key: "caching and data retrieval", match: /\b(cache|cached|caching|memcached)\b/i },
@@ -383,25 +398,24 @@ export function extractAnswerEntities(answer: string): ExtractedAnswerDetails {
 export function isGenericAcknowledgment(text: string): boolean {
   if (!text) return true;
   const lower = text.toLowerCase().trim();
-  const canned = [
-    "thank you",
-    "thanks",
-    "understood",
-    "got it",
-    "great",
-    "thanks for sharing that",
-    "thank you for explaining that",
-    "thank you for walking me through your approach",
-    "i appreciate you sharing those details",
-    "let's move to our next topic",
-    "moving on to the next question",
-    "that makes sense",
-    "thanks for your response",
-    "let us proceed",
-    "proceed to the next",
-    "let's proceed",
+  const words = lower.split(/\s+/).filter(Boolean);
+
+  // Very short phrases under 5 words without content are generic fillers
+  if (words.length <= 4) return true;
+
+  // Exact matches of known robotic canned templates that lack candidate-specific context
+  const cannedTemplates = [
+    "that's a helpful starting point. let's look closer at your reasoning there.",
+    "got it, that gives helpful background on how you tackled that.",
+    "got it, thanks for explaining your approach and problem-solving process.",
+    "makes sense, that highlights your engineering reasoning well.",
+    "appreciate you sharing that context. let's move to our next topic.",
   ];
-  return canned.some((c) => lower === c || lower.startsWith(c));
+  if (cannedTemplates.some((t) => lower.startsWith(t) || lower === t)) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -445,6 +459,20 @@ export function isFollowUpGrounded(
 export function generateProbingFollowUp(_question: string, answer: string): string {
   const { primaryTopic } = extractAnswerEntities(answer);
   const ans = (answer || "").toLowerCase();
+
+  // 0. AI / LLM Multi-model Failover & Resilience
+  if (
+    /\b(groq|gemini|openai|anthropic|claude|llm|model)\b/i.test(ans) &&
+    /\b(fallback|failover|downtime|latency|timeout|uptime)\b/i.test(ans)
+  ) {
+    return "When configuring that fallback between LLMs to prevent downtime, how did you detect error conditions or latency spikes, and how did you manage differences in response format or token latency between the models?";
+  }
+  if (/\b(groq|gemini)\b/i.test(ans)) {
+    return "When working with Gemini and Groq, what latency, throughput, or cost trade-offs influenced how you routed prompts between them?";
+  }
+  if (/\b(skillgap|skill gap|authenticity|ai interview)\b/i.test(ans)) {
+    return "In that authenticity evaluation engine, how did you analyze candidate responses in real-time, and what metrics did you use to detect rehearsed versus hands-on answers?";
+  }
 
   // 1. Caching: Only mention Redis if the candidate specifically named Redis
   if (/\bredis\b/i.test(ans)) {
@@ -543,8 +571,8 @@ export function generateContextualAcknowledgment(
   // 1. Explicit Clarification or Elaboration Request
   if (candidateRequestedClarification || intent === "clarification_request") {
     const clarificationAcks = [
-      "No problem at all! Let me clarify that for you.",
-      "Certainly! Let me break that down in simpler terms.",
+      "No problem at all, let me clarify that for you.",
+      "Certainly, let me break that down in simpler terms.",
       "Of course, happy to elaborate on that for you.",
     ];
     return clarificationAcks[index % clarificationAcks.length];
@@ -563,16 +591,16 @@ export function generateContextualAcknowledgment(
   // 3. Uncertain / Unknown / No Experience ("I don't know", "not sure", "no idea")
   if (intent === "uncertain_or_unknown") {
     const unknownAcks = [
-      "No worries at all, that's completely fine. Let's move on to the next topic.",
+      "No worries at all, that is completely fine. Let's move to our next technical subject.",
       "Understood. Let's explore a different area of your background.",
-      "That's perfectly okay. Let's shift to our next subject.",
+      "That's perfectly okay. Let's shift into another key engineering area.",
     ];
     return unknownAcks[index % unknownAcks.length];
   }
 
   // 4. Greeting or Social Intro Response
   if (intent === "greeting_or_social") {
-    return "Good to have you here. Let's get straight into the technical side of your background.";
+    return "Good to have you here. Let's dive straight into your technical experience.";
   }
 
   const { primaryTopic } = extractAnswerEntities(answer);
@@ -580,12 +608,12 @@ export function generateContextualAcknowledgment(
   // 5. Follow-up turn acknowledgment
   if (turnType === "follow_up") {
     if (primaryTopic) {
-      return `Thanks for breaking down your work with ${primaryTopic}. I'd like to probe a bit deeper into that specific point.`;
+      return `Understood. Your explanation of ${primaryTopic} gives helpful technical context; let's drill into that specific decision.`;
     }
     const followUpAcks = [
-      "Thanks for sharing that overview. Let's dig a bit deeper into that specific point.",
-      "Appreciate that explanation. I'd like to explore one detail a bit further.",
-      "That's a helpful starting point. Let's look closer at your reasoning there.",
+      "That is a clear technical overview. Let's drill down into that specific design choice.",
+      "Understood. I'd like to probe a bit deeper into the trade-offs you faced there.",
+      "Appreciate the explanation. Let's examine the edge cases of that approach.",
     ];
     return followUpAcks[index % followUpAcks.length];
   }
@@ -593,20 +621,29 @@ export function generateContextualAcknowledgment(
   // 6. Substantive Answer with identified primary topic
   if (primaryTopic) {
     const acks = [
-      `Got it, thanks for explaining your work with ${primaryTopic}.`,
-      `Thank you for walking me through your approach with ${primaryTopic}.`,
-      `Appreciate you breaking down your reasoning around ${primaryTopic}.`,
-      `Makes sense, that gives great context on how you handled ${primaryTopic}.`,
+      `Understood. Your practical approach to ${primaryTopic} gives helpful insight into your engineering choices.`,
+      `Got it. Focusing on ${primaryTopic} addresses a critical requirement for production systems.`,
+      `Thanks for detailing your experience with ${primaryTopic}. That clarifies your technical decision-making.`,
+      `Makes sense. Handling ${primaryTopic} effectively directly influences system reliability.`,
     ];
     return acks[index % acks.length];
   }
 
-  // 7. General substantive technical answer
+  // 7. General substantive technical answer (extract any meaningful verbs/nouns)
+  const words = (answer || "")
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 4);
+  const sampleKeyword = words[0] ? words[0].replace(/[^a-zA-Z]/g, "") : "";
+
+  if (sampleKeyword && sampleKeyword.length >= 4) {
+    return `Understood. Your technical explanation regarding ${sampleKeyword} clarifies your problem-solving process.`;
+  }
+
   const standardAcks = [
-    "Got it, thanks for explaining your approach and problem-solving process.",
-    "Makes sense, that highlights your engineering reasoning well.",
-    "Appreciate you sharing that context. Let's move to our next topic.",
-    "Got it, that gives helpful background on how you tackled that.",
+    "Understood. That context clarifies your problem-solving process and engineering reasoning.",
+    "Got it. That gives clear background on how you approached those constraints.",
+    "Makes sense. That highlights the practical considerations behind your implementation.",
   ];
   return standardAcks[index % standardAcks.length];
 }
@@ -770,6 +807,9 @@ export async function generateTargetedFollowUp(
   resumeText: string,
   jdText: string,
   mode: "follow_up" | "rephrase_primary" = "follow_up",
+  sessionId?: string,
+  accountId?: string,
+  candidateId?: string,
 ): Promise<string> {
   const dynamicProbing = generateProbingFollowUp(originalQuestion, candidateAnswer);
   try {
@@ -778,6 +818,9 @@ export async function generateTargetedFollowUp(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "targeted-followup",
+        session_id: sessionId,
+        account_id: accountId,
+        candidate_id: candidateId,
         originalQuestion,
         candidateAnswer,
         insufficiencyReason,
