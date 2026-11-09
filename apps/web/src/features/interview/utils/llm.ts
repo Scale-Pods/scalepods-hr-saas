@@ -571,7 +571,7 @@ export function generateContextualAcknowledgment(
 
   // 4. Greeting or Social Intro Response
   if (intent === "greeting_or_social") {
-    return "Glad to hear that! It's great to have you with us today. Let's dive into your experience.";
+    return "Good to have you here. Let's get straight into the technical side of your background.";
   }
 
   const { primaryTopic } = extractAnswerEntities(answer);
@@ -809,44 +809,44 @@ const TOTAL_WANTED_JOB_QUESTIONS = 10;
 
 const STAGE_QUESTIONS: Array<{ q: string; type: QuestionResponse["question_type"] }> = [
   {
-    q: "Looking across the projects and roles on your resume, which system or feature represents your most complex hands-on engineering work, and what technologies did you choose to power it?",
+    q: "Looking across the projects on your resume, which system represents your most complex hands-on engineering work? Walk me through the core architecture, the technologies you chose, and why.",
     type: "technical",
   },
   {
-    q: "In that system, what was a critical architectural trade-off or constraint you faced—such as latency, scaling, or cost—and what led you to your final design?",
+    q: "In that system, what was the most critical technical trade-off you faced — around latency, scaling, consistency, or cost — and what data or constraints drove your final architectural decision?",
     type: "technical",
   },
   {
-    q: "Can you walk me through a severe production issue, memory leak, or unexpected bottleneck you personally investigated? What observability tools or logs did you rely on to find the root cause?",
+    q: "Walk me through a severe production incident, memory leak, or performance bottleneck you personally debugged. What observability tools, logs, or profiling techniques did you use to isolate the root cause?",
     type: "technical",
   },
   {
-    q: "When integrating backend APIs, automated workflows, or third-party webhooks, how do you handle idempotency, retries, and network timeouts when an external provider fails?",
+    q: "When calling external APIs, webhooks, or third-party services in your projects, how did you handle idempotency, retry logic, and partial failure scenarios to guarantee data consistency?",
     type: "technical",
   },
   {
-    q: "Tell me about a project where you had to quickly adopt an unfamiliar library, database, or framework under tight delivery deadlines. How did you validate that it met production standards?",
-    type: "situational",
-  },
-  {
-    q: "How have you approached database indexing, query optimization, or schema migrations on live production data without causing downtime or lock contention?",
+    q: "Describe a situation where you had to adopt a database, framework, or infrastructure technology you had not used before. How did you evaluate it, validate its production readiness, and de-risk the integration?",
     type: "technical",
   },
   {
-    q: "In your past project implementations, how did you architect services for resilience, rate limiting, and graceful degradation during traffic spikes?",
+    q: "How have you handled database schema migrations, query optimization, or indexing on live production data without causing downtime or lock contention? Give me a specific example from your work.",
     type: "technical",
   },
   {
-    q: "Tell me about a time you identified an operational inefficiency and automated a manual workflow or test suite to save engineering hours.",
-    type: "situational",
+    q: "In any of your past projects, how did you design for resilience — rate limiting, circuit breaking, graceful degradation, or queue-based decoupling — when downstream services became unreliable?",
+    type: "technical",
   },
   {
-    q: "When collaborating with product managers or other engineers, tell me about a time you strongly advocated for a technical approach or refactoring. How did you resolve the trade-offs?",
-    type: "behavioral",
+    q: "Describe a manual or error-prone engineering process you automated. What was the trigger, what did you build, and what measurable impact did it have on reliability or engineering velocity?",
+    type: "technical",
   },
   {
-    q: "Considering the core technical challenges outlined for this position, what specific area of your experience do you feel translates most directly to driving impact here?",
-    type: "cultural",
+    q: "Tell me about a significant technical decision in one of your projects that turned out to be wrong or needed rework in production. What led to that decision, and what did you change once you recognized it?",
+    type: "technical",
+  },
+  {
+    q: "Looking at the technical requirements of this role against your resume, where do you see the most significant gap in your current experience, and how have you been addressing it?",
+    type: "technical",
   },
 ];
 
@@ -1069,14 +1069,14 @@ export function getDynamicCandidateQuestion(
     };
   }
 
-  // 5. Inspect stage questions that have not been asked yet
+  // 5. Inspect stage questions (all technical) that have not been asked yet
   const unaskedStageQ = STAGE_QUESTIONS.find(
     (sq) => !hasSimilarQuestionBeenAsked(sq.q, existingQuestions),
   );
   if (unaskedStageQ) {
     return {
       question_text: unaskedStageQ.q,
-      question_type: unaskedStageQ.type,
+      question_type: "technical",
       follow_up_reason: reason,
     };
   }
@@ -1085,7 +1085,7 @@ export function getDynamicCandidateQuestion(
   const selected = STAGE_QUESTIONS[idx] || STAGE_QUESTIONS[0];
   return {
     question_text: selected.q,
-    question_type: selected.type,
+    question_type: "technical",
     follow_up_reason: "stage_progression",
   };
 }

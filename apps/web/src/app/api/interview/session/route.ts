@@ -675,9 +675,14 @@ export async function POST(request: NextRequest) {
             .eq("id", sessionRow.round_instance_id);
         }
 
-        // Trigger n8n scoring webhook
+        // Trigger n8n scoring webhook (include proctoring events for penalty scoring)
         const n8nBase = getN8nBase();
         try {
+          const { data: proctoringEvents } = await supabase
+            .from("proctoring_events")
+            .select("event_type, severity, details, timestamp")
+            .eq("round_instance_id", sessionRow.round_instance_id);
+
           await fetch(`${n8nBase}/webhook/score-interview`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -691,6 +696,7 @@ export async function POST(request: NextRequest) {
               number_of_rounds: 1,
               cutoff_score: null,
               ended_early: Boolean(endedEarly),
+              proctoring_events: proctoringEvents || [],
             }),
           });
         } catch (err) {
@@ -708,6 +714,11 @@ export async function POST(request: NextRequest) {
         let scored = false;
         let result = null;
         try {
+          const { data: procEvts } = await supabase
+            .from("proctoring_events")
+            .select("event_type, severity, details, timestamp")
+            .eq("round_instance_id", sessionRow.round_instance_id);
+
           const scoreRes = await fetch(`${n8nBase}/webhook/score-interview`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -720,6 +731,7 @@ export async function POST(request: NextRequest) {
               round_number: 1,
               number_of_rounds: 1,
               cutoff_score: null,
+              proctoring_events: procEvts || [],
             }),
           });
           if (scoreRes.ok) {
