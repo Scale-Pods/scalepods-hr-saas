@@ -1,3 +1,4 @@
+// Technical Interview Engine — automated deployment verification
 import { getEnv } from "@/env";
 import type {
   AnswerInsufficiencyReason,
