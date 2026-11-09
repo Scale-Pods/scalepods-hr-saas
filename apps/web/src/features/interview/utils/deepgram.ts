@@ -153,7 +153,7 @@ export class DeepgramSTT {
           punctuate: "true",
           interim_results: "true",
           vad_events: "true",
-          endpointing: "1000",
+          endpointing: "2500",
           filler_words: "false",
         });
 

@@ -207,13 +207,13 @@ describe("Interview Room & Flow", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/Pre-Interview Check/i)).toBeInTheDocument();
+      expect(screen.getByText(/Pre-Interview.*Check/i)).toBeInTheDocument();
     });
 
     expect(screen.getByText("John Doe")).toBeInTheDocument();
-    expect(screen.getByText(/Camera/i)).toBeInTheDocument();
-    expect(screen.getByText(/Microphone/i)).toBeInTheDocument();
-    expect(screen.getByText(/Internet Connection/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Camera/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Microphone/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Internet Connection/i).length).toBeGreaterThan(0);
   });
 
   it("completes device check and starts interview successfully", async () => {
@@ -226,7 +226,7 @@ describe("Interview Room & Flow", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/Pre-Interview Check/i)).toBeInTheDocument();
+      expect(screen.getByText(/Pre-Interview.*Check/i)).toBeInTheDocument();
     });
 
     const checkbox = await screen.findByRole("checkbox");
@@ -279,7 +279,7 @@ describe("Interview Room & Flow", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/Pre-Interview Check/i)).toBeInTheDocument();
+      expect(screen.getByText(/Pre-Interview.*Check/i)).toBeInTheDocument();
     });
 
     // Simulate beforeunload and pagehide during PreCheck

@@ -13,7 +13,7 @@ export function normalizeTechnicalSpeech(text: string): string {
     // "air n8n", "n ate n", "en ate en" are common STT hallucinations for n8n
     [
       /\b(air\s*n\s*[-]?\s*8\s*[-]?\s*n|n\s*ate\s*n|en\s*ate\s*en|n\s*[-]?\s*8\s*[-]?\s*n|n8\s*n|n\s*8n|in\s+anytime\s+workshoot|in\s+it\s+and\s+workers|anytime\s+workshoot)\b/gi,
-      "n8n workflows",
+      "n8n",
     ],
     [/\b(zap\s*i\s*er)\b/gi, "Zapier"],
     [/\b(integromat)\b/gi, "Integromat"],

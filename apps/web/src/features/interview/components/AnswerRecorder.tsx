@@ -4,9 +4,9 @@ import { DeepgramSTT } from "../utils/deepgram";
 import { getAudioStream } from "../utils/mediaHelpers";
 import { normalizeTechnicalSpeech } from "../utils/speechNormalizer";
 
-const SILENCE_TIMEOUT_MS = 8000;
+const SILENCE_TIMEOUT_MS = 12000;
 const COUNTDOWN_TENTHS = Math.floor(SILENCE_TIMEOUT_MS / 100);
-const THINKING_TIMEOUT_MS = 30000;
+const THINKING_TIMEOUT_MS = 35000;
 const THINKING_TENTHS = Math.floor(THINKING_TIMEOUT_MS / 100);
 
 export interface AnswerRecorderState {
@@ -255,7 +255,7 @@ export function AnswerRecorder({
       if (isThinkingRef.current && isRecordingRef.current) {
         clearThinkingTimer();
         if (!transcriptRef.current.trim()) {
-          transcriptRef.current = "No response provided within the 25-second thinking limit.";
+          transcriptRef.current = "No response provided within the 35-second thinking limit.";
           setTranscript(transcriptRef.current);
         }
         stopAndSubmit();
@@ -324,10 +324,8 @@ export function AnswerRecorder({
         return;
       }
 
-      let currentSessionFinal = "";
       const launchInstance = () => {
         if (gen !== generationRef.current || !isRecordingRef.current) return;
-        currentSessionFinal = "";
         try {
           if (recognitionRef.current) {
             try {
@@ -355,7 +353,6 @@ export function AnswerRecorder({
                 interimPart += event.results[i][0].transcript;
               }
             }
-            currentSessionFinal = finalPart;
 
             const base = accumulatedWebSpeechRef.current
               ? `${accumulatedWebSpeechRef.current} `
@@ -377,12 +374,8 @@ export function AnswerRecorder({
                 clearThinkingTimer();
               }
 
-              const newWordsAdded = normalized.trim().length > prevTranscript.trim().length;
-              if (isVoiceActiveRef.current || newWordsAdded) {
-                clearCountdown();
-              } else {
-                startCountdown();
-              }
+              // Always reset silence countdown when speech arrives
+              clearCountdown();
             }
           };
 
@@ -394,14 +387,9 @@ export function AnswerRecorder({
 
           recognition.onend = () => {
             if (gen !== generationRef.current || !isRecordingRef.current) return;
-            if (currentSessionFinal.trim()) {
-              accumulatedWebSpeechRef.current = normalizeTechnicalSpeech(
-                (
-                  (accumulatedWebSpeechRef.current ? `${accumulatedWebSpeechRef.current} ` : "") +
-                  currentSessionFinal.trim()
-                ).trim(),
-              );
-              currentSessionFinal = "";
+            // Always preserve entire accumulated transcript so far so silence restarts never drop prior words
+            if (transcriptRef.current.trim().length > 0) {
+              accumulatedWebSpeechRef.current = transcriptRef.current.trim();
             }
             if (gen === generationRef.current && isRecordingRef.current) {
               try {
@@ -419,7 +407,7 @@ export function AnswerRecorder({
 
       launchInstance();
     },
-    [clearCountdown, clearThinkingTimer, startCountdown],
+    [clearCountdown, clearThinkingTimer],
   );
 
   const startRecording = useCallback(async () => {
@@ -499,14 +487,15 @@ export function AnswerRecorder({
                 return;
               }
 
+              // Prevent active speech from artificially inflating ambientNoiseFloor
               if (vocalEnergy < ambientNoiseFloor) {
                 ambientNoiseFloor = ambientNoiseFloor * 0.8 + vocalEnergy * 0.2;
-              } else {
-                ambientNoiseFloor = ambientNoiseFloor * 0.992 + vocalEnergy * 0.008;
+              } else if (ambientNoiseFloor < 15) {
+                ambientNoiseFloor = Math.min(18, ambientNoiseFloor * 0.995 + vocalEnergy * 0.005);
               }
 
-              // Gentle threshold for high sensitivity to human voice
-              const speechThreshold = Math.max(ambientNoiseFloor * 1.25, ambientNoiseFloor + 5.0);
+              // Sensitive threshold for human voice detection
+              const speechThreshold = Math.max(ambientNoiseFloor * 1.2, ambientNoiseFloor + 3.0);
               const isSpeaking = vocalEnergy > speechThreshold;
               isVoiceActiveRef.current = isSpeaking;
 
@@ -546,18 +535,21 @@ export function AnswerRecorder({
               const normalized = normalizeTechnicalSpeech(fullText);
               if (normalized.trim().length > 0) {
                 setIsDeepgramConnected(true);
-                setTranscript(normalized);
-                transcriptRef.current = normalized;
+                // Retain longer or monotonically update to prevent transcript clobbering
+                if (
+                  normalized.trim().length >= transcriptRef.current.trim().length ||
+                  transcriptRef.current.trim().length === 0
+                ) {
+                  setTranscript(normalized);
+                  transcriptRef.current = normalized;
+                }
 
                 if (isThinkingRef.current) {
                   clearThinkingTimer();
                 }
 
-                if (isVoiceActiveRef.current) {
-                  clearCountdown();
-                } else {
-                  startCountdown();
-                }
+                // Any transcript arriving means candidate is actively providing speech input
+                clearCountdown();
               }
             },
             onError: (err) => {
@@ -953,7 +945,7 @@ export function AnswerRecorder({
               }}
               placeholder={
                 isThinking
-                  ? "Speak your response now (you have 25s to begin speaking)..."
+                  ? "Speak your response now (you have 35s to begin speaking)..."
                   : "Speak your response now (you can also edit or type words here)..."
               }
               className="w-full text-sm leading-relaxed font-medium rounded-xl p-3 min-h-[70px] max-h-[400px] overflow-y-auto transition-all duration-150 resize-none"
@@ -967,7 +959,7 @@ export function AnswerRecorder({
             <div className="flex items-center justify-between gap-3">
               <p className="text-[10px]" style={{ color: "var(--label-tertiary)" }}>
                 {isThinking
-                  ? "Start speaking within 25s | Auto-submits after 4s of silence once spoken"
+                  ? "Start speaking within 35s | Auto-submits after 12s of silence once spoken"
                   : `Auto-submits after ${(SILENCE_TIMEOUT_MS / 1000).toFixed(0)}s of silence`}
               </p>
               <button
