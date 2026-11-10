@@ -10,22 +10,48 @@ interface TTSEngine {
 
 function prepareTextForTTS(text: string): string {
   if (!text) return "";
-  let cleaned = text;
+  let cleaned = text
+    // Strip markdown formatting so TTS never speaks literal symbols
+    .replace(/[*_`~#]/g, "")
+    // Replace slashes between options (e.g. "retries/fallbacks") with natural speech pause
+    .replace(/\b([a-zA-Z0-9]+)\s*\/\s*([a-zA-Z0-9]+)\b/g, (full, a: string, b: string) => {
+      const upper = full.toUpperCase();
+      if (upper === "CI/CD") return "C I C D";
+      if (upper === "UI/UX") return "U I U X";
+      return `${a} or ${b}`;
+    });
+
   const acronyms: Array<[RegExp, string]> = [
-    [/\bn8n\b/gi, "N-8-N"],
-    [/\bgrpc\b/gi, "g-R-P-C"],
-    [/\bfastapi\b/gi, "Fast API"],
-    [/\bpostgresql\b/gi, "Postgres-Q-L"],
+    [/\bn8n\b/gi, "en eight en"],
+    [/\bgrpc\b/gi, "G R P C"],
+    [/\bfastapi\b/gi, "Fast A P I"],
+    [/\bpostgresql\b/gi, "Postgres Q L"],
     [/\bpostgres\b/gi, "Postgres"],
-    [/\bci\/cd\b/gi, "C-I C-D"],
-    [/\bui\/ux\b/gi, "U-I U-X"],
+    [/\bnosql\b/gi, "No S Q L"],
+    [/\bsql\b/gi, "S Q L"],
+    [/\bsupabase\b/gi, "Soopabase"],
+    [/\bgroq\b/gi, "Grock"],
+    [/\blidar\b/gi, "Lie-dar"],
     [/\bgraphql\b/gi, "Graph Q L"],
+    [/\boauth\b/gi, "Oh-auth"],
+    [/\bjwt\b/gi, "J W T"],
+    [/\bjson\b/gi, "Jay-son"],
+    [/\bsaas\b/gi, "Sass"],
+    [/\bllm\b/gi, "L L M"],
+    [/\bllms\b/gi, "L L Ms"],
+    [/\bapis\b/gi, "A P Is"],
+    [/\bapi\b/gi, "A P I"],
+    [/\bci\/cd\b/gi, "C I C D"],
+    [/\bui\/ux\b/gi, "U I U X"],
+    [/\bnext\.js\b/gi, "Next J S"],
+    [/\bnode\.js\b/gi, "Node J S"],
+    [/\breact\.js\b/gi, "React J S"],
     [/\b([a-z])8([a-z])\b/gi, "$1 8 $2"],
   ];
   for (const [pattern, replacement] of acronyms) {
     cleaned = cleaned.replace(pattern, replacement);
   }
-  return cleaned;
+  return cleaned.replace(/\s{2,}/g, " ").trim();
 }
 
 export function useTTSEngine(): TTSEngine {
@@ -96,15 +122,42 @@ export function useTTSEngine(): TTSEngine {
         window.speechSynthesis.resume();
       } catch {}
 
-      const utterance = new SpeechSynthesisUtterance(text);
+      const preparedText = prepareTextForTTS(text);
+      const utterance = new SpeechSynthesisUtterance(preparedText);
       activeUtteranceRef.current = utterance;
-      utterance.rate = 1.0;
+      utterance.lang = "en-IN";
+      utterance.rate = 0.96;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
       const currentVoices = voicesRef.current;
       if (currentVoices.length > 0) {
-        // Prioritize natural, fluent modern neural voices across Edge, Chrome, Safari & Windows/Mac
+        // 1. Prefer Indian English (en-IN) natural/female voices first
+        const indianNaturalVoice = currentVoices.find((v) => {
+          const name = v.name.toLowerCase();
+          const lang = v.lang.toLowerCase();
+          return (
+            (lang === "en-in" || lang.startsWith("en_in") || name.includes("india")) &&
+            (name.includes("neerja") ||
+              name.includes("natural") ||
+              name.includes("online") ||
+              name.includes("neural") ||
+              name.includes("aditi") ||
+              name.includes("raveena") ||
+              name.includes("heera") ||
+              name.includes("veena") ||
+              name.includes("kavya") ||
+              name.includes("google"))
+          );
+        });
+
+        const anyIndianVoice = currentVoices.find((v) => {
+          const name = v.name.toLowerCase();
+          const lang = v.lang.toLowerCase();
+          return lang === "en-in" || lang.startsWith("en_in") || name.includes("india");
+        });
+
+        // 2. Fallback to fluent natural English female voices if no en-IN voice is installed
         const naturalVoice = currentVoices.find((v) => {
           const name = v.name.toLowerCase();
           const isEn = v.lang.toLowerCase().startsWith("en");
@@ -113,17 +166,21 @@ export function useTTSEngine(): TTSEngine {
             (name.includes("natural") ||
               name.includes("online") ||
               name.includes("neural") ||
-              name.includes("jenny") ||
-              name.includes("guy") ||
               name.includes("aria") ||
+              name.includes("jenny") ||
               name.includes("samantha") ||
-              name.includes("google us english") ||
               name.includes("ava"))
           );
         });
 
         const fallbackEnglish = currentVoices.find((v) => v.lang.toLowerCase().startsWith("en"));
-        utterance.voice = naturalVoice || fallbackEnglish || currentVoices[0] || null;
+        utterance.voice =
+          indianNaturalVoice ||
+          anyIndianVoice ||
+          naturalVoice ||
+          fallbackEnglish ||
+          currentVoices[0] ||
+          null;
       }
 
       let finished = false;
@@ -200,29 +257,37 @@ export function useTTSEngine(): TTSEngine {
         cancel();
         isSpeakingRef.current = true;
 
-        // "aura-asteria-en" provides a warm, empathetic, and highly clear interview tone
+        // "flux-priya-en" provides a warm, articulate Indian English female voice (Deepgram v2 TTS)
         // Can be overridden via NEXT_PUBLIC_DEEPGRAM_VOICE_MODEL
-        const model = process.env.NEXT_PUBLIC_DEEPGRAM_VOICE_MODEL || "aura-asteria-en";
-        const speed = 1.0;
+        const model = process.env.NEXT_PUBLIC_DEEPGRAM_VOICE_MODEL || "flux-priya-en";
+        const speed = 0.98;
         const preparedText = prepareTextForTTS(text);
 
-        // Enforce 4500ms timeout so network or Deepgram delays never hang the interview
-        const controller = new AbortController();
-        const fetchTimeout = setTimeout(() => controller.abort(), 4500);
+        const fetchDeepgramAudio = async (voiceModel: string): Promise<Response> => {
+          const endpointVersion = voiceModel.startsWith("flux-") ? "v2" : "v1";
+          const controller = new AbortController();
+          const fetchTimeout = setTimeout(() => controller.abort(), 6000);
+          try {
+            return await fetch(
+              `https://api.deepgram.com/${endpointVersion}/speak?model=${voiceModel}`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Token ${apiKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ text: preparedText }),
+                signal: controller.signal,
+              },
+            );
+          } finally {
+            clearTimeout(fetchTimeout);
+          }
+        };
 
-        let response: Response;
-        try {
-          response = await fetch(`https://api.deepgram.com/v1/speak?model=${model}`, {
-            method: "POST",
-            headers: {
-              Authorization: `Token ${apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ text: preparedText }),
-            signal: controller.signal,
-          });
-        } finally {
-          clearTimeout(fetchTimeout);
+        let response = await fetchDeepgramAudio(model);
+        if (!response.ok && model !== "aura-2-asteria-en") {
+          response = await fetchDeepgramAudio("aura-2-asteria-en");
         }
 
         if (!response.ok) {
