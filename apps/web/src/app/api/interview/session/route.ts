@@ -1,6 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
-import { sanitizeQuestionPlaceholders } from "@/features/interview/utils/llm";
 
 function getAdminSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -352,7 +351,7 @@ export async function GET(request: NextRequest) {
       resumeText = `Candidate: ${resolvedCandidateName || "Candidate"}, Email: ${resolvedCandidateEmail || ""}`;
     }
 
-    // 8. Fetch and sanitize Questions
+    // 8. Fetch Questions
     const { data: rawQuestions } = await supabase
       .from("interview_questions")
       .select("*")
@@ -363,26 +362,7 @@ export async function GET(request: NextRequest) {
       )
       .order("question_number", { ascending: true });
 
-    // Clean any bracketed placeholders like [specific project] or [specific tool]
-    const questions = (rawQuestions || []).map((q) => {
-      if (q.question_type === "blueprint_meta" || !q.question_text) return q;
-      const sanitized = sanitizeQuestionPlaceholders(
-        q.question_text,
-        resumeText,
-        campaign?.jd_text,
-      );
-      if (sanitized !== q.question_text) {
-        // Auto-heal the database row asynchronously so subsequent queries are clean
-        void supabase
-          .from("interview_questions")
-          .update({ question_text: sanitized })
-          .eq("id", q.id);
-      }
-      return {
-        ...q,
-        question_text: sanitized,
-      };
-    });
+    const questions = rawQuestions || [];
 
     // 9. Fetch Answers using valid columns (round_instance_id)
     const { data: answers } = session.round_instance_id

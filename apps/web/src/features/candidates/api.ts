@@ -14,11 +14,6 @@ import {
 } from "@scalepods/core";
 import { BUCKETS } from "@/lib/storage";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import {
-  detectCandidateIntent,
-  generateContextualAcknowledgment,
-  isGenericAcknowledgment,
-} from "../interview/utils/llm";
 
 export type { ScorecardRow };
 
@@ -922,32 +917,9 @@ export async function fetchCandidateProfile(
           }
         }
         for (let i = 0; i < rawTurns.length; i++) {
-          const currentTurn = rawTurns[i];
           if (i === 0) {
-            // Opening question turn (e.g. "How are you doing today?") does not have a preceding acknowledgment
-            currentTurn.interviewer_text = null;
-            continue;
-          }
-
-          const prevTurn = rawTurns[i - 1];
-          const prevAnswer = (prevTurn.answer_text || "").trim();
-          const prevQuestion = prevTurn.question_text || "";
-          const existingAck = (currentTurn.interviewer_text || "").trim();
-
-          const prevIntent = detectCandidateIntent(prevAnswer, prevQuestion);
-          const isGeneric =
-            existingAck.toLowerCase().includes("walking me through") ||
-            isGenericAcknowledgment(existingAck);
-          const needsCorrection = isGeneric && prevIntent !== "substantive_answer";
-
-          if (!existingAck || needsCorrection) {
-            currentTurn.interviewer_text = generateContextualAcknowledgment(
-              prevAnswer,
-              prevQuestion,
-              i,
-              currentTurn.question_type || "technical",
-              prevIntent === "clarification_request",
-            );
+            // Opening question turn does not have a preceding acknowledgment
+            rawTurns[i].interviewer_text = null;
           }
         }
 

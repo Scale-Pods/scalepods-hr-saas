@@ -11,7 +11,6 @@ import { useProctoringContext } from "../context/ProctoringContext";
 import { useInterviewTimer } from "../hooks/useInterviewTimer";
 import type { InterviewQuestion } from "../types";
 import { enterFullscreen, getFullscreenElement, isFullscreenSupported } from "../utils/fullscreen";
-import { inferQuestionType } from "../utils/llm";
 import { getMediaDevicesStream, getScreenStream } from "../utils/mediaHelpers";
 import { useTTSEngine } from "../utils/tts";
 import type { AnswerRecorderState } from "./AnswerRecorder";
@@ -389,10 +388,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         role: "alex",
         text: questionText,
         phase: currentTurn.turn_type === "closing" ? "closing" : "question",
-        questionType: inferQuestionType(
-          questionText,
-          (currentTurn.question_type as ChatMessage["questionType"]) || "technical",
-        ),
+        questionType: (currentTurn.question_type as ChatMessage["questionType"]) || "technical",
         isFollowUp: currentTurn.turn_type === "follow_up",
         status: "speaking",
         timestamp: now + 1,

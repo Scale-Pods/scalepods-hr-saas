@@ -12,14 +12,7 @@ import type {
   LiveAssessmentNote,
   Scorecard,
 } from "../types";
-import {
-  type CandidateAnalysis,
-  detectCandidateIntent,
-  generateInterviewerTurn,
-  getDynamicCandidateQuestion,
-  inferQuestionType,
-  sanitizeQuestionPlaceholders,
-} from "../utils/llm";
+import { type CandidateAnalysis, generateInterviewerTurn } from "../utils/llm";
 
 interface InterviewContextType {
   session: InterviewSession | null;
@@ -264,22 +257,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       const personalizedIntro = buildPersonalizedGreeting(candidateName, data.campaign?.name);
 
       if (existingQuestions.length > 0) {
-        const subQuestionTexts = new Set(
-          existingAnswers
-            .map((a) =>
-              String(
-                (a.ai_live_note as Record<string, unknown> | undefined)?.follow_up_question || "",
-              )
-                .trim()
-                .toLowerCase(),
-            )
-            .filter(Boolean),
-        );
         const answerByQid = new Map(existingAnswers.map((a) => [a.question_id, a]));
 
         const cleanExisting = existingQuestions.map((q, idx) => {
-          let qText = sanitizeQuestionPlaceholders(q.question_text, data.resumeText, data.jdText);
-          // Upgrade legacy un-personalized fixed greeting to include candidate name & role
+          let qText = q.question_text;
           if (
             idx === 0 &&
             q.question_type === "cultural" &&
@@ -295,8 +276,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             q.source === "llm_ts_followup" || q.source === "llm_ts_clarification"
               ? q.source
               : (q.question_type as string | undefined) === "follow_up" ||
-                  ansNote?.is_follow_up === true ||
-                  subQuestionTexts.has(qText.trim().toLowerCase())
+                  ansNote?.is_follow_up === true
                 ? "llm_ts_followup"
                 : q.source;
           return {
@@ -305,18 +285,6 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             source: inferredSubSource,
           };
         });
-        // Restore per-main-question sub-question counters across reloads
-        let activeMainId = "";
-        for (const q of cleanExisting) {
-          if (q.source !== "llm_ts_followup" && q.source !== "llm_ts_clarification") {
-            activeMainId = q.id;
-          } else {
-            const key = q.parent_question_id || activeMainId;
-            if (key) {
-              followUpCountRef.current[key] = (followUpCountRef.current[key] || 0) + 1;
-            }
-          }
-        }
         setQuestions(cleanExisting);
         const firstUnansweredIdx = cleanExisting.findIndex(
           (q) => !answeredQuestionIdsRef.current.has(q.id),
@@ -403,7 +371,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
     questionAckMapRef.current.clear();
     const firstQ = questions[0];
     const initialQuestionText = firstQ?.question_text || INTRO_QUESTION_TEXT;
-    const initialQuestionType = inferQuestionType(initialQuestionText, firstQ?.question_type);
+    const initialQuestionType = firstQ?.question_type || "cultural";
     if (firstQ?.id) {
       setCurrentQuestionId(firstQ.id);
       questionAckMapRef.current.set(firstQ.id, "");
@@ -490,53 +458,33 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       const history = orderedIds
         .map((qid) => questionsById.get(qid))
         .filter((q): q is InterviewQuestion => Boolean(q))
-        .map((q) => ({
-          id: q.id,
-          question: q.question_text,
-          answer: localAnswersMapRef.current.get(q.id) || "",
-          type: q.source === "llm_ts_followup" ? "follow_up" : q.question_type,
-        }));
-
-      // Count main questions answered (Question 1 greeting through Question 10; exclude follow-ups and clarifications)
-      const answeredPrimaryCount = questions.filter(
-        (q) =>
-          answeredQuestionIdsRef.current.has(q.id) &&
-          q.source !== "llm_ts_followup" &&
-          q.source !== "llm_ts_clarification",
-      ).length;
+        .map((q) => {
+          const isSub =
+            q.source === "llm_ts_followup" ||
+            q.source === "llm_ts_clarification" ||
+            (q.question_type as string | undefined) === "follow_up" ||
+            Boolean(q.parent_question_id);
+          return {
+            id: q.id,
+            question: q.question_text,
+            answer: localAnswersMapRef.current.get(q.id) || "",
+            type: q.question_type,
+            source: q.source,
+            is_sub_question: isSub,
+          };
+        });
 
       const currentQ = questions.find((q) => q.id === currentQuestionId);
-      const currentQType = inferQuestionType(
-        currentQ?.question_text || "",
-        currentQ?.question_type,
-      );
-      const isGreetingQ =
-        currentQType === "cultural" &&
-        ((currentQ?.order_index ?? 0) <= 1 ||
-          (currentQ?.question_text || "").toLowerCase().includes("how are you doing today"));
-      const isAlreadyFollowUp =
+      const currentQType = currentQ?.question_type || "technical";
+      const isAlreadyFollowUp = Boolean(
         currentQ?.source === "llm_ts_followup" ||
-        currentQ?.source === "llm_ts_clarification" ||
-        (currentQ?.question_type as string | undefined) === "follow_up" ||
-        Boolean(currentQ?.parent_question_id);
-      const trackingKey = currentQ?.parent_question_id || currentQ?.id || "";
-      const hasChildSubQuestion = trackingKey
-        ? questions.some(
-            (q) =>
-              q.parent_question_id === trackingKey &&
-              (q.source === "llm_ts_followup" || q.source === "llm_ts_clarification"),
-          )
-        : false;
-      const currentFollowUpCount = Math.max(
-        trackingKey ? followUpCountRef.current[trackingKey] || 0 : 0,
-        hasChildSubQuestion ? 1 : 0,
+          currentQ?.source === "llm_ts_clarification" ||
+          (currentQ?.question_type as string | undefined) === "follow_up" ||
+          currentQ?.parent_question_id,
       );
+      const trackingKey = currentQ?.parent_question_id || currentQ?.id || "";
 
-      // Strict rule: ONLY technical primary questions (not greeting/behavioral/situational/follow-up) can have 1 follow-up
-      const isTechnicalPrimary = currentQType === "technical" && !isGreetingQ && !isAlreadyFollowUp;
-      const allowFollowUp = Boolean(isTechnicalPrimary && currentFollowUpCount < 1);
-
-      // Next unanswered planned main question
+      // Next unanswered planned main question (legacy sessions only)
       const nextPlannedQuestion = questions.find(
         (q) =>
           !answeredQuestionIdsRef.current.has(q.id) &&
@@ -546,51 +494,37 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           q.id !== currentQ?.parent_question_id,
       );
 
-      // Always bind lastItem to the actual currentQuestionId being answered rather than trailing array order
       const currentHistoryItem = currentQ
         ? history.find((item) => item.id === currentQ.id) || {
             id: currentQ.id,
             question: currentQ.question_text,
             answer: localAnswersMapRef.current.get(currentQ.id) || "",
-            type: currentQ.source === "llm_ts_followup" ? "follow_up" : currentQ.question_type,
+            type: currentQ.question_type,
+            source: currentQ.source,
+            is_sub_question: isAlreadyFollowUp,
           }
         : undefined;
       const lastItem = currentHistoryItem || history[history.length - 1];
       const lastAnswer = lastItem?.answer || "";
-      const lastQ = lastItem?.question || "";
-      const intent = detectCandidateIntent(lastAnswer, lastQ);
-      const isClarification = intent === "clarification_request";
-      const isRefusal = intent === "refusal";
-      const wordsCount = lastAnswer.trim().split(/\s+/).filter(Boolean).length;
+      const lastQ = lastItem?.question || currentQ?.question_text || "";
 
-      const turn = await generateInterviewerTurn(
+      const turn = await generateInterviewerTurn({
+        sessionId: session.id,
+        accountId: session.account_id,
+        candidateId: session.candidate_id,
+        candidateName: session.candidate?.name,
         resumeText,
         jdText,
         history,
-        answeredPrimaryCount,
-        candidateAnalysisRef.current,
-        authenticitySignalsRef.current,
-        lastAssessmentNoteRef.current,
-        currentFollowUpCount,
-        [],
-        allowFollowUp,
-        null,
-        10,
-        1,
-        nextPlannedQuestion?.question_text,
-        isClarification,
-        wordsCount,
-        isTechnicalPrimary,
-        isRefusal,
-        session.id,
-        session.account_id,
-        session.candidate_id,
-        session.candidate?.name,
-        currentQType,
+        currentQuestionId: currentQ?.id,
+        askedQuestionText: lastQ,
+        currentQuestionType: currentQType,
+        currentQuestionSource: currentQ?.source,
         isAlreadyFollowUp,
-      );
+        answerText: lastAnswer,
+      });
 
-      // Sync evaluation note returned by n8n back to state and single DB row
+      // Sync evaluation note returned by n8n back to state and DB row
       if (turn.evaluation_note && currentQ) {
         const evalNote = turn.evaluation_note;
         const fullNote: LiveAssessmentNote = {
@@ -650,150 +584,35 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         }).catch((err) => console.warn("Failed to sync n8n evaluation note:", err));
       }
 
-      if (
-        (turn.turn_type === "follow_up" || turn.recommended_action === "clarify") &&
-        trackingKey
-      ) {
-        followUpCountRef.current[trackingKey] = currentFollowUpCount + 1;
-      }
       lastAssessmentNoteRef.current = null;
 
-      // Guard: close only when all 10 main questions are answered and no follow-up is triggered
-      const allowClosing =
-        (turn.turn_type === "closing" || !turn.should_continue) &&
-        !nextPlannedQuestion &&
-        answeredPrimaryCount >= 10;
-      if (allowClosing) {
+      if (turn.is_final_question || turn.turn_type === "closing" || !turn.should_continue) {
         setCurrentTurn({
-          interviewer_text:
-            turn.interviewer_text ||
-            "That brings us to the end of the interview. Thank you so much for your time and for sharing your experience. Your responses have been successfully recorded.",
+          interviewer_text: turn.interviewer_text || "",
           question_text: "",
           turn_type: "closing",
           question_type: "cultural",
           should_continue: false,
+          is_final_question: true,
         });
         return;
       }
 
-      // If turn was marked closing prematurely before 10 main questions, generate next question
-      if (
-        (turn.turn_type === "closing" || !turn.should_continue || !turn.question_text) &&
-        answeredPrimaryCount < 10
-      ) {
-        console.warn(
-          `[generateNextTurn] Premature closing prevented at ${answeredPrimaryCount}/10 questions. Generating dynamic candidate question.`,
-        );
-        const dynamicQ = getDynamicCandidateQuestion(
-          answeredPrimaryCount,
-          history.map((h) => h.question),
-          candidateAnalysisRef.current,
-          null,
-          "context premature closing prevention",
-          resumeText,
-          jdText,
-        );
-        turn.turn_type = "question";
-        turn.should_continue = true;
-        turn.question_text = dynamicQ.question_text;
-        turn.question_type = dynamicQ.question_type;
-        turn.interviewer_text =
-          turn.interviewer_text &&
-          !turn.interviewer_text.toLowerCase().includes("brings us to the end") &&
-          !turn.interviewer_text.toLowerCase().includes("thank you so much")
-            ? turn.interviewer_text
-            : "Thank you for sharing that. Let's move into another critical technical area.";
-      }
-
-      // Hard defense-in-depth cap: NEVER ask a follow-up to a follow-up or exceed 1 sub-question per main question
-      const isClarifyOrIrrelevant = Boolean(
-        turn.recommended_action === "clarify" || turn.answer_was_irrelevant || isClarification,
-      );
-      const canEmitSubQuestion =
-        !isAlreadyFollowUp &&
-        !isGreetingQ &&
-        currentFollowUpCount < 1 &&
-        (isTechnicalPrimary || isClarifyOrIrrelevant);
-
-      if (
-        (turn.turn_type === "follow_up" || turn.recommended_action === "clarify") &&
-        !canEmitSubQuestion
-      ) {
-        if (nextPlannedQuestion) {
-          turn.turn_type = "question";
-          turn.recommended_action = "advance";
-          turn.should_continue = true;
-          turn.question_text = sanitizeQuestionPlaceholders(
-            nextPlannedQuestion.question_text,
-            resumeText,
-            jdText,
-          );
-          turn.question_type = inferQuestionType(
-            turn.question_text,
-            nextPlannedQuestion.question_type,
-          );
-        } else if (answeredPrimaryCount < 10) {
-          const dynamicNext = getDynamicCandidateQuestion(
-            answeredPrimaryCount,
-            history.map((h) => h.question),
-            candidateAnalysisRef.current,
-            null,
-            "followup cap override",
-            resumeText,
-            jdText,
-          );
-          turn.turn_type = "question";
-          turn.recommended_action = "advance";
-          turn.should_continue = true;
-          turn.question_text = dynamicNext.question_text;
-          turn.question_type = dynamicNext.question_type;
-        } else {
-          setCurrentTurn({
-            interviewer_text:
-              turn.interviewer_text ||
-              "That brings us to the end of the interview. Thank you so much for your time and for sharing your experience. Your responses have been successfully recorded.",
-            question_text: "",
-            turn_type: "closing",
-            question_type: "cultural",
-            should_continue: false,
-          });
-          return;
-        }
-      }
-
       if (turn.question_text) {
-        turn.question_text = sanitizeQuestionPlaceholders(turn.question_text, resumeText, jdText);
         const isFollowUp = turn.turn_type === "follow_up";
         const isClarifyTurn = turn.recommended_action === "clarify";
         let targetQId = "";
         if (!isFollowUp && !isClarifyTurn && nextPlannedQuestion) {
-          // Always advance cleanly to the exact planned question slot without overwriting planned DB rows
-          const cleanPlanned = sanitizeQuestionPlaceholders(
-            nextPlannedQuestion.question_text,
-            resumeText,
-            jdText,
-          );
-          const inferredType = inferQuestionType(cleanPlanned, nextPlannedQuestion.question_type);
-          turn.question_text = cleanPlanned;
-          turn.question_type = inferredType;
           setCurrentQuestionId(nextPlannedQuestion.id);
           targetQId = nextPlannedQuestion.id;
           const plannedIdx = questions.findIndex((q) => q.id === nextPlannedQuestion.id);
           if (plannedIdx !== -1) {
             setCurrentQuestionIndex(plannedIdx);
           }
-          setQuestions((prev) =>
-            prev.map((q) =>
-              q.id === nextPlannedQuestion.id
-                ? { ...q, question_text: cleanPlanned, question_type: inferredType }
-                : q,
-            ),
-          );
+          turn.question_text = nextPlannedQuestion.question_text;
+          turn.question_type = nextPlannedQuestion.question_type;
         } else {
-          const inferredType = isFollowUp
-            ? "technical"
-            : inferQuestionType(turn.question_text, turn.question_type);
-          turn.question_type = inferredType;
+          const resolvedType = turn.question_type || "technical";
           const generatedUuid =
             typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
               ? crypto.randomUUID()
@@ -803,10 +622,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
                   .toString(16)
                   .padStart(12, "0")}`;
 
-          const qSource = isFollowUp
-            ? "llm_ts_followup"
-            : isClarifyTurn
-              ? "llm_ts_clarification"
+          const qSource = isClarifyTurn
+            ? "llm_ts_clarification"
+            : isFollowUp
+              ? "llm_ts_followup"
               : "llm_ts_dynamic";
           const parentId = isFollowUp || isClarifyTurn ? trackingKey || null : null;
 
@@ -815,7 +634,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             session_id: session.id,
             round_instance_id: session.round_instance_id,
             question_text: turn.question_text,
-            question_type: inferredType,
+            question_type: resolvedType,
             order_index: questions.length,
             source: qSource,
             parent_question_id: parentId,
@@ -831,7 +650,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
                 sessionId: session.id,
                 questionId: generatedUuid,
                 questionText: turn.question_text,
-                questionType: inferredType,
+                questionType: resolvedType,
                 orderIndex: questions.length,
                 source: qSource,
                 parentQuestionId: parentId,

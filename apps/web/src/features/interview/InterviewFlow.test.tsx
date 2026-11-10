@@ -3,11 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InterviewRoom } from "./components/InterviewRoom";
 import { InterviewProvider } from "./context/InterviewContext";
 import { ProctoringProvider } from "./context/ProctoringContext";
-import {
-  getDynamicCandidateQuestion,
-  hasSimilarQuestionBeenAsked,
-  isSimilarQuestion,
-} from "./utils/llm";
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
@@ -240,26 +235,6 @@ describe("Interview Room & Flow", () => {
       expect(screen.getByText("AI Interview")).toBeInTheDocument();
       expect(screen.getByText("End Interview")).toBeInTheDocument();
     });
-  });
-
-  it("detects similar questions and selects unique next questions without repeating", () => {
-    const q1 = "Could you walk me through your recent hands-on technical experience?";
-    const q1Variant =
-      "could you walk me through your recent hands-on technical experience and tools";
-    const q2 =
-      "What is an important technical trade-off or architectural decision you made in a recent project?";
-
-    expect(isSimilarQuestion(q1, q1Variant)).toBe(true);
-    expect(isSimilarQuestion(q1, q2)).toBe(false);
-
-    const existing = [q1];
-    expect(hasSimilarQuestionBeenAsked(q1Variant, existing)).toBe(true);
-    expect(hasSimilarQuestionBeenAsked(q2, existing)).toBe(false);
-
-    // Pick dynamic question avoiding already asked questions
-    const nextQ = getDynamicCandidateQuestion(1, existing);
-    expect(nextQ.question_text).not.toBe(q1);
-    expect(hasSimilarQuestionBeenAsked(nextQ.question_text, existing)).toBe(false);
   });
 
   it("does not submit or complete session on page reload or beforeunload during PreCheck", async () => {
