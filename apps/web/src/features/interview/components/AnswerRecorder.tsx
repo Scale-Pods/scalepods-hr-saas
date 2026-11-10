@@ -207,8 +207,11 @@ export function AnswerRecorder({
   }, []);
 
   const stopAndSubmit = useCallback(
-    (overrideText?: string) => {
+    (overrideText?: string, forceEmpty = false) => {
       if (submittedRef.current) return;
+      const finalText = overrideText?.trim() || transcriptRef.current.trim();
+      if (!finalText && !forceEmpty) return;
+
       shouldSubmitRef.current = true;
 
       clearThinkingTimer();
@@ -221,11 +224,11 @@ export function AnswerRecorder({
       setIsRecording(false);
       accumulatedWebSpeechRef.current = "";
 
-      if (overrideText?.trim()) {
-        transcriptRef.current = overrideText.trim();
-        setTranscript(transcriptRef.current);
-      } else if (!transcriptRef.current.trim()) {
-        transcriptRef.current = "Candidate submitted response.";
+      if (finalText) {
+        transcriptRef.current = finalText;
+        setTranscript(finalText);
+      } else {
+        transcriptRef.current = "(No response recorded)";
         setTranscript(transcriptRef.current);
       }
 
@@ -782,13 +785,13 @@ export function AnswerRecorder({
 
   useEffect(() => {
     if (expired && isRecordingRef.current) {
-      stopAndSubmit();
+      stopAndSubmit(undefined, true);
     }
   }, [expired, stopAndSubmit]);
 
   useEffect(() => {
     if (endEarly && isRecordingRef.current) {
-      stopAndSubmit();
+      stopAndSubmit(undefined, true);
     }
   }, [endEarly, stopAndSubmit]);
 

@@ -160,7 +160,8 @@ export function ChatInputBar({
 
   const handleSend = () => {
     const textToSubmit = effectiveText.trim() || transcript.trim();
-    onManualSubmit(textToSubmit || undefined);
+    if (!textToSubmit) return;
+    onManualSubmit(textToSubmit);
     setTypedText("");
     setIsEditing(false);
     if (textareaRef.current) {
@@ -219,7 +220,7 @@ export function ChatInputBar({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                handleSend();
+                if (hasText) handleSend();
               }
             }}
             placeholder={
@@ -324,7 +325,7 @@ export function ChatInputBar({
 
         {/* Submit button */}
         {(() => {
-          const canSubmit = isRecording || isThinking || hasText;
+          const canSubmit = hasText;
           return (
             <button
               type="button"
