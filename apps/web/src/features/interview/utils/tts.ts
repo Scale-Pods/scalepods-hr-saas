@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 interface TTSEngine {
   speak: (text: string, onend?: () => void) => void;
+  prefetch: (text: string) => void;
   cancel: () => void;
   isSpeaking: () => boolean;
   setVoiceSettings: (rate: number, pitch: number, voiceName?: string) => void;
@@ -57,6 +58,9 @@ function prepareTextForTTS(text: string): string {
 export function useTTSEngine(): TTSEngine {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const lockedWebSpeechVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const audioBlobCacheRef = useRef<Map<string, Promise<Blob>>>(new Map());
+  const ttsSessionTokenRef = useRef(0);
   const isSpeakingRef = useRef(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -84,6 +88,7 @@ export function useTTSEngine(): TTSEngine {
   }, []);
 
   const cancel = useCallback(() => {
+    ttsSessionTokenRef.current += 1;
     if (safetyTimerRef.current) {
       clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = null;
@@ -126,61 +131,64 @@ export function useTTSEngine(): TTSEngine {
       const utterance = new SpeechSynthesisUtterance(preparedText);
       activeUtteranceRef.current = utterance;
       utterance.lang = "en-IN";
-      utterance.rate = 0.96;
+      utterance.rate = 1.08;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
       const currentVoices = voicesRef.current;
       if (currentVoices.length > 0) {
-        // 1. Prefer Indian English (en-IN) natural/female voices first
-        const indianNaturalVoice = currentVoices.find((v) => {
-          const name = v.name.toLowerCase();
-          const lang = v.lang.toLowerCase();
-          return (
-            (lang === "en-in" || lang.startsWith("en_in") || name.includes("india")) &&
-            (name.includes("neerja") ||
-              name.includes("natural") ||
-              name.includes("online") ||
-              name.includes("neural") ||
-              name.includes("aditi") ||
-              name.includes("raveena") ||
-              name.includes("heera") ||
-              name.includes("veena") ||
-              name.includes("kavya") ||
-              name.includes("google"))
-          );
-        });
+        if (!lockedWebSpeechVoiceRef.current) {
+          // 1. Prefer Indian English (en-IN) natural/female voices first
+          const indianNaturalVoice = currentVoices.find((v) => {
+            const name = v.name.toLowerCase();
+            const lang = v.lang.toLowerCase();
+            return (
+              (lang === "en-in" || lang.startsWith("en_in") || name.includes("india")) &&
+              (name.includes("neerja") ||
+                name.includes("natural") ||
+                name.includes("online") ||
+                name.includes("neural") ||
+                name.includes("aditi") ||
+                name.includes("raveena") ||
+                name.includes("heera") ||
+                name.includes("veena") ||
+                name.includes("kavya") ||
+                name.includes("google"))
+            );
+          });
 
-        const anyIndianVoice = currentVoices.find((v) => {
-          const name = v.name.toLowerCase();
-          const lang = v.lang.toLowerCase();
-          return lang === "en-in" || lang.startsWith("en_in") || name.includes("india");
-        });
+          const anyIndianVoice = currentVoices.find((v) => {
+            const name = v.name.toLowerCase();
+            const lang = v.lang.toLowerCase();
+            return lang === "en-in" || lang.startsWith("en_in") || name.includes("india");
+          });
 
-        // 2. Fallback to fluent natural English female voices if no en-IN voice is installed
-        const naturalVoice = currentVoices.find((v) => {
-          const name = v.name.toLowerCase();
-          const isEn = v.lang.toLowerCase().startsWith("en");
-          return (
-            isEn &&
-            (name.includes("natural") ||
-              name.includes("online") ||
-              name.includes("neural") ||
-              name.includes("aria") ||
-              name.includes("jenny") ||
-              name.includes("samantha") ||
-              name.includes("ava"))
-          );
-        });
+          // 2. Fallback to fluent natural English female voices if no en-IN voice is installed
+          const naturalVoice = currentVoices.find((v) => {
+            const name = v.name.toLowerCase();
+            const isEn = v.lang.toLowerCase().startsWith("en");
+            return (
+              isEn &&
+              (name.includes("natural") ||
+                name.includes("online") ||
+                name.includes("neural") ||
+                name.includes("aria") ||
+                name.includes("jenny") ||
+                name.includes("samantha") ||
+                name.includes("ava"))
+            );
+          });
 
-        const fallbackEnglish = currentVoices.find((v) => v.lang.toLowerCase().startsWith("en"));
-        utterance.voice =
-          indianNaturalVoice ||
-          anyIndianVoice ||
-          naturalVoice ||
-          fallbackEnglish ||
-          currentVoices[0] ||
-          null;
+          const fallbackEnglish = currentVoices.find((v) => v.lang.toLowerCase().startsWith("en"));
+          lockedWebSpeechVoiceRef.current =
+            indianNaturalVoice ||
+            anyIndianVoice ||
+            naturalVoice ||
+            fallbackEnglish ||
+            currentVoices[0] ||
+            null;
+        }
+        utterance.voice = lockedWebSpeechVoiceRef.current;
       }
 
       let finished = false;
@@ -230,10 +238,70 @@ export function useTTSEngine(): TTSEngine {
     [cancel],
   );
 
+  const fetchDeepgramBlob = useCallback((text: string, apiKey: string): Promise<Blob> => {
+    const model = process.env.NEXT_PUBLIC_DEEPGRAM_VOICE_MODEL || "flux-priya-en";
+    const preparedText = prepareTextForTTS(text);
+    const cacheKey = `${model}::${preparedText}`;
+    const existing = audioBlobCacheRef.current.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+
+    const endpointVersion = model.startsWith("flux-") ? "v2" : "v1";
+    const query =
+      endpointVersion === "v2"
+        ? `model=${encodeURIComponent(model)}&speed=1.18&expressivity=0`
+        : `model=${encodeURIComponent(model)}`;
+
+    const fetchPromise = (async () => {
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 9000);
+      try {
+        const response = await fetch(`https://api.deepgram.com/${endpointVersion}/speak?${query}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: preparedText }),
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`Deepgram TTS request failed: ${response.status} ${response.statusText}`);
+        }
+        return await response.blob();
+      } catch (err) {
+        audioBlobCacheRef.current.delete(cacheKey);
+        throw err;
+      } finally {
+        clearTimeout(fetchTimeout);
+      }
+    })();
+
+    if (audioBlobCacheRef.current.size >= 12) {
+      const oldestKey = audioBlobCacheRef.current.keys().next().value;
+      if (oldestKey) audioBlobCacheRef.current.delete(oldestKey);
+    }
+    audioBlobCacheRef.current.set(cacheKey, fetchPromise);
+    return fetchPromise;
+  }, []);
+
+  const prefetch = useCallback(
+    (text: string) => {
+      if (!text?.trim()) return;
+      const apiKey = process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY;
+      if (apiKey && apiKey.trim().length > 0 && !apiKey.includes("your-deepgram-api-key")) {
+        void fetchDeepgramBlob(text, apiKey).catch(() => {});
+      }
+    },
+    [fetchDeepgramBlob],
+  );
+
   const speakWithDeepgram = useCallback(
     async (text: string, apiKey: string, onend?: () => void) => {
       let audioUrl: string | null = null;
       let finished = false;
+      let myToken = 0;
 
       const finish = () => {
         if (finished) return;
@@ -250,54 +318,22 @@ export function useTTSEngine(): TTSEngine {
           } catch {}
           audioUrl = null;
         }
-        if (onend) onend();
+        if (onend && myToken === ttsSessionTokenRef.current) onend();
       };
 
       try {
         cancel();
+        myToken = ttsSessionTokenRef.current;
         isSpeakingRef.current = true;
 
-        // "flux-priya-en" provides a warm, articulate Indian English female voice (Deepgram v2 TTS)
-        // Can be overridden via NEXT_PUBLIC_DEEPGRAM_VOICE_MODEL
-        const model = process.env.NEXT_PUBLIC_DEEPGRAM_VOICE_MODEL || "flux-priya-en";
-        const speed = 0.98;
-        const preparedText = prepareTextForTTS(text);
-
-        const fetchDeepgramAudio = async (voiceModel: string): Promise<Response> => {
-          const endpointVersion = voiceModel.startsWith("flux-") ? "v2" : "v1";
-          const controller = new AbortController();
-          const fetchTimeout = setTimeout(() => controller.abort(), 6000);
-          try {
-            return await fetch(
-              `https://api.deepgram.com/${endpointVersion}/speak?model=${voiceModel}`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Token ${apiKey}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ text: preparedText }),
-                signal: controller.signal,
-              },
-            );
-          } finally {
-            clearTimeout(fetchTimeout);
-          }
-        };
-
-        let response = await fetchDeepgramAudio(model);
-        if (!response.ok && model !== "aura-2-asteria-en") {
-          response = await fetchDeepgramAudio("aura-2-asteria-en");
+        const blob = await fetchDeepgramBlob(text, apiKey);
+        if (myToken !== ttsSessionTokenRef.current) {
+          return;
         }
 
-        if (!response.ok) {
-          throw new Error(`Deepgram TTS request failed: ${response.status} ${response.statusText}`);
-        }
-
-        const blob = await response.blob();
         audioUrl = URL.createObjectURL(blob);
         const audio = new Audio(audioUrl);
-        audio.playbackRate = speed;
+        audio.playbackRate = 1.02;
         currentAudioRef.current = audio;
 
         audio.onended = () => {
@@ -311,9 +347,9 @@ export function useTTSEngine(): TTSEngine {
 
         // Safety timer ensures the interview continues even if audio stalls or autoplay is interrupted
         const words = text.split(/\s+/).length;
-        const expectedDurationMs = Math.max(3500, Math.min(30000, words * 400 + 2500));
+        const expectedDurationMs = Math.max(3500, Math.min(30000, words * 360 + 2500));
         safetyTimerRef.current = setTimeout(() => {
-          if (!finished) {
+          if (!finished && myToken === ttsSessionTokenRef.current) {
             console.log("Deepgram playback safety timeout triggered, proceeding");
             finish();
           }
@@ -321,7 +357,8 @@ export function useTTSEngine(): TTSEngine {
 
         await audio.play();
       } catch (err) {
-        console.warn("Deepgram TTS failed, falling back to Web Speech API:", err);
+        if (myToken !== ttsSessionTokenRef.current) return;
+        console.warn("Deepgram TTS failed, falling back to locked en-IN voice:", err);
         if (safetyTimerRef.current) {
           clearTimeout(safetyTimerRef.current);
           safetyTimerRef.current = null;
@@ -335,7 +372,7 @@ export function useTTSEngine(): TTSEngine {
         speakWithWebSpeech(text, onend);
       }
     },
-    [cancel, speakWithWebSpeech],
+    [cancel, fetchDeepgramBlob, speakWithWebSpeech],
   );
 
   const speak = useCallback(
@@ -365,5 +402,5 @@ export function useTTSEngine(): TTSEngine {
 
   const getVoices = useCallback(() => voices, [voices]);
 
-  return { speak, cancel, isSpeaking, setVoiceSettings, getVoices };
+  return { speak, prefetch, cancel, isSpeaking, setVoiceSettings, getVoices };
 }

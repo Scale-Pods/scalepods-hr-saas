@@ -67,7 +67,14 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   const { violations, startProctoring, stopProctoring } = useProctoringContext();
   const startingRef = useRef(false);
   const completionStartedRef = useRef(false);
-  const { speak, cancel } = useTTSEngine();
+  const { speak, prefetch, cancel } = useTTSEngine();
+
+  // Warm up Deepgram TTS CORS + cache Question 1 audio during PreCheck so intro speaks instantly
+  useEffect(() => {
+    if (!avStream && questions[0]?.question_text) {
+      prefetch(questions[0].question_text);
+    }
+  }, [avStream, questions, prefetch]);
   const [answerState, setAnswerState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastError, setLastError] = useState("");
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
@@ -302,6 +309,10 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       };
 
       if (acknowledgment) {
+        if (questionText) {
+          // Pre-fetch question TTS while acknowledgment speaks so transition is instantaneous
+          prefetch(questionText);
+        }
         setSpeakingPhase("acknowledgment");
         setCurrentlySpeakingText(acknowledgment);
         speak(acknowledgment, () => {
@@ -310,7 +321,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
             !completionStartedRef.current &&
             !endEarlyRef.current
           ) {
-            setTimeout(speakQuestion, 400);
+            setTimeout(speakQuestion, 100);
           }
         });
       } else if (questionText) {
@@ -320,7 +331,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     return () => {
       cancel();
     };
-  }, [currentTurn, avStream, cancel, speak, session?.status]);
+  }, [currentTurn, avStream, cancel, prefetch, speak, session?.status]);
 
   useEffect(() => {
     if (!currentTurn || !avStream) return;
