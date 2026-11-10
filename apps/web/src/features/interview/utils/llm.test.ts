@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { extractAnswerEntities, generateProbingFollowUp, isFollowUpGrounded } from "./llm";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  extractAnswerEntities,
+  generateInterviewerTurn,
+  generateProbingFollowUp,
+  isFollowUpGrounded,
+} from "./llm";
 
 describe("interview follow-up generation & grounding", () => {
   it("extracts entities without assuming unmentioned brands", () => {
@@ -92,5 +97,116 @@ describe("interview follow-up generation & grounding", () => {
         question,
       ),
     ).toBe(true);
+  });
+});
+
+describe("follow-up cap enforcement in generateInterviewerTurn", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("blocks nested follow-ups when already on a follow-up with targetQuestion", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        turn_type: "follow_up",
+        recommended_action: "follow_up",
+        interviewer_text: "You mentioned cosine similarity.",
+        question_text: "Can you explain the second follow-up?",
+        is_sub_question: true,
+      }),
+    }) as unknown as typeof fetch;
+
+    const turn = await generateInterviewerTurn(
+      "Resume: Chatbot platform using OpenAI embeddings",
+      "JD: AI Automation Intern",
+      [
+        {
+          id: "q-2-1",
+          question: "Can you explain the specific architecture?",
+          answer: "We use OpenAI embeddings and cosine similarity.",
+          type: "follow_up",
+        },
+      ],
+      2,
+      null,
+      [],
+      null,
+      1,
+      [],
+      false,
+      null,
+      10,
+      1,
+      "In your next project, what trade-off did you make?",
+      false,
+      12,
+      true,
+      false,
+      "sess-1",
+      "acc-1",
+      "cand-1",
+      "Aqib",
+      "technical",
+      true,
+    );
+
+    expect(turn.turn_type).toBe("question");
+    expect(turn.recommended_action).toBe("advance");
+    expect(turn.question_text).toBe("In your next project, what trade-off did you make?");
+  });
+
+  it("blocks nested follow-ups even when targetQuestion is omitted", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        turn_type: "follow_up",
+        recommended_action: "follow_up",
+        interviewer_text: "You mentioned error handling.",
+        question_text: "Can you explain the third follow-up?",
+        is_sub_question: true,
+      }),
+    }) as unknown as typeof fetch;
+
+    const turn = await generateInterviewerTurn(
+      "Resume: Chatbot platform using OpenAI embeddings and n8n workflows",
+      "JD: AI Automation Intern",
+      [
+        {
+          id: "q-2-1",
+          question: "Can you explain the specific architecture?",
+          answer: "We use error handler workflows in n8n.",
+          type: "follow_up",
+        },
+      ],
+      2,
+      null,
+      [],
+      null,
+      1,
+      [],
+      false,
+      null,
+      10,
+      1,
+      undefined,
+      false,
+      10,
+      true,
+      false,
+      "sess-1",
+      "acc-1",
+      "cand-1",
+      "Aqib",
+      "technical",
+      true,
+    );
+
+    expect(turn.turn_type).toBe("question");
+    expect(turn.recommended_action).toBe("advance");
+    expect(turn.question_text).not.toBe("Can you explain the third follow-up?");
   });
 });

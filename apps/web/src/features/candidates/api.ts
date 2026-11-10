@@ -879,11 +879,10 @@ export async function fetchCandidateProfile(
             const rawAck: string | null =
               liveNote.interviewer_text || liveNote.interviewer_acknowledgment || null;
 
-            const isFollowUpTurn = Boolean(
-              liveNote.is_follow_up ||
-                liveNote.turn_type === "follow_up" ||
-                q?.question_type === "follow_up",
-            );
+            const isFollowUpTurn =
+              typeof liveNote.is_follow_up === "boolean"
+                ? liveNote.is_follow_up
+                : Boolean(liveNote.turn_type === "follow_up" || q?.question_type === "follow_up");
 
             turnsMap.set(normKey, {
               id: ans.id,

@@ -1231,10 +1231,16 @@ export async function generateInterviewerTurn(
       const allowSubQuestion =
         !isAlreadyFollowUp &&
         followUpCount < maxFollowUps &&
+        (allowFollowUp !== false || isClarifyOrOffTopicSub) &&
         (questionIsTechnical !== false || isClarifyOrOffTopicSub);
 
       // Enforce client-side safeguard: never nest a sub-question inside a sub-question
-      if (rawTurnType === "follow_up" && !allowSubQuestion) {
+      if (
+        (rawTurnType === "follow_up" ||
+          parsed.recommended_action === "clarify" ||
+          parsed.is_sub_question) &&
+        !allowSubQuestion
+      ) {
         if (targetQuestion) {
           const cleanTarget = sanitizeQuestionOnly(targetQuestion);
           return {
@@ -1248,6 +1254,43 @@ export async function generateInterviewerTurn(
             answer_was_irrelevant: Boolean(parsed.answer_was_irrelevant),
           };
         }
+        if (totalQuestions < (maxPrimaryQuestions || TOTAL_WANTED_JOB_QUESTIONS)) {
+          const fallbackQ = getDynamicCandidateQuestion(
+            totalQuestions,
+            allSessionQuestions,
+            analysis,
+            planItem,
+            "nested followup blocked fallback",
+            resumeText,
+            jdText,
+          );
+          const cleanFallback = sanitizeQuestionPlaceholders(
+            fallbackQ.question_text,
+            resumeText,
+            jdText,
+          );
+          return {
+            interviewer_text: interviewerText,
+            question_text: cleanFallback,
+            turn_type: "question",
+            question_type: inferQuestionType(cleanFallback, fallbackQ.question_type),
+            should_continue: true,
+            recommended_action: "advance",
+            evaluation_note: parsed.evaluation_note || null,
+            answer_was_irrelevant: Boolean(parsed.answer_was_irrelevant),
+          };
+        }
+        return {
+          interviewer_text: interviewerText,
+          question_text: "",
+          turn_type: "closing",
+          question_type: "cultural",
+          should_continue: false,
+          is_final_question: true,
+          recommended_action: "advance",
+          evaluation_note: parsed.evaluation_note || null,
+          answer_was_irrelevant: Boolean(parsed.answer_was_irrelevant),
+        };
       }
 
       const rawQuestion = parsed.question_text || parsed.prompt || targetQuestion || "";

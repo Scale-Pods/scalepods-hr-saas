@@ -259,6 +259,19 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       const personalizedIntro = buildPersonalizedGreeting(candidateName, data.campaign?.name);
 
       if (existingQuestions.length > 0) {
+        const subQuestionTexts = new Set(
+          existingAnswers
+            .map((a) =>
+              String(
+                (a.ai_live_note as Record<string, unknown> | undefined)?.follow_up_question || "",
+              )
+                .trim()
+                .toLowerCase(),
+            )
+            .filter(Boolean),
+        );
+        const answerByQid = new Map(existingAnswers.map((a) => [a.question_id, a]));
+
         const cleanExisting = existingQuestions.map((q, idx) => {
           let qText = sanitizeQuestionPlaceholders(q.question_text, data.resumeText, data.jdText);
           // Upgrade legacy un-personalized fixed greeting to include candidate name & role
@@ -270,11 +283,35 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           ) {
             qText = personalizedIntro;
           }
+          const ansNote = answerByQid.get(q.id)?.ai_live_note as
+            | Record<string, unknown>
+            | undefined;
+          const inferredSubSource =
+            q.source === "llm_ts_followup" || q.source === "llm_ts_clarification"
+              ? q.source
+              : ansNote?.is_follow_up === true ||
+                  subQuestionTexts.has(qText.trim().toLowerCase()) ||
+                  (q.order_index ?? idx) >= 10
+                ? "llm_ts_followup"
+                : q.source;
           return {
             ...q,
             question_text: qText,
+            source: inferredSubSource,
           };
         });
+        // Restore per-main-question sub-question counters across reloads
+        let activeMainId = "";
+        for (const q of cleanExisting) {
+          if (q.source !== "llm_ts_followup" && q.source !== "llm_ts_clarification") {
+            activeMainId = q.id;
+          } else {
+            const key = q.parent_question_id || activeMainId;
+            if (key) {
+              followUpCountRef.current[key] = (followUpCountRef.current[key] || 0) + 1;
+            }
+          }
+        }
         setQuestions(cleanExisting);
         const firstUnansweredIdx = cleanExisting.findIndex(
           (q) => !answeredQuestionIdsRef.current.has(q.id),
@@ -460,9 +497,21 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       const isAlreadyFollowUp =
         currentQ?.source === "llm_ts_followup" ||
         currentQ?.source === "llm_ts_clarification" ||
-        Boolean(currentQ?.parent_question_id);
+        (currentQ?.question_type as string | undefined) === "follow_up" ||
+        Boolean(currentQ?.parent_question_id) ||
+        (currentQ?.order_index ?? 0) >= 10;
       const trackingKey = currentQ?.parent_question_id || currentQ?.id || "";
-      const currentFollowUpCount = trackingKey ? followUpCountRef.current[trackingKey] || 0 : 0;
+      const hasChildSubQuestion = trackingKey
+        ? questions.some(
+            (q) =>
+              q.parent_question_id === trackingKey &&
+              (q.source === "llm_ts_followup" || q.source === "llm_ts_clarification"),
+          )
+        : false;
+      const currentFollowUpCount = Math.max(
+        trackingKey ? followUpCountRef.current[trackingKey] || 0 : 0,
+        hasChildSubQuestion ? 1 : 0,
+      );
 
       // Strict rule: ONLY technical primary questions (not greeting/behavioral/situational/follow-up) can have 1 follow-up
       const isTechnicalPrimary = currentQType === "technical" && !isGreetingQ && !isAlreadyFollowUp;
@@ -551,6 +600,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         authenticitySignalsRef.current = [...authenticitySignalsRef.current, signal];
         setAuthenticitySignals((prev) => [...prev, signal]);
 
+        const { turn_type: nextTurnType, ...evalNoteFields } = evalNote;
         const prevAckText = questionAckMapRef.current.get(currentQ.id) || "";
         fetch("/api/interview/session", {
           method: "POST",
@@ -561,7 +611,8 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             questionId: currentQ.id,
             answerText: lastAnswer,
             aiLiveNote: {
-              ...evalNote,
+              ...evalNoteFields,
+              next_turn_type: nextTurnType,
               interviewer_text: prevAckText,
               question_text: currentQ.question_text,
               is_follow_up: isAlreadyFollowUp,
@@ -624,6 +675,62 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           !turn.interviewer_text.toLowerCase().includes("thank you so much")
             ? turn.interviewer_text
             : "Thank you for sharing that. Let's move into another critical technical area.";
+      }
+
+      // Hard defense-in-depth cap: NEVER ask a follow-up to a follow-up or exceed 1 sub-question per main question
+      const isClarifyOrIrrelevant = Boolean(
+        turn.recommended_action === "clarify" || turn.answer_was_irrelevant || isClarification,
+      );
+      const canEmitSubQuestion =
+        !isAlreadyFollowUp &&
+        !isGreetingQ &&
+        currentFollowUpCount < 1 &&
+        (isTechnicalPrimary || isClarifyOrIrrelevant);
+
+      if (
+        (turn.turn_type === "follow_up" || turn.recommended_action === "clarify") &&
+        !canEmitSubQuestion
+      ) {
+        if (nextPlannedQuestion) {
+          turn.turn_type = "question";
+          turn.recommended_action = "advance";
+          turn.should_continue = true;
+          turn.question_text = sanitizeQuestionPlaceholders(
+            nextPlannedQuestion.question_text,
+            resumeText,
+            jdText,
+          );
+          turn.question_type = inferQuestionType(
+            turn.question_text,
+            nextPlannedQuestion.question_type,
+          );
+        } else if (answeredPrimaryCount < 10) {
+          const dynamicNext = getDynamicCandidateQuestion(
+            answeredPrimaryCount,
+            history.map((h) => h.question),
+            candidateAnalysisRef.current,
+            null,
+            "followup cap override",
+            resumeText,
+            jdText,
+          );
+          turn.turn_type = "question";
+          turn.recommended_action = "advance";
+          turn.should_continue = true;
+          turn.question_text = dynamicNext.question_text;
+          turn.question_type = dynamicNext.question_type;
+        } else {
+          setCurrentTurn({
+            interviewer_text:
+              turn.interviewer_text ||
+              "That brings us to the end of the interview. Thank you so much for your time and for sharing your experience. Your responses have been successfully recorded.",
+            question_text: "",
+            turn_type: "closing",
+            question_type: "cultural",
+            should_continue: false,
+          });
+          return;
+        }
       }
 
       if (turn.question_text) {
