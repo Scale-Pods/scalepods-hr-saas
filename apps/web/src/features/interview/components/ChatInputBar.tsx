@@ -74,7 +74,7 @@ export function ChatInputBar({
   const countdownPct = countdownTenths > 0 ? silenceCountdown / countdownTenths : 0;
   const thinkingSecondsLeft = (thinkingCountdown / 10).toFixed(1);
   const thinkingPct =
-    (thinkingCountdownTenths || 350) > 0 ? thinkingCountdown / (thinkingCountdownTenths || 350) : 0;
+    (thinkingCountdownTenths || 100) > 0 ? thinkingCountdown / (thinkingCountdownTenths || 100) : 0;
 
   /* ─── Placeholder states ─────────────────────────────────────── */
   if (isAiSpeaking) {

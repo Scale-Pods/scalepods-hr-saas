@@ -6,7 +6,7 @@ import { normalizeTechnicalSpeech } from "../utils/speechNormalizer";
 
 const SILENCE_TIMEOUT_MS = 12000;
 const COUNTDOWN_TENTHS = Math.floor(SILENCE_TIMEOUT_MS / 100);
-const THINKING_TIMEOUT_MS = 35000;
+const THINKING_TIMEOUT_MS = 10000;
 const THINKING_TENTHS = Math.floor(THINKING_TIMEOUT_MS / 100);
 
 export interface AnswerRecorderState {
@@ -265,7 +265,7 @@ export function AnswerRecorder({
       if (isThinkingRef.current && isRecordingRef.current) {
         clearThinkingTimer();
         if (!transcriptRef.current.trim()) {
-          transcriptRef.current = "No response provided within the 35-second thinking limit.";
+          transcriptRef.current = "No response provided within the 10-second thinking limit.";
           setTranscript(transcriptRef.current);
         }
         stopAndSubmit();
@@ -975,7 +975,7 @@ export function AnswerRecorder({
               }}
               placeholder={
                 isThinking
-                  ? "Speak your response now (you have 35s to begin speaking)..."
+                  ? "Speak your response now (you have 10s to begin speaking)..."
                   : "Speak your response now (you can also edit or type words here)..."
               }
               className="w-full text-sm leading-relaxed font-medium rounded-xl p-3 min-h-[70px] max-h-[400px] overflow-y-auto transition-all duration-150 resize-none"
@@ -989,7 +989,7 @@ export function AnswerRecorder({
             <div className="flex items-center justify-between gap-3">
               <p className="text-[10px]" style={{ color: "var(--label-tertiary)" }}>
                 {isThinking
-                  ? "Start speaking within 35s | Auto-submits after 12s of silence once spoken"
+                  ? "Start speaking within 10s | Auto-submits after 12s of silence once spoken"
                   : `Auto-submits after ${(SILENCE_TIMEOUT_MS / 1000).toFixed(0)}s of silence`}
               </p>
               <button
