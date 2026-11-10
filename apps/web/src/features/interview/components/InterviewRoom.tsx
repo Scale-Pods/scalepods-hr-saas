@@ -672,14 +672,23 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     currentQuestion?.source === "llm_ts_followup" ||
     currentQuestion?.source === "llm_ts_clarification" ||
     currentTurn?.turn_type === "follow_up";
-  const primaryQuestionsAnsweredOrActive = questions.filter(
-    (q, idx) =>
+  const primaryQuestions = questions.filter(
+    (q) =>
       q.source !== "llm_ts_followup" &&
       q.source !== "llm_ts_clarification" &&
-      idx <= currentQuestionIndex,
-  ).length;
+      (q.question_type as string | undefined) !== "follow_up",
+  );
+  const activePrimaryId = isCurrentFollowUp
+    ? currentQuestion?.parent_question_id ||
+      [...primaryQuestions]
+        .reverse()
+        .find((q) => (q.order_index ?? 0) <= (currentQuestion?.order_index ?? 0))?.id
+    : currentQuestion?.id;
+  const activePrimaryIdx = activePrimaryId
+    ? primaryQuestions.findIndex((q) => q.id === activePrimaryId)
+    : -1;
   const primaryBarIndex = Math.min(
-    Math.max(0, primaryQuestionsAnsweredOrActive - 1),
+    Math.max(0, activePrimaryIdx !== -1 ? activePrimaryIdx : answeredCount),
     progressTarget - 1,
   );
   const isClosingTurn = currentTurn?.turn_type === "closing";

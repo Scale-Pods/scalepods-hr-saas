@@ -10,11 +10,19 @@ export function normalizeTechnicalSpeech(text: string): string {
 
   const replacements: Array<[RegExp, string]> = [
     // Workflow & Automation Tools
-    // "air n8n", "n ate n", "en ate en" are common STT hallucinations for n8n
+    // "air n8n", "n ate n", "en ate en", "on eight ten" are common STT hallucinations for n8n
     [
-      /\b(air\s*n\s*[-]?\s*8\s*[-]?\s*n|n\s*ate\s*n|en\s*ate\s*en|n\s*[-]?\s*8\s*[-]?\s*n|n8\s*n|n\s*8n|in\s+anytime\s+workshoot|in\s+it\s+and\s+workers|anytime\s+workshoot)\b/gi,
+      /\b(air\s*n\s*[-]?\s*8\s*[-]?\s*n|n\s*ate\s*n|en\s*ate\s*en|n\s*[-]?\s*8\s*[-]?\s*n|en8n|n8\s*n|n\s*8n|in\s+eight\s+ten|on\s+eight\s+ten|in\s+anytime\s+workshoot|in\s+it\s+and\s+workers|anytime\s+workshoot)\b/gi,
       "n8n",
     ],
+    [/\b(?:anytime|net\s+and)\s+workflow\b/gi, "n8n workflow"],
+    [
+      /\b(http\s+request|downstream|upstream|downflow|if|code|webhook|trigger)\s+notes\b/gi,
+      "$1 nodes",
+    ],
+    [/\b(google\s+maps|google\s+places|maps|places)\s+cpi\b/gi, "$1 API"],
+    [/\b(hr|ai|b2b)\s+sas\b/gi, "$1 SaaS"],
+    [/\bbtec\b/gi, "B.Tech"],
     [/\b(zap\s*i\s*er)\b/gi, "Zapier"],
     [/\b(integromat)\b/gi, "Integromat"],
     [/\b(air\s*flow|apache\s*air\s*flow)\b/gi, "Airflow"],

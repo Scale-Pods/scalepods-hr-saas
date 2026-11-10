@@ -45,5 +45,12 @@ describe("speechNormalizer", () => {
     expect(normalizeTechnicalSpeech("I have experience with pie torch and tensor flow")).toBe(
       "I have experience with PyTorch and TensorFlow",
     );
+    expect(
+      normalizeTechnicalSpeech(
+        "The Google Maps CPI sends data to downstream notes in our net and workflow for an HR SAS tool during BTEC",
+      ),
+    ).toBe(
+      "The Google Maps API sends data to downstream nodes in our n8n workflow for an HR SaaS tool during B.Tech",
+    );
   });
 });

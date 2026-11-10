@@ -4,6 +4,7 @@ import {
   generateInterviewerTurn,
   generateProbingFollowUp,
   inferQuestionType,
+  isClarificationRequested,
   isFollowUpGrounded,
 } from "./llm";
 
@@ -231,5 +232,13 @@ describe("inferQuestionType", () => {
         "In your customer support chatbot platform, describe the architecture and data flow.",
       ),
     ).toBe("technical");
+  });
+
+  it("detects clarification phrasing like 'Can you help me with the question?'", () => {
+    expect(isClarificationRequested("Can you help me with the question?")).toBe(true);
+    expect(isClarificationRequested("Help me understand what you mean.")).toBe(true);
+    expect(isClarificationRequested("I built n8n workflows to understand customer issues")).toBe(
+      false,
+    );
   });
 });

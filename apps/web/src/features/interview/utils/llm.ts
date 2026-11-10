@@ -102,7 +102,7 @@ export type CandidateAnswerIntent =
 export function isClarificationRequested(answer: string): boolean {
   const text = (answer || "").toLowerCase().trim();
   if (!text) return false;
-  return /\b(clarify|clarification|rephrase|repeat|pardon|elaborate|can'?t understand|cannot understand|don'?t understand|do not understand|didn'?t understand|did not understand|what do you mean|what does that mean|what is meant|explain the question|explain what you mean|could you explain|can you explain)\b/i.test(
+  return /\b(clarify|clarification|rephrase|repeat|pardon|elaborate|can'?t understand|cannot understand|don'?t understand|do not understand|didn'?t understand|did not understand|didn'?t get (?:it|that|the question)|did not get (?:it|that|the question)|what do you mean|what does (?:that|this question) mean|what is meant|explain the question|explain what you mean|could you explain|can you explain|help me understand|help me with (?:this|the) question)\b/i.test(
     text,
   );
 }
