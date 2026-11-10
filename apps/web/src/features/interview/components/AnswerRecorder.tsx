@@ -263,12 +263,8 @@ export function AnswerRecorder({
 
     thinkingTimeoutRef.current = setTimeout(() => {
       if (isThinkingRef.current && isRecordingRef.current) {
+        // Transition from thinking period directly into active recording (never submit empty)
         clearThinkingTimer();
-        if (!transcriptRef.current.trim()) {
-          transcriptRef.current = "No response provided within the 10-second thinking limit.";
-          setTranscript(transcriptRef.current);
-        }
-        stopAndSubmit();
       }
     }, THINKING_TIMEOUT_MS);
 
@@ -278,7 +274,7 @@ export function AnswerRecorder({
         return prev - 1;
       });
     }, 100);
-  }, [clearThinkingTimer, stopAndSubmit]);
+  }, [clearThinkingTimer]);
 
   const startCountdown = useCallback(() => {
     if (isThinkingRef.current) {

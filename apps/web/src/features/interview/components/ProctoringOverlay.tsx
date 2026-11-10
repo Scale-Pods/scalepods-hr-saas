@@ -1,4 +1,14 @@
-import { AlertCircle, AlertTriangle, Eye, Info, Mic, Monitor, Shield, X } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  Eye,
+  Info,
+  Maximize2,
+  Mic,
+  Monitor,
+  Shield,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { ProctoringEvent, ProctoringSeverity } from "../types";
@@ -15,7 +25,18 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
   const [isDisabled, setIsDisabled] = useState(false);
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [totalViolationCount, setTotalViolationCount] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(() =>
+    typeof document !== "undefined" ? Boolean(document.fullscreenElement) : true,
+  );
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const syncFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    syncFullscreen();
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
 
   useEffect(() => {
     async function loadSummary() {
@@ -227,6 +248,25 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
 
       {/* Top-Right Status Indicators */}
       <div className="fixed top-16 right-4 z-50 flex items-center gap-2">
+        {!isFullscreen && (
+          <button
+            type="button"
+            onClick={() => {
+              document.documentElement.requestFullscreen?.().catch(() => {});
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold shadow-sm transition hover:brightness-110 active:scale-95"
+            style={{
+              background: "rgba(245, 158, 11, 0.2)",
+              border: "1px solid rgba(245, 158, 11, 0.55)",
+              color: "#fbbf24",
+              backdropFilter: "blur(8px)",
+            }}
+            title="Click to enter required fullscreen mode"
+          >
+            <Maximize2 size={11} />
+            <span>Enable Fullscreen</span>
+          </button>
+        )}
         {tabSwitchCount > 0 && (
           <div
             className="badge-orange flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full shadow-sm"

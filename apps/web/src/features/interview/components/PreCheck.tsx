@@ -513,6 +513,10 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
   }
 
   const handleStartInterview = () => {
+    // Request fullscreen synchronously inside the Start Interview click gesture
+    if (typeof document !== "undefined" && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    }
     stopLivePreview();
     onComplete();
   };
@@ -555,7 +559,7 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
           )}
           <div className="flex items-center gap-2">
             <span style={{ color: "var(--label-tertiary)" }}>Questions:</span>
-            <span style={{ color: "var(--label-primary)" }}>10-12 Questions</span>
+            <span style={{ color: "var(--label-primary)" }}>10 Questions</span>
           </div>
           <div className="flex items-center gap-2">
             <span style={{ color: "var(--label-tertiary)" }}>Duration:</span>

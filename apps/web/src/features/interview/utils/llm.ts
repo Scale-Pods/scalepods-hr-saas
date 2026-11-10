@@ -102,29 +102,9 @@ export type CandidateAnswerIntent =
 export function isClarificationRequested(answer: string): boolean {
   const text = (answer || "").toLowerCase().trim();
   if (!text) return false;
-  const keywords = [
-    "clarify",
-    "clarification",
-    "explain",
-    "explanation",
-    "understand",
-    "can't understand",
-    "cannot understand",
-    "don't understand",
-    "rephrase",
-    "what do you mean",
-    "what does that mean",
-    "what is meant",
-    "repeat",
-    "meaning of",
-    "pardon",
-    "elaborate on the question",
-    "elaborate",
-    "elaborative",
-    "could you elaborate",
-    "can you elaborate",
-  ];
-  return keywords.some((k) => text.includes(k));
+  return /\b(clarify|clarification|rephrase|repeat|pardon|elaborate|can'?t understand|cannot understand|don'?t understand|do not understand|didn'?t understand|did not understand|what do you mean|what does that mean|what is meant|explain the question|explain what you mean|could you explain|can you explain)\b/i.test(
+    text,
+  );
 }
 
 export function detectCandidateIntent(answer: string, question?: string): CandidateAnswerIntent {
