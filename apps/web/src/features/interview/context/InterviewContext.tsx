@@ -294,9 +294,9 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           const inferredSubSource =
             q.source === "llm_ts_followup" || q.source === "llm_ts_clarification"
               ? q.source
-              : ansNote?.is_follow_up === true ||
-                  subQuestionTexts.has(qText.trim().toLowerCase()) ||
-                  (q.order_index ?? idx) > 10
+              : (q.question_type as string | undefined) === "follow_up" ||
+                  ansNote?.is_follow_up === true ||
+                  subQuestionTexts.has(qText.trim().toLowerCase())
                 ? "llm_ts_followup"
                 : q.source;
           return {
@@ -518,8 +518,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         currentQ?.source === "llm_ts_followup" ||
         currentQ?.source === "llm_ts_clarification" ||
         (currentQ?.question_type as string | undefined) === "follow_up" ||
-        Boolean(currentQ?.parent_question_id) ||
-        (currentQ?.order_index ?? 0) > 10;
+        Boolean(currentQ?.parent_question_id);
       const trackingKey = currentQ?.parent_question_id || currentQ?.id || "";
       const hasChildSubQuestion = trackingKey
         ? questions.some(

@@ -33,6 +33,60 @@ function formatNameFromEmail(email: string): string {
     .join(" ");
 }
 
+/** Resolve campaign JD text and candidate resume text for real-time /score-interview payloads. */
+async function resolveSessionJdAndResume(
+  supabase: ReturnType<typeof getAdminSupabase>,
+  sessionRow: { round_instance_id?: string | null; candidate_id?: string | null },
+): Promise<{ jdText: string; resumeText: string }> {
+  let jdText = "";
+  let resumeText = "";
+
+  try {
+    let candidateId = sessionRow.candidate_id || "";
+    if (sessionRow.round_instance_id) {
+      const { data: ri } = await supabase
+        .from("round_instances")
+        .select("campaign_id, candidate_id")
+        .eq("id", sessionRow.round_instance_id)
+        .maybeSingle();
+      if (!candidateId && ri?.candidate_id) candidateId = ri.candidate_id;
+      if (ri?.campaign_id) {
+        const { data: camp } = await supabase
+          .from("campaigns")
+          .select("jd_text")
+          .eq("id", ri.campaign_id)
+          .maybeSingle();
+        if (camp?.jd_text) jdText = camp.jd_text;
+      }
+    }
+
+    if (candidateId) {
+      const { data: dlRows } = await supabase
+        .from("decision_ledger")
+        .select("raw_text, rationale, score_type")
+        .eq("candidate_id", candidateId)
+        .order("decided_at", { ascending: false })
+        .limit(5);
+      const resumeRow =
+        dlRows?.find(
+          (r) => r.score_type === "resume" && typeof r.raw_text === "string" && r.raw_text.trim(),
+        ) || dlRows?.find((r) => typeof r.raw_text === "string" && r.raw_text.trim());
+      if (resumeRow?.raw_text && resumeRow.raw_text.trim().length > 30) {
+        resumeText = resumeRow.raw_text;
+      } else {
+        const rationaleRow = dlRows?.find(
+          (r) => typeof r.rationale === "string" && r.rationale.trim(),
+        );
+        if (rationaleRow?.rationale) resumeText = rationaleRow.rationale;
+      }
+    }
+  } catch (err) {
+    console.warn("[api/interview/session] resolveSessionJdAndResume note:", err);
+  }
+
+  return { jdText, resumeText };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -591,7 +645,7 @@ export async function POST(request: NextRequest) {
       }
 
       case "insert_question": {
-        const { questionText, questionType, orderIndex, questionId } = body;
+        const { questionText, questionType, orderIndex, questionId, source } = body;
         if (!questionText) {
           return NextResponse.json({ error: "questionText is required" }, { status: 400 });
         }
@@ -606,6 +660,9 @@ export async function POST(request: NextRequest) {
           question_number: qNumber,
           order_index: typeof orderIndex === "number" ? orderIndex : 0,
         };
+        if (typeof source === "string" && source.trim()) {
+          insertPayload.source = source.trim();
+        }
         if (
           typeof questionId === "string" &&
           questionId.length === 36 &&
@@ -717,13 +774,16 @@ export async function POST(request: NextRequest) {
             .eq("id", sessionRow.round_instance_id);
         }
 
-        // Trigger n8n scoring webhook (include proctoring events for penalty scoring)
+        // Trigger n8n scoring webhook (include proctoring events, JD, and resume context)
         const n8nBase = getN8nBase();
         try {
-          const { data: proctoringEvents } = await supabase
-            .from("proctoring_events")
-            .select("event_type, severity, details, timestamp")
-            .eq("round_instance_id", sessionRow.round_instance_id);
+          const [{ data: proctoringEvents }, { jdText, resumeText }] = await Promise.all([
+            supabase
+              .from("proctoring_events")
+              .select("event_type, severity, details, timestamp")
+              .eq("round_instance_id", sessionRow.round_instance_id),
+            resolveSessionJdAndResume(supabase, sessionRow),
+          ]);
 
           await fetch(`${n8nBase}/webhook/score-interview`, {
             method: "POST",
@@ -739,6 +799,8 @@ export async function POST(request: NextRequest) {
               cutoff_score: null,
               ended_early: Boolean(endedEarly),
               proctoring_events: proctoringEvents || [],
+              jd_text: jdText,
+              resume_text: resumeText,
             }),
           });
         } catch (err) {
@@ -756,10 +818,13 @@ export async function POST(request: NextRequest) {
         let scored = false;
         let result = null;
         try {
-          const { data: procEvts } = await supabase
-            .from("proctoring_events")
-            .select("event_type, severity, details, timestamp")
-            .eq("round_instance_id", sessionRow.round_instance_id);
+          const [{ data: procEvts }, { jdText, resumeText }] = await Promise.all([
+            supabase
+              .from("proctoring_events")
+              .select("event_type, severity, details, timestamp")
+              .eq("round_instance_id", sessionRow.round_instance_id),
+            resolveSessionJdAndResume(supabase, sessionRow),
+          ]);
 
           const scoreRes = await fetch(`${n8nBase}/webhook/score-interview`, {
             method: "POST",
@@ -774,6 +839,8 @@ export async function POST(request: NextRequest) {
               number_of_rounds: 1,
               cutoff_score: null,
               proctoring_events: procEvts || [],
+              jd_text: jdText,
+              resume_text: resumeText,
             }),
           });
           if (scoreRes.ok) {
