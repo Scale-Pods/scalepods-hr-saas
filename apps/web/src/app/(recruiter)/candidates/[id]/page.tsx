@@ -12,7 +12,6 @@ import {
   AlertCircle,
   ArrowLeft,
   Award,
-  Bot,
   Brain,
   Briefcase,
   Check,
@@ -2997,31 +2996,25 @@ function InterviewMediaAndTranscriptSection({
                     </div>
                   </div>
 
-                  {/* Interviewer Acknowledgment (if present and distinct) */}
+                  {/* Interviewer Turn (merged acknowledgment + question in one card) */}
                   {(() => {
                     const ack = (turn.interviewer_text || "").replace(/^["']|["']$/g, "").trim();
-                    if (!ack || ack.toLowerCase() === turn.question_text.trim().toLowerCase())
-                      return null;
+                    const qText = (turn.question_text || "").trim();
+                    const mergedPrompt =
+                      ack && qText
+                        ? ack.toLowerCase().includes(qText.toLowerCase())
+                          ? ack
+                          : `${ack} ${qText}`
+                        : ack || qText;
                     return (
-                      <div className="rounded-lg bg-muted/20 p-2.5 text-xs text-muted-foreground italic border border-border/20 flex items-start gap-2">
-                        <Bot className="h-3.5 w-3.5 mt-0.5 text-primary shrink-0 not-italic" />
-                        <div>
-                          <span className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground/80 block not-italic">
-                            Interviewer Acknowledgment
-                          </span>
-                          <span>"{ack}"</span>
-                        </div>
+                      <div className="rounded-lg bg-muted/40 p-2.5 text-xs text-foreground leading-relaxed border border-border/30">
+                        <p className="font-semibold text-primary text-[11px] mb-1 flex items-center gap-1.5">
+                          <Sparkles className="h-3 w-3" /> Interview Question:
+                        </p>
+                        <p className="font-medium text-foreground">{mergedPrompt}</p>
                       </div>
                     );
                   })()}
-
-                  {/* Interviewer Question */}
-                  <div className="rounded-lg bg-muted/40 p-2.5 text-xs text-foreground leading-relaxed border border-border/30">
-                    <p className="font-semibold text-primary text-[11px] mb-1 flex items-center gap-1.5">
-                      <Sparkles className="h-3 w-3" /> Interview Question:
-                    </p>
-                    <p className="font-medium text-foreground">{turn.question_text}</p>
-                  </div>
 
                   {/* Candidate Answer */}
                   <div className="rounded-lg bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/20 p-2.5 text-xs text-foreground leading-relaxed">

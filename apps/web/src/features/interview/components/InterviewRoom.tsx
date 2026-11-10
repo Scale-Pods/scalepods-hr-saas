@@ -131,7 +131,6 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   const stopAndSubmitRef = useRef<((overrideText?: string) => void) | null>(null);
   const syncTypedTextRef = useRef<((text: string) => void) | null>(null);
   const currentAlexBubbleIdRef = useRef<string | null>(null);
-  const currentAckBubbleIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (sessionId) loadSession(sessionId);
@@ -276,11 +275,6 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     if (bid) {
       setChatMessages((prev) => prev.map((m) => (m.id === bid ? { ...m, status: "done" } : m)));
     }
-    const ackId = currentAckBubbleIdRef.current;
-    if (ackId) {
-      setChatMessages((prev) => prev.map((m) => (m.id === ackId ? { ...m, status: "done" } : m)));
-      currentAckBubbleIdRef.current = null;
-    }
     if (currentTurn?.turn_type === "closing" && !completionStartedRef.current) {
       finishInterview(false);
     }
@@ -310,34 +304,22 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         }, 18000);
       }
 
-      const turnId = `${currentTurn.turn_type}-${acknowledgment.slice(0, 40)}-${Date.now()}`;
+      const combinedText =
+        acknowledgment && questionText
+          ? acknowledgment.toLowerCase().includes(questionText.toLowerCase())
+            ? acknowledgment
+            : `${acknowledgment} ${questionText}`
+          : acknowledgment || questionText;
+
+      const turnId = `${currentTurn.turn_type}-${combinedText.slice(0, 40)}-${Date.now()}`;
       turnIdRef.current = turnId;
       isAiSpeakingRef.current = true;
       setIsAiSpeaking(true);
 
-      const speakQuestion = () => {
-        if (
-          turnIdRef.current !== turnId ||
-          completionStartedRef.current ||
-          endEarlyRef.current ||
-          session?.status === "completed" ||
-          session?.status === "incomplete"
-        )
-          return;
-        const ackId = currentAckBubbleIdRef.current;
-        if (ackId) {
-          setChatMessages((prev) =>
-            prev.map((m) => (m.id === ackId ? { ...m, status: "done" } : m)),
-          );
-          currentAckBubbleIdRef.current = null;
-        }
-        if (!questionText) {
-          onSpeakCompleteRef.current?.();
-          return;
-        }
+      if (combinedText) {
         setSpeakingPhase("question");
-        setCurrentlySpeakingText(questionText);
-        speak(questionText, () => {
+        setCurrentlySpeakingText(combinedText);
+        speak(combinedText, () => {
           if (
             turnIdRef.current === turnId &&
             !completionStartedRef.current &&
@@ -346,26 +328,6 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
             onSpeakCompleteRef.current?.();
           }
         });
-      };
-
-      if (acknowledgment) {
-        if (questionText) {
-          // Pre-fetch question TTS while acknowledgment speaks so transition is instantaneous
-          prefetch(questionText);
-        }
-        setSpeakingPhase("acknowledgment");
-        setCurrentlySpeakingText(acknowledgment);
-        speak(acknowledgment, () => {
-          if (
-            turnIdRef.current === turnId &&
-            !completionStartedRef.current &&
-            !endEarlyRef.current
-          ) {
-            setTimeout(speakQuestion, 100);
-          }
-        });
-      } else if (questionText) {
-        speakQuestion();
       } else if (isClosing) {
         onSpeakCompleteRef.current?.();
       }
@@ -374,55 +336,38 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       if (closingFallbackTimer) clearTimeout(closingFallbackTimer);
       cancel();
     };
-  }, [
-    currentTurn,
-    avStream,
-    isFullscreenReady,
-    cancel,
-    finishInterview,
-    prefetch,
-    speak,
-    session?.status,
-  ]);
+  }, [currentTurn, avStream, isFullscreenReady, cancel, finishInterview, speak, session?.status]);
 
   useEffect(() => {
     if (!currentTurn || !avStream) return;
     const acknowledgmentText = (currentTurn.interviewer_text || "").trim();
     const questionText = currentTurn.question_text?.trim() || "";
+    const combinedText =
+      acknowledgmentText && questionText
+        ? acknowledgmentText.toLowerCase().includes(questionText.toLowerCase())
+          ? acknowledgmentText
+          : `${acknowledgmentText} ${questionText}`
+        : acknowledgmentText || questionText;
+
+    if (!combinedText) return;
 
     const now = Date.now();
-    const ackBubbleId = acknowledgmentText ? `alex-ack-${now}` : null;
     const bubbleId = `alex-${currentTurn.turn_type}-${now}`;
     currentAlexBubbleIdRef.current = bubbleId;
-    currentAckBubbleIdRef.current = ackBubbleId;
 
-    const newMessages: ChatMessage[] = [];
-
-    if (acknowledgmentText && ackBubbleId) {
-      newMessages.push({
-        id: ackBubbleId,
-        role: "alex",
-        text: acknowledgmentText,
-        phase: "acknowledgment",
-        status: "speaking",
-        timestamp: now,
-      });
-    }
-
-    if (questionText) {
-      newMessages.push({
+    setChatMessages((prev) => [
+      ...prev,
+      {
         id: bubbleId,
         role: "alex",
-        text: questionText,
+        text: combinedText,
         phase: currentTurn.turn_type === "closing" ? "closing" : "question",
         questionType: (currentTurn.question_type as ChatMessage["questionType"]) || "technical",
         isFollowUp: currentTurn.turn_type === "follow_up",
         status: "speaking",
-        timestamp: now + 1,
-      });
-    }
-
-    setChatMessages((prev) => [...prev, ...newMessages]);
+        timestamp: now,
+      },
+    ]);
   }, [
     currentTurn?.interviewer_text,
     currentTurn?.question_text,
