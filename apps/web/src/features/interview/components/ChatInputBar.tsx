@@ -99,7 +99,7 @@ export function ChatInputBar({
               ))}
             </div>
             <span className="text-sm font-medium" style={{ color: "var(--label-secondary)" }}>
-              Alex is speaking…
+              Aria is speaking…
             </span>
           </div>
 

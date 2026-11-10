@@ -143,7 +143,7 @@ export function RecruiterPersona({
 
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold" style={{ color: "var(--label-primary)" }}>
-            Alex
+            Aria
           </p>
           <p className="text-xs" style={{ color: "var(--label-tertiary)" }}>
             AI Technical Recruiter

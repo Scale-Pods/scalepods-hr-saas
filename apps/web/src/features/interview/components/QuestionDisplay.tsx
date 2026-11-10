@@ -131,12 +131,12 @@ export function QuestionDisplay({
           {isQuestionSpeaking ? (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/20 border border-purple-500/40 text-purple-300 animate-pulse">
               <Volume2 size={13} />
-              <span>Alex is reading aloud…</span>
+              <span>Aria is reading aloud…</span>
             </div>
           ) : isAckSpeaking ? (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 border border-amber-500/40 text-amber-300 animate-pulse">
               <Sparkles size={13} />
-              <span>Alex is speaking…</span>
+              <span>Aria is speaking…</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">

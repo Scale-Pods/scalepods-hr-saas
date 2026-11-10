@@ -63,15 +63,15 @@ interface InterviewContextType {
 const InterviewContext = createContext<InterviewContextType | null>(null);
 
 const INTRO_QUESTION_TEXT =
-  "Hello! I am your AI Interviewer today. Welcome to your interview. To start off, how are you doing today?";
+  "Hello! I am Aria, your AI Interviewer today. Welcome to your interview. To start off, how are you doing today?";
 
 function buildPersonalizedGreeting(candidateName?: string, roleName?: string): string {
   const firstName = (candidateName || "").trim().split(/\s+/)[0] || "";
   const validName = firstName && firstName.toLowerCase() !== "candidate" ? firstName : "";
   const roleClause = roleName ? ` for the ${roleName.trim()} position` : "";
   return validName
-    ? `Hello ${validName}! I am your AI Interviewer today${roleClause}. Welcome to your interview. To start off, how are you doing today?`
-    : `Hello! I am your AI Interviewer today${roleClause}. Welcome to your interview. To start off, how are you doing today?`;
+    ? `Hello ${validName}! I am Aria, your AI Interviewer today${roleClause}. Welcome to your interview. To start off, how are you doing today?`
+    : `Hello! I am Aria, your AI Interviewer today${roleClause}. Welcome to your interview. To start off, how are you doing today?`;
 }
 
 export function InterviewProvider({ children }: { children: React.ReactNode }) {

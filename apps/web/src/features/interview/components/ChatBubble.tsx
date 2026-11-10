@@ -79,7 +79,7 @@ export function TypingBubble() {
       <AvatarRing speaking={false} />
       <div>
         <div className="bubble-meta">
-          <span className="bubble-label-alex">Alex</span>
+          <span className="bubble-label-alex">Aria</span>
           <span style={{ color: "var(--label-tertiary)", fontWeight: 400 }}>· thinking...</span>
         </div>
         <div className="typing-indicator-bubble">
@@ -109,7 +109,7 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
         <div style={{ maxWidth: "85%" }}>
           {/* Meta row */}
           <div className="bubble-meta">
-            <span className="bubble-label-alex">Alex</span>
+            <span className="bubble-label-alex">Aria</span>
             {isAcknowledgement && (
               <span style={{ color: "var(--label-tertiary)", fontWeight: 400 }}>
                 · acknowledging
