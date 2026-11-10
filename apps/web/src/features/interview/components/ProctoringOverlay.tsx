@@ -9,7 +9,7 @@ import {
   Shield,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { ProctoringEvent, ProctoringSeverity } from "../types";
 import { enterFullscreen, getFullscreenElement, isFullscreenSupported } from "../utils/fullscreen";
@@ -17,19 +17,52 @@ import { enterFullscreen, getFullscreenElement, isFullscreenSupported } from "..
 interface ProctoringOverlayProps {
   violations: ProctoringEvent[];
   sessionId: string;
+  isScreenShareActive?: boolean;
+  onRequestScreenShare?: () => void;
+  multiScreenBlocked?: boolean;
+  multiTabBlocked?: boolean;
+  onAutoTerminate?: (reason: string) => void;
 }
 
-export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayProps) {
+const INTENTIONAL_VIOLATION_TYPES = new Set<string>([
+  "fullscreen_exit",
+  "keyboard_shortcut",
+  "copy_paste",
+  "tab_switch",
+  "window_blur",
+  "prohibited_object",
+  "multi_screen",
+  "screen_share_stopped",
+  "multi_tab",
+  "face_multiple",
+]);
+
+const CRITICAL_STRIKE_LIMIT = 5;
+const SCREEN_SHARE_RESTORE_SECONDS = 20;
+
+export function ProctoringOverlay({
+  violations,
+  sessionId,
+  isScreenShareActive = true,
+  onRequestScreenShare,
+  multiScreenBlocked = false,
+  multiTabBlocked = false,
+  onAutoTerminate,
+}: ProctoringOverlayProps) {
   const [showWarning, setShowWarning] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
   const [warningSeverity, setWarningSeverity] = useState<ProctoringSeverity>("warning");
   const [isDisabled, setIsDisabled] = useState(false);
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [totalViolationCount, setTotalViolationCount] = useState(0);
+  const [screenShareCountdown, setScreenShareCountdown] = useState(SCREEN_SHARE_RESTORE_SECONDS);
   const [isFullscreen, setIsFullscreen] = useState(() =>
     !isFullscreenSupported() ? true : Boolean(getFullscreenElement()),
   );
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoTerminatedRef = useRef(false);
+  const onAutoTerminateRef = useRef(onAutoTerminate);
+  onAutoTerminateRef.current = onAutoTerminate;
 
   useEffect(() => {
     if (!isFullscreenSupported()) {
@@ -82,6 +115,38 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
     }
   }, [sessionId]);
 
+  const terminateSession = useCallback((reason: string) => {
+    setIsDisabled(true);
+    setWarningMessage(reason);
+    if (!autoTerminatedRef.current) {
+      autoTerminatedRef.current = true;
+      onAutoTerminateRef.current?.(reason);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isDisabled || isScreenShareActive) {
+      setScreenShareCountdown(SCREEN_SHARE_RESTORE_SECONDS);
+      return;
+    }
+
+    setScreenShareCountdown(SCREEN_SHARE_RESTORE_SECONDS);
+    const interval = setInterval(() => {
+      setScreenShareCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          terminateSession(
+            "Interview terminated because entire screen sharing was not restored within 20 seconds.",
+          );
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isScreenShareActive, isDisabled, terminateSession]);
+
   useEffect(() => {
     const last = violations[violations.length - 1];
     if (!last) return;
@@ -89,19 +154,12 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
     setTotalViolationCount(violations.length);
 
     // Intentional violations toward termination
-    const INTENTIONAL_TYPES: string[] = [
-      "fullscreen_exit",
-      "keyboard_shortcut",
-      "copy_paste",
-      "tab_switch",
-    ];
     const intentionalCritical = violations.filter(
-      (v) => v.severity === "critical" && INTENTIONAL_TYPES.includes(v.event_type),
+      (v) => v.severity === "critical" && INTENTIONAL_VIOLATION_TYPES.has(v.event_type),
     ).length;
 
-    if (intentionalCritical >= 5) {
-      setIsDisabled(true);
-      setWarningMessage("Interview terminated due to multiple critical security violations.");
+    if (intentionalCritical >= CRITICAL_STRIKE_LIMIT) {
+      terminateSession("Interview terminated due to multiple critical security violations.");
       return;
     }
 
@@ -161,6 +219,24 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
         if (key) message = `Keyboard shortcut (${key}) is disabled during the interview.`;
         else message = "Keyboard shortcuts are disabled during the interview.";
         break;
+      case "prohibited_object": {
+        const label = (payload.label as string) || "prohibited item";
+        message = `Prohibited object detected (${label}). Remove it from camera view immediately.`;
+        break;
+      }
+      case "multi_screen":
+        message = "Multiple displays detected. Disconnect all external monitors to continue.";
+        break;
+      case "screen_share_stopped":
+        message =
+          "Entire screen sharing stopped. Re-share your entire screen immediately to continue.";
+        break;
+      case "multi_tab":
+        message = "Multiple interview tabs detected. Close extra tabs immediately.";
+        break;
+      case "device_blocked":
+        message = "Unsupported device detected. Use a laptop or desktop PC.";
+        break;
       default:
         message = "Security alert: Please adhere to all interview proctoring guidelines.";
     }
@@ -180,7 +256,7 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
     return () => {
       if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     };
-  }, [violations]);
+  }, [violations, terminateSession]);
 
   if (isDisabled) {
     return (
@@ -236,10 +312,136 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
   const banner = getBannerStyle();
   const BannerIcon = banner.Icon;
 
+  const showFullscreenGate =
+    !multiTabBlocked &&
+    !multiScreenBlocked &&
+    isScreenShareActive &&
+    isFullscreenSupported() &&
+    !isFullscreen;
+
   return (
     <>
+      {/* Duplicate Tab Gate */}
+      {multiTabBlocked && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="multi-tab-blocked-title"
+          className="fixed inset-0 z-[98] flex items-center justify-center p-4"
+          style={{ background: "rgba(0, 0, 0, 0.88)", backdropFilter: "blur(10px)" }}
+        >
+          <div
+            className="max-w-md w-full p-7 rounded-2xl text-center shadow-2xl animate-scale-in"
+            style={{
+              background: "var(--card-bg, #1c1c1e)",
+              border: "1px solid rgba(255, 69, 58, 0.55)",
+            }}
+          >
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+              style={{ background: "rgba(255, 69, 58, 0.18)", color: "#ff453a" }}
+            >
+              <AlertTriangle size={28} />
+            </div>
+            <h3 id="multi-tab-blocked-title" className="text-lg font-bold text-white mb-2">
+              Multiple Interview Tabs Detected
+            </h3>
+            <p className="text-sm leading-relaxed" style={{ color: "var(--label-secondary)" }}>
+              This interview session is open in another browser tab or window. Close all other
+              interview tabs immediately to continue here.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Multiple Display / Monitor Gate */}
+      {!multiTabBlocked && multiScreenBlocked && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="multi-screen-blocked-title"
+          className="fixed inset-0 z-[97] flex items-center justify-center p-4"
+          style={{ background: "rgba(0, 0, 0, 0.88)", backdropFilter: "blur(10px)" }}
+        >
+          <div
+            className="max-w-md w-full p-7 rounded-2xl text-center shadow-2xl animate-scale-in"
+            style={{
+              background: "var(--card-bg, #1c1c1e)",
+              border: "1px solid rgba(255, 69, 58, 0.55)",
+            }}
+          >
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+              style={{ background: "rgba(255, 69, 58, 0.18)", color: "#ff453a" }}
+            >
+              <Monitor size={28} />
+            </div>
+            <h3 id="multi-screen-blocked-title" className="text-lg font-bold text-white mb-2">
+              Multiple Displays Detected
+            </h3>
+            <p className="text-sm leading-relaxed" style={{ color: "var(--label-secondary)" }}>
+              Only one screen is permitted during the AI interview. Unplug or disable all external
+              monitors and secondary displays to resume automatically.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Screen Share Restoration Gate */}
+      {!multiTabBlocked && !multiScreenBlocked && !isScreenShareActive && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="screen-share-required-title"
+          className="fixed inset-0 z-[96] flex items-center justify-center p-4"
+          style={{ background: "rgba(0, 0, 0, 0.86)", backdropFilter: "blur(10px)" }}
+        >
+          <div
+            className="max-w-md w-full p-7 rounded-2xl text-center shadow-2xl animate-scale-in"
+            style={{
+              background: "var(--card-bg, #1c1c1e)",
+              border: "1px solid rgba(255, 69, 58, 0.55)",
+            }}
+          >
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+              style={{ background: "rgba(255, 69, 58, 0.18)", color: "#ff453a" }}
+            >
+              <AlertCircle size={28} />
+            </div>
+            <h3 id="screen-share-required-title" className="text-lg font-bold text-white mb-2">
+              Entire Screen Share Disconnected
+            </h3>
+            <p className="text-sm mb-4 leading-relaxed" style={{ color: "var(--label-secondary)" }}>
+              Entire screen sharing is mandatory throughout the interview. Re-share your entire
+              screen before the countdown expires or the interview will automatically terminate.
+            </p>
+            <div
+              className="text-2xl font-mono font-bold mb-5"
+              style={{ color: "#ff453a", fontVariantNumeric: "tabular-nums" }}
+            >
+              {screenShareCountdown}s
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onRequestScreenShare?.();
+              }}
+              className="w-full py-3.5 px-5 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 transition hover:brightness-110 active:scale-[0.98]"
+              style={{
+                background: "#ff453a",
+                boxShadow: "0 4px 20px -2px rgba(255, 69, 58, 0.5)",
+              }}
+            >
+              <Monitor size={16} />
+              <span>Re-share Entire Screen</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Fullscreen Required Gate when browser blocks auto-fullscreen or candidate exits fullscreen */}
-      {isFullscreenSupported() && !isFullscreen && (
+      {showFullscreenGate && (
         <div
           role="dialog"
           aria-modal="true"
@@ -355,7 +557,9 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
           </div>
         )}
 
-        {violations.some((v) => v.event_type.startsWith("face")) && (
+        {violations.some(
+          (v) => v.event_type.startsWith("face") || v.event_type === "prohibited_object",
+        ) && (
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center shadow-sm"
             style={{

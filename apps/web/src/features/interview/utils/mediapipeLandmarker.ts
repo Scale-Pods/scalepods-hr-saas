@@ -6,6 +6,7 @@
  */
 
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import { withQuietTfliteInit } from "./mediapipeShared";
 
 export interface BehaviorResult {
   gazeAway: boolean;
@@ -24,38 +25,6 @@ let landmarker: FaceLandmarker | null = null;
 let initPromise: Promise<FaceLandmarker | null> | null = null;
 let initFailed = false;
 let lastVideoTimestampMs = 0;
-
-/** Suppresses MediaPipe WASM/TFLite C++ XNNPACK delegate diagnostic messages during init. */
-async function withQuietTfliteInit<T>(fn: () => Promise<T>): Promise<T> {
-  const origInfo = console.info;
-  const origWarn = console.warn;
-  const origLog = console.log;
-  const isTfliteNoise = (args: unknown[]) =>
-    args.some(
-      (a) =>
-        typeof a === "string" &&
-        (a.includes("TensorFlow Lite") ||
-          a.includes("XNNPACK") ||
-          a.includes("Feedback manager requires") ||
-          a.includes("OpenGL")),
-    );
-  console.info = (...args: unknown[]) => {
-    if (!isTfliteNoise(args)) origInfo.apply(console, args);
-  };
-  console.warn = (...args: unknown[]) => {
-    if (!isTfliteNoise(args)) origWarn.apply(console, args);
-  };
-  console.log = (...args: unknown[]) => {
-    if (!isTfliteNoise(args)) origLog.apply(console, args);
-  };
-  try {
-    return await fn();
-  } finally {
-    console.info = origInfo;
-    console.warn = origWarn;
-    console.log = origLog;
-  }
-}
 
 async function getLandmarker(): Promise<FaceLandmarker | null> {
   if (landmarker) return landmarker;

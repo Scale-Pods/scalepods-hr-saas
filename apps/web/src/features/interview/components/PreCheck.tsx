@@ -4,6 +4,7 @@ import {
   Camera,
   CheckCircle,
   HelpCircle,
+  Laptop,
   Loader,
   Lock,
   Mic,
@@ -15,17 +16,22 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { InterviewSession } from "../types";
+import { checkDesktopDevice, checkSingleDisplay } from "../utils/environmentCheck";
 
 // 120-second window to give candidates generous time to review and allow permissions
 const DEVICE_CHECK_TIMEOUT_MS = 120000;
 
 interface DeviceCheck {
+  device: boolean | null;
+  display: boolean | null;
   camera: boolean | null;
   microphone: boolean | null;
   network: boolean | null;
 }
 
 interface DeviceErrors {
+  device: string | null;
+  display: string | null;
   camera: string | null;
   microphone: string | null;
   network: string | null;
@@ -40,9 +46,21 @@ interface CheckItem {
 
 const CHECK_ITEMS: CheckItem[] = [
   {
+    key: "device",
+    label: "Laptop / Desktop PC",
+    desc: "Mobile phones and tablets are not permitted",
+    icon: Laptop,
+  },
+  {
+    key: "display",
+    label: "Single Screen Only",
+    desc: "Only one active display allowed (no external monitors)",
+    icon: Monitor,
+  },
+  {
     key: "camera",
     label: "Camera",
-    desc: "Required for video recording and face detection",
+    desc: "Required for face, gaze, and object monitoring",
     icon: Camera,
   },
   {
@@ -85,11 +103,15 @@ function parseMediaError(err: unknown): string {
 
 export function PreCheck({ onComplete, session }: PreCheckProps) {
   const [checks, setChecks] = useState<DeviceCheck>({
+    device: null,
+    display: null,
     camera: null,
     microphone: null,
     network: null,
   });
   const [errors, setErrors] = useState<DeviceErrors>({
+    device: null,
+    display: null,
     camera: null,
     microphone: null,
     network: null,
@@ -273,16 +295,41 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
   const runAllChecks = useCallback(
     async (isUserInitiated = false) => {
       setChecking(true);
+      const devRes = checkDesktopDevice();
+      const dispRes = checkSingleDisplay();
+      const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+
       setChecks({
+        device: devRes.ok,
+        display: dispRes.ok,
         camera: null,
         microphone: null,
-        network: typeof navigator !== "undefined" ? navigator.onLine : true,
+        network: online,
       });
-      setErrors({ camera: null, microphone: null, network: null });
+      setErrors({
+        device: devRes.reason,
+        display: dispRes.reason,
+        camera: null,
+        microphone: null,
+        network: null,
+      });
+
+      if (!devRes.ok) {
+        setChecking(false);
+        return;
+      }
 
       if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-        setChecks({ camera: false, microphone: false, network: false });
+        setChecks({
+          device: devRes.ok,
+          display: dispRes.ok,
+          camera: false,
+          microphone: false,
+          network: false,
+        });
         setErrors({
+          device: devRes.reason,
+          display: dispRes.reason,
           camera: "Browser does not support media devices.",
           microphone: "Browser does not support media devices.",
           network: null,
@@ -315,11 +362,15 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
       if (isCamBlocked || isMicBlocked) {
         setShowPermissionGuide(true);
         setChecks({
+          device: devRes.ok,
+          display: dispRes.ok,
           camera: !isCamBlocked,
           microphone: !isMicBlocked,
           network: typeof navigator !== "undefined" ? navigator.onLine : true,
         });
         setErrors({
+          device: devRes.reason,
+          display: dispRes.reason,
           camera: isCamBlocked
             ? "Blocked in site settings. Click the 🔒 lock icon above to allow."
             : null,
@@ -351,11 +402,19 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
         attachAudioMeter(combinedStream);
 
         setChecks({
+          device: devRes.ok,
+          display: dispRes.ok,
           camera: true,
           microphone: true,
           network: typeof navigator !== "undefined" ? navigator.onLine : true,
         });
-        setErrors({ camera: null, microphone: null, network: null });
+        setErrors({
+          device: devRes.reason,
+          display: dispRes.reason,
+          camera: null,
+          microphone: null,
+          network: null,
+        });
         setChecking(false);
         return;
       } catch (combinedErr) {
@@ -373,6 +432,8 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
         ) {
           // Keep in neutral state with prompt guidance rather than immediate red failure
           setChecks({
+            device: devRes.ok,
+            display: dispRes.ok,
             camera: null,
             microphone: null,
             network: typeof navigator !== "undefined" ? navigator.onLine : true,
@@ -398,11 +459,15 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
         }
 
         setChecks({
+          device: devRes.ok,
+          display: dispRes.ok,
           camera: camRes.ok,
           microphone: micRes.ok,
           network: typeof navigator !== "undefined" ? navigator.onLine : true,
         });
         setErrors({
+          device: devRes.reason,
+          display: dispRes.reason,
           camera: camRes.error,
           microphone: micRes.error,
           network: null,
@@ -442,6 +507,24 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
     }
     setRetrying(null);
   };
+
+  const retryDisplay = () => {
+    const dispRes = checkSingleDisplay();
+    setChecks((prev) => ({ ...prev, display: dispRes.ok }));
+    setErrors((prev) => ({ ...prev, display: dispRes.reason }));
+  };
+
+  // Live poll single-display status on PreCheck so unplugging an extra monitor unlocks immediately
+  useEffect(() => {
+    const t = setInterval(() => {
+      const dispRes = checkSingleDisplay();
+      setChecks((prev) => (prev.display === dispRes.ok ? prev : { ...prev, display: dispRes.ok }));
+      setErrors((prev) =>
+        prev.display === dispRes.reason ? prev : { ...prev, display: dispRes.reason },
+      );
+    }, 2000);
+    return () => clearInterval(t);
+  }, []);
 
   // Initial check on mount
   useEffect(() => {
@@ -486,7 +569,11 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
     return () => timers.forEach(clearTimeout);
   }, []);
 
-  const allRequired = checks.camera === true && checks.network === true;
+  const allRequired =
+    checks.device === true &&
+    checks.display === true &&
+    checks.camera === true &&
+    checks.network === true;
   const canStart = allRequired && consented;
 
   const candEmail = session?.candidate?.email || "";
@@ -758,18 +845,26 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
                 </div>
 
                 {/* Action Buttons */}
-                {!checking && failed && (key === "microphone" || key === "camera") && (
-                  <button
-                    type="button"
-                    onClick={key === "microphone" ? retryMicrophone : retryCamera}
-                    disabled={isRetrying}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50 shrink-0"
-                    style={{ background: "var(--fill-tertiary)", color: "var(--label-primary)" }}
-                  >
-                    <RefreshCw size={12} className={isRetrying ? "animate-spin" : ""} />
-                    Retry
-                  </button>
-                )}
+                {!checking &&
+                  failed &&
+                  (key === "microphone" || key === "camera" || key === "display") && (
+                    <button
+                      type="button"
+                      onClick={
+                        key === "microphone"
+                          ? retryMicrophone
+                          : key === "camera"
+                            ? retryCamera
+                            : retryDisplay
+                      }
+                      disabled={isRetrying}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50 shrink-0"
+                      style={{ background: "var(--fill-tertiary)", color: "var(--label-primary)" }}
+                    >
+                      <RefreshCw size={12} className={isRetrying ? "animate-spin" : ""} />
+                      {key === "display" ? "Re-check" : "Retry"}
+                    </button>
+                  )}
 
                 {!checking && isWaiting && (key === "microphone" || key === "camera") && (
                   <button
@@ -850,38 +945,43 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
               </p>
               <ul className="space-y-1">
                 <li className="flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-emerald-400" /> Video & audio recording
+                  <span className="w-1 h-1 rounded-full bg-emerald-400" /> Laptop / PC single-screen
+                  check
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-emerald-400" /> Screen activity &
-                  proctoring
+                  <span className="w-1 h-1 rounded-full bg-emerald-400" /> Mandatory Entire Screen
+                  sharing
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-emerald-400" /> Tab switches & window
-                  focus
+                  <span className="w-1 h-1 rounded-full bg-emerald-400" /> AI camera tracking (gaze,
+                  faces, mobile objects)
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-emerald-400" /> Interaction consistency
+                  <span className="w-1 h-1 rounded-full bg-emerald-400" /> Single-tab focus &
+                  fullscreen lock
                 </li>
               </ul>
             </div>
             <div>
               <p className="font-semibold text-rose-400 mb-1.5 flex items-center gap-1.5">
-                <AlertCircle size={13} /> Prohibited
+                <AlertCircle size={13} /> Strictly Prohibited (Auto-Terminates)
               </p>
               <ul className="space-y-1">
                 <li className="flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-rose-400" /> Switching tabs or
-                  applications
+                  <span className="w-1 h-1 rounded-full bg-rose-400" /> Phones, tablets, or multiple
+                  monitors
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-rose-400" /> Secondary devices or aids
+                  <span className="w-1 h-1 rounded-full bg-rose-400" /> Mobile phones / notes in
+                  camera view
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-rose-400" /> Copying or pasting text
+                  <span className="w-1 h-1 rounded-full bg-rose-400" /> Switching tabs, looking
+                  away, or copy/paste
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-rose-400" /> Exiting fullscreen mode
+                  <span className="w-1 h-1 rounded-full bg-rose-400" /> Exiting fullscreen or
+                  stopping screen share
                 </li>
               </ul>
             </div>
@@ -952,7 +1052,11 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
                 ? consented
                   ? "Start Interview"
                   : "Please Check Consent Box Above"
-                : "Camera & Internet Connection Required"}
+                : checks.device === false
+                  ? "Laptop or Desktop PC Required"
+                  : checks.display === false
+                    ? "Disconnect External Monitors to Continue"
+                    : "Camera, Microphone & Internet Required"}
           </button>
         )}
       </div>

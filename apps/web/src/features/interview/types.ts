@@ -120,7 +120,12 @@ export type ProctoringEventType =
   | "keyboard_shortcut"
   | "fullscreen_exit"
   | "gaze_away"
-  | "head_down";
+  | "head_down"
+  | "prohibited_object"
+  | "multi_screen"
+  | "screen_share_stopped"
+  | "multi_tab"
+  | "device_blocked";
 
 export type ProctoringSeverity = "info" | "warning" | "critical";
 

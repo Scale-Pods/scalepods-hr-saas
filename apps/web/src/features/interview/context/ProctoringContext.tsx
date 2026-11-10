@@ -7,6 +7,8 @@ interface ProctoringContextType {
   violations: ProctoringEvent[];
   isSecure: boolean;
   recentEvent: ProctoringEvent | null;
+  multiScreenBlocked: boolean;
+  multiTabBlocked: boolean;
   startProctoring: (sessionId: string) => Promise<void>;
   stopProctoring: () => void;
   emitEvent: (
@@ -40,6 +42,8 @@ export function ProctoringProvider({ children }: { children: React.ReactNode }) 
         violations: localProctoring.violations,
         isSecure: localProctoring.isSecure,
         recentEvent: localProctoring.recentEvent,
+        multiScreenBlocked: localProctoring.multiScreenBlocked,
+        multiTabBlocked: localProctoring.multiTabBlocked,
         startProctoring,
         stopProctoring,
         emitEvent: localProctoring.emitEvent,

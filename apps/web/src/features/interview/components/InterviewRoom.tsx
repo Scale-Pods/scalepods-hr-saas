@@ -4,12 +4,12 @@ import { AlertCircle, CheckCircle, Clock, Loader2, Monitor, PhoneOff, Upload } f
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { insertProctoringEvent } from "@/features/candidate/api";
 
 import { useInterviewContext } from "../context/InterviewContext";
 import { useProctoringContext } from "../context/ProctoringContext";
 import { useInterviewTimer } from "../hooks/useInterviewTimer";
 import type { InterviewQuestion } from "../types";
+import { checkDesktopDevice, checkSingleDisplay } from "../utils/environmentCheck";
 import { enterFullscreen, getFullscreenElement, isFullscreenSupported } from "../utils/fullscreen";
 import { getMediaDevicesStream, getScreenStream } from "../utils/mediaHelpers";
 import { useTTSEngine } from "../utils/tts";
@@ -64,10 +64,18 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     answeredCount,
   } = useInterviewContext();
 
-  const { violations, startProctoring, stopProctoring } = useProctoringContext();
+  const {
+    violations,
+    multiScreenBlocked,
+    multiTabBlocked,
+    startProctoring,
+    stopProctoring,
+    emitEvent,
+  } = useProctoringContext();
   const startingRef = useRef(false);
   const completionStartedRef = useRef(false);
   const { speak, prefetch, cancel } = useTTSEngine();
+  const [hasActiveScreenShare, setHasActiveScreenShare] = useState(() => Boolean(screenStream));
 
   // Warm up Deepgram TTS CORS + cache Question 1 audio during PreCheck so intro speaks instantly
   useEffect(() => {
@@ -140,45 +148,95 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     completionStartedRef.current = false;
   }, []);
 
+  const isProctoringPaused =
+    !isFullscreenReady || !hasActiveScreenShare || multiScreenBlocked || multiTabBlocked;
+
+  const attachScreenEndedHandler = useCallback(
+    (screen: MediaStream) => {
+      const screenTrack = screen.getVideoTracks()[0];
+      if (!screenTrack) return;
+      screenTrack.onended = () => {
+        if (completionStartedRef.current) return;
+        console.warn("[InterviewRoom] Candidate stopped screen sharing!");
+        setHasActiveScreenShare(false);
+        cancel();
+        void emitEvent("screen_share_stopped", "critical", {
+          reason: "candidate_stopped_screen_share",
+        });
+        toast.error(
+          "Screen sharing disconnected. Re-share your entire screen within 20 seconds or the interview will end.",
+        );
+      };
+    },
+    [cancel, emitEvent],
+  );
+
+  const handleRestoreScreenShare = useCallback(async () => {
+    try {
+      const screen = await getScreenStream(15000, true);
+      if (!screen) {
+        toast.error("Please select 'Entire Screen' to restore screen sharing.");
+        return;
+      }
+      setHasActiveScreenShare(true);
+      attachScreenEndedHandler(screen);
+      if (avStream) {
+        setMediaStreams(avStream, audioStream ?? null, screen);
+      }
+      toast.success("Entire screen sharing restored.");
+    } catch (err) {
+      const msg = (err as Error)?.message || "";
+      toast.error(
+        msg.includes("entire_screen_required")
+          ? "Entire Screen required: Sharing a single tab or window is not allowed."
+          : "Could not restore screen sharing. Please try again and choose 'Entire Screen'.",
+      );
+    }
+  }, [attachScreenEndedHandler, audioStream, avStream, setMediaStreams]);
+
   const handleStart = useCallback(async () => {
     if (startingRef.current) return;
     startingRef.current = true;
     try {
+      const deviceCheck = checkDesktopDevice();
+      if (!deviceCheck.ok) {
+        toast.error(deviceCheck.reason || "Laptop or desktop PC required.");
+        startingRef.current = false;
+        return;
+      }
+
+      const displayCheck = checkSingleDisplay();
+      if (!displayCheck.ok) {
+        toast.error(displayCheck.reason || "Disconnect external monitors to continue.");
+        startingRef.current = false;
+        return;
+      }
+
       const { camera: av, audio } = await getMediaDevicesStream();
       let screen: MediaStream | null = null;
       try {
-        screen = await getScreenStream();
+        screen = await getScreenStream(15000, true);
       } catch (screenErr) {
         const msg = (screenErr as Error)?.message || "";
-        if (msg.includes("entire_screen_required")) {
-          toast.error(
-            "Entire Screen required: Sharing a single tab or window is not allowed for proctoring compliance. Please click 'Start Interview' and select 'Entire Screen'.",
-          );
-          startingRef.current = false;
-          return;
-        }
-        console.warn("Screen sharing not available, continuing without it:", screenErr);
+        toast.error(
+          msg.includes("entire_screen_required")
+            ? "Entire Screen required: Sharing a single tab or window is not allowed for proctoring compliance. Please click 'Start Interview' and select 'Entire Screen'."
+            : "Entire Screen sharing failed or was denied. Please allow screen sharing to start the interview.",
+        );
+        startingRef.current = false;
+        return;
       }
 
-      if (screen) {
-        const screenTrack = screen.getVideoTracks()[0];
-        if (screenTrack) {
-          screenTrack.onended = () => {
-            console.warn("[InterviewRoom] Candidate stopped screen sharing!");
-            const activeSessionId = session?.id || propSessionId || sessionId;
-            if (activeSessionId) {
-              insertProctoringEvent(
-                activeSessionId,
-                "screen_share_stopped",
-                "Candidate stopped sharing their full screen during the interview.",
-              ).catch((e) => console.warn("Failed to log proctoring event:", e));
-            }
-            toast.error(
-              "Warning: Screen sharing was disconnected. Please keep your entire screen shared for proctoring compliance.",
-            );
-          };
-        }
+      if (!screen) {
+        toast.error(
+          "Entire Screen sharing is required to start the interview. Please click 'Start Interview' and select 'Entire Screen'.",
+        );
+        startingRef.current = false;
+        return;
       }
+
+      setHasActiveScreenShare(true);
+      attachScreenEndedHandler(screen);
       // Attempt fullscreen right after screen-share picker closes (before async network calls
       // consume transient user activation). If the browser blocks it, ProctoringOverlay gates cleanly.
       const enteredFullscreen = await enterFullscreen();
@@ -192,7 +250,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       if (activeSessionId) {
         await startRecording(activeSessionId, {
           camera: av,
-          screen: screen ?? null,
+          screen,
           audio: audio ?? null,
         });
         startProctoring(activeSessionId);
@@ -211,6 +269,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     setMediaStreams,
     startRecording,
     startProctoring,
+    attachScreenEndedHandler,
     propSessionId,
     sessionId,
   ]);
@@ -281,11 +340,20 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   }, [cancel, currentTurn?.turn_type, finishInterview]);
 
   useEffect(() => {
+    if (isProctoringPaused) {
+      cancel();
+      isAiSpeakingRef.current = false;
+      setIsAiSpeaking(false);
+      setSpeakingPhase(null);
+    }
+  }, [isProctoringPaused, cancel]);
+
+  useEffect(() => {
     let closingFallbackTimer: ReturnType<typeof setTimeout> | null = null;
     if (
       currentTurn &&
       avStream &&
-      isFullscreenReady &&
+      !isProctoringPaused &&
       !completionStartedRef.current &&
       !endEarlyRef.current &&
       session?.status !== "completed" &&
@@ -336,7 +404,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       if (closingFallbackTimer) clearTimeout(closingFallbackTimer);
       cancel();
     };
-  }, [currentTurn, avStream, isFullscreenReady, cancel, finishInterview, speak, session?.status]);
+  }, [currentTurn, avStream, isProctoringPaused, cancel, finishInterview, speak, session?.status]);
 
   useEffect(() => {
     if (!currentTurn || !avStream) return;
@@ -683,7 +751,21 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
 
   return (
     <div className="min-h-screen flex flex-col" style={{ height: "100dvh", overflow: "hidden" }}>
-      {session && <ProctoringOverlay violations={violations} sessionId={session.id} />}
+      {session && (
+        <ProctoringOverlay
+          violations={violations}
+          sessionId={session.id}
+          isScreenShareActive={hasActiveScreenShare}
+          onRequestScreenShare={() => {
+            void handleRestoreScreenShare();
+          }}
+          multiScreenBlocked={multiScreenBlocked}
+          multiTabBlocked={multiTabBlocked}
+          onAutoTerminate={() => {
+            void finishInterview(true);
+          }}
+        />
+      )}
 
       {/* ─── Header ──────────────────────────────────────────────── */}
       <header
@@ -925,7 +1007,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
                   isAiSpeaking ||
                   isGeneratingTurn ||
                   speakingPhase !== null ||
-                  answerState === "saving"
+                  answerState === "saving" ||
+                  isProctoringPaused
                 }
                 expired={globalTimer.isExpired}
                 endEarly={endEarly}
