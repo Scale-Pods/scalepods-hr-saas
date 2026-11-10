@@ -73,15 +73,16 @@ describe("generateInterviewerTurn n8n passthrough", () => {
     expect(turn.is_final_question).toBe(false);
   });
 
-  it("respects n8n closing decision verbatim", async () => {
+  it("respects n8n closing decision and end message verbatim", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         turn_type: "closing",
         recommended_action: "advance",
         question_type: "cultural",
-        interviewer_text: "Thank you for completing all questions today.",
-        question_text: "",
+        interviewer_text: "Thank you for sharing that collaboration example.",
+        question_text:
+          "That concludes our interview today. Your responses have been recorded and our team will be in touch.",
         should_continue: false,
         is_final_question: true,
       }),
@@ -99,7 +100,9 @@ describe("generateInterviewerTurn n8n passthrough", () => {
     expect(turn.turn_type).toBe("closing");
     expect(turn.is_final_question).toBe(true);
     expect(turn.should_continue).toBe(false);
-    expect(turn.question_text).toBe("");
+    expect(turn.question_text).toBe(
+      "That concludes our interview today. Your responses have been recorded and our team will be in touch.",
+    );
   });
 
   it("throws when n8n responds with an HTTP error instead of overriding in code", async () => {

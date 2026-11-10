@@ -589,7 +589,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       if (turn.is_final_question || turn.turn_type === "closing" || !turn.should_continue) {
         setCurrentTurn({
           interviewer_text: turn.interviewer_text || "",
-          question_text: "",
+          question_text: turn.question_text || "",
           turn_type: "closing",
           question_type: "cultural",
           should_continue: false,

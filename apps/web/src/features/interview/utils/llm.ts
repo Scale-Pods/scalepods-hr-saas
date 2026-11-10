@@ -94,7 +94,7 @@ export async function generateInterviewerTurn(
 
   return {
     interviewer_text: typeof parsed.interviewer_text === "string" ? parsed.interviewer_text : "",
-    question_text: !isFinal && typeof parsed.question_text === "string" ? parsed.question_text : "",
+    question_text: typeof parsed.question_text === "string" ? parsed.question_text : "",
     turn_type: turnType,
     question_type: (parsed.question_type as InterviewerTurn["question_type"]) || "technical",
     should_continue:

@@ -7,7 +7,9 @@ interface ChatInputBarProps {
   isAiSpeaking: boolean;
   isGeneratingTurn: boolean;
   isAnalyzingAnswer: boolean;
+  isClosing?: boolean;
   onManualSubmit: (overrideText?: string) => void;
+  onTypedTranscriptChange?: (text: string) => void;
   onSkipSpeaking?: () => void;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
 }
@@ -19,7 +21,9 @@ export function ChatInputBar({
   isAiSpeaking,
   isGeneratingTurn,
   isAnalyzingAnswer,
+  isClosing = false,
   onManualSubmit,
+  onTypedTranscriptChange,
   onSkipSpeaking,
   canvasRef,
 }: ChatInputBarProps) {
@@ -123,6 +127,19 @@ export function ChatInputBar({
     );
   }
 
+  if (isClosing) {
+    return (
+      <div className="chat-input-bar">
+        <div className="chat-input-inner" style={{ justifyContent: "center", opacity: 0.9 }}>
+          <Loader2 size={14} className="animate-spin" style={{ color: "var(--green)" }} />
+          <span className="text-sm font-medium" style={{ color: "var(--label-secondary)" }}>
+            Interview complete — finalizing and submitting your responses…
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (isGeneratingTurn || isAnalyzingAnswer) {
     return (
       <div className="chat-input-bar">
@@ -189,8 +206,10 @@ export function ChatInputBar({
             rows={1}
             value={effectiveText}
             onChange={(e) => {
+              const nextVal = e.target.value;
               setIsEditing(true);
-              setTypedText(e.target.value);
+              setTypedText(nextVal);
+              onTypedTranscriptChange?.(nextVal);
             }}
             onFocus={() => {
               if (!typedText && transcript) {

@@ -129,6 +129,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   const chatFeedRef = useRef<HTMLDivElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
   const stopAndSubmitRef = useRef<((overrideText?: string) => void) | null>(null);
+  const syncTypedTextRef = useRef<((text: string) => void) | null>(null);
   const currentAlexBubbleIdRef = useRef<string | null>(null);
   const currentAckBubbleIdRef = useRef<string | null>(null);
 
@@ -261,7 +262,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     if (currentTurn?.turn_type === "closing" && !completionStartedRef.current) {
       setTimeout(() => {
         if (!completionStartedRef.current) finishInterview();
-      }, 3000);
+      }, 1500);
     }
   };
 
@@ -280,9 +281,13 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       setChatMessages((prev) => prev.map((m) => (m.id === ackId ? { ...m, status: "done" } : m)));
       currentAckBubbleIdRef.current = null;
     }
-  }, [cancel]);
+    if (currentTurn?.turn_type === "closing" && !completionStartedRef.current) {
+      finishInterview(false);
+    }
+  }, [cancel, currentTurn?.turn_type, finishInterview]);
 
   useEffect(() => {
+    let closingFallbackTimer: ReturnType<typeof setTimeout> | null = null;
     if (
       currentTurn &&
       avStream &&
@@ -294,6 +299,16 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     ) {
       const acknowledgment = (currentTurn.interviewer_text || "").trim();
       const questionText = currentTurn.question_text?.trim() || "";
+      const isClosing = currentTurn.turn_type === "closing";
+
+      if (isClosing) {
+        // Hard safety net so closing always auto-submits even if TTS hangs or is blocked
+        closingFallbackTimer = setTimeout(() => {
+          if (!completionStartedRef.current) {
+            finishInterview(false);
+          }
+        }, 18000);
+      }
 
       const turnId = `${currentTurn.turn_type}-${acknowledgment.slice(0, 40)}-${Date.now()}`;
       turnIdRef.current = turnId;
@@ -351,12 +366,24 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         });
       } else if (questionText) {
         speakQuestion();
+      } else if (isClosing) {
+        onSpeakCompleteRef.current?.();
       }
     }
     return () => {
+      if (closingFallbackTimer) clearTimeout(closingFallbackTimer);
       cancel();
     };
-  }, [currentTurn, avStream, isFullscreenReady, cancel, prefetch, speak, session?.status]);
+  }, [
+    currentTurn,
+    avStream,
+    isFullscreenReady,
+    cancel,
+    finishInterview,
+    prefetch,
+    speak,
+    session?.status,
+  ]);
 
   useEffect(() => {
     if (!currentTurn || !avStream) return;
@@ -925,7 +952,9 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
             isAiSpeaking={isAiSpeaking}
             isGeneratingTurn={isGeneratingTurn}
             isAnalyzingAnswer={isAnalyzingAnswer}
+            isClosing={isClosingTurn}
             onManualSubmit={(overrideText) => stopAndSubmitRef.current?.(overrideText)}
+            onTypedTranscriptChange={(val) => syncTypedTextRef.current?.(val)}
             onSkipSpeaking={handleSkipSpeaking}
             canvasRef={waveformCanvasRef}
           />
@@ -957,6 +986,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
                 endEarly={endEarly}
                 audioStream={audioStream}
                 stopAndSubmitRef={stopAndSubmitRef}
+                syncTypedTextRef={syncTypedTextRef}
               />
             </div>
           )}

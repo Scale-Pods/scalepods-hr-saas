@@ -38,6 +38,7 @@ interface AnswerRecorderProps {
   endEarly?: boolean;
   audioStream?: MediaStream | null;
   stopAndSubmitRef?: React.MutableRefObject<((overrideText?: string) => void) | null>;
+  syncTypedTextRef?: React.MutableRefObject<((text: string) => void) | null>;
 }
 
 export function AnswerRecorder({
@@ -49,6 +50,7 @@ export function AnswerRecorder({
   endEarly,
   audioStream,
   stopAndSubmitRef,
+  syncTypedTextRef,
 }: AnswerRecorderProps) {
   const [duration, setDuration] = useState(0);
   const [transcript, setTranscript] = useState("");
@@ -65,6 +67,10 @@ export function AnswerRecorder({
   const shouldSubmitRef = useRef(false);
   const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownDeadlineRef = useRef<number>(0);
+  const postSpeechTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopSubmitFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestStopAndSubmitRef = useRef<() => void>(() => {});
   const thinkingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const thinkingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isThinkingRef = useRef(false);
@@ -117,6 +123,11 @@ export function AnswerRecorder({
       clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
     }
+    if (postSpeechTimerRef.current) {
+      clearTimeout(postSpeechTimerRef.current);
+      postSpeechTimerRef.current = null;
+    }
+    countdownDeadlineRef.current = 0;
     isCountdownActiveRef.current = false;
     setSilenceCountdown(COUNTDOWN_TENTHS);
   }, []);
@@ -195,6 +206,10 @@ export function AnswerRecorder({
 
       clearThinkingTimer();
       clearCountdown();
+      if (postSpeechTimerRef.current) {
+        clearTimeout(postSpeechTimerRef.current);
+        postSpeechTimerRef.current = null;
+      }
       isRecordingRef.current = false;
       setIsRecording(false);
       accumulatedWebSpeechRef.current = "";
@@ -212,7 +227,18 @@ export function AnswerRecorder({
         mediaRecorderRef.current = null;
         try {
           activeRecorder.stop();
-        } catch {}
+          // Fallback in case MediaRecorder.onstop stalls in the browser
+          stopSubmitFallbackRef.current = setTimeout(() => {
+            stopSubmitFallbackRef.current = null;
+            if (!submittedRef.current && shouldSubmitRef.current) {
+              shouldSubmitRef.current = false;
+              doSubmit(transcriptRef.current, audioBlobRef.current || undefined);
+            }
+          }, 600);
+        } catch {
+          shouldSubmitRef.current = false;
+          doSubmit(transcriptRef.current, audioBlobRef.current || undefined);
+        }
       } else {
         mediaRecorderRef.current = null;
         shouldSubmitRef.current = false;
@@ -229,6 +255,7 @@ export function AnswerRecorder({
   );
 
   useEffect(() => {
+    latestStopAndSubmitRef.current = () => stopAndSubmit();
     if (stopAndSubmitRef) {
       stopAndSubmitRef.current = stopAndSubmit;
     }
@@ -295,21 +322,69 @@ export function AnswerRecorder({
     if (transcriptRef.current.trim().length === 0) return;
 
     isCountdownActiveRef.current = true;
+    countdownDeadlineRef.current = Date.now() + SILENCE_TIMEOUT_MS;
     setSilenceCountdown(COUNTDOWN_TENTHS);
 
     silenceTimeoutRef.current = setTimeout(() => {
       if (transcriptRef.current.trim().length > 0) {
-        stopAndSubmit();
+        latestStopAndSubmitRef.current();
       }
-    }, SILENCE_TIMEOUT_MS);
+    }, SILENCE_TIMEOUT_MS + 50);
 
     countdownIntervalRef.current = setInterval(() => {
-      setSilenceCountdown((prev) => {
-        if (prev <= 1) return 0;
-        return prev - 1;
-      });
+      const remainingMs = Math.max(0, countdownDeadlineRef.current - Date.now());
+      const remainingTenths = Math.ceil(remainingMs / 100);
+      setSilenceCountdown(remainingTenths);
+      if (remainingMs <= 0) {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+        if (transcriptRef.current.trim().length > 0) {
+          latestStopAndSubmitRef.current();
+        }
+      }
     }, 100);
-  }, [clearThinkingTimer, stopAndSubmit]);
+  }, [clearThinkingTimer]);
+
+  const schedulePostSpeechCountdown = useCallback(
+    (delayMs = 1500) => {
+      if (postSpeechTimerRef.current) {
+        clearTimeout(postSpeechTimerRef.current);
+      }
+      postSpeechTimerRef.current = setTimeout(() => {
+        postSpeechTimerRef.current = null;
+        if (
+          isRecordingRef.current &&
+          !isVoiceActiveRef.current &&
+          hasCandidateSpokenRef.current &&
+          transcriptRef.current.trim().length > 0
+        ) {
+          startCountdown();
+        }
+      }, delayMs);
+    },
+    [startCountdown],
+  );
+
+  useEffect(() => {
+    if (!syncTypedTextRef) return;
+    syncTypedTextRef.current = (typed: string) => {
+      transcriptRef.current = typed;
+      setTranscript(typed);
+      hasCandidateSpokenRef.current = typed.trim().length > 0;
+      if (isThinkingRef.current) {
+        clearThinkingTimer();
+      }
+      clearCountdown();
+      if (typed.trim().length > 0) {
+        schedulePostSpeechCountdown(1200);
+      }
+    };
+    return () => {
+      syncTypedTextRef.current = null;
+    };
+  }, [clearCountdown, clearThinkingTimer, schedulePostSpeechCountdown, syncTypedTextRef]);
 
   const applyNormalizedTranscript = useCallback(
     (normalized: string) => {
@@ -334,11 +409,12 @@ export function AnswerRecorder({
         if (isThinkingRef.current) {
           clearThinkingTimer();
         }
-        // Only reset silence countdown when genuinely new words arrive
+        // Reset silence countdown when genuinely new words arrive, then start countdown after brief pause
         clearCountdown();
+        schedulePostSpeechCountdown(1500);
       }
     },
-    [clearCountdown, clearThinkingTimer],
+    [clearCountdown, clearThinkingTimer, schedulePostSpeechCountdown],
   );
 
   const startWebSpeechFallback = useCallback(
@@ -508,25 +584,19 @@ export function AnswerRecorder({
               }
               const vocalEnergy = vocalBandSum / vocalBinsCount;
 
-              if (calibrationTicks < 25) {
+              if (calibrationTicks < 20) {
                 calibrationTicks++;
                 ambientNoiseFloor =
-                  ambientNoiseFloor === 0 ? vocalEnergy : Math.max(ambientNoiseFloor, vocalEnergy);
+                  ambientNoiseFloor === 0
+                    ? vocalEnergy
+                    : ambientNoiseFloor * 0.8 + vocalEnergy * 0.2;
                 return;
               }
 
-              // Gradually adapt ambient noise floor during quiet frames without letting speech skew it
-              if (vocalEnergy < ambientNoiseFloor) {
-                ambientNoiseFloor = ambientNoiseFloor * 0.9 + vocalEnergy * 0.1;
-              } else if (ambientNoiseFloor < 18) {
-                ambientNoiseFloor = Math.min(20, ambientNoiseFloor * 0.992 + vocalEnergy * 0.008);
-              }
-
-              // Require sufficient margin above ambient floor + sustained streak so room noise spikes don't reset silence countdown
               const speechThreshold = Math.max(
-                ambientNoiseFloor * 1.45,
-                ambientNoiseFloor + 8.0,
-                14.0,
+                ambientNoiseFloor * 1.65,
+                ambientNoiseFloor + 12.0,
+                22.0,
               );
               const isSpeaking = vocalEnergy > speechThreshold;
 
@@ -536,10 +606,13 @@ export function AnswerRecorder({
                   isVoiceActiveRef.current = true;
                   hasCandidateSpokenRef.current = true;
                   clearCountdown();
+                  schedulePostSpeechCountdown(1500);
                 }
               } else {
                 speechStreak = 0;
                 isVoiceActiveRef.current = false;
+                // Gradually adapt ambient noise floor to steady room sound so fans don't permanently look like speech
+                ambientNoiseFloor = ambientNoiseFloor * 0.96 + vocalEnergy * 0.04;
                 // Only start silence auto-submit countdown after candidate has actually provided speech/text
                 if (hasCandidateSpokenRef.current && transcriptRef.current.trim().length > 0) {
                   if (isThinkingRef.current) {
@@ -625,6 +698,10 @@ export function AnswerRecorder({
         };
 
         recorder.onstop = () => {
+          if (stopSubmitFallbackRef.current) {
+            clearTimeout(stopSubmitFallbackRef.current);
+            stopSubmitFallbackRef.current = null;
+          }
           if (gen !== generationRef.current) return;
 
           const actualType = recorder.mimeType || preferredMime || "audio/webm";
@@ -666,11 +743,15 @@ export function AnswerRecorder({
 
       intervalRef.current = setInterval(() => setDuration((prev) => prev + 1), 1000);
 
-      // Start Web Speech API immediately for zero-latency local speech capture
-      startWebSpeechFallback(gen);
+      // Start Web Speech API fallback only when Deepgram STT is not configured
+      if (!DeepgramSTT.isConfigured()) {
+        startWebSpeechFallback(gen);
+      }
     } catch (err) {
       console.error("Failed to start recording stream:", err);
-      startWebSpeechFallback(gen);
+      if (!DeepgramSTT.isConfigured()) {
+        startWebSpeechFallback(gen);
+      }
     }
   }, [
     applyNormalizedTranscript,
@@ -680,6 +761,7 @@ export function AnswerRecorder({
     clearThinkingTimer,
     doSubmit,
     drawWaveform,
+    schedulePostSpeechCountdown,
     startCountdown,
     startThinkingTimer,
     startWebSpeechFallback,
@@ -710,6 +792,10 @@ export function AnswerRecorder({
       generationRef.current += 1;
       shouldSubmitRef.current = false;
       isRecordingRef.current = false;
+      if (stopSubmitFallbackRef.current) {
+        clearTimeout(stopSubmitFallbackRef.current);
+        stopSubmitFallbackRef.current = null;
+      }
       clearCountdown();
       try {
         mediaRecorderRef.current?.stop();
