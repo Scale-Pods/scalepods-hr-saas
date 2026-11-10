@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { insertProctoringEvent } from "@/features/candidate/api";
 import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from "../types";
+import { enterFullscreen, exitFullscreen, getFullscreenElement } from "../utils/fullscreen";
 import { detectFaces, disposeFaceDetector } from "../utils/mediapipeFaceDetector";
 import { detectBehavior, disposeLandmarker } from "../utils/mediapipeLandmarker";
 
@@ -85,14 +86,7 @@ export function useProctoring(sessionId: string) {
     if (sid) activeSessionIdRef.current = sid;
     setIsActive(true);
 
-    try {
-      if (typeof document !== "undefined" && !document.fullscreenElement) {
-        const elem = document.documentElement;
-        if (elem.requestFullscreen) {
-          await elem.requestFullscreen().catch(() => {});
-        }
-      }
-    } catch {}
+    await enterFullscreen();
   }, []);
 
   const stop = useCallback(() => {
@@ -105,11 +99,7 @@ export function useProctoring(sessionId: string) {
     disposeFaceDetector();
     disposeLandmarker();
 
-    try {
-      if (typeof document !== "undefined" && document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      }
-    } catch {}
+    void exitFullscreen();
   }, []);
 
   useEffect(() => {
@@ -152,11 +142,11 @@ export function useProctoring(sessionId: string) {
     };
 
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && isActive && !isStoppingRef.current) {
+      if (!getFullscreenElement() && isActive && !isStoppingRef.current) {
         if (canEmit("fullscreen_exit", 5000)) {
           emitEvent("fullscreen_exit", "warning");
         }
-        document.documentElement.requestFullscreen().catch(() => {});
+        void enterFullscreen();
       }
     };
 
@@ -259,6 +249,7 @@ export function useProctoring(sessionId: string) {
     window.addEventListener("focus", handleFocus);
     window.addEventListener("resize", handleResize);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
     document.addEventListener("keydown", handleKeyDown, true);
     document.addEventListener("copy", handleCopy);
     document.addEventListener("paste", handlePaste);
@@ -271,6 +262,7 @@ export function useProctoring(sessionId: string) {
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("resize", handleResize);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
       document.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("copy", handleCopy);
       document.removeEventListener("paste", handlePaste);

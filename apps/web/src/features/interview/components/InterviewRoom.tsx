@@ -10,6 +10,7 @@ import { useInterviewContext } from "../context/InterviewContext";
 import { useProctoringContext } from "../context/ProctoringContext";
 import { useInterviewTimer } from "../hooks/useInterviewTimer";
 import type { InterviewQuestion } from "../types";
+import { enterFullscreen, getFullscreenElement, isFullscreenSupported } from "../utils/fullscreen";
 import { inferQuestionType } from "../utils/llm";
 import { getMediaDevicesStream, getScreenStream } from "../utils/mediaHelpers";
 import { useTTSEngine } from "../utils/tts";
@@ -83,9 +84,27 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [completingError, setCompletingError] = useState("");
+  const [isFullscreenReady, setIsFullscreenReady] = useState(() =>
+    !isFullscreenSupported() ? true : Boolean(getFullscreenElement()),
+  );
   const globalTimer = useInterviewTimer(INTERVIEW_TIME_MINUTES, Boolean(avStream));
   const turnIdRef = useRef<string | undefined>(undefined);
   const hasStartedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isFullscreenSupported()) {
+      setIsFullscreenReady(true);
+      return;
+    }
+    const syncFullscreen = () => setIsFullscreenReady(Boolean(getFullscreenElement()));
+    syncFullscreen();
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    document.addEventListener("webkitfullscreenchange", syncFullscreen);
+    return () => {
+      document.removeEventListener("fullscreenchange", syncFullscreen);
+      document.removeEventListener("webkitfullscreenchange", syncFullscreen);
+    };
+  }, []);
 
   useEffect(() => {
     if (avStream) {
@@ -160,6 +179,12 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
             );
           };
         }
+      }
+      // Attempt fullscreen right after screen-share picker closes (before async network calls
+      // consume transient user activation). If the browser blocks it, ProctoringOverlay gates cleanly.
+      const enteredFullscreen = await enterFullscreen();
+      if (enteredFullscreen || !isFullscreenSupported()) {
+        setIsFullscreenReady(true);
       }
       await markInterviewStarted();
       setMediaStreams(av, audio, screen);
@@ -262,6 +287,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     if (
       currentTurn &&
       avStream &&
+      isFullscreenReady &&
       !completionStartedRef.current &&
       !endEarlyRef.current &&
       session?.status !== "completed" &&
@@ -331,7 +357,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     return () => {
       cancel();
     };
-  }, [currentTurn, avStream, cancel, prefetch, speak, session?.status]);
+  }, [currentTurn, avStream, isFullscreenReady, cancel, prefetch, speak, session?.status]);
 
   useEffect(() => {
     if (!currentTurn || !avStream) return;

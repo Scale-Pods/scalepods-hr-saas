@@ -12,6 +12,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { ProctoringEvent, ProctoringSeverity } from "../types";
+import { enterFullscreen, getFullscreenElement, isFullscreenSupported } from "../utils/fullscreen";
 
 interface ProctoringOverlayProps {
   violations: ProctoringEvent[];
@@ -26,17 +27,35 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [totalViolationCount, setTotalViolationCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(() =>
-    typeof document !== "undefined" ? Boolean(document.fullscreenElement) : true,
+    !isFullscreenSupported() ? true : Boolean(getFullscreenElement()),
   );
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const syncFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    if (!isFullscreenSupported()) {
+      setIsFullscreen(true);
+      return;
+    }
+    const syncFullscreen = () => setIsFullscreen(Boolean(getFullscreenElement()));
     syncFullscreen();
     document.addEventListener("fullscreenchange", syncFullscreen);
-    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+    document.addEventListener("webkitfullscreenchange", syncFullscreen);
+    return () => {
+      document.removeEventListener("fullscreenchange", syncFullscreen);
+      document.removeEventListener("webkitfullscreenchange", syncFullscreen);
+    };
   }, []);
+
+  useEffect(() => {
+    if (isFullscreen || isDisabled || !isFullscreenSupported()) return;
+    const handleKeyGesture = () => {
+      void enterFullscreen();
+    };
+    window.addEventListener("keydown", handleKeyGesture, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handleKeyGesture, { capture: true });
+    };
+  }, [isFullscreen, isDisabled]);
 
   useEffect(() => {
     async function loadSummary() {
@@ -219,6 +238,53 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
 
   return (
     <>
+      {/* Fullscreen Required Gate when browser blocks auto-fullscreen or candidate exits fullscreen */}
+      {isFullscreenSupported() && !isFullscreen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="fullscreen-required-title"
+          className="fixed inset-0 z-[95] flex items-center justify-center p-4"
+          style={{ background: "rgba(0, 0, 0, 0.78)", backdropFilter: "blur(8px)" }}
+        >
+          <div
+            className="max-w-md w-full p-7 rounded-2xl text-center shadow-2xl animate-scale-in"
+            style={{
+              background: "var(--card-bg, #1c1c1e)",
+              border: "1px solid rgba(59, 130, 246, 0.45)",
+            }}
+          >
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+              style={{ background: "rgba(59, 130, 246, 0.16)", color: "#60a5fa" }}
+            >
+              <Maximize2 size={28} />
+            </div>
+            <h3 id="fullscreen-required-title" className="text-lg font-bold text-white mb-2">
+              Fullscreen Mode Required
+            </h3>
+            <p className="text-sm mb-6 leading-relaxed" style={{ color: "var(--label-secondary)" }}>
+              Your browser requires a direct click after screen sharing to enter fullscreen mode.
+              Click below to enable fullscreen and continue your interview.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                void enterFullscreen();
+              }}
+              className="w-full py-3.5 px-5 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 transition hover:brightness-110 active:scale-[0.98]"
+              style={{
+                background: "var(--blue, #0a84ff)",
+                boxShadow: "0 4px 20px -2px rgba(10, 132, 255, 0.5)",
+              }}
+            >
+              <Maximize2 size={16} />
+              <span>Enter Fullscreen Mode</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Warning Toast Banner */}
       {showWarning && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[90] animate-slide-up max-w-lg w-full px-4">
@@ -248,11 +314,11 @@ export function ProctoringOverlay({ violations, sessionId }: ProctoringOverlayPr
 
       {/* Top-Right Status Indicators */}
       <div className="fixed top-16 right-4 z-50 flex items-center gap-2">
-        {!isFullscreen && (
+        {isFullscreenSupported() && !isFullscreen && (
           <button
             type="button"
             onClick={() => {
-              document.documentElement.requestFullscreen?.().catch(() => {});
+              void enterFullscreen();
             }}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold shadow-sm transition hover:brightness-110 active:scale-95"
             style={{

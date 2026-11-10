@@ -513,10 +513,6 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
   }
 
   const handleStartInterview = () => {
-    // Request fullscreen synchronously inside the Start Interview click gesture
-    if (typeof document !== "undefined" && !document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.().catch(() => {});
-    }
     stopLivePreview();
     onComplete();
   };
