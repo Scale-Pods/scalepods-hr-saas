@@ -8,6 +8,15 @@ const SILENCE_TIMEOUT_MS = 12000;
 const COUNTDOWN_TENTHS = Math.floor(SILENCE_TIMEOUT_MS / 100);
 const THINKING_TIMEOUT_MS = 10000;
 const THINKING_TENTHS = Math.floor(THINKING_TIMEOUT_MS / 100);
+const SPEECH_STREAK_REQUIRED = 3;
+
+function normalizeWordsOnly(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export interface AnswerRecorderState {
   transcript: string;
@@ -302,6 +311,36 @@ export function AnswerRecorder({
     }, 100);
   }, [clearThinkingTimer, stopAndSubmit]);
 
+  const applyNormalizedTranscript = useCallback(
+    (normalized: string) => {
+      if (!normalized.trim()) return;
+      const prevTranscript = transcriptRef.current;
+      const prevWords = normalizeWordsOnly(prevTranscript);
+      const nextWords = normalizeWordsOnly(normalized);
+      const wordsGrew =
+        nextWords !== prevWords && (nextWords.length > prevWords.length || prevWords.length === 0);
+
+      // Retain longer or monotonically update to prevent transcript clobbering
+      if (
+        normalized.trim().length >= prevTranscript.trim().length ||
+        prevTranscript.trim().length === 0
+      ) {
+        setTranscript(normalized);
+        transcriptRef.current = normalized;
+      }
+
+      if (wordsGrew) {
+        hasCandidateSpokenRef.current = true;
+        if (isThinkingRef.current) {
+          clearThinkingTimer();
+        }
+        // Only reset silence countdown when genuinely new words arrive
+        clearCountdown();
+      }
+    },
+    [clearCountdown, clearThinkingTimer],
+  );
+
   const startWebSpeechFallback = useCallback(
     (gen: number) => {
       type SpeechRecClass = new () => {
@@ -365,24 +404,7 @@ export function AnswerRecorder({
               : "";
             const combined = (base + finalPart + interimPart).trim();
             const normalized = normalizeTechnicalSpeech(combined);
-
-            if (normalized.trim().length > 0) {
-              const prevTranscript = transcriptRef.current;
-              if (
-                normalized.trim().length >= prevTranscript.trim().length ||
-                prevTranscript.trim().length === 0
-              ) {
-                setTranscript(normalized);
-                transcriptRef.current = normalized;
-              }
-
-              if (isThinkingRef.current) {
-                clearThinkingTimer();
-              }
-
-              // Always reset silence countdown when speech arrives
-              clearCountdown();
-            }
+            applyNormalizedTranscript(normalized);
           };
 
           recognition.onerror = (event) => {
@@ -413,7 +435,7 @@ export function AnswerRecorder({
 
       launchInstance();
     },
-    [clearCountdown, clearThinkingTimer],
+    [applyNormalizedTranscript],
   );
 
   const startRecording = useCallback(async () => {
@@ -493,25 +515,32 @@ export function AnswerRecorder({
                 return;
               }
 
-              // Prevent active speech from artificially inflating ambientNoiseFloor
+              // Gradually adapt ambient noise floor during quiet frames without letting speech skew it
               if (vocalEnergy < ambientNoiseFloor) {
-                ambientNoiseFloor = ambientNoiseFloor * 0.8 + vocalEnergy * 0.2;
-              } else if (ambientNoiseFloor < 15) {
-                ambientNoiseFloor = Math.min(18, ambientNoiseFloor * 0.995 + vocalEnergy * 0.005);
+                ambientNoiseFloor = ambientNoiseFloor * 0.9 + vocalEnergy * 0.1;
+              } else if (ambientNoiseFloor < 18) {
+                ambientNoiseFloor = Math.min(20, ambientNoiseFloor * 0.992 + vocalEnergy * 0.008);
               }
 
-              // Sensitive threshold for human voice detection
-              const speechThreshold = Math.max(ambientNoiseFloor * 1.2, ambientNoiseFloor + 3.0);
+              // Require sufficient margin above ambient floor + sustained streak so room noise spikes don't reset silence countdown
+              const speechThreshold = Math.max(
+                ambientNoiseFloor * 1.45,
+                ambientNoiseFloor + 8.0,
+                14.0,
+              );
               const isSpeaking = vocalEnergy > speechThreshold;
-              isVoiceActiveRef.current = isSpeaking;
 
               if (isSpeaking) {
                 speechStreak++;
-                hasCandidateSpokenRef.current = true;
-                clearCountdown();
+                if (speechStreak >= SPEECH_STREAK_REQUIRED) {
+                  isVoiceActiveRef.current = true;
+                  hasCandidateSpokenRef.current = true;
+                  clearCountdown();
+                }
               } else {
                 speechStreak = 0;
-                // Crucial safeguard: Only start silence auto-submit countdown if candidate ACTUALLY SPOKE during this turn!
+                isVoiceActiveRef.current = false;
+                // Only start silence auto-submit countdown after candidate has actually provided speech/text
                 if (hasCandidateSpokenRef.current && transcriptRef.current.trim().length > 0) {
                   if (isThinkingRef.current) {
                     clearThinkingTimer();
@@ -521,7 +550,7 @@ export function AnswerRecorder({
               }
 
               const isConfirmedSpeech =
-                speechStreak >= 2 || transcriptRef.current.trim().length > 0;
+                speechStreak >= SPEECH_STREAK_REQUIRED || transcriptRef.current.trim().length > 0;
               if (isConfirmedSpeech && isThinkingRef.current) {
                 clearThinkingTimer();
               }
@@ -541,21 +570,7 @@ export function AnswerRecorder({
               const normalized = normalizeTechnicalSpeech(fullText);
               if (normalized.trim().length > 0) {
                 setIsDeepgramConnected(true);
-                // Retain longer or monotonically update to prevent transcript clobbering
-                if (
-                  normalized.trim().length >= transcriptRef.current.trim().length ||
-                  transcriptRef.current.trim().length === 0
-                ) {
-                  setTranscript(normalized);
-                  transcriptRef.current = normalized;
-                }
-
-                if (isThinkingRef.current) {
-                  clearThinkingTimer();
-                }
-
-                // Any transcript arriving means candidate is actively providing speech input
-                clearCountdown();
+                applyNormalizedTranscript(normalized);
               }
             },
             onError: (err) => {
@@ -658,15 +673,16 @@ export function AnswerRecorder({
       startWebSpeechFallback(gen);
     }
   }, [
+    applyNormalizedTranscript,
     audioStream,
     clearAudioActivityMonitor,
     clearCountdown,
+    clearThinkingTimer,
     doSubmit,
     drawWaveform,
     startCountdown,
     startThinkingTimer,
     startWebSpeechFallback,
-    clearThinkingTimer,
   ]);
 
   useEffect(() => {
@@ -960,12 +976,16 @@ export function AnswerRecorder({
                 const val = e.target.value;
                 setTranscript(val);
                 transcriptRef.current = val;
+                if (val.trim().length > 0) {
+                  hasCandidateSpokenRef.current = true;
+                }
                 if (isThinkingRef.current) {
                   clearThinkingTimer();
                 }
                 if (isVoiceActiveRef.current) {
                   clearCountdown();
                 } else if (val.trim().length > 0) {
+                  clearCountdown();
                   startCountdown();
                 }
               }}
