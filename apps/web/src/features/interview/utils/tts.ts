@@ -105,6 +105,19 @@ export function prepareTextForTTS(text: string): string {
   return cleaned.replace(/\s{2,}/g, " ").trim();
 }
 
+export const DEEPGRAM_V2_SPEED = 1.05;
+
+export function buildDeepgramSpeakUrl(model: string): string {
+  const isFluxV2 = model.startsWith("flux-");
+  const endpointVersion = isFluxV2 ? "v2" : "v1";
+  // Deepgram /v2/speak requires speed in exact increments of 0.05 (otherwise returns HTTP 400).
+  const snappedSpeed = (Math.round(DEEPGRAM_V2_SPEED * 20) / 20).toFixed(2);
+  const query = isFluxV2
+    ? `model=${encodeURIComponent(model)}&speed=${snappedSpeed}`
+    : `model=${encodeURIComponent(model)}`;
+  return `https://api.deepgram.com/${endpointVersion}/speak?${query}`;
+}
+
 export function useTTSEngine(): TTSEngine {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
@@ -291,23 +304,19 @@ export function useTTSEngine(): TTSEngine {
   const fetchDeepgramBlob = useCallback((text: string, apiKey: string): Promise<Blob> => {
     const model = process.env.NEXT_PUBLIC_DEEPGRAM_VOICE_MODEL || "flux-priya-en";
     const preparedText = prepareTextForTTS(text);
-    const cacheKey = `${model}::${preparedText}`;
+    const cacheKey = `${model}::${DEEPGRAM_V2_SPEED}::${preparedText}`;
     const existing = audioBlobCacheRef.current.get(cacheKey);
     if (existing) {
       return existing;
     }
 
-    const endpointVersion = model.startsWith("flux-") ? "v2" : "v1";
-    const query =
-      endpointVersion === "v2"
-        ? `model=${encodeURIComponent(model)}&speed=1.06&expressivity=0`
-        : `model=${encodeURIComponent(model)}`;
+    const speakUrl = buildDeepgramSpeakUrl(model);
 
     const fetchPromise = (async () => {
       const controller = new AbortController();
-      const fetchTimeout = setTimeout(() => controller.abort(), 9000);
+      const fetchTimeout = setTimeout(() => controller.abort(), 12000);
       try {
-        const response = await fetch(`https://api.deepgram.com/${endpointVersion}/speak?${query}`, {
+        const response = await fetch(speakUrl, {
           method: "POST",
           headers: {
             Authorization: `Token ${apiKey}`,
