@@ -9,11 +9,16 @@ interface TTSEngine {
   getVoices: () => SpeechSynthesisVoice[];
 }
 
-function prepareTextForTTS(text: string): string {
+export function prepareTextForTTS(text: string): string {
   if (!text) return "";
   let cleaned = text
+    // Split snake_case identifiers into natural spoken words (e.g. "answer_text" -> "answer text")
+    // Must run before stripping "_" markdown formatting.
+    .replace(/\b([a-zA-Z0-9]+)_([a-zA-Z0-9_]+)\b/g, (m) => m.replace(/_/g, " "))
     // Strip markdown formatting so TTS never speaks literal symbols
     .replace(/[*_`~#]/g, "")
+    // Smooth harsh exclamation marks after short greetings with a name so voices don't clip the name
+    .replace(/\b(Hello|Hi|Hey|Welcome)\s+([A-Z][a-zA-Z'-]+)\s*!/g, "$1 $2,")
     // Replace slashes between options (e.g. "retries/fallbacks") with natural speech pause
     .replace(/\b([a-zA-Z0-9]+)\s*\/\s*([a-zA-Z0-9]+)\b/g, (full, a: string, b: string) => {
       const upper = full.toUpperCase();
@@ -23,6 +28,8 @@ function prepareTextForTTS(text: string): string {
     });
 
   const acronyms: Array<[RegExp, string]> = [
+    [/\bopenai\b/gi, "Open A I"],
+    [/\bchatgpt\b/gi, "Chat G P T"],
     [/\bn8n\b/gi, "en eight en"],
     [/\bgrpc\b/gi, "G R P C"],
     [/\bfastapi\b/gi, "Fast A P I"],
@@ -37,6 +44,7 @@ function prepareTextForTTS(text: string): string {
     [/\boauth\b/gi, "Oh-auth"],
     [/\bjwt\b/gi, "J W T"],
     [/\bjson\b/gi, "Jay-son"],
+    [/\byaml\b/gi, "yammel"],
     [/\bsaas\b/gi, "Sass"],
     [/\bllm\b/gi, "L L M"],
     [/\bllms\b/gi, "L L Ms"],
@@ -44,9 +52,51 @@ function prepareTextForTTS(text: string): string {
     [/\bapi\b/gi, "A P I"],
     [/\bci\/cd\b/gi, "C I C D"],
     [/\bui\/ux\b/gi, "U I U X"],
+    [/\bui\b/gi, "U I"],
+    [/\bux\b/gi, "U X"],
     [/\bnext\.js\b/gi, "Next J S"],
     [/\bnode\.js\b/gi, "Node J S"],
     [/\breact\.js\b/gi, "React J S"],
+    [/\btypescript\b/gi, "Type Script"],
+    [/\bjavascript\b/gi, "Java Script"],
+    [/\bgithub\b/gi, "Git Hub"],
+    [/\bdevops\b/gi, "Dev Ops"],
+    [/\bscalepods\b/gi, "Scale Pods"],
+    [/\bskillgap\b/gi, "Skill Gap"],
+    [/\bwhatsapp\b/gi, "Whats App"],
+    [/\btwilio\b/gi, "Twil-ee-oh"],
+    [/\bapify\b/gi, "App-i-fy"],
+    [/\bvercel\b/gi, "Ver-sell"],
+    [/\blangchain\b/gi, "Lang Chain"],
+    [/\bhttps\b/gi, "H T T P S"],
+    [/\bhttp\b/gi, "H T T P"],
+    [/\bhtml\b/gi, "H T M L"],
+    [/\bcss\b/gi, "C S S"],
+    [/\bdom\b/gi, "D O M"],
+    [/\burls\b/gi, "U R Ls"],
+    [/\burl\b/gi, "U R L"],
+    [/\buuid\b/gi, "U U I D"],
+    [/\bsdk\b/gi, "S D K"],
+    [/\bcli\b/gi, "C L I"],
+    [/\baws\b/gi, "A W S"],
+    [/\bgcp\b/gi, "G C P"],
+    [/\bcrm\b/gi, "C R M"],
+    [/\bkpis\b/gi, "K P Is"],
+    [/\bkpi\b/gi, "K P I"],
+    [/\bhr\b/gi, "H R"],
+    [/\bjd\b/gi, "J D"],
+    [/\bml\b/gi, "M L"],
+    [/\bnlp\b/gi, "N L P"],
+    [/\btts\b/gi, "T T S"],
+    [/\bstt\b/gi, "S T T"],
+    [/\bb2b\b/gi, "B 2 B"],
+    [/\bb2c\b/gi, "B 2 C"],
+    [/\brag\b/gi, "rag"],
+    [/\bserp\b/gi, "serp"],
+    // Match uppercase AI or titlecase Ai (e.g. "Ai Automation Intern", "AI Interviewer")
+    [/\bA[Ii]'s\b/g, "A I's"],
+    [/\bA[Ii]s\b/g, "A Is"],
+    [/\bA[Ii]\b/g, "A I"],
     [/\b([a-z])8([a-z])\b/gi, "$1 8 $2"],
   ];
   for (const [pattern, replacement] of acronyms) {
@@ -131,7 +181,7 @@ export function useTTSEngine(): TTSEngine {
       const utterance = new SpeechSynthesisUtterance(preparedText);
       activeUtteranceRef.current = utterance;
       utterance.lang = "en-IN";
-      utterance.rate = 1.08;
+      utterance.rate = 1.0;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
@@ -250,7 +300,7 @@ export function useTTSEngine(): TTSEngine {
     const endpointVersion = model.startsWith("flux-") ? "v2" : "v1";
     const query =
       endpointVersion === "v2"
-        ? `model=${encodeURIComponent(model)}&speed=1.18&expressivity=0`
+        ? `model=${encodeURIComponent(model)}&speed=1.06&expressivity=0`
         : `model=${encodeURIComponent(model)}`;
 
     const fetchPromise = (async () => {
@@ -333,7 +383,7 @@ export function useTTSEngine(): TTSEngine {
 
         audioUrl = URL.createObjectURL(blob);
         const audio = new Audio(audioUrl);
-        audio.playbackRate = 1.02;
+        audio.playbackRate = 1.0;
         currentAudioRef.current = audio;
 
         audio.onended = () => {
