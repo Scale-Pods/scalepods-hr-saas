@@ -397,6 +397,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
       const isAlreadyFollowUp =
         currentQuestion?.source === "llm_ts_followup" ||
+        currentQuestion?.source === "llm_ts_clarification" ||
         Boolean(currentQuestion?.parent_question_id);
 
       // Persist raw answer immediately to database with current interviewer_text and actual question text asked
@@ -457,7 +458,9 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         ((currentQ?.order_index ?? 0) <= 1 ||
           (currentQ?.question_text || "").toLowerCase().includes("how are you doing today"));
       const isAlreadyFollowUp =
-        currentQ?.source === "llm_ts_followup" || Boolean(currentQ?.parent_question_id);
+        currentQ?.source === "llm_ts_followup" ||
+        currentQ?.source === "llm_ts_clarification" ||
+        Boolean(currentQ?.parent_question_id);
       const trackingKey = currentQ?.parent_question_id || currentQ?.id || "";
       const currentFollowUpCount = trackingKey ? followUpCountRef.current[trackingKey] || 0 : 0;
 
@@ -568,7 +571,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         }).catch((err) => console.warn("Failed to sync n8n evaluation note:", err));
       }
 
-      if (turn.turn_type === "follow_up" && trackingKey) {
+      if (
+        (turn.turn_type === "follow_up" || turn.recommended_action === "clarify") &&
+        trackingKey
+      ) {
         followUpCountRef.current[trackingKey] = currentFollowUpCount + 1;
       }
       lastAssessmentNoteRef.current = null;

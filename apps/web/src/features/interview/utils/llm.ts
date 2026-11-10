@@ -1205,25 +1205,58 @@ export async function generateInterviewerTurn(
 
     if (response.ok) {
       const parsed = await response.json();
-      const rawAck = (parsed.interviewer_text || "").trim();
-      const interviewerText =
-        rawAck ||
-        generateContextualAcknowledgment(
-          lastAnswer,
-          lastQ,
-          totalQuestions,
-          parsed.turn_type,
-          Boolean(parsed.requested_clarification),
-        );
+
+      const sanitizeAckOnly = (raw: string, fallbackAck: string): string => {
+        let s = (raw || "")
+          .replace(/^(acknowledgment|acknowledgement|interviewer_text|interviewer)\s*:\s*/i, "")
+          .replace(/^["']|["']$/g, "")
+          .replace(/\s{2,}/g, " ")
+          .trim();
+        const nonQuestionSentences = s
+          .split(/(?<=[.!?])\s+/)
+          .filter((sent) => sent && !sent.includes("?"));
+        s = nonQuestionSentences.join(" ").trim();
+        return s || fallbackAck;
+      };
+
+      const sanitizeQuestionOnly = (raw: string): string => {
+        let s = sanitizeQuestionPlaceholders(raw, resumeText, jdText)
+          .replace(/^(question|follow_up_question|clarified_question|follow-up)\s*:\s*/i, "")
+          .replace(/^["']|["']$/g, "")
+          .trim();
+        const ackPrefixRe =
+          /^(sure|certainly|of course|understood|got it|thank you|thanks|appreciate|i understand|no problem|no worries|that's okay|glad to hear|makes sense|good point|fair enough|your response|that response|that answer)[^.?!]*[.!]\s+/i;
+        while (ackPrefixRe.test(s) && s.replace(ackPrefixRe, "").trim().length > 10) {
+          s = s.replace(ackPrefixRe, "").trim();
+        }
+        return s;
+      };
+
+      const fallbackAck = generateContextualAcknowledgment(
+        lastAnswer,
+        lastQ,
+        totalQuestions,
+        parsed.turn_type,
+        Boolean(parsed.requested_clarification),
+      );
+      const interviewerText = sanitizeAckOnly(parsed.interviewer_text || "", fallbackAck);
 
       const rawTurnType: InterviewerTurnType = parsed.turn_type || "question";
-      const canFollowUp =
-        questionIsTechnical !== false && !isAlreadyFollowUp && followUpCount < maxFollowUps;
+      const isClarifyOrOffTopicSub = Boolean(
+        parsed.recommended_action === "clarify" ||
+          parsed.requested_clarification ||
+          parsed.answer_was_irrelevant ||
+          parsed.is_sub_question,
+      );
+      const allowSubQuestion =
+        !isAlreadyFollowUp &&
+        followUpCount < maxFollowUps &&
+        (questionIsTechnical !== false || isClarifyOrOffTopicSub);
 
-      // Enforce client-side safeguard: never emit follow_up on non-technical or sub-questions
-      if (rawTurnType === "follow_up" && !canFollowUp) {
+      // Enforce client-side safeguard: never nest a sub-question inside a sub-question
+      if (rawTurnType === "follow_up" && !allowSubQuestion) {
         if (targetQuestion) {
-          const cleanTarget = sanitizeQuestionPlaceholders(targetQuestion, resumeText, jdText);
+          const cleanTarget = sanitizeQuestionOnly(targetQuestion);
           return {
             interviewer_text: interviewerText,
             question_text: cleanTarget,
@@ -1238,7 +1271,7 @@ export async function generateInterviewerTurn(
       }
 
       const rawQuestion = parsed.question_text || parsed.prompt || targetQuestion || "";
-      const questionText = sanitizeQuestionPlaceholders(rawQuestion, resumeText, jdText);
+      const questionText = sanitizeQuestionOnly(rawQuestion);
 
       // Handle closing signal from n8n cleanly
       const targetQuestions = maxPrimaryQuestions || TOTAL_WANTED_JOB_QUESTIONS;
@@ -1318,11 +1351,14 @@ export async function generateInterviewerTurn(
 
   // Offline fallback only when n8n is unreachable
   const intent = detectCandidateIntent(lastAnswer, lastQ);
-  if (candidateRequestedClarification || intent === "clarification_request") {
+  if (
+    (candidateRequestedClarification || intent === "clarification_request") &&
+    !isAlreadyFollowUp
+  ) {
     return {
       interviewer_text: "Understood, let me clarify that question for you.",
       question_text: lastQ,
-      turn_type: "question",
+      turn_type: "follow_up",
       question_type: inferQuestionType(lastQ, "technical"),
       should_continue: true,
       recommended_action: "clarify",

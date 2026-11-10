@@ -632,7 +632,9 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         }
       : null);
   const isCurrentFollowUp =
-    currentQuestion?.source === "llm_ts_followup" || currentTurn?.turn_type === "follow_up";
+    currentQuestion?.source === "llm_ts_followup" ||
+    currentQuestion?.source === "llm_ts_clarification" ||
+    currentTurn?.turn_type === "follow_up";
   const primaryQuestionsAnsweredOrActive = questions.filter(
     (q, idx) =>
       q.source !== "llm_ts_followup" &&
