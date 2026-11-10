@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { buildDeepgramSpeakUrl, prepareTextForTTS } from "./tts";
+import { renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  buildDeepgramSpeakUrl,
+  FIXED_DEEPGRAM_VOICE_MODEL,
+  prepareTextForTTS,
+  useTTSEngine,
+} from "./tts";
 
 describe("prepareTextForTTS", () => {
   it("normalizes AI/Ai casing cleanly while preserving candidate names", () => {
@@ -35,7 +41,7 @@ describe("prepareTextForTTS", () => {
 
 describe("buildDeepgramSpeakUrl", () => {
   it("uses v2/speak with speed in valid 0.05 increments for Flux models", () => {
-    const url = new URL(buildDeepgramSpeakUrl("flux-priya-en"));
+    const url = new URL(buildDeepgramSpeakUrl(FIXED_DEEPGRAM_VOICE_MODEL));
     expect(url.pathname).toBe("/v2/speak");
     expect(url.searchParams.get("model")).toBe("flux-priya-en");
     const speed = Number(url.searchParams.get("speed"));
@@ -48,5 +54,40 @@ describe("buildDeepgramSpeakUrl", () => {
     expect(url.pathname).toBe("/v1/speak");
     expect(url.searchParams.get("model")).toBe("aura-2-thalia-en");
     expect(url.searchParams.get("speed")).toBeNull();
+  });
+});
+
+describe("useTTSEngine fixed voice enforcement", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("uses FIXED_DEEPGRAM_VOICE_MODEL only and never falls back to browser speechSynthesis", async () => {
+    const speechSpy = vi.fn();
+    Object.defineProperty(globalThis, "speechSynthesis", {
+      value: { speak: speechSpy, cancel: vi.fn(), resume: vi.fn(), getVoices: () => [] },
+      configurable: true,
+      writable: true,
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500, statusText: "Error" });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const onend = vi.fn();
+    const { result } = renderHook(() => useTTSEngine());
+    result.current.speak("Hello Manish, let us begin.", onend);
+
+    await vi.waitFor(() => {
+      expect(onend).toHaveBeenCalledTimes(1);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const [url] of fetchMock.mock.calls) {
+      expect(String(url)).toContain(`model=${FIXED_DEEPGRAM_VOICE_MODEL}`);
+    }
+    expect(speechSpy).not.toHaveBeenCalled();
   });
 });
