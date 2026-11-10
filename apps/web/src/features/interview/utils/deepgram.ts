@@ -211,15 +211,14 @@ export class DeepgramSTT {
           }
         };
 
-        this.socket.onerror = (event) => {
-          console.warn("[DeepgramSTT] WebSocket error event:", event);
+        this.socket.onerror = () => {
+          if (!this.isRunning && !this.socket) return;
           const err = new Error("Deepgram WebSocket error");
           this.onError?.(err);
           if (!this.isRunning) reject(err);
         };
 
         this.socket.onclose = (event) => {
-          console.log("[DeepgramSTT] WebSocket closed with code:", event.code, event.reason);
           this.isRunning = false;
           // Attempt exponential-backoff reconnect on unexpected drops (not clean close / no-data)
           if (
@@ -230,9 +229,6 @@ export class DeepgramSTT {
           ) {
             const delayMs = 1000 * 2 ** this._reconnectAttempts;
             this._reconnectAttempts++;
-            console.warn(
-              `[DeepgramSTT] Unexpected close (${event.code}). Reconnecting in ${delayMs}ms (attempt ${this._reconnectAttempts}/3)...`,
-            );
             setTimeout(() => {
               void this.start(this._lastStream);
             }, delayMs);
@@ -269,15 +265,22 @@ export class DeepgramSTT {
   }
 
   stop() {
-    // Reset reconnect state so a manual stop doesn't trigger reconnect
+    // Reset reconnect state and detach handlers before closing so clean teardown emits no warnings
     this._reconnectAttempts = 3;
     this.isRunning = false;
     this._pendingAudio = [];
     if (this.socket) {
-      try {
-        this.socket.close();
-      } catch {}
+      const sock = this.socket;
       this.socket = null;
+      sock.onopen = null;
+      sock.onmessage = null;
+      sock.onerror = null;
+      sock.onclose = null;
+      try {
+        if (sock.readyState === WebSocket.OPEN || sock.readyState === WebSocket.CONNECTING) {
+          sock.close(1000, "stopped");
+        }
+      } catch {}
     }
   }
 }

@@ -381,13 +381,12 @@ export function useMediaRecorder() {
         if (rec.state === "recording") {
           try {
             rec.requestData();
-          } catch (reqErr) {
-            console.warn("[useMediaRecorder] requestData warning:", reqErr);
+          } catch {
+            // Recorder may already be finalizing
           }
         }
         rec.stop();
-      } catch (stopErr) {
-        console.warn("[useMediaRecorder] stop error:", stopErr);
+      } catch {
         resolve({ blob: null, filePath: null });
       }
     });

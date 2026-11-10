@@ -21,42 +21,77 @@ const HEAD_DOWN_BLEND_THRESHOLD = 0.3;
 const HEAD_DOWN_PITCH_THRESHOLD = -14;
 
 let landmarker: FaceLandmarker | null = null;
-let initialising = false;
+let initPromise: Promise<FaceLandmarker | null> | null = null;
 let initFailed = false;
+let lastVideoTimestampMs = 0;
+
+/** Suppresses MediaPipe WASM/TFLite C++ XNNPACK delegate diagnostic messages during init. */
+async function withQuietTfliteInit<T>(fn: () => Promise<T>): Promise<T> {
+  const origInfo = console.info;
+  const origWarn = console.warn;
+  const origLog = console.log;
+  const isTfliteNoise = (args: unknown[]) =>
+    args.some(
+      (a) =>
+        typeof a === "string" &&
+        (a.includes("TensorFlow Lite") ||
+          a.includes("XNNPACK") ||
+          a.includes("Feedback manager requires") ||
+          a.includes("OpenGL")),
+    );
+  console.info = (...args: unknown[]) => {
+    if (!isTfliteNoise(args)) origInfo.apply(console, args);
+  };
+  console.warn = (...args: unknown[]) => {
+    if (!isTfliteNoise(args)) origWarn.apply(console, args);
+  };
+  console.log = (...args: unknown[]) => {
+    if (!isTfliteNoise(args)) origLog.apply(console, args);
+  };
+  try {
+    return await fn();
+  } finally {
+    console.info = origInfo;
+    console.warn = origWarn;
+    console.log = origLog;
+  }
+}
 
 async function getLandmarker(): Promise<FaceLandmarker | null> {
   if (landmarker) return landmarker;
   if (initFailed) return null;
-  if (initialising) return null;
+  if (initPromise) return initPromise;
 
-  initialising = true;
-  try {
-    const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
-    );
+  initPromise = withQuietTfliteInit(async () => {
+    try {
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
+      );
 
-    landmarker = await FaceLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath:
-          "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
-        delegate: "GPU",
-      },
-      runningMode: "VIDEO",
-      numFaces: 2,
-      outputFaceBlendshapes: true,
-      outputFacialTransformationMatrixes: true,
-      minFaceDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
+      landmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
+          delegate: "CPU",
+        },
+        runningMode: "VIDEO",
+        numFaces: 2,
+        outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
+        minFaceDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
 
-    return landmarker;
-  } catch (err) {
-    console.warn("[MediaPipe] FaceLandmarker initialisation failed:", err);
-    initFailed = true;
-    return null;
-  } finally {
-    initialising = false;
-  }
+      return landmarker;
+    } catch {
+      initFailed = true;
+      return null;
+    } finally {
+      initPromise = null;
+    }
+  });
+
+  return initPromise;
 }
 
 function extractHeadPose(matrix: number[]): { yawDeg: number; pitchDeg: number } {
@@ -87,7 +122,9 @@ export async function detectBehavior(
   if (!lm) return null;
 
   try {
-    const result = lm.detectForVideo(videoElement, performance.now());
+    const nowMs = Math.max(lastVideoTimestampMs + 1, Math.round(performance.now()));
+    lastVideoTimestampMs = nowMs;
+    const result = lm.detectForVideo(videoElement, nowMs);
     const faceCount = result.faceLandmarks.length;
 
     if (faceCount === 0) {
@@ -135,6 +172,7 @@ export function disposeLandmarker(): void {
     } catch {}
     landmarker = null;
   }
-  initialising = false;
+  initPromise = null;
   initFailed = false;
+  lastVideoTimestampMs = 0;
 }

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { insertProctoringEvent } from "@/features/candidate/api";
 import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from "../types";
 import { enterFullscreen, exitFullscreen, getFullscreenElement } from "../utils/fullscreen";
-import { detectFaces, disposeFaceDetector } from "../utils/mediapipeFaceDetector";
 import { detectBehavior, disposeLandmarker } from "../utils/mediapipeLandmarker";
 
 interface ProctoringState {
@@ -62,7 +61,6 @@ export function useProctoring(sessionId: string) {
         payload,
       };
 
-      console.info("[Proctoring Event]:", eventType, severity, payload);
       setState((prev) => ({
         ...prev,
         isSecure: severity !== "critical",
@@ -73,8 +71,8 @@ export function useProctoring(sessionId: string) {
       try {
         const detailStr = payload ? JSON.stringify(payload) : `${eventType} detected`;
         await insertProctoringEvent(sid, eventType, detailStr);
-      } catch (err) {
-        console.warn("[Proctoring] Failed to log proctoring event to database:", err);
+      } catch {
+        // Ignore non-fatal logging network errors
       }
     },
     [sessionId],
@@ -86,7 +84,9 @@ export function useProctoring(sessionId: string) {
     if (sid) activeSessionIdRef.current = sid;
     setIsActive(true);
 
-    await enterFullscreen();
+    if (!getFullscreenElement()) {
+      await enterFullscreen();
+    }
   }, []);
 
   const stop = useCallback(() => {
@@ -96,7 +96,6 @@ export function useProctoring(sessionId: string) {
       clearInterval(faceIntervalRef.current);
       faceIntervalRef.current = null;
     }
-    disposeFaceDetector();
     disposeLandmarker();
 
     void exitFullscreen();
@@ -146,7 +145,6 @@ export function useProctoring(sessionId: string) {
         if (canEmit("fullscreen_exit", 5000)) {
           emitEvent("fullscreen_exit", "warning");
         }
-        void enterFullscreen();
       }
     };
 
@@ -202,28 +200,26 @@ export function useProctoring(sessionId: string) {
       const video = findVideo();
       if (!video || video.readyState < 2 || video.paused) return;
 
-      const [mpCount, behavior] = await Promise.all([detectFaces(video), detectBehavior(video)]);
+      const behavior = await detectBehavior(video);
 
-      if (mpCount !== -1) {
-        if (mpCount === 0) {
+      if (behavior) {
+        if (behavior.faceCount === 0) {
           faceAbsentStrikesRef.current++;
           faceMultipleStrikesRef.current = 0;
           if (faceAbsentStrikesRef.current >= 2 && canEmit("face_absent", 5000)) {
             emitEvent("face_absent", "warning", { reason: "no_face_detected" });
           }
-        } else if (mpCount > 1) {
+        } else if (behavior.faceCount > 1) {
           faceMultipleStrikesRef.current++;
           faceAbsentStrikesRef.current = 0;
           if (faceMultipleStrikesRef.current >= 2 && canEmit("face_multiple", 5000)) {
-            emitEvent("face_multiple", "critical", { count: mpCount });
+            emitEvent("face_multiple", "critical", { count: behavior.faceCount });
           }
         } else {
           faceAbsentStrikesRef.current = 0;
           faceMultipleStrikesRef.current = 0;
         }
-      }
 
-      if (behavior) {
         if (behavior.gazeAway) {
           gazeAwayStrikesRef.current++;
           if (gazeAwayStrikesRef.current >= 2 && canEmit("gaze_away", 6000)) {

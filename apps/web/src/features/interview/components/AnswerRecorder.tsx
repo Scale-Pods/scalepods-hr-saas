@@ -97,6 +97,13 @@ export function AnswerRecorder({
       clearInterval(audioActivityIntervalRef.current);
       audioActivityIntervalRef.current = null;
     }
+    if (audioCtxRef.current) {
+      if (audioCtxRef.current.state !== "closed") {
+        void audioCtxRef.current.close().catch(() => {});
+      }
+      audioCtxRef.current = null;
+    }
+    analyserRef.current = null;
     isVoiceActiveRef.current = false;
   }, []);
 
@@ -646,8 +653,8 @@ export function AnswerRecorder({
                 applyNormalizedTranscript(normalized);
               }
             },
-            onError: (err) => {
-              console.warn("[AnswerRecorder] Deepgram STT error:", err);
+            onError: () => {
+              if (gen !== generationRef.current || !isRecordingRef.current) return;
               setIsDeepgramConnected(false);
             },
             onClose: () => {
@@ -666,12 +673,10 @@ export function AnswerRecorder({
             .then(() => {
               if (gen === generationRef.current) setIsDeepgramConnected(true);
             })
-            .catch((err) => {
-              console.warn("[AnswerRecorder] Deepgram STT connection error:", err);
+            .catch(() => {
               if (gen === generationRef.current) setIsDeepgramConnected(false);
             });
-        } catch (err) {
-          console.warn("[AnswerRecorder] Deepgram STT init error:", err);
+        } catch {
           setIsDeepgramConnected(false);
         }
       }

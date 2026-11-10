@@ -275,8 +275,7 @@ export function useTTSEngine(): TTSEngine {
             finish();
           };
 
-          audio.onerror = (e) => {
-            console.warn("Deepgram Audio playback error:", e);
+          audio.onerror = () => {
             finish();
           };
 
@@ -284,7 +283,6 @@ export function useTTSEngine(): TTSEngine {
           const expectedDurationMs = Math.max(5000, Math.min(45000, preparedWords * 450 + 4000));
           safetyTimerRef.current = setTimeout(() => {
             if (!finished && myToken === ttsSessionTokenRef.current) {
-              console.log("Deepgram playback safety timeout triggered, proceeding");
               finish();
             }
           }, expectedDurationMs);
@@ -292,7 +290,10 @@ export function useTTSEngine(): TTSEngine {
           await audio.play();
         } catch (err) {
           if (myToken !== ttsSessionTokenRef.current) return;
-          console.warn("Deepgram TTS failed (no backup voice configured):", err);
+          const errName = (err as { name?: string })?.name;
+          if (errName !== "AbortError" && errName !== "NotAllowedError") {
+            console.warn("Deepgram TTS failed:", err);
+          }
           finish();
         }
       })();
