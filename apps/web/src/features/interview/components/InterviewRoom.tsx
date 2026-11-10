@@ -68,8 +68,10 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     violations,
     multiScreenBlocked,
     multiTabBlocked,
+    wrongScreenBlocked,
     startProctoring,
     stopProctoring,
+    setProctoringScreenStream,
     emitEvent,
   } = useProctoringContext();
   const startingRef = useRef(false);
@@ -149,7 +151,11 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   }, []);
 
   const isProctoringPaused =
-    !isFullscreenReady || !hasActiveScreenShare || multiScreenBlocked || multiTabBlocked;
+    !isFullscreenReady ||
+    !hasActiveScreenShare ||
+    multiScreenBlocked ||
+    multiTabBlocked ||
+    wrongScreenBlocked;
 
   const attachScreenEndedHandler = useCallback(
     (screen: MediaStream) => {
@@ -180,6 +186,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       }
       setHasActiveScreenShare(true);
       attachScreenEndedHandler(screen);
+      setProctoringScreenStream(screen);
       if (avStream) {
         setMediaStreams(avStream, audioStream ?? null, screen);
       }
@@ -192,7 +199,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
           : "Could not restore screen sharing. Please try again and choose 'Entire Screen'.",
       );
     }
-  }, [attachScreenEndedHandler, audioStream, avStream, setMediaStreams]);
+  }, [attachScreenEndedHandler, audioStream, avStream, setMediaStreams, setProctoringScreenStream]);
 
   const handleStart = useCallback(async () => {
     if (startingRef.current) return;
@@ -253,7 +260,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
           screen,
           audio: audio ?? null,
         });
-        startProctoring(activeSessionId);
+        startProctoring(activeSessionId, screen);
       }
     } catch (err) {
       console.error("Failed to get media streams:", err);
@@ -761,6 +768,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
           }}
           multiScreenBlocked={multiScreenBlocked}
           multiTabBlocked={multiTabBlocked}
+          wrongScreenBlocked={wrongScreenBlocked}
           onAutoTerminate={() => {
             void finishInterview(true);
           }}

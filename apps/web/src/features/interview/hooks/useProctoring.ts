@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { insertProctoringEvent } from "@/features/candidate/api";
 import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from "../types";
 import { checkSingleDisplay } from "../utils/environmentCheck";
-import { exitFullscreen, getFullscreenElement } from "../utils/fullscreen";
+import { exitFullscreen, getFullscreenElement, isFullscreenSupported } from "../utils/fullscreen";
 import { detectBehavior, disposeLandmarker } from "../utils/mediapipeLandmarker";
 import { detectProhibitedObjects, disposeObjectDetector } from "../utils/mediapipeObjectDetector";
+import { getBeaconPattern, verifyScreenShareFrame } from "../utils/screenVerification";
 
 interface ProctoringState {
   violations: ProctoringEvent[];
@@ -12,6 +13,7 @@ interface ProctoringState {
   recentEvent: ProctoringEvent | null;
   multiScreenBlocked: boolean;
   multiTabBlocked: boolean;
+  wrongScreenBlocked: boolean;
 }
 
 export function useProctoring(sessionId: string) {
@@ -21,6 +23,7 @@ export function useProctoring(sessionId: string) {
     recentEvent: null,
     multiScreenBlocked: false,
     multiTabBlocked: false,
+    wrongScreenBlocked: false,
   });
 
   const [isActive, setIsActive] = useState(false);
@@ -30,12 +33,17 @@ export function useProctoring(sessionId: string) {
   const behaviorIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const objectIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const displayIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const screenCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const screenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const screenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const screenCheckStartedAtRef = useRef(0);
 
   const faceAbsentStrikesRef = useRef(0);
   const faceMultipleStrikesRef = useRef(0);
   const gazeAwayStrikesRef = useRef(0);
   const headDownStrikesRef = useRef(0);
+  const wrongScreenStrikesRef = useRef(0);
   const objectStrikesRef = useRef<Map<string, number>>(new Map());
   const eventCountsRef = useRef<Map<ProctoringEventType, number>>(new Map());
   const lastEmitTimesRef = useRef<Map<ProctoringEventType, number>>(new Map());
@@ -95,11 +103,45 @@ export function useProctoring(sessionId: string) {
     [sessionId],
   );
 
-  const start = useCallback(async (sid?: string) => {
-    isStoppingRef.current = false;
-    if (sid) activeSessionIdRef.current = sid;
-    setIsActive(true);
+  const setScreenStream = useCallback((stream: MediaStream | null) => {
+    wrongScreenStrikesRef.current = 0;
+    screenCheckStartedAtRef.current = Date.now();
+    setState((prev) => (prev.wrongScreenBlocked ? { ...prev, wrongScreenBlocked: false } : prev));
+
+    if (typeof document === "undefined") return;
+    if (!stream) {
+      if (screenVideoRef.current) {
+        screenVideoRef.current.srcObject = null;
+      }
+      return;
+    }
+
+    if (!screenVideoRef.current) {
+      const vid = document.createElement("video");
+      vid.muted = true;
+      vid.playsInline = true;
+      screenVideoRef.current = vid;
+    }
+    if (!screenCanvasRef.current) {
+      screenCanvasRef.current = document.createElement("canvas");
+    }
+    screenVideoRef.current.srcObject = stream;
+    void screenVideoRef.current.play?.().catch(() => {});
   }, []);
+
+  const start = useCallback(
+    async (sid?: string, screenStream?: MediaStream | null) => {
+      isStoppingRef.current = false;
+      if (sid) activeSessionIdRef.current = sid;
+      if (screenStream !== undefined) {
+        setScreenStream(screenStream);
+      } else {
+        screenCheckStartedAtRef.current = Date.now();
+      }
+      setIsActive(true);
+    },
+    [setScreenStream],
+  );
 
   const stop = useCallback(() => {
     isStoppingRef.current = true;
@@ -116,6 +158,16 @@ export function useProctoring(sessionId: string) {
       clearInterval(displayIntervalRef.current);
       displayIntervalRef.current = null;
     }
+    if (screenCheckIntervalRef.current) {
+      clearInterval(screenCheckIntervalRef.current);
+      screenCheckIntervalRef.current = null;
+    }
+    if (screenVideoRef.current) {
+      screenVideoRef.current.srcObject = null;
+      screenVideoRef.current = null;
+    }
+    screenCanvasRef.current = null;
+    wrongScreenStrikesRef.current = 0;
     if (channelRef.current) {
       try {
         channelRef.current.close();
@@ -264,6 +316,53 @@ export function useProctoring(sessionId: string) {
     checkDisplayState();
     displayIntervalRef.current = setInterval(checkDisplayState, 2000);
 
+    // 4b. Live screen-content verification: confirms shared monitor actually shows the interview UI
+    screenCheckStartedAtRef.current = Date.now();
+    screenCheckIntervalRef.current = setInterval(() => {
+      if (isStoppingRef.current) return;
+      if (Date.now() - screenCheckStartedAtRef.current < 2500) return;
+      if (document.visibilityState !== "visible") return;
+      if (isFullscreenSupported() && !getFullscreenElement()) return;
+
+      const screenVid = screenVideoRef.current;
+      const screenCanvas = screenCanvasRef.current;
+      const beaconEl = document.querySelector<HTMLElement>('[data-proctoring-beacon="grid"]');
+      if (!screenVid || !screenCanvas || !beaconEl) return;
+
+      const stepRaw = beaconEl.dataset.beaconStep;
+      const prevStepRaw = beaconEl.dataset.beaconPrevStep;
+      if (stepRaw === undefined) return;
+
+      const step = Number(stepRaw);
+      const prevStep = prevStepRaw !== undefined && prevStepRaw !== "" ? Number(prevStepRaw) : null;
+      const matched = verifyScreenShareFrame(
+        screenVid,
+        beaconEl,
+        screenCanvas,
+        getBeaconPattern(step),
+        prevStep !== null ? getBeaconPattern(prevStep) : null,
+      );
+
+      if (matched === null) return;
+      if (matched) {
+        wrongScreenStrikesRef.current = 0;
+        setState((prev) =>
+          prev.wrongScreenBlocked ? { ...prev, wrongScreenBlocked: false } : prev,
+        );
+        return;
+      }
+
+      wrongScreenStrikesRef.current += 1;
+      if (wrongScreenStrikesRef.current >= 2) {
+        setState((prev) =>
+          prev.wrongScreenBlocked ? prev : { ...prev, wrongScreenBlocked: true },
+        );
+        if (canEmit("wrong_screen", 5000)) {
+          void emitEvent("wrong_screen", "critical", { reason: "shared_screen_mismatch" });
+        }
+      }
+    }, 2500);
+
     // 5. Camera Vision AI: Gaze/Head/Face tracking (1.5s) & Object/Phone detection (2.0s)
     const findVideo = () =>
       (document.getElementById("camera-feed") ||
@@ -369,6 +468,7 @@ export function useProctoring(sessionId: string) {
       if (behaviorIntervalRef.current) clearInterval(behaviorIntervalRef.current);
       if (objectIntervalRef.current) clearInterval(objectIntervalRef.current);
       if (displayIntervalRef.current) clearInterval(displayIntervalRef.current);
+      if (screenCheckIntervalRef.current) clearInterval(screenCheckIntervalRef.current);
       if (channelRef.current) {
         try {
           channelRef.current.close();
@@ -384,8 +484,10 @@ export function useProctoring(sessionId: string) {
     recentEvent: state.recentEvent,
     multiScreenBlocked: state.multiScreenBlocked,
     multiTabBlocked: state.multiTabBlocked,
+    wrongScreenBlocked: state.wrongScreenBlocked,
     start,
     stop,
+    setScreenStream,
     emitEvent,
   };
 }

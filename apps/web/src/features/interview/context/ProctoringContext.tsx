@@ -9,8 +9,10 @@ interface ProctoringContextType {
   recentEvent: ProctoringEvent | null;
   multiScreenBlocked: boolean;
   multiTabBlocked: boolean;
-  startProctoring: (sessionId: string) => Promise<void>;
+  wrongScreenBlocked: boolean;
+  startProctoring: (sessionId: string, screenStream?: MediaStream | null) => Promise<void>;
   stopProctoring: () => void;
+  setProctoringScreenStream: (screenStream: MediaStream | null) => void;
   emitEvent: (
     type: ProctoringEventType,
     severity: ProctoringSeverity,
@@ -25,9 +27,9 @@ export function ProctoringProvider({ children }: { children: React.ReactNode }) 
   const localProctoring = useProctoring(sessionId);
 
   const startProctoring = useCallback(
-    async (sid: string) => {
+    async (sid: string, screenStream?: MediaStream | null) => {
       setSessionId(sid);
-      await localProctoring.start(sid);
+      await localProctoring.start(sid, screenStream);
     },
     [localProctoring],
   );
@@ -44,8 +46,10 @@ export function ProctoringProvider({ children }: { children: React.ReactNode }) 
         recentEvent: localProctoring.recentEvent,
         multiScreenBlocked: localProctoring.multiScreenBlocked,
         multiTabBlocked: localProctoring.multiTabBlocked,
+        wrongScreenBlocked: localProctoring.wrongScreenBlocked,
         startProctoring,
         stopProctoring,
+        setProctoringScreenStream: localProctoring.setScreenStream,
         emitEvent: localProctoring.emitEvent,
       }}
     >

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { ProctoringEvent, ProctoringSeverity } from "../types";
 import { enterFullscreen, getFullscreenElement, isFullscreenSupported } from "../utils/fullscreen";
+import { BEACON_COLOR_HEX, BEACON_PATTERNS, getBeaconPattern } from "../utils/screenVerification";
 
 interface ProctoringOverlayProps {
   violations: ProctoringEvent[];
@@ -21,6 +22,7 @@ interface ProctoringOverlayProps {
   onRequestScreenShare?: () => void;
   multiScreenBlocked?: boolean;
   multiTabBlocked?: boolean;
+  wrongScreenBlocked?: boolean;
   onAutoTerminate?: (reason: string) => void;
 }
 
@@ -33,12 +35,14 @@ const INTENTIONAL_VIOLATION_TYPES = new Set<string>([
   "prohibited_object",
   "multi_screen",
   "screen_share_stopped",
+  "wrong_screen",
   "multi_tab",
   "face_multiple",
 ]);
 
 const CRITICAL_STRIKE_LIMIT = 5;
 const SCREEN_SHARE_RESTORE_SECONDS = 20;
+const BEACON_QUADRANT_IDS = ["tl", "tr", "bl", "br"] as const;
 
 export function ProctoringOverlay({
   violations,
@@ -47,6 +51,7 @@ export function ProctoringOverlay({
   onRequestScreenShare,
   multiScreenBlocked = false,
   multiTabBlocked = false,
+  wrongScreenBlocked = false,
   onAutoTerminate,
 }: ProctoringOverlayProps) {
   const [showWarning, setShowWarning] = useState(false);
@@ -56,6 +61,10 @@ export function ProctoringOverlay({
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [totalViolationCount, setTotalViolationCount] = useState(0);
   const [screenShareCountdown, setScreenShareCountdown] = useState(SCREEN_SHARE_RESTORE_SECONDS);
+  const [beaconState, setBeaconState] = useState<{ step: number; prevStep: number | null }>({
+    step: 0,
+    prevStep: null,
+  });
   const [isFullscreen, setIsFullscreen] = useState(() =>
     !isFullscreenSupported() ? true : Boolean(getFullscreenElement()),
   );
@@ -125,7 +134,20 @@ export function ProctoringOverlay({
   }, []);
 
   useEffect(() => {
-    if (isDisabled || isScreenShareActive) {
+    if (isDisabled) return;
+    const interval = setInterval(() => {
+      setBeaconState((prev) => ({
+        step: (prev.step + 1) % BEACON_PATTERNS.length,
+        prevStep: prev.step,
+      }));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isDisabled]);
+
+  const needsScreenRestore = !isScreenShareActive || wrongScreenBlocked;
+
+  useEffect(() => {
+    if (isDisabled || multiTabBlocked || multiScreenBlocked || !needsScreenRestore) {
       setScreenShareCountdown(SCREEN_SHARE_RESTORE_SECONDS);
       return;
     }
@@ -136,7 +158,9 @@ export function ProctoringOverlay({
         if (prev <= 1) {
           clearInterval(interval);
           terminateSession(
-            "Interview terminated because entire screen sharing was not restored within 20 seconds.",
+            wrongScreenBlocked
+              ? "Interview terminated because the shared screen did not match the interview window within 20 seconds."
+              : "Interview terminated because entire screen sharing was not restored within 20 seconds.",
           );
           return 0;
         }
@@ -145,7 +169,14 @@ export function ProctoringOverlay({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isScreenShareActive, isDisabled, terminateSession]);
+  }, [
+    needsScreenRestore,
+    wrongScreenBlocked,
+    multiTabBlocked,
+    multiScreenBlocked,
+    isDisabled,
+    terminateSession,
+  ]);
 
   useEffect(() => {
     const last = violations[violations.length - 1];
@@ -231,6 +262,10 @@ export function ProctoringOverlay({
         message =
           "Entire screen sharing stopped. Re-share your entire screen immediately to continue.";
         break;
+      case "wrong_screen":
+        message =
+          "Shared screen does not match the interview window. Share the screen displaying this interview.";
+        break;
       case "multi_tab":
         message = "Multiple interview tabs detected. Close extra tabs immediately.";
         break;
@@ -315,9 +350,10 @@ export function ProctoringOverlay({
   const showFullscreenGate =
     !multiTabBlocked &&
     !multiScreenBlocked &&
-    isScreenShareActive &&
+    !needsScreenRestore &&
     isFullscreenSupported() &&
     !isFullscreen;
+  const beaconPattern = getBeaconPattern(beaconState.step);
 
   return (
     <>
@@ -387,8 +423,8 @@ export function ProctoringOverlay({
         </div>
       )}
 
-      {/* Screen Share Restoration Gate */}
-      {!multiTabBlocked && !multiScreenBlocked && !isScreenShareActive && (
+      {/* Screen Share Restoration / Wrong Screen Gate */}
+      {!multiTabBlocked && !multiScreenBlocked && needsScreenRestore && (
         <div
           role="dialog"
           aria-modal="true"
@@ -410,11 +446,12 @@ export function ProctoringOverlay({
               <AlertCircle size={28} />
             </div>
             <h3 id="screen-share-required-title" className="text-lg font-bold text-white mb-2">
-              Entire Screen Share Disconnected
+              {!isScreenShareActive ? "Entire Screen Share Disconnected" : "Wrong Screen Shared"}
             </h3>
             <p className="text-sm mb-4 leading-relaxed" style={{ color: "var(--label-secondary)" }}>
-              Entire screen sharing is mandatory throughout the interview. Re-share your entire
-              screen before the countdown expires or the interview will automatically terminate.
+              {!isScreenShareActive
+                ? "Entire screen sharing is mandatory throughout the interview. Re-share your entire screen before the countdown expires or the interview will automatically terminate."
+                : "Your shared screen is not displaying the active interview window. Return to the interview screen or re-share the monitor displaying this interview before the countdown expires."}
             </p>
             <div
               className="text-2xl font-mono font-bold mb-5"
@@ -597,6 +634,24 @@ export function ProctoringOverlay({
           <Shield size={11} style={{ color: "var(--green)" }} />
           <span>Monitored</span>
         </div>
+      </div>
+
+      {/* Live rotating corner beacon verified against the shared screen stream */}
+      <div
+        aria-hidden="true"
+        data-proctoring-beacon="grid"
+        data-beacon-step={beaconState.step}
+        data-beacon-prev-step={beaconState.prevStep ?? ""}
+        className="fixed bottom-3 right-3 z-[99] pointer-events-none grid grid-cols-2 rounded-md overflow-hidden shadow-lg"
+        style={{ width: 40, height: 40, outline: "1px solid rgba(255, 255, 255, 0.22)" }}
+        title="Live proctoring screen verification beacon"
+      >
+        {beaconPattern.map((color, idx) => (
+          <span
+            key={BEACON_QUADRANT_IDS[idx]}
+            style={{ backgroundColor: BEACON_COLOR_HEX[color], width: "100%", height: "100%" }}
+          />
+        ))}
       </div>
     </>
   );

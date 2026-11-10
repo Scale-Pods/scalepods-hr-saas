@@ -5,6 +5,12 @@ import { ProctoringOverlay } from "../components/ProctoringOverlay";
 import type { ProctoringEvent } from "../types";
 import { checkDesktopDevice, checkSingleDisplay } from "./environmentCheck";
 import { filterProhibitedDetections } from "./mediapipeObjectDetector";
+import {
+  classifyRgbCell,
+  getBeaconPattern,
+  verifyBeaconQuadrants,
+  verifyScreenShareFrame,
+} from "./screenVerification";
 
 vi.mock("@/lib/supabase/client", () => ({
   supabaseBrowser: () => ({
@@ -272,5 +278,132 @@ describe("ProctoringOverlay strict enforcement", () => {
 
     expect(onAutoTerminate).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Interview Terminated")).toBeTruthy();
+  });
+
+  it("blocks and auto-terminates after 20s when wrong screen is shared", async () => {
+    const onAutoTerminate = vi.fn();
+    await act(async () => {
+      render(
+        createElement(ProctoringOverlay, {
+          violations: [],
+          sessionId: "sess-1",
+          isScreenShareActive: true,
+          wrongScreenBlocked: true,
+          onAutoTerminate,
+        }),
+      );
+    });
+
+    expect(screen.getByText("Wrong Screen Shared")).toBeTruthy();
+    expect(onAutoTerminate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(20000);
+    });
+
+    expect(onAutoTerminate).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Interview Terminated")).toBeTruthy();
+  });
+});
+
+describe("screenVerification live beacon", () => {
+  const originalInnerWidth = window.innerWidth;
+  const originalInnerHeight = window.innerHeight;
+
+  afterEach(() => {
+    Object.defineProperty(window, "innerWidth", { value: originalInnerWidth, configurable: true });
+    Object.defineProperty(window, "innerHeight", {
+      value: originalInnerHeight,
+      configurable: true,
+    });
+  });
+
+  it("classifies encoded colors despite compression drift and rejects neutrals", () => {
+    expect(classifyRgbCell(238, 18, 52)).toBe("R");
+    expect(classifyRgbCell(16, 214, 78)).toBe("G");
+    expect(classifyRgbCell(12, 98, 240)).toBe("B");
+    expect(classifyRgbCell(236, 198, 18)).toBe("Y");
+    expect(classifyRgbCell(245, 245, 245)).toBeNull();
+    expect(classifyRgbCell(30, 32, 35)).toBeNull();
+  });
+
+  it("matches current or immediate previous beacon permutation and rejects wrong screens", () => {
+    const p0 = getBeaconPattern(0); // R, G, B, Y
+    const p1 = getBeaconPattern(1); // G, B, Y, R
+
+    const r: [number, number, number] = [245, 10, 60];
+    const g: [number, number, number] = [10, 225, 80];
+    const b: [number, number, number] = [10, 105, 245];
+    const y: [number, number, number] = [248, 208, 10];
+
+    expect(verifyBeaconQuadrants([g, b, y, r], p1, p0)).toBe(true);
+    expect(verifyBeaconQuadrants([r, g, b, y], p1, p0)).toBe(true);
+    // Random/other screen (uniform desktop grey or wrong permutation)
+    expect(verifyBeaconQuadrants([r, r, r, r], p1, p0)).toBe(false);
+    expect(
+      verifyBeaconQuadrants(
+        [
+          [30, 30, 30],
+          [30, 30, 30],
+          [30, 30, 30],
+          [30, 30, 30],
+        ],
+        p1,
+        p0,
+      ),
+    ).toBe(false);
+  });
+
+  it("returns null when video stream is not ready", () => {
+    const video = document.createElement("video");
+    const beaconEl = document.createElement("div");
+    const canvas = document.createElement("canvas");
+    expect(verifyScreenShareFrame(video, beaconEl, canvas, getBeaconPattern(0))).toBeNull();
+  });
+
+  it("samples the 32x32 beacon canvas regions accurately", () => {
+    const p0 = getBeaconPattern(0); // R, G, B, Y
+    const data = new Uint8ClampedArray(32 * 32 * 4);
+    const fillQuad = (qx: number, qy: number, rgb: [number, number, number]) => {
+      for (let y = qy * 16; y < qy * 16 + 16; y++) {
+        for (let x = qx * 16; x < qx * 16 + 16; x++) {
+          const i = (y * 32 + x) * 4;
+          data[i] = rgb[0];
+          data[i + 1] = rgb[1];
+          data[i + 2] = rgb[2];
+          data[i + 3] = 255;
+        }
+      }
+    };
+    fillQuad(0, 0, [255, 0, 64]); // R
+    fillQuad(1, 0, [0, 230, 80]); // G
+    fillQuad(0, 1, [0, 110, 255]); // B
+    fillQuad(1, 1, [255, 210, 0]); // Y
+
+    const video = {
+      readyState: 2,
+      paused: false,
+      videoWidth: 1920,
+      videoHeight: 1080,
+    } as unknown as HTMLVideoElement;
+
+    const beaconEl = {
+      getBoundingClientRect: () => ({ left: 1200, top: 700, width: 40, height: 40 }),
+    } as unknown as HTMLElement;
+
+    const canvas = {
+      width: 32,
+      height: 32,
+      getContext: () => ({
+        drawImage: vi.fn(),
+        getImageData: () => ({ data }),
+      }),
+    } as unknown as HTMLCanvasElement;
+
+    Object.defineProperty(window, "innerWidth", { value: 1920, configurable: true });
+    Object.defineProperty(window, "innerHeight", { value: 1080, configurable: true });
+
+    expect(verifyScreenShareFrame(video, beaconEl, canvas, p0)).toBe(true);
+    expect(verifyScreenShareFrame(video, beaconEl, canvas, getBeaconPattern(2))).toBe(false);
   });
 });
