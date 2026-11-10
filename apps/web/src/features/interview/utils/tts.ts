@@ -9,7 +9,8 @@ interface TTSEngine {
 }
 
 export const FIXED_DEEPGRAM_VOICE_MODEL = "flux-priya-en";
-export const DEEPGRAM_V2_SPEED = 1.05;
+export const DEEPGRAM_V2_SPEED = 1.2;
+export const AUDIO_PLAYBACK_RATE = 1.15;
 
 function getDeepgramApiKey(): string {
   try {
@@ -266,7 +267,8 @@ export function useTTSEngine(): TTSEngine {
 
           audioUrl = URL.createObjectURL(blob);
           const audio = new Audio(audioUrl);
-          audio.playbackRate = 1.0;
+          audio.preservesPitch = true;
+          audio.playbackRate = AUDIO_PLAYBACK_RATE;
           currentAudioRef.current = audio;
 
           audio.onended = () => {
