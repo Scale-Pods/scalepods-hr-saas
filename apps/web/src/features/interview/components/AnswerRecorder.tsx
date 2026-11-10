@@ -46,6 +46,7 @@ export function AnswerRecorder({
   const [silenceCountdown, setSilenceCountdown] = useState(COUNTDOWN_TENTHS);
   const [thinkingCountdown, setThinkingCountdown] = useState(THINKING_TENTHS);
   const [isThinking, setIsThinking] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [isDeepgramConnected, setIsDeepgramConnected] = useState(false);
 
   const isRecordingRef = useRef(false);
@@ -112,9 +113,15 @@ export function AnswerRecorder({
   }, []);
 
   const drawWaveform = useCallback(() => {
-    const canvas = externalCanvasRef?.current ?? canvasRef.current;
+    if (!isRecordingRef.current) return;
     const analyser = analyserRef.current;
-    if (!canvas || !analyser) return;
+    if (!analyser) return;
+    const canvas = externalCanvasRef?.current ?? canvasRef.current;
+    if (!canvas) {
+      // Wait for ChatInputBar canvas mount rather than permanently exiting the animation loop
+      rafRef.current = requestAnimationFrame(drawWaveform);
+      return;
+    }
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const w = canvas.width;
@@ -131,8 +138,9 @@ export function AnswerRecorder({
     const sliceWidth = w / bufferLength;
     let x = 0;
     for (let i = 0; i < bufferLength; i++) {
-      const v = dataArray[i] / 128.0;
-      const y = (v * h) / 2;
+      const normalized = ((dataArray[i] - 128) * 1.8) / 128.0;
+      const clamped = Math.max(-1, Math.min(1, normalized));
+      const y = h / 2 + clamped * (h / 2 - 2);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
       x += sliceWidth;
@@ -179,6 +187,7 @@ export function AnswerRecorder({
       clearThinkingTimer();
       clearCountdown();
       isRecordingRef.current = false;
+      setIsRecording(false);
       accumulatedWebSpeechRef.current = "";
 
       if (overrideText?.trim()) {
@@ -226,6 +235,7 @@ export function AnswerRecorder({
     clearThinkingTimer();
     clearCountdown();
     isRecordingRef.current = false;
+    setIsRecording(false);
     accumulatedWebSpeechRef.current = "";
     setTranscript("");
     transcriptRef.current = "";
@@ -562,14 +572,22 @@ export function AnswerRecorder({
           });
           deepgramRef.current = deepgram;
 
-          const connectPromise = deepgram.start();
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Deepgram timeout")), 4000),
-          );
-          await Promise.race([connectPromise, timeoutPromise]);
-          setIsDeepgramConnected(true);
+          // Connect non-blockingly; early MediaRecorder chunks are buffered in DeepgramSTT._pendingAudio
+          void Promise.race([
+            deepgram.start(),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Deepgram timeout")), 4000),
+            ),
+          ])
+            .then(() => {
+              if (gen === generationRef.current) setIsDeepgramConnected(true);
+            })
+            .catch((err) => {
+              console.warn("[AnswerRecorder] Deepgram STT connection error:", err);
+              if (gen === generationRef.current) setIsDeepgramConnected(false);
+            });
         } catch (err) {
-          console.warn("[AnswerRecorder] Deepgram STT connection error:", err);
+          console.warn("[AnswerRecorder] Deepgram STT init error:", err);
           setIsDeepgramConnected(false);
         }
       }
@@ -622,14 +640,18 @@ export function AnswerRecorder({
         console.warn("MediaRecorder audio capture skipped:", recErr);
       }
 
+      if (gen !== generationRef.current) return;
       isRecordingRef.current = true;
+      setIsRecording(true);
       setDuration(0);
 
       startThinkingTimer();
 
-      setTimeout(() => {
-        drawWaveform();
-      }, 50);
+      requestAnimationFrame(() => {
+        if (gen === generationRef.current && isRecordingRef.current) {
+          drawWaveform();
+        }
+      });
 
       intervalRef.current = setInterval(() => setDuration((prev) => prev + 1), 1000);
 
@@ -715,9 +737,17 @@ export function AnswerRecorder({
       countdownTenths: COUNTDOWN_TENTHS,
       thinkingCountdown,
       thinkingCountdownTenths: THINKING_TENTHS,
-      isRecording: isRecordingRef.current && !isAiSpeaking,
+      isRecording: isRecording && !isAiSpeaking,
     });
-  }, [transcript, isThinking, silenceCountdown, thinkingCountdown, isAiSpeaking, onStateChange]);
+  }, [
+    transcript,
+    isThinking,
+    isRecording,
+    silenceCountdown,
+    thinkingCountdown,
+    isAiSpeaking,
+    onStateChange,
+  ]);
 
   const minutes = Math.floor(duration / 60);
   const seconds = duration % 60;
