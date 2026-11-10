@@ -106,6 +106,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const followUpCountRef = useRef<Record<string, number>>({});
   const lastAssessmentNoteRef = useRef<LiveAssessmentNote | null>(null);
   const answeredQuestionIdsRef = useRef<Set<string>>(new Set());
+  const answeredOrderRef = useRef<string[]>([]);
   const localAnswersMapRef = useRef<Map<string, string>>(new Map());
   const questionAckMapRef = useRef<Map<string, string>>(new Map());
   const isGeneratingTurnRef = useRef(false);
@@ -129,6 +130,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setLoadError("");
     answeredQuestionIdsRef.current.clear();
+    answeredOrderRef.current = [];
     localAnswersMapRef.current.clear();
     questionAckMapRef.current.clear();
     setLiveAssessmentNotes([]);
@@ -234,6 +236,9 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       if (existingAnswers.length > 0) {
         for (const ans of existingAnswers) {
           answeredQuestionIdsRef.current.add(ans.question_id);
+          if (!answeredOrderRef.current.includes(ans.question_id)) {
+            answeredOrderRef.current.push(ans.question_id);
+          }
           if (ans.answer_text) {
             localAnswersMapRef.current.set(ans.question_id, ans.answer_text);
           }
@@ -291,7 +296,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
               ? q.source
               : ansNote?.is_follow_up === true ||
                   subQuestionTexts.has(qText.trim().toLowerCase()) ||
-                  (q.order_index ?? idx) >= 10
+                  (q.order_index ?? idx) > 10
                 ? "llm_ts_followup"
                 : q.source;
           return {
@@ -418,6 +423,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       if (!session) return;
 
       answeredQuestionIdsRef.current.add(questionId);
+      answeredOrderRef.current = [
+        ...answeredOrderRef.current.filter((qid) => qid !== questionId),
+        questionId,
+      ];
       setAnsweredCount(answeredQuestionIdsRef.current.size);
       localAnswersMapRef.current.set(questionId, answerText);
 
@@ -468,8 +477,19 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
     setIsGeneratingTurn(true);
 
     try {
-      const history = questions
-        .filter((q) => answeredQuestionIdsRef.current.has(q.id))
+      const questionsById = new Map(questions.map((q) => [q.id, q]));
+      const orderedIds = [
+        ...answeredOrderRef.current.filter((qid) => answeredQuestionIdsRef.current.has(qid)),
+        ...questions
+          .map((q) => q.id)
+          .filter(
+            (qid) =>
+              answeredQuestionIdsRef.current.has(qid) && !answeredOrderRef.current.includes(qid),
+          ),
+      ];
+      const history = orderedIds
+        .map((qid) => questionsById.get(qid))
+        .filter((q): q is InterviewQuestion => Boolean(q))
         .map((q) => ({
           id: q.id,
           question: q.question_text,
@@ -499,7 +519,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         currentQ?.source === "llm_ts_clarification" ||
         (currentQ?.question_type as string | undefined) === "follow_up" ||
         Boolean(currentQ?.parent_question_id) ||
-        (currentQ?.order_index ?? 0) >= 10;
+        (currentQ?.order_index ?? 0) > 10;
       const trackingKey = currentQ?.parent_question_id || currentQ?.id || "";
       const hasChildSubQuestion = trackingKey
         ? questions.some(
@@ -527,7 +547,16 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           q.id !== currentQ?.parent_question_id,
       );
 
-      const lastItem = history[history.length - 1];
+      // Always bind lastItem to the actual currentQuestionId being answered rather than trailing array order
+      const currentHistoryItem = currentQ
+        ? history.find((item) => item.id === currentQ.id) || {
+            id: currentQ.id,
+            question: currentQ.question_text,
+            answer: localAnswersMapRef.current.get(currentQ.id) || "",
+            type: currentQ.source === "llm_ts_followup" ? "follow_up" : currentQ.question_type,
+          }
+        : undefined;
+      const lastItem = currentHistoryItem || history[history.length - 1];
       const lastAnswer = lastItem?.answer || "";
       const lastQ = lastItem?.question || "";
       const intent = detectCandidateIntent(lastAnswer, lastQ);
@@ -739,25 +768,14 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         const isClarifyTurn = turn.recommended_action === "clarify";
         let targetQId = "";
         if (!isFollowUp && !isClarifyTurn && nextPlannedQuestion) {
-          // Guarantee that the spoken question, chat question, and recorded answer question ID match 100%.
+          // Always advance cleanly to the exact planned question slot without overwriting planned DB rows
           const cleanPlanned = sanitizeQuestionPlaceholders(
             nextPlannedQuestion.question_text,
             resumeText,
             jdText,
           );
-          const dynamicTurnQ = (turn.question_text || "").trim();
-          const chosenQuestionText =
-            dynamicTurnQ.length >= 15 &&
-            !dynamicTurnQ.toLowerCase().startsWith("hello") &&
-            !dynamicTurnQ.toLowerCase().startsWith("welcome")
-              ? dynamicTurnQ
-              : cleanPlanned;
-
-          turn.question_text = chosenQuestionText;
-          const inferredType = inferQuestionType(
-            chosenQuestionText,
-            nextPlannedQuestion.question_type,
-          );
+          const inferredType = inferQuestionType(cleanPlanned, nextPlannedQuestion.question_type);
+          turn.question_text = cleanPlanned;
           turn.question_type = inferredType;
           setCurrentQuestionId(nextPlannedQuestion.id);
           targetQId = nextPlannedQuestion.id;
@@ -768,26 +786,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           setQuestions((prev) =>
             prev.map((q) =>
               q.id === nextPlannedQuestion.id
-                ? { ...q, question_text: chosenQuestionText, question_type: inferredType }
+                ? { ...q, question_text: cleanPlanned, question_type: inferredType }
                 : q,
             ),
           );
-
-          if (chosenQuestionText !== nextPlannedQuestion.question_text) {
-            void fetch("/api/interview/session", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "update_question_text",
-                sessionId: session.id,
-                questionId: nextPlannedQuestion.id,
-                questionText: chosenQuestionText,
-                questionType: inferredType,
-              }),
-            }).catch((err) =>
-              console.warn("[generateNextTurn] Failed to persist adapted question:", err),
-            );
-          }
         } else {
           const inferredType = isFollowUp
             ? "technical"

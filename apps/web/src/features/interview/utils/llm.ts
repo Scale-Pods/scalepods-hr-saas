@@ -200,6 +200,31 @@ export function inferQuestionType(
     return "cultural";
   }
 
+  // Behavioral keywords must precede generic technical keywords (e.g. "technical disagreement")
+  if (
+    text.includes("teammate") ||
+    text.includes("disagree") ||
+    text.includes("conflict") ||
+    text.includes("collaborat") ||
+    text.includes("feedback") ||
+    text.includes("stakeholder") ||
+    text.includes("communication")
+  ) {
+    return "behavioral";
+  }
+
+  // Situational keywords must precede generic technical keywords (e.g. "incident while working on an n8n workflow")
+  if (
+    text.includes("tell me about a time") ||
+    text.includes("describe a time") ||
+    text.includes("describe a complex problem") ||
+    text.includes("if you faced") ||
+    text.includes("how would you approach") ||
+    text.includes("how would you handle")
+  ) {
+    return "situational";
+  }
+
   // Technical keywords
   if (
     text.includes("technical") ||
@@ -237,29 +262,6 @@ export function inferQuestionType(
     text.includes("n8n")
   ) {
     return "technical";
-  }
-
-  // Behavioral keywords
-  if (
-    text.includes("teammate") ||
-    text.includes("disagree") ||
-    text.includes("conflict") ||
-    text.includes("collaborat") ||
-    text.includes("feedback") ||
-    text.includes("stakeholder") ||
-    text.includes("communication")
-  ) {
-    return "behavioral";
-  }
-
-  // Situational keywords
-  if (
-    text.includes("tell me about a time") ||
-    text.includes("describe a time") ||
-    text.includes("describe a complex problem") ||
-    text.includes("how would you handle")
-  ) {
-    return "situational";
   }
 
   // Cultural keywords

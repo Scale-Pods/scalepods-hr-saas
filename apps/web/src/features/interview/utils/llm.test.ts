@@ -3,6 +3,7 @@ import {
   extractAnswerEntities,
   generateInterviewerTurn,
   generateProbingFollowUp,
+  inferQuestionType,
   isFollowUpGrounded,
 } from "./llm";
 
@@ -208,5 +209,27 @@ describe("follow-up cap enforcement in generateInterviewerTurn", () => {
     expect(turn.turn_type).toBe("question");
     expect(turn.recommended_action).toBe("advance");
     expect(turn.question_text).not.toBe("Can you explain the third follow-up?");
+  });
+});
+
+describe("inferQuestionType", () => {
+  it("prioritizes behavioral and situational classifications over incidental technical keywords", () => {
+    expect(
+      inferQuestionType(
+        "Can you describe a technical disagreement or feedback you received while working on your automation projects, and how you resolved it?",
+      ),
+    ).toBe("behavioral");
+
+    expect(
+      inferQuestionType(
+        "If you faced a tough production incident while working on an n8n workflow, how would you approach troubleshooting it?",
+      ),
+    ).toBe("situational");
+
+    expect(
+      inferQuestionType(
+        "In your customer support chatbot platform, describe the architecture and data flow.",
+      ),
+    ).toBe("technical");
   });
 });

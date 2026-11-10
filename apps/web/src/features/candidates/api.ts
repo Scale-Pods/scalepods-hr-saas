@@ -801,17 +801,16 @@ export async function fetchCandidateProfile(
       const mappedTranscripts: InterviewTranscriptItem[] = [];
 
       if (answersList.length > 0) {
-        // If genuine answers exist tied to the specific round instance(s), prioritize them and ignore detached ghost rows
-        const hasRoundAnswers =
-          targetRoundIds.length > 0 &&
-          answersList.some(
-            (a) => a.round_instance_id && targetRoundIds.includes(a.round_instance_id),
-          );
-        const effectiveAnswers = hasRoundAnswers
-          ? answersList.filter(
-              (a) => a.round_instance_id && targetRoundIds.includes(a.round_instance_id),
-            )
-          : answersList;
+        // Keep answers linked to this campaign's round instances or session IDs; only exclude rows from unrelated round instances
+        const effectiveAnswers = answersList.filter((a) => {
+          if (a.round_instance_id && targetRoundIds.length > 0) {
+            return targetRoundIds.includes(a.round_instance_id);
+          }
+          if (a.session_id && targetSessionIds.length > 0) {
+            return targetSessionIds.includes(a.session_id);
+          }
+          return true;
+        });
 
         // Identify timestamps of genuine answered turns to eliminate concurrent transition placeholder artifacts
         const answeredTimestamps = effectiveAnswers
@@ -827,13 +826,16 @@ export async function fetchCandidateProfile(
           return !isSpurious;
         });
 
-        // Eliminate ghost auto-submissions that immediately echoed the prior turn's text within 25 seconds
+        // Eliminate duplicate auto-submissions for the SAME question_id within 25 seconds
         const cleanAnswers: any[] = [];
         for (let i = 0; i < meaningfulAnswers.length; i++) {
           const curr = meaningfulAnswers[i];
           const prev = cleanAnswers[cleanAnswers.length - 1];
           if (
             prev &&
+            prev.question_id &&
+            curr.question_id &&
+            prev.question_id === curr.question_id &&
             prev.answer_text?.trim() &&
             curr.answer_text?.trim() &&
             prev.answer_text.trim().toLowerCase() === curr.answer_text.trim().toLowerCase()
@@ -848,7 +850,7 @@ export async function fetchCandidateProfile(
           cleanAnswers.push(curr);
         }
 
-        // Collect answers in chronological order, deduplicating identical questions and prioritizing non-empty answer text
+        // Collect answers in chronological order, deduplicating by question_id (never collapsing distinct questions)
         const turnsMap = new Map<string, InterviewTranscriptItem>();
         let counter = 1;
 
@@ -857,21 +859,24 @@ export async function fetchCandidateProfile(
           const liveNote = (ans.ai_live_note || {}) as Record<string, any>;
           // Ground question text in the canonical database question record first
           const qText = (q?.question_text || liveNote.question_text || "Interview Question").trim();
-          const normKey = qText.toLowerCase();
+          const normKey = ans.question_id ? `qid:${ans.question_id}` : `ans:${ans.id}`;
 
           const existing = turnsMap.get(normKey);
           if (existing) {
-            // If previous turn had no answer text and this one does, update it
+            // Prefer non-empty answer text and richest evaluation metadata for the same question_id
             if (!existing.answer_text?.trim() && ans.answer_text?.trim()) {
               existing.answer_text = ans.answer_text.trim();
               existing.id = ans.id;
               existing.answered_at = ans.answered_at;
-              if (liveNote && Object.keys(liveNote).length > 0) {
-                existing.ai_note = liveNote;
-                if (liveNote.interviewer_text || liveNote.interviewer_acknowledgment) {
-                  existing.interviewer_text =
-                    liveNote.interviewer_text || liveNote.interviewer_acknowledgment;
-                }
+            }
+            if (liveNote && Object.keys(liveNote).length > 0) {
+              existing.ai_note = { ...(existing.ai_note || {}), ...liveNote };
+              if (
+                !existing.interviewer_text &&
+                (liveNote.interviewer_text || liveNote.interviewer_acknowledgment)
+              ) {
+                existing.interviewer_text =
+                  liveNote.interviewer_text || liveNote.interviewer_acknowledgment;
               }
             }
           } else {

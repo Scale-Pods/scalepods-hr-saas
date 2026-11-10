@@ -2958,7 +2958,7 @@ function InterviewMediaAndTranscriptSection({
               No interview transcript recorded yet for this candidate.
             </div>
           ) : (
-            <div className="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-[64rem] overflow-y-auto pr-1">
               {transcripts.map((turn, idx) => (
                 <div
                   key={turn.id || idx}
