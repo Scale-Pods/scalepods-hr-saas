@@ -119,8 +119,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   const [recorderState, setRecorderState] = useState<AnswerRecorderState>({
     transcript: "",
     isThinking: false,
-    silenceCountdown: 120,
-    countdownTenths: 120,
+    silenceCountdown: 80,
+    countdownTenths: 80,
     thinkingCountdown: 100,
     thinkingCountdownTenths: 100,
     isRecording: false,

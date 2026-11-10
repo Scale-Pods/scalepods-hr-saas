@@ -4,7 +4,7 @@ import { DeepgramSTT } from "../utils/deepgram";
 import { getAudioStream } from "../utils/mediaHelpers";
 import { normalizeTechnicalSpeech } from "../utils/speechNormalizer";
 
-const SILENCE_TIMEOUT_MS = 12000;
+const SILENCE_TIMEOUT_MS = 8000;
 const COUNTDOWN_TENTHS = Math.floor(SILENCE_TIMEOUT_MS / 100);
 const THINKING_TIMEOUT_MS = 10000;
 const THINKING_TENTHS = Math.floor(THINKING_TIMEOUT_MS / 100);
@@ -1091,7 +1091,7 @@ export function AnswerRecorder({
             <div className="flex items-center justify-between gap-3">
               <p className="text-[10px]" style={{ color: "var(--label-tertiary)" }}>
                 {isThinking
-                  ? "Start speaking within 10s | Auto-submits after 12s of silence once spoken"
+                  ? `Start speaking within 10s | Auto-submits after ${(SILENCE_TIMEOUT_MS / 1000).toFixed(0)}s of silence once spoken`
                   : `Auto-submits after ${(SILENCE_TIMEOUT_MS / 1000).toFixed(0)}s of silence`}
               </p>
               <button
