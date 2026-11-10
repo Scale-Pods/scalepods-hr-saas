@@ -66,6 +66,8 @@ export interface CandidateCampaignItem {
 export interface InterviewTranscriptItem {
   id: string;
   question_number?: number;
+  question_label?: string;
+  is_follow_up?: boolean;
   question_text: string;
   question_type?: string;
   interviewer_text?: string | null;
@@ -877,9 +879,16 @@ export async function fetchCandidateProfile(
             const rawAck: string | null =
               liveNote.interviewer_text || liveNote.interviewer_acknowledgment || null;
 
+            const isFollowUpTurn = Boolean(
+              liveNote.is_follow_up ||
+                liveNote.turn_type === "follow_up" ||
+                q?.question_type === "follow_up",
+            );
+
             turnsMap.set(normKey, {
               id: ans.id,
               question_number: counter++,
+              is_follow_up: isFollowUpTurn,
               question_text: qText,
               question_type: q?.question_type || liveNote.question_type || "Technical",
               interviewer_text: rawAck,
@@ -894,9 +903,20 @@ export async function fetchCandidateProfile(
         rawTurns.sort(
           (a, b) => new Date(a.answered_at).getTime() - new Date(b.answered_at).getTime(),
         );
-        rawTurns.forEach((t, idx) => {
-          t.question_number = idx + 1;
-        });
+        let mainNum = 0;
+        let subCount = 0;
+        for (const t of rawTurns) {
+          if (t.is_follow_up && mainNum > 0) {
+            subCount++;
+            t.question_number = mainNum;
+            t.question_label = `${mainNum}.${subCount}`;
+          } else {
+            mainNum++;
+            subCount = 0;
+            t.question_number = mainNum;
+            t.question_label = String(mainNum);
+          }
+        }
         for (let i = 0; i < rawTurns.length; i++) {
           const currentTurn = rawTurns[i];
           if (i === 0) {

@@ -631,12 +631,12 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
           source: currentTurn.turn_type === "follow_up" ? "llm_ts_followup" : "llm_ts_dynamic",
         }
       : null);
-  const isCurrentFollowUp = currentQuestion?.source === "llm_ts_followup";
+  const isCurrentFollowUp =
+    currentQuestion?.source === "llm_ts_followup" || currentTurn?.turn_type === "follow_up";
   const primaryQuestionsAnsweredOrActive = questions.filter(
     (q, idx) =>
       q.source !== "llm_ts_followup" &&
-      q.source !== "llm_ts_dynamic_intro" &&
-      q.source !== "hr_reviewed_intro" &&
+      q.source !== "llm_ts_clarification" &&
       idx <= currentQuestionIndex,
   ).length;
   const primaryBarIndex = Math.min(
@@ -763,7 +763,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
             </div>
             <div className="flex items-center justify-center gap-2 mt-1">
               <p className="text-[10px]" style={{ color: "var(--label-tertiary)" }}>
-                Question {Math.min(primaryBarIndex + 1, progressTarget)} of {progressTarget}
+                Question {Math.min(primaryBarIndex + 1, progressTarget)}
+                {isCurrentFollowUp ? ".1" : ""} of {progressTarget}
               </p>
               {isCurrentFollowUp && (
                 <span

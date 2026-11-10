@@ -2477,6 +2477,9 @@ function InterviewMediaAndTranscriptSection({
   }>;
   transcripts: Array<{
     id: string;
+    question_number?: number;
+    question_label?: string;
+    is_follow_up?: boolean;
     question_text: string;
     question_type?: string;
     interviewer_text?: string | null;
@@ -2959,14 +2962,30 @@ function InterviewMediaAndTranscriptSection({
               {transcripts.map((turn, idx) => (
                 <div
                   key={turn.id || idx}
-                  className="rounded-xl border border-border/60 bg-card p-3.5 space-y-2.5 transition-colors hover:border-border"
+                  className={`rounded-xl border border-border/60 bg-card p-3.5 space-y-2.5 transition-colors hover:border-border ${turn.is_follow_up ? "ml-4 border-l-2 border-l-purple-500/50" : ""}`}
                 >
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-primary flex items-center gap-1.5">
                       <Sparkles className="h-3.5 w-3.5 text-primary" />
-                      Question {idx + 1}
+                      Question {turn.question_label || turn.question_number || idx + 1}
                     </span>
                     <div className="flex items-center gap-2">
+                      {turn.is_follow_up && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] border-purple-500/40 text-purple-500"
+                        >
+                          Follow-up
+                        </Badge>
+                      )}
+                      {Boolean(turn.ai_note?.answer_was_irrelevant) && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] border-amber-500/40 text-amber-500"
+                        >
+                          Off-topic
+                        </Badge>
+                      )}
                       {turn.question_type && (
                         <Badge variant="outline" className="text-[10px] capitalize">
                           {turn.question_type.replace(/_/g, " ")}

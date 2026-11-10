@@ -13,14 +13,9 @@ import type {
   Scorecard,
 } from "../types";
 import {
-  analyzeAnswerInRealtime,
-  analyzeCandidateFit,
-  analyzeResumeJdAlignment,
   type CandidateAnalysis,
   detectCandidateIntent,
-  extractJdToolsAndTech,
   generateInterviewerTurn,
-  generateTargetedFollowUp,
   getDynamicCandidateQuestion,
   inferQuestionType,
   sanitizeQuestionPlaceholders,
@@ -70,6 +65,15 @@ const InterviewContext = createContext<InterviewContextType | null>(null);
 const INTRO_QUESTION_TEXT =
   "Hello! I am your AI Interviewer today. Welcome to your interview. To start off, how are you doing today?";
 
+function buildPersonalizedGreeting(candidateName?: string, roleName?: string): string {
+  const firstName = (candidateName || "").trim().split(/\s+/)[0] || "";
+  const validName = firstName && firstName.toLowerCase() !== "candidate" ? firstName : "";
+  const roleClause = roleName ? ` for the ${roleName.trim()} position` : "";
+  return validName
+    ? `Hello ${validName}! I am your AI Interviewer today${roleClause}. Welcome to your interview. To start off, how are you doing today?`
+    : `Hello! I am your AI Interviewer today${roleClause}. Welcome to your interview. To start off, how are you doing today?`;
+}
+
 export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<InterviewSession | null>(null);
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
@@ -81,7 +85,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [isGeneratingTurn, setIsGeneratingTurn] = useState(false);
-  const [isAnalyzingAnswer, setIsAnalyzingAnswer] = useState(false);
+  const [isAnalyzingAnswer] = useState(false);
   const [liveAssessmentNotes, setLiveAssessmentNotes] = useState<LiveAssessmentNote[]>([]);
   const [authenticitySignals, setAuthenticitySignals] = useState<AuthenticitySignal[]>([]);
   const [blueprint, _setBlueprint] = useState<InterviewBlueprint | null>(null);
@@ -252,21 +256,31 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         setAnsweredCount(answeredQuestionIdsRef.current.size);
       }
 
+      const personalizedIntro = buildPersonalizedGreeting(candidateName, data.campaign?.name);
+
       if (existingQuestions.length > 0) {
-        const cleanExisting = existingQuestions.map((q) => ({
-          ...q,
-          question_text: sanitizeQuestionPlaceholders(
-            q.question_text,
-            data.resumeText,
-            data.jdText,
-          ),
-        }));
+        const cleanExisting = existingQuestions.map((q, idx) => {
+          let qText = sanitizeQuestionPlaceholders(q.question_text, data.resumeText, data.jdText);
+          // Upgrade legacy un-personalized fixed greeting to include candidate name & role
+          if (
+            idx === 0 &&
+            q.question_type === "cultural" &&
+            qText.startsWith("Hello! I am your AI Interviewer today") &&
+            candidateName
+          ) {
+            qText = personalizedIntro;
+          }
+          return {
+            ...q,
+            question_text: qText,
+          };
+        });
         setQuestions(cleanExisting);
-        const answeredCount = answeredQuestionIdsRef.current.size;
-        const currentIdx = Math.min(
-          answeredCount,
-          cleanExisting.length > 0 ? cleanExisting.length - 1 : 0,
+        const firstUnansweredIdx = cleanExisting.findIndex(
+          (q) => !answeredQuestionIdsRef.current.has(q.id),
         );
+        const currentIdx =
+          firstUnansweredIdx !== -1 ? firstUnansweredIdx : Math.max(0, cleanExisting.length - 1);
         setCurrentQuestionIndex(currentIdx);
         setCurrentQuestionId(cleanExisting[currentIdx]?.id || cleanExisting[0]?.id || "");
       } else {
@@ -282,7 +296,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         const firstQuestion: InterviewQuestion = {
           id: firstQuestionId,
           session_id: id,
-          question_text: INTRO_QUESTION_TEXT,
+          question_text: personalizedIntro,
           question_type: "cultural",
           order_index: 0,
           source: "llm_ts_dynamic_intro",
@@ -299,7 +313,7 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             action: "insert_question",
             sessionId: id,
             questionId: firstQuestionId,
-            questionText: INTRO_QUESTION_TEXT,
+            questionText: personalizedIntro,
             questionType: "cultural",
             orderIndex: 0,
             source: "llm_ts_dynamic_intro",
@@ -381,6 +395,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       const spokenQuestionText =
         currentTurn?.question_text?.trim() || currentQuestion?.question_text?.trim() || "";
 
+      const isAlreadyFollowUp =
+        currentQuestion?.source === "llm_ts_followup" ||
+        Boolean(currentQuestion?.parent_question_id);
+
       // Persist raw answer immediately to database with current interviewer_text and actual question text asked
       try {
         await fetch("/api/interview/session", {
@@ -394,116 +412,16 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             aiLiveNote: {
               interviewer_text: ackText,
               question_text: spokenQuestionText,
+              is_follow_up: isAlreadyFollowUp,
+              parent_question_id: currentQuestion?.parent_question_id || null,
             },
           }),
         });
       } catch (err) {
         console.warn("Failed to persist answer to DB:", err);
       }
-
-      if (!currentQuestion || !answerText) return;
-
-      const isAlreadyFollowUp = currentQuestion.source === "llm_ts_followup";
-      setIsAnalyzingAnswer(true);
-
-      try {
-        const historyMap = questions
-          .filter((q) => answeredQuestionIdsRef.current.has(q.id))
-          .map((q) => ({
-            question: q.question_text,
-            answer: localAnswersMapRef.current.get(q.id) || "",
-            type: q.source === "llm_ts_followup" ? "follow_up" : q.question_type,
-          }));
-
-        const inferredQType = inferQuestionType(
-          currentQuestion.question_text,
-          currentQuestion.question_type,
-        );
-
-        const note = await analyzeAnswerInRealtime(
-          currentQuestion.question_text,
-          answerText,
-          resumeText,
-          jdText,
-          historyMap,
-          questionId,
-          blueprint,
-          currentQuestion.competency_ids || [],
-          inferredQType,
-          isAlreadyFollowUp,
-          session.id,
-          session.account_id,
-          session.candidate_id,
-        );
-
-        if (note.recommended_action === "follow_up" && note.insufficiency_reason) {
-          try {
-            const targetedQuestion = await generateTargetedFollowUp(
-              currentQuestion.question_text,
-              answerText,
-              note.insufficiency_reason,
-              note.follow_up_question || "",
-              resumeText,
-              jdText,
-              "follow_up",
-              session.id,
-              session.account_id,
-              session.candidate_id,
-            );
-            note.follow_up_question = targetedQuestion;
-          } catch (followUpErr) {
-            console.warn(
-              "[submitAnswer] generateTargetedFollowUp failed, keeping fallback:",
-              followUpErr,
-            );
-          }
-        }
-
-        const fullNote = {
-          ...note,
-          interviewer_text: ackText,
-          question_text: spokenQuestionText,
-        };
-        lastAssessmentNoteRef.current = fullNote;
-        setLiveAssessmentNotes((prev) => [...prev, fullNote]);
-        liveAssessmentNotesRef.current = [...liveAssessmentNotesRef.current, fullNote];
-
-        const signal: AuthenticitySignal = {
-          question_id: questionId,
-          signal: note.authenticity_signal,
-          depth: note.depth_signal,
-          follow_up_count: 0,
-        };
-        authenticitySignalsRef.current = [...authenticitySignalsRef.current, signal];
-        setAuthenticitySignals((prev) => [...prev, signal]);
-
-        // Update answer row with completed live assessment note and interviewer_text
-        fetch("/api/interview/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "submit_answer",
-            sessionId: session.id,
-            questionId,
-            answerText,
-            aiLiveNote: fullNote,
-          }),
-        }).catch((err) => console.warn("Failed to persist live assessment note:", err));
-      } catch (err) {
-        console.warn("[submitAnswer] Error analyzing answer:", err);
-      } finally {
-        setIsAnalyzingAnswer(false);
-      }
     },
-    [
-      session,
-      questions,
-      resumeText,
-      jdText,
-      blueprint,
-      currentTurn?.interviewer_text,
-      currentTurn?.question_text,
-    ],
+    [session, questions, currentTurn?.interviewer_text, currentTurn?.question_text],
   );
 
   const generateNextTurn = useCallback(async () => {
@@ -521,54 +439,41 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
           type: q.source === "llm_ts_followup" ? "follow_up" : q.question_type,
         }));
 
-      // Count only primary questions (exclude intro, follow-ups, and clarification
-      // rephrases) for the progress/closing threshold so the interviewer doesn't
-      // report inflated totals and the interview doesn't end 3-5 questions early.
-      const answeredCount = questions.filter(
+      // Count main questions answered (Question 1 greeting through Question 10; exclude follow-ups and clarifications)
+      const answeredPrimaryCount = questions.filter(
         (q) =>
           answeredQuestionIdsRef.current.has(q.id) &&
           q.source !== "llm_ts_followup" &&
-          q.source !== "llm_ts_clarification" &&
-          q.source !== "llm_ts_dynamic_intro" &&
-          q.source !== "hr_reviewed_intro",
+          q.source !== "llm_ts_clarification",
       ).length;
-      const lastNote = lastAssessmentNoteRef.current;
 
       const currentQ = questions.find((q) => q.id === currentQuestionId);
-      const trackingKey =
-        currentQ?.parent_question_id || currentQ?.id || lastNote?.question_id || "";
-      const currentFollowUpCount = trackingKey ? followUpCountRef.current[trackingKey] || 0 : 0;
-      const isAlreadyFollowUp = currentQ?.source === "llm_ts_followup";
-
-      const allowFollowUp = Boolean(
-        lastNote?.follow_up_prompted &&
-          lastNote?.follow_up_question &&
-          currentFollowUpCount < 1 &&
-          !isAlreadyFollowUp,
+      const currentQType = inferQuestionType(
+        currentQ?.question_text || "",
+        currentQ?.question_type,
       );
+      const isGreetingQ =
+        currentQType === "cultural" &&
+        ((currentQ?.order_index ?? 0) <= 1 ||
+          (currentQ?.question_text || "").toLowerCase().includes("how are you doing today"));
+      const isAlreadyFollowUp =
+        currentQ?.source === "llm_ts_followup" || Boolean(currentQ?.parent_question_id);
+      const trackingKey = currentQ?.parent_question_id || currentQ?.id || "";
+      const currentFollowUpCount = trackingKey ? followUpCountRef.current[trackingKey] || 0 : 0;
 
-      // Look for next unanswered planned question from the round configuration
-      // Exclude intro, follow-ups, and clarifications — only pick blueprint/HR-added questions
+      // Strict rule: ONLY technical primary questions (not greeting/behavioral/situational/follow-up) can have 1 follow-up
+      const isTechnicalPrimary = currentQType === "technical" && !isGreetingQ && !isAlreadyFollowUp;
+      const allowFollowUp = Boolean(isTechnicalPrimary && currentFollowUpCount < 1);
+
+      // Next unanswered planned main question
       const nextPlannedQuestion = questions.find(
         (q) =>
           !answeredQuestionIdsRef.current.has(q.id) &&
           q.source !== "llm_ts_followup" &&
           q.source !== "llm_ts_clarification" &&
-          q.source !== "llm_ts_dynamic_intro" &&
-          q.source !== "hr_reviewed_intro" &&
-          q.id !== currentQuestionId,
+          q.id !== currentQuestionId &&
+          q.id !== currentQ?.parent_question_id,
       );
-
-      if (!candidateAnalysisRef.current && (resumeText || jdText)) {
-        try {
-          const [analysis, extractedTools, alignment] = await Promise.all([
-            analyzeCandidateFit(resumeText, jdText),
-            extractJdToolsAndTech(resumeText, jdText),
-            analyzeResumeJdAlignment(resumeText, jdText),
-          ]);
-          candidateAnalysisRef.current = { ...analysis, extractedTools, alignment };
-        } catch {}
-      }
 
       const lastItem = history[history.length - 1];
       const lastAnswer = lastItem?.answer || "";
@@ -582,10 +487,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         resumeText,
         jdText,
         history,
-        answeredCount,
+        answeredPrimaryCount,
         candidateAnalysisRef.current,
         authenticitySignalsRef.current,
-        lastNote,
+        lastAssessmentNoteRef.current,
         currentFollowUpCount,
         [],
         allowFollowUp,
@@ -595,24 +500,84 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         nextPlannedQuestion?.question_text,
         isClarification,
         wordsCount,
-        true,
+        isTechnicalPrimary,
         isRefusal,
         session.id,
         session.account_id,
         session.candidate_id,
+        session.candidate?.name,
+        currentQType,
+        isAlreadyFollowUp,
       );
+
+      // Sync evaluation note returned by n8n back to state and single DB row
+      if (turn.evaluation_note && currentQ) {
+        const evalNote = turn.evaluation_note;
+        const fullNote: LiveAssessmentNote = {
+          question_id: currentQ.id,
+          authenticity_signal:
+            (evalNote.authenticity_signal as LiveAssessmentNote["authenticity_signal"]) ||
+            "genuine",
+          depth_signal: (evalNote.depth_signal as LiveAssessmentNote["depth_signal"]) || "surface",
+          recommended_action:
+            turn.turn_type === "follow_up"
+              ? "follow_up"
+              : turn.recommended_action === "clarify"
+                ? "rephrase_primary"
+                : "advance",
+          red_flags: Array.isArray(evalNote.red_flags) ? (evalNote.red_flags as string[]) : [],
+          note: typeof evalNote.note === "string" ? evalNote.note : "",
+          follow_up_prompted: turn.turn_type === "follow_up",
+          follow_up_question:
+            turn.turn_type === "follow_up" ? turn.question_text || undefined : undefined,
+          requested_clarification: Boolean(evalNote.requested_clarification),
+          answer_was_irrelevant: Boolean(
+            turn.answer_was_irrelevant || evalNote.answer_was_irrelevant,
+          ),
+        };
+
+        setLiveAssessmentNotes((prev) => [...prev, fullNote]);
+        liveAssessmentNotesRef.current = [...liveAssessmentNotesRef.current, fullNote];
+
+        const signal: AuthenticitySignal = {
+          question_id: currentQ.id,
+          signal: fullNote.authenticity_signal,
+          depth: fullNote.depth_signal,
+          follow_up_count: turn.turn_type === "follow_up" ? 1 : 0,
+        };
+        authenticitySignalsRef.current = [...authenticitySignalsRef.current, signal];
+        setAuthenticitySignals((prev) => [...prev, signal]);
+
+        const prevAckText = questionAckMapRef.current.get(currentQ.id) || "";
+        fetch("/api/interview/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "submit_answer",
+            sessionId: session.id,
+            questionId: currentQ.id,
+            answerText: lastAnswer,
+            aiLiveNote: {
+              ...evalNote,
+              interviewer_text: prevAckText,
+              question_text: currentQ.question_text,
+              is_follow_up: isAlreadyFollowUp,
+              parent_question_id: currentQ.parent_question_id || null,
+            },
+          }),
+        }).catch((err) => console.warn("Failed to sync n8n evaluation note:", err));
+      }
 
       if (turn.turn_type === "follow_up" && trackingKey) {
         followUpCountRef.current[trackingKey] = currentFollowUpCount + 1;
       }
       lastAssessmentNoteRef.current = null;
 
-      // Guard: never close if there are still planned questions in the round OR if fewer than 10 questions asked.
-      // n8n or LLM can prematurely signal "closing" after too few answers.
+      // Guard: close only when all 10 main questions are answered and no follow-up is triggered
       const allowClosing =
         (turn.turn_type === "closing" || !turn.should_continue) &&
         !nextPlannedQuestion &&
-        answeredCount >= 10;
+        answeredPrimaryCount >= 10;
       if (allowClosing) {
         setCurrentTurn({
           interviewer_text:
@@ -626,16 +591,16 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // If turn was marked closing prematurely but answeredCount < 10, generate dynamic question
+      // If turn was marked closing prematurely before 10 main questions, generate next question
       if (
         (turn.turn_type === "closing" || !turn.should_continue || !turn.question_text) &&
-        answeredCount < 10
+        answeredPrimaryCount < 10
       ) {
         console.warn(
-          `[generateNextTurn] Premature closing prevented at ${answeredCount}/10 questions. Generating dynamic candidate question.`,
+          `[generateNextTurn] Premature closing prevented at ${answeredPrimaryCount}/10 questions. Generating dynamic candidate question.`,
         );
         const dynamicQ = getDynamicCandidateQuestion(
-          answeredCount,
+          answeredPrimaryCount,
           history.map((h) => h.question),
           candidateAnalysisRef.current,
           null,
@@ -658,10 +623,10 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
       if (turn.question_text) {
         turn.question_text = sanitizeQuestionPlaceholders(turn.question_text, resumeText, jdText);
         const isFollowUp = turn.turn_type === "follow_up";
+        const isClarifyTurn = turn.recommended_action === "clarify";
         let targetQId = "";
-        if (!isFollowUp && !isClarification && nextPlannedQuestion) {
+        if (!isFollowUp && !isClarifyTurn && nextPlannedQuestion) {
           // Guarantee that the spoken question, chat question, and recorded answer question ID match 100%.
-          // Prefer Claude's adaptive question if available and substantive; fallback to sanitized planned question.
           const cleanPlanned = sanitizeQuestionPlaceholders(
             nextPlannedQuestion.question_text,
             resumeText,
@@ -695,7 +660,6 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             ),
           );
 
-          // Asynchronously sync adapted question text to database so backend logs reflect the actual question asked
           if (chosenQuestionText !== nextPlannedQuestion.question_text) {
             void fetch("/api/interview/session", {
               method: "POST",
@@ -712,7 +676,9 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             );
           }
         } else {
-          const inferredType = inferQuestionType(turn.question_text, turn.question_type);
+          const inferredType = isFollowUp
+            ? "technical"
+            : inferQuestionType(turn.question_text, turn.question_type);
           turn.question_type = inferredType;
           const generatedUuid =
             typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -723,6 +689,13 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
                   .toString(16)
                   .padStart(12, "0")}`;
 
+          const qSource = isFollowUp
+            ? "llm_ts_followup"
+            : isClarifyTurn
+              ? "llm_ts_clarification"
+              : "llm_ts_dynamic";
+          const parentId = isFollowUp || isClarifyTurn ? trackingKey || null : null;
+
           let nextQ: InterviewQuestion = {
             id: generatedUuid,
             session_id: session.id,
@@ -730,14 +703,11 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
             question_text: turn.question_text,
             question_type: inferredType,
             order_index: questions.length,
-            source: isFollowUp
-              ? "llm_ts_followup"
-              : isClarification
-                ? "llm_ts_clarification"
-                : "llm_ts_dynamic",
+            source: qSource,
+            parent_question_id: parentId,
           };
 
-          // Persist question to DB
+          // Persist question to DB while preserving local source & parent_question_id metadata
           try {
             const qRes = await fetch("/api/interview/session", {
               method: "POST",
@@ -749,28 +719,31 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
                 questionText: turn.question_text,
                 questionType: inferredType,
                 orderIndex: questions.length,
-                source: isFollowUp
-                  ? "llm_ts_followup"
-                  : isClarification
-                    ? "llm_ts_clarification"
-                    : "llm_ts_dynamic",
-                parentQuestionId: lastNote?.question_id || null,
+                source: qSource,
+                parentQuestionId: parentId,
               }),
             });
             if (qRes.ok) {
               const qData = await qRes.json();
               if (qData?.question?.id) {
-                nextQ = qData.question;
+                nextQ = {
+                  ...qData.question,
+                  source: qSource,
+                  parent_question_id: parentId,
+                };
               }
             }
           } catch (insertErr) {
             console.warn("Could not insert dynamic question to DB:", insertErr);
           }
 
-          setQuestions((prev) => [...prev, nextQ]);
+          setQuestions((prev) => {
+            const updated = [...prev, nextQ];
+            setCurrentQuestionIndex(updated.length - 1);
+            return updated;
+          });
           setCurrentQuestionId(nextQ.id);
           targetQId = nextQ.id;
-          setCurrentQuestionIndex((prev) => prev + 1);
         }
 
         if (targetQId && turn.interviewer_text) {

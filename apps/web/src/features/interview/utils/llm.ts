@@ -141,10 +141,10 @@ export function detectCandidateIntent(answer: string, question?: string): Candid
     return "refusal";
   }
 
-  // 2. Explicit Clarification or Elaboration request
+  // 2. Explicit Clarification, Premise Dispute, or Confusion request
   if (
     isClarificationRequested(text) ||
-    /(\b(can('?t|not)|\bdo(n'?t)?)\s+(understand|get\s+it)\b|\b(can|could|please)\s+(you\s+)?(elaborat\w*|explain|clarif\w*|rephrase|repeat|simplify)\b|\bwhat\s+(do\s+you\s+mean|does\s+that\s+mean)\b|\bmore\s+details?\b)/i.test(
+    /(\b(can('?t|not)|\bdo(n'?t)?)\s+(understand|get\s+it)\b|\b(can|could|please)\s+(you\s+)?(elaborat\w*|explain|clarif\w*|rephrase|repeat|simplify)\b|\bwhat\s+(do\s+you\s+mean|does\s+that\s+mean|are\s+you\s+talking\s+about|project\s+are\s+you)\b|\b(which\s+(project|approach|system)|never\s+mentioned|not\s+(on|in)\s+my\s+resume|making\s+things\s+up)\b|\bmore\s+details?\b)/i.test(
       text,
     )
   ) {
@@ -620,32 +620,10 @@ export function generateContextualAcknowledgment(
 
   // 6. Substantive Answer with identified primary topic
   if (primaryTopic) {
-    const acks = [
-      `Understood. Your practical approach to ${primaryTopic} gives helpful insight into your engineering choices.`,
-      `Got it. Focusing on ${primaryTopic} addresses a critical requirement for production systems.`,
-      `Thanks for detailing your experience with ${primaryTopic}. That clarifies your technical decision-making.`,
-      `Makes sense. Handling ${primaryTopic} effectively directly influences system reliability.`,
-    ];
-    return acks[index % acks.length];
+    return `Thank you for sharing those details on ${primaryTopic}. Let's continue with the next point.`;
   }
 
-  // 7. General substantive technical answer (extract any meaningful verbs/nouns)
-  const words = (answer || "")
-    .trim()
-    .split(/\s+/)
-    .filter((w) => w.length > 4);
-  const sampleKeyword = words[0] ? words[0].replace(/[^a-zA-Z]/g, "") : "";
-
-  if (sampleKeyword && sampleKeyword.length >= 4) {
-    return `Understood. Your technical explanation regarding ${sampleKeyword} clarifies your problem-solving process.`;
-  }
-
-  const standardAcks = [
-    "Understood. That context clarifies your problem-solving process and engineering reasoning.",
-    "Got it. That gives clear background on how you approached those constraints.",
-    "Makes sense. That highlights the practical considerations behind your implementation.",
-  ];
-  return standardAcks[index % standardAcks.length];
+  return "Understood, thank you for sharing that context. Let's proceed to the next question.";
 }
 
 export async function analyzeAnswerInRealtime(
@@ -1156,6 +1134,9 @@ export async function generateInterviewerTurn(
   sessionId?: string,
   accountId?: string,
   candidateId?: string,
+  candidateName?: string,
+  currentQuestionType?: string,
+  isAlreadyFollowUp?: boolean,
 ): Promise<InterviewerTurn> {
   const allSessionQuestions = [
     ...history.map((h) => h.question),
@@ -1170,75 +1151,16 @@ export async function generateInterviewerTurn(
       question_text: "",
       turn_type: "closing" as InterviewerTurnType,
       should_continue: false,
+      is_final_question: true,
     };
   }
-
-  const shouldFollowUp =
-    allowFollowUp &&
-    lastAssessmentNote?.follow_up_prompted &&
-    lastAssessmentNote?.follow_up_question &&
-    !hasSimilarQuestionBeenAsked(lastAssessmentNote.follow_up_question, allSessionQuestions) &&
-    followUpCount < maxFollowUps;
 
   const lastItem = history[history.length - 1];
   const lastAnswer = lastItem?.answer || "";
   const lastQ = lastItem?.question || "";
   const lastQuestionId = lastItem?.id || "";
-  const intent = detectCandidateIntent(lastAnswer, lastQ);
-  const isClarificationIntent = Boolean(
-    candidateRequestedClarification || intent === "clarification_request",
-  );
 
-  // If candidate asked for clarification or elaboration, rephrase the current question directly
-  if (isClarificationIntent) {
-    const clarifiedQuestion =
-      lastAssessmentNote?.rephrased_question ||
-      `To put that into a simpler context: regarding "${lastQ}", could you describe a practical scenario or project from your past experience and the main approach you took?`;
-
-    return {
-      interviewer_text: "Certainly! Let me clarify that for you:",
-      question_text: clarifiedQuestion,
-      turn_type: "question",
-      question_type: inferQuestionType(lastQ, "technical"),
-      should_continue: true,
-    };
-  }
-
-  if (shouldFollowUp && lastAssessmentNote?.follow_up_question) {
-    const contextualAck = generateContextualAcknowledgment(
-      lastAnswer,
-      lastQ,
-      totalQuestions,
-      "follow_up",
-      false,
-    );
-    return {
-      interviewer_text: contextualAck,
-      question_text: lastAssessmentNote.follow_up_question,
-      turn_type: "follow_up",
-      question_type: "technical",
-      should_continue: true,
-    };
-  }
-
-  function isGreetingText(text: string): boolean {
-    if (!text) return true;
-    const lower = text.toLowerCase();
-    return (
-      lower.includes("hello and welcome") ||
-      lower.includes("welcome to your interview") ||
-      lower.includes("great to meet you") ||
-      lower.includes("i'm alex") ||
-      lower.includes("i am alex") ||
-      lower.includes("guide you through") ||
-      lower.includes("guiding your interview") ||
-      lower.includes("thank you for joining") ||
-      lower.includes("to start off") ||
-      lower.includes("how are you doing today")
-    );
-  }
-
-  // Attempt backend n8n call
+  // Attempt single unified backend n8n call (n8n is the primary evaluation & turn brain)
   try {
     const response = await fetch(`${n8nBase()}/webhook/interview-engine`, {
       method: "POST",
@@ -1248,6 +1170,11 @@ export async function generateInterviewerTurn(
         question_id: lastQuestionId || null,
         answer_text: lastAnswer,
         response_transcript: lastAnswer,
+        asked_question_text: lastQ,
+        question_type: currentQuestionType || lastItem?.type || "technical",
+        is_already_follow_up: Boolean(isAlreadyFollowUp),
+        isAlreadyFollowUp: Boolean(isAlreadyFollowUp),
+        candidate_name: candidateName || "",
         action: "generate-turn",
         account_id: accountId,
         candidate_id: candidateId,
@@ -1278,38 +1205,60 @@ export async function generateInterviewerTurn(
 
     if (response.ok) {
       const parsed = await response.json();
+      const rawAck = (parsed.interviewer_text || "").trim();
+      const interviewerText =
+        rawAck ||
+        generateContextualAcknowledgment(
+          lastAnswer,
+          lastQ,
+          totalQuestions,
+          parsed.turn_type,
+          Boolean(parsed.requested_clarification),
+        );
+
+      const rawTurnType: InterviewerTurnType = parsed.turn_type || "question";
+      const canFollowUp =
+        questionIsTechnical !== false && !isAlreadyFollowUp && followUpCount < maxFollowUps;
+
+      // Enforce client-side safeguard: never emit follow_up on non-technical or sub-questions
+      if (rawTurnType === "follow_up" && !canFollowUp) {
+        if (targetQuestion) {
+          const cleanTarget = sanitizeQuestionPlaceholders(targetQuestion, resumeText, jdText);
+          return {
+            interviewer_text: interviewerText,
+            question_text: cleanTarget,
+            turn_type: "question",
+            question_type: inferQuestionType(cleanTarget, "technical"),
+            should_continue: true,
+            recommended_action: "advance",
+            evaluation_note: parsed.evaluation_note || null,
+            answer_was_irrelevant: Boolean(parsed.answer_was_irrelevant),
+          };
+        }
+      }
+
       const rawQuestion = parsed.question_text || parsed.prompt || targetQuestion || "";
       const questionText = sanitizeQuestionPlaceholders(rawQuestion, resumeText, jdText);
-      const rawAck = (parsed.interviewer_text || "").trim();
 
-      // Filter out tone-deaf or canned acknowledgments from backend/n8n
-      const isCannedOrIrrelevant =
-        intent !== "substantive_answer" ||
-        rawAck.toLowerCase().includes("walking me through") ||
-        isGreetingText(rawAck) ||
-        !rawAck ||
-        isGenericAcknowledgment(rawAck);
-
-      const interviewerText = isCannedOrIrrelevant
-        ? generateContextualAcknowledgment(
-            lastAnswer,
-            lastQ,
-            totalQuestions,
-            parsed.turn_type,
-            false,
-          )
-        : rawAck;
-
-      // Guard: n8n or LLM must NEVER prematurely close before the target number of questions
-      // (default 10) have been answered, or if there is still a planned question.
+      // Handle closing signal from n8n cleanly
       const targetQuestions = maxPrimaryQuestions || TOTAL_WANTED_JOB_QUESTIONS;
       const isPrematureClosing = totalQuestions < targetQuestions;
 
-      if (parsed.is_final_question || parsed.turn_type === "closing") {
-        if (isPrematureClosing || targetQuestion) {
-          console.warn(
-            `[generateInterviewerTurn] Premature closing signal from n8n at turn ${totalQuestions}/${targetQuestions}. Overriding with dynamic project/experience question.`,
-          );
+      if (parsed.is_final_question || rawTurnType === "closing") {
+        if (isPrematureClosing && targetQuestion) {
+          const cleanQ = sanitizeQuestionPlaceholders(targetQuestion, resumeText, jdText);
+          return {
+            interviewer_text: interviewerText,
+            question_text: cleanQ,
+            turn_type: "question",
+            question_type: inferQuestionType(cleanQ, "technical"),
+            should_continue: true,
+            recommended_action: "advance",
+            evaluation_note: parsed.evaluation_note || null,
+            answer_was_irrelevant: Boolean(parsed.answer_was_irrelevant),
+          };
+        }
+        if (isPrematureClosing && !targetQuestion) {
           const fallback = getDynamicCandidateQuestion(
             totalQuestions,
             allSessionQuestions,
@@ -1319,29 +1268,30 @@ export async function generateInterviewerTurn(
             resumeText,
             jdText,
           );
-          const cleanQ = sanitizeQuestionPlaceholders(
-            targetQuestion || fallback.question_text,
-            resumeText,
-            jdText,
-          );
+          const cleanQ = sanitizeQuestionPlaceholders(fallback.question_text, resumeText, jdText);
           return {
-            interviewer_text:
-              interviewerText ||
-              "Thank you for that context. Let us explore another important area of your engineering background.",
+            interviewer_text: interviewerText,
             question_text: cleanQ,
             turn_type: "question",
             question_type: inferQuestionType(cleanQ, fallback.question_type),
             should_continue: true,
+            recommended_action: "advance",
+            evaluation_note: parsed.evaluation_note || null,
+            answer_was_irrelevant: Boolean(parsed.answer_was_irrelevant),
           };
         }
 
         return {
           interviewer_text:
+            interviewerText ||
             "Thank you so much for answering all the questions today. Your responses have been recorded.",
           question_text: "",
           turn_type: "closing",
           question_type: "cultural",
           should_continue: false,
+          is_final_question: true,
+          evaluation_note: parsed.evaluation_note || null,
+          answer_was_irrelevant: Boolean(parsed.answer_was_irrelevant),
         };
       }
 
@@ -1349,43 +1299,34 @@ export async function generateInterviewerTurn(
         throw new Error("Backend returned empty question text");
       }
 
-      if (!targetQuestion && hasSimilarQuestionBeenAsked(questionText, allSessionQuestions)) {
-        console.warn(
-          "[generateInterviewerTurn] Duplicate question detected, choosing unique next question",
-        );
-        const fallback = getDynamicCandidateQuestion(
-          totalQuestions,
-          allSessionQuestions,
-          analysis,
-          planItem,
-          "repeated question prevented",
-          resumeText,
-          jdText,
-        );
-        const cleanFallback = sanitizeQuestionPlaceholders(
-          fallback.question_text,
-          resumeText,
-          jdText,
-        );
-        return {
-          interviewer_text: interviewerText,
-          question_text: cleanFallback,
-          turn_type: "question",
-          question_type: inferQuestionType(cleanFallback, fallback.question_type),
-          should_continue: true,
-        };
-      }
-
       return {
         interviewer_text: interviewerText,
         question_text: questionText,
-        turn_type: parsed.turn_type || "question",
+        turn_type: rawTurnType,
         question_type: inferQuestionType(questionText, parsed.question_type || "technical"),
         should_continue: parsed.should_continue !== false,
+        recommended_action: parsed.recommended_action,
+        evaluation_note: parsed.evaluation_note || null,
+        answer_was_irrelevant: Boolean(parsed.answer_was_irrelevant),
+        is_final_question: Boolean(parsed.is_final_question),
+        next_question_id: parsed.next_question_id || null,
       };
     }
   } catch (err) {
     console.warn("[generateInterviewerTurn] n8n call failed, falling back:", err);
+  }
+
+  // Offline fallback only when n8n is unreachable
+  const intent = detectCandidateIntent(lastAnswer, lastQ);
+  if (candidateRequestedClarification || intent === "clarification_request") {
+    return {
+      interviewer_text: "Understood, let me clarify that question for you.",
+      question_text: lastQ,
+      turn_type: "question",
+      question_type: inferQuestionType(lastQ, "technical"),
+      should_continue: true,
+      recommended_action: "clarify",
+    };
   }
 
   // Robust fallback

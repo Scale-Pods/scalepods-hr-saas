@@ -6,6 +6,11 @@ export interface InterviewerTurn {
   question_type?: "technical" | "behavioral" | "situational" | "cultural";
   should_continue: boolean;
   question_text?: string;
+  recommended_action?: "advance" | "follow_up" | "clarify";
+  evaluation_note?: Record<string, unknown> | null;
+  answer_was_irrelevant?: boolean;
+  is_final_question?: boolean;
+  next_question_id?: string | null;
 }
 
 export interface Candidate {
