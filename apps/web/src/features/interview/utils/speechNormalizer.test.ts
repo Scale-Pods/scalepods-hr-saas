@@ -52,5 +52,13 @@ describe("speechNormalizer", () => {
     ).toBe(
       "The Google Maps API sends data to downstream nodes in our n8n workflow for an HR SaaS tool during B.Tech",
     );
+
+    expect(
+      normalizeTechnicalSpeech(
+        "In VTech I used n eight ten with HTTP notes, drag and drop notes, Amazon SCS, Twilio and WAPI, and used cache in to cut j d tokens",
+      ),
+    ).toBe(
+      "In B.Tech I used n8n with HTTP nodes, drag and drop nodes, Amazon SES, Twilio and Vapi, and used caching to cut JD tokens",
+    );
   });
 });

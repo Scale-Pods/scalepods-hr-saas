@@ -12,17 +12,26 @@ export function normalizeTechnicalSpeech(text: string): string {
     // Workflow & Automation Tools
     // "air n8n", "n ate n", "en ate en", "on eight ten" are common STT hallucinations for n8n
     [
-      /\b(air\s*n\s*[-]?\s*8\s*[-]?\s*n|n\s*ate\s*n|en\s*ate\s*en|n\s*[-]?\s*8\s*[-]?\s*n|en8n|n8\s*n|n\s*8n|in\s+eight\s+ten|on\s+eight\s+ten|in\s+anytime\s+workshoot|in\s+it\s+and\s+workers|anytime\s+workshoot)\b/gi,
+      /\b(air\s*n\s*[-]?\s*8\s*[-]?\s*n|n\s*ate\s*n|en\s*ate\s*en|n\s*[-]?\s*8\s*[-]?\s*n|en8n|n8\s*n|n\s*8n|(?:in|on|n)\s+eight\s+ten|n\s+8\s+10|in\s+anytime\s+workshoot|in\s+it\s+and\s+workers|anytime\s+workshoot)\b/gi,
       "n8n",
     ],
     [/\b(?:anytime|net\s+and)\s+workflow\b/gi, "n8n workflow"],
     [
-      /\b(http\s+request|downstream|upstream|downflow|if|code|webhook|trigger)\s+notes\b/gi,
+      /\b(http\s+request|http|drag[\s-]+and[\s-]+drop|downstream|upstream|downflow|if|code|webhook|trigger|switch|merge)\s+notes\b/gi,
       "$1 nodes",
     ],
     [/\b(google\s+maps|google\s+places|maps|places)\s+cpi\b/gi, "$1 API"],
+    [/\b(?:amazon|aws)\s+s\s*c\s*s\b/gi, "Amazon SES"],
+    [/\btwill?io\b/gi, "Twilio"],
+    [/\bwapi\b/gi, "Vapi"],
     [/\b(hr|ai|b2b)\s+sas\b/gi, "$1 SaaS"],
-    [/\bbtec\b/gi, "B.Tech"],
+    [/\b(?:btec|vtech)\b/gi, "B.Tech"],
+    [/\bj\s+d\b/gi, "JD"],
+    [
+      /\b(use[sd]?|with|via|enable[sd]?|add(?:ed|ing)?|implement(?:ed|ing)?)\s+cache\s+in\b/gi,
+      "$1 caching",
+    ],
+    [/\bcache\s+in\s+to\b/gi, "caching to"],
     [/\b(zap\s*i\s*er)\b/gi, "Zapier"],
     [/\b(integromat)\b/gi, "Integromat"],
     [/\b(air\s*flow|apache\s*air\s*flow)\b/gi, "Airflow"],
