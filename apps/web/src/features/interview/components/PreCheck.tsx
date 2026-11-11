@@ -16,7 +16,11 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { InterviewSession } from "../types";
-import { checkDesktopDevice, checkSingleDisplay } from "../utils/environmentCheck";
+import {
+  checkDesktopDevice,
+  checkSingleDisplay,
+  isVideoFrameBlack,
+} from "../utils/environmentCheck";
 
 // 120-second window to give candidates generous time to review and allow permissions
 const DEVICE_CHECK_TIMEOUT_MS = 120000;
@@ -123,11 +127,14 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
   const [faceDetectorWarning, setFaceDetectorWarning] = useState(false);
   const [showPermissionGuide, setShowPermissionGuide] = useState(false);
   const [micVolume, setMicVolume] = useState(0);
+  const [hasCameraStream, setHasCameraStream] = useState(false);
+  const [cameraShutterClosed, setCameraShutterClosed] = useState(false);
 
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const previewStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const shutterStreakRef = useRef(0);
 
   // Set preview video element with instant binding
   const setPreviewVideoRef = useCallback((el: HTMLVideoElement | null) => {
@@ -199,6 +206,9 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
     if (previewVideoRef.current) {
       previewVideoRef.current.srcObject = null;
     }
+    setHasCameraStream(false);
+    setCameraShutterClosed(false);
+    shutterStreakRef.current = 0;
     setMicVolume(0);
   }, []);
 
@@ -237,6 +247,9 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
           const combined = new MediaStream([...existingAudioTracks, ...stream.getVideoTracks()]);
           updatePreviewStream(combined);
         }
+        shutterStreakRef.current = 0;
+        setCameraShutterClosed(false);
+        setHasCameraStream(true);
         return { ok: true, error: null };
       } catch (e) {
         const msg = parseMediaError(e);
@@ -400,6 +413,9 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
 
         updatePreviewStream(combinedStream);
         attachAudioMeter(combinedStream);
+        shutterStreakRef.current = 0;
+        setCameraShutterClosed(false);
+        setHasCameraStream(true);
 
         setChecks({
           device: devRes.ok,
@@ -526,6 +542,35 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
     return () => clearInterval(t);
   }, []);
 
+  // Poll camera preview frames so closed shutters or covered lenses fail PreCheck immediately
+  useEffect(() => {
+    if (!hasCameraStream) return;
+    const t = setInterval(() => {
+      const isBlack = isVideoFrameBlack(previewVideoRef.current);
+      if (isBlack === null) return;
+      if (isBlack) {
+        shutterStreakRef.current += 1;
+        if (shutterStreakRef.current >= 2) {
+          setCameraShutterClosed(true);
+          setChecks((prev) => (prev.camera === false ? prev : { ...prev, camera: false }));
+          setErrors((prev) => ({
+            ...prev,
+            camera:
+              "Camera shutter appears closed or lens is covered. Please uncover your camera to continue.",
+          }));
+        }
+      } else {
+        shutterStreakRef.current = 0;
+        if (cameraShutterClosed) {
+          setCameraShutterClosed(false);
+          setChecks((prev) => (prev.camera === true ? prev : { ...prev, camera: true }));
+          setErrors((prev) => ({ ...prev, camera: null }));
+        }
+      }
+    }, 1000);
+    return () => clearInterval(t);
+  }, [hasCameraStream, cameraShutterClosed]);
+
   // Initial check on mount
   useEffect(() => {
     runAllChecks(false);
@@ -573,6 +618,7 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
     checks.device === true &&
     checks.display === true &&
     checks.camera === true &&
+    !cameraShutterClosed &&
     checks.network === true;
   const canStart = allRequired && consented;
 
@@ -600,6 +646,16 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
   }
 
   const handleStartInterview = () => {
+    if (isVideoFrameBlack(previewVideoRef.current) === true) {
+      setCameraShutterClosed(true);
+      setChecks((prev) => ({ ...prev, camera: false }));
+      setErrors((prev) => ({
+        ...prev,
+        camera:
+          "Camera shutter appears closed or lens is covered. Please uncover your camera to continue.",
+      }));
+      return;
+    }
     stopLivePreview();
     onComplete();
   };
@@ -686,17 +742,27 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
         )}
 
         {/* Live Camera & Microphone Test Preview */}
-        {checks.camera === true && (
+        {hasCameraStream && (
           <div className="card p-4 mb-6 animate-fade-in">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                  Live Camera Preview
+                <span
+                  className={`w-2.5 h-2.5 rounded-full animate-pulse ${
+                    cameraShutterClosed ? "bg-red-500" : "bg-emerald-500"
+                  }`}
+                />
+                <span
+                  className={`text-xs font-semibold uppercase tracking-wider ${
+                    cameraShutterClosed ? "text-red-400" : "text-emerald-400"
+                  }`}
+                >
+                  {cameraShutterClosed ? "Camera Covered / Shutter Closed" : "Live Camera Preview"}
                 </span>
               </div>
               <span className="text-xs" style={{ color: "var(--label-tertiary)" }}>
-                Check your lighting and position
+                {cameraShutterClosed
+                  ? "Uncover lens to continue"
+                  : "Check your lighting and position"}
               </span>
             </div>
 
@@ -708,6 +774,21 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
                 muted
                 className="w-full h-full object-cover scale-x-[-1]"
               />
+
+              {cameraShutterClosed && (
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center text-center px-4"
+                  style={{ background: "rgba(0, 0, 0, 0.72)" }}
+                >
+                  <AlertTriangle size={28} className="text-red-400 mb-2" />
+                  <p className="text-sm font-semibold text-white">
+                    Camera Shutter Closed or Lens Covered
+                  </p>
+                  <p className="text-xs text-white/75 mt-1">
+                    Open your camera shutter so your face is clearly visible before starting.
+                  </p>
+                </div>
+              )}
 
               {/* Live Audio Meter Overlay */}
               <div
@@ -1056,7 +1137,9 @@ export function PreCheck({ onComplete, session }: PreCheckProps) {
                   ? "Laptop or Desktop PC Required"
                   : checks.display === false
                     ? "Disconnect External Monitors to Continue"
-                    : "Camera, Microphone & Internet Required"}
+                    : cameraShutterClosed
+                      ? "Uncover Camera Shutter to Continue"
+                      : "Camera, Microphone & Internet Required"}
           </button>
         )}
       </div>

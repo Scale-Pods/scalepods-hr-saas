@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { insertProctoringEvent } from "@/features/candidate/api";
 import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from "../types";
-import { checkSingleDisplay } from "../utils/environmentCheck";
+import { checkSingleDisplay, isVideoFrameBlack } from "../utils/environmentCheck";
 import { exitFullscreen, getFullscreenElement, isFullscreenSupported } from "../utils/fullscreen";
 import { detectBehavior, disposeLandmarker } from "../utils/mediapipeLandmarker";
 import { detectProhibitedObjects, disposeObjectDetector } from "../utils/mediapipeObjectDetector";
@@ -15,6 +15,7 @@ interface ProctoringState {
   multiScreenBlocked: boolean;
   multiTabBlocked: boolean;
   wrongScreenBlocked: boolean;
+  cameraBlocked: boolean;
 }
 
 export function useProctoring(sessionId: string) {
@@ -25,6 +26,7 @@ export function useProctoring(sessionId: string) {
     multiScreenBlocked: false,
     multiTabBlocked: false,
     wrongScreenBlocked: false,
+    cameraBlocked: false,
   });
 
   const [isActive, setIsActive] = useState(false);
@@ -45,6 +47,7 @@ export function useProctoring(sessionId: string) {
   const faceMultipleStrikesRef = useRef(0);
   const gazeAwayStrikesRef = useRef(0);
   const headDownStrikesRef = useRef(0);
+  const cameraBlockedStrikesRef = useRef(0);
   const wrongScreenStrikesRef = useRef(0);
   const objectStrikesRef = useRef<Map<string, number>>(new Map());
   const eventCountsRef = useRef<Map<ProctoringEventType, number>>(new Map());
@@ -385,6 +388,25 @@ export function useProctoring(sessionId: string) {
       const video = findVideo();
       if (!video || video.readyState < 2 || video.paused) return;
 
+      const isBlack = isVideoFrameBlack(video);
+      if (isBlack === true) {
+        cameraBlockedStrikesRef.current++;
+        faceAbsentStrikesRef.current = 0;
+        if (cameraBlockedStrikesRef.current >= 2) {
+          setState((prev) => (prev.cameraBlocked ? prev : { ...prev, cameraBlocked: true }));
+          if (canEmit("camera_blocked", 5000)) {
+            void emitEvent("camera_blocked", "critical", {
+              reason: "camera_shutter_closed_or_covered",
+            });
+          }
+        }
+        return;
+      }
+      if (isBlack === false) {
+        cameraBlockedStrikesRef.current = 0;
+        setState((prev) => (prev.cameraBlocked ? { ...prev, cameraBlocked: false } : prev));
+      }
+
       const behavior = await detectBehavior(video);
       if (!behavior) return;
 
@@ -504,6 +526,7 @@ export function useProctoring(sessionId: string) {
     multiScreenBlocked: state.multiScreenBlocked,
     multiTabBlocked: state.multiTabBlocked,
     wrongScreenBlocked: state.wrongScreenBlocked,
+    cameraBlocked: state.cameraBlocked,
     start,
     stop,
     setScreenStream,

@@ -69,6 +69,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     multiScreenBlocked,
     multiTabBlocked,
     wrongScreenBlocked,
+    cameraBlocked,
     startProctoring,
     stopProctoring,
     setProctoringScreenStream,
@@ -155,7 +156,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     !hasActiveScreenShare ||
     multiScreenBlocked ||
     multiTabBlocked ||
-    wrongScreenBlocked;
+    wrongScreenBlocked ||
+    cameraBlocked;
 
   const attachScreenEndedHandler = useCallback(
     (screen: MediaStream) => {
@@ -797,6 +799,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
           multiScreenBlocked={multiScreenBlocked}
           multiTabBlocked={multiTabBlocked}
           wrongScreenBlocked={wrongScreenBlocked}
+          cameraBlocked={cameraBlocked}
           onAutoTerminate={() => {
             void finishInterview(true);
           }}

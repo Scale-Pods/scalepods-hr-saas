@@ -125,6 +125,7 @@ export type ProctoringEventType =
   | "multi_screen"
   | "screen_share_stopped"
   | "wrong_screen"
+  | "camera_blocked"
   | "multi_tab"
   | "device_blocked";
 

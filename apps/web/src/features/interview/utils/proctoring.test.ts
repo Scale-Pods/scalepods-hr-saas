@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProctoringOverlay } from "../components/ProctoringOverlay";
 import type { ProctoringEvent } from "../types";
 import { DeepgramSTT } from "./deepgram";
-import { checkDesktopDevice, checkSingleDisplay } from "./environmentCheck";
+import {
+  analyzeFrameBrightness,
+  checkDesktopDevice,
+  checkSingleDisplay,
+  isVideoFrameBlack,
+} from "./environmentCheck";
 import { filterProhibitedDetections } from "./mediapipeObjectDetector";
 import { acquireMediapipeQuietConsole } from "./mediapipeShared";
 import {
@@ -303,6 +308,52 @@ describe("ProctoringOverlay strict enforcement", () => {
 
     expect(onAutoTerminate).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Interview Terminated")).toBeTruthy();
+  });
+
+  it("blocks and auto-terminates after 20s when camera shutter stays closed", async () => {
+    const onAutoTerminate = vi.fn();
+    await act(async () => {
+      render(
+        createElement(ProctoringOverlay, {
+          violations: [],
+          sessionId: "sess-1",
+          isScreenShareActive: true,
+          cameraBlocked: true,
+          onAutoTerminate,
+        }),
+      );
+    });
+
+    expect(screen.getByText("Camera Shutter Closed / Lens Covered")).toBeTruthy();
+    expect(onAutoTerminate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(20000);
+    });
+
+    expect(onAutoTerminate).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Interview Terminated")).toBeTruthy();
+  });
+});
+
+describe("camera shutter / black frame detection", () => {
+  it("flags solid black or near-black buffers and passes normally lit frames", () => {
+    const black = new Uint8ClampedArray(32 * 32 * 4).fill(2);
+    expect(analyzeFrameBrightness(black).isBlack).toBe(true);
+
+    const dimLit = new Uint8ClampedArray(32 * 32 * 4);
+    for (let i = 0; i < dimLit.length; i += 4) {
+      dimLit[i] = 45;
+      dimLit[i + 1] = 42;
+      dimLit[i + 2] = 40;
+      dimLit[i + 3] = 255;
+    }
+    expect(analyzeFrameBrightness(dimLit).isBlack).toBe(false);
+  });
+
+  it("returns null from isVideoFrameBlack when video is not ready", () => {
+    const video = document.createElement("video");
+    expect(isVideoFrameBlack(video)).toBeNull();
   });
 });
 

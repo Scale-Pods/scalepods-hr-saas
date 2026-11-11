@@ -10,6 +10,7 @@ interface ProctoringContextType {
   multiScreenBlocked: boolean;
   multiTabBlocked: boolean;
   wrongScreenBlocked: boolean;
+  cameraBlocked: boolean;
   startProctoring: (sessionId: string, screenStream?: MediaStream | null) => Promise<void>;
   stopProctoring: () => void;
   setProctoringScreenStream: (screenStream: MediaStream | null) => void;
@@ -31,6 +32,7 @@ export function ProctoringProvider({ children }: { children: React.ReactNode }) 
     multiScreenBlocked,
     multiTabBlocked,
     wrongScreenBlocked,
+    cameraBlocked,
     start,
     stop,
     setScreenStream,
@@ -53,6 +55,7 @@ export function ProctoringProvider({ children }: { children: React.ReactNode }) 
       multiScreenBlocked,
       multiTabBlocked,
       wrongScreenBlocked,
+      cameraBlocked,
       startProctoring,
       stopProctoring: stop,
       setProctoringScreenStream: setScreenStream,
@@ -65,6 +68,7 @@ export function ProctoringProvider({ children }: { children: React.ReactNode }) 
       multiScreenBlocked,
       multiTabBlocked,
       wrongScreenBlocked,
+      cameraBlocked,
       startProctoring,
       stop,
       setScreenStream,

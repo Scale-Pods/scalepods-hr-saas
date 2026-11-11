@@ -22,6 +22,7 @@ interface ProctoringOverlayProps {
   multiScreenBlocked?: boolean;
   multiTabBlocked?: boolean;
   wrongScreenBlocked?: boolean;
+  cameraBlocked?: boolean;
   onAutoTerminate?: (reason: string) => void;
 }
 
@@ -35,6 +36,8 @@ const INTENTIONAL_VIOLATION_TYPES = new Set<string>([
   "multi_screen",
   "screen_share_stopped",
   "wrong_screen",
+  "camera_blocked",
+  "face_absent",
   "multi_tab",
   "face_multiple",
 ]);
@@ -51,6 +54,7 @@ export function ProctoringOverlay({
   multiScreenBlocked = false,
   multiTabBlocked = false,
   wrongScreenBlocked = false,
+  cameraBlocked = false,
   onAutoTerminate,
 }: ProctoringOverlayProps) {
   const [showWarning, setShowWarning] = useState(false);
@@ -119,10 +123,16 @@ export function ProctoringOverlay({
   }, [isDisabled]);
 
   const fullscreenGateActive = isFullscreenSupported() && !isFullscreen;
-  const needsScreenRestore = !isScreenShareActive || (wrongScreenBlocked && !fullscreenGateActive);
+  const activeRestoreGate: "camera" | "screen_disconnected" | "wrong_screen" | null = cameraBlocked
+    ? "camera"
+    : !isScreenShareActive
+      ? "screen_disconnected"
+      : wrongScreenBlocked && !fullscreenGateActive
+        ? "wrong_screen"
+        : null;
 
   useEffect(() => {
-    if (isDisabled || multiTabBlocked || multiScreenBlocked || !needsScreenRestore) {
+    if (isDisabled || multiTabBlocked || multiScreenBlocked || !activeRestoreGate) {
       setScreenShareCountdown(SCREEN_SHARE_RESTORE_SECONDS);
       return;
     }
@@ -132,11 +142,13 @@ export function ProctoringOverlay({
       setScreenShareCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
-          terminateSession(
-            wrongScreenBlocked
-              ? "Interview terminated because the shared screen did not match the interview window within 20 seconds."
-              : "Interview terminated because entire screen sharing was not restored within 20 seconds.",
-          );
+          const reason =
+            activeRestoreGate === "camera"
+              ? "Interview terminated because your camera stayed covered or shutter stayed closed for 20 seconds."
+              : activeRestoreGate === "wrong_screen"
+                ? "Interview terminated because the shared screen did not match the interview window within 20 seconds."
+                : "Interview terminated because entire screen sharing was not restored within 20 seconds.";
+          terminateSession(reason);
           return 0;
         }
         return prev - 1;
@@ -144,14 +156,7 @@ export function ProctoringOverlay({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [
-    needsScreenRestore,
-    wrongScreenBlocked,
-    multiTabBlocked,
-    multiScreenBlocked,
-    isDisabled,
-    terminateSession,
-  ]);
+  }, [activeRestoreGate, multiTabBlocked, multiScreenBlocked, isDisabled, terminateSession]);
 
   useEffect(() => {
     const last = violations[violations.length - 1];
@@ -242,6 +247,10 @@ export function ProctoringOverlay({
         message =
           "Shared screen does not match the interview window. Share the screen displaying this interview.";
         break;
+      case "camera_blocked":
+        message =
+          "Camera shutter is closed or lens is covered. Uncover your camera immediately to continue.";
+        break;
       case "multi_tab":
         message = "Multiple interview tabs detected. Close extra tabs immediately.";
         break;
@@ -323,7 +332,11 @@ export function ProctoringOverlay({
   const BannerIcon = banner.Icon;
 
   const showFullscreenGate =
-    !multiTabBlocked && !multiScreenBlocked && isScreenShareActive && fullscreenGateActive;
+    !multiTabBlocked &&
+    !multiScreenBlocked &&
+    !cameraBlocked &&
+    isScreenShareActive &&
+    fullscreenGateActive;
   const beaconPattern = getBeaconPattern(beaconState.step);
 
   return (
@@ -394,8 +407,8 @@ export function ProctoringOverlay({
         </div>
       )}
 
-      {/* Screen Share Restoration / Wrong Screen Gate */}
-      {!multiTabBlocked && !multiScreenBlocked && needsScreenRestore && (
+      {/* Camera Blocked / Screen Share Restoration / Wrong Screen Gate */}
+      {!multiTabBlocked && !multiScreenBlocked && activeRestoreGate && (
         <div
           role="dialog"
           aria-modal="true"
@@ -417,12 +430,18 @@ export function ProctoringOverlay({
               <AlertCircle size={28} />
             </div>
             <h3 id="screen-share-required-title" className="text-lg font-bold text-white mb-2">
-              {!isScreenShareActive ? "Entire Screen Share Disconnected" : "Wrong Screen Shared"}
+              {activeRestoreGate === "camera"
+                ? "Camera Shutter Closed / Lens Covered"
+                : activeRestoreGate === "screen_disconnected"
+                  ? "Entire Screen Share Disconnected"
+                  : "Wrong Screen Shared"}
             </h3>
             <p className="text-sm mb-4 leading-relaxed" style={{ color: "var(--label-secondary)" }}>
-              {!isScreenShareActive
-                ? "Entire screen sharing is mandatory throughout the interview. Re-share your entire screen before the countdown expires or the interview will automatically terminate."
-                : "Your shared screen is not displaying the active interview window. Return to the interview screen or re-share the monitor displaying this interview before the countdown expires."}
+              {activeRestoreGate === "camera"
+                ? "Your webcam feed is solid black. Open your camera shutter or uncover your lens before the countdown expires or the interview will automatically terminate."
+                : activeRestoreGate === "screen_disconnected"
+                  ? "Entire screen sharing is mandatory throughout the interview. Re-share your entire screen before the countdown expires or the interview will automatically terminate."
+                  : "Your shared screen is not displaying the active interview window. Return to the interview screen or re-share the monitor displaying this interview before the countdown expires."}
             </p>
             <div
               className="text-2xl font-mono font-bold mb-5"
@@ -430,20 +449,22 @@ export function ProctoringOverlay({
             >
               {screenShareCountdown}s
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                onRequestScreenShare?.();
-              }}
-              className="w-full py-3.5 px-5 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 transition hover:brightness-110 active:scale-[0.98]"
-              style={{
-                background: "#ff453a",
-                boxShadow: "0 4px 20px -2px rgba(255, 69, 58, 0.5)",
-              }}
-            >
-              <Monitor size={16} />
-              <span>Re-share Entire Screen</span>
-            </button>
+            {activeRestoreGate !== "camera" && (
+              <button
+                type="button"
+                onClick={() => {
+                  onRequestScreenShare?.();
+                }}
+                className="w-full py-3.5 px-5 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 transition hover:brightness-110 active:scale-[0.98]"
+                style={{
+                  background: "#ff453a",
+                  boxShadow: "0 4px 20px -2px rgba(255, 69, 58, 0.5)",
+                }}
+              >
+                <Monitor size={16} />
+                <span>Re-share Entire Screen</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -566,7 +587,10 @@ export function ProctoringOverlay({
         )}
 
         {violations.some(
-          (v) => v.event_type.startsWith("face") || v.event_type === "prohibited_object",
+          (v) =>
+            v.event_type.startsWith("face") ||
+            v.event_type === "prohibited_object" ||
+            v.event_type === "camera_blocked",
         ) && (
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center shadow-sm"
