@@ -118,7 +118,8 @@ export function ProctoringOverlay({
     return () => clearInterval(interval);
   }, [isDisabled]);
 
-  const needsScreenRestore = !isScreenShareActive || wrongScreenBlocked;
+  const fullscreenGateActive = isFullscreenSupported() && !isFullscreen;
+  const needsScreenRestore = !isScreenShareActive || (wrongScreenBlocked && !fullscreenGateActive);
 
   useEffect(() => {
     if (isDisabled || multiTabBlocked || multiScreenBlocked || !needsScreenRestore) {
@@ -322,11 +323,7 @@ export function ProctoringOverlay({
   const BannerIcon = banner.Icon;
 
   const showFullscreenGate =
-    !multiTabBlocked &&
-    !multiScreenBlocked &&
-    !needsScreenRestore &&
-    isFullscreenSupported() &&
-    !isFullscreen;
+    !multiTabBlocked && !multiScreenBlocked && isScreenShareActive && fullscreenGateActive;
   const beaconPattern = getBeaconPattern(beaconState.step);
 
   return (

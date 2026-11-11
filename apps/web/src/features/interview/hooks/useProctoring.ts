@@ -328,8 +328,14 @@ export function useProctoring(sessionId: string) {
     screenCheckIntervalRef.current = setInterval(() => {
       if (isStoppingRef.current) return;
       if (Date.now() - screenCheckStartedAtRef.current < 2500) return;
-      if (document.visibilityState !== "visible") return;
-      if (isFullscreenSupported() && !getFullscreenElement()) return;
+      if (
+        document.visibilityState !== "visible" ||
+        !document.hasFocus() ||
+        (isFullscreenSupported() && !getFullscreenElement())
+      ) {
+        wrongScreenStrikesRef.current = 0;
+        return;
+      }
 
       const screenVid = screenVideoRef.current;
       const screenCanvas = screenCanvasRef.current;
@@ -360,7 +366,7 @@ export function useProctoring(sessionId: string) {
       }
 
       wrongScreenStrikesRef.current += 1;
-      if (wrongScreenStrikesRef.current >= 2) {
+      if (wrongScreenStrikesRef.current >= 3) {
         setState((prev) =>
           prev.wrongScreenBlocked ? prev : { ...prev, wrongScreenBlocked: true },
         );

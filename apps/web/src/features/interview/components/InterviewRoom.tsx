@@ -187,6 +187,10 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       setHasActiveScreenShare(true);
       attachScreenEndedHandler(screen);
       setProctoringScreenStream(screen);
+      const enteredFullscreen = await enterFullscreen();
+      if (enteredFullscreen || !isFullscreenSupported()) {
+        setIsFullscreenReady(true);
+      }
       if (avStream) {
         setMediaStreams(avStream, audioStream ?? null, screen);
       }
@@ -314,8 +318,16 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     [completeInterview, session?.status, stopProctoring, cancel],
   );
 
+  const completedSpeechTurnKeyRef = useRef<string | null>(null);
+  const currentTurnSpeechKey = currentTurn
+    ? `${currentQuestionId || ""}::${currentTurn.turn_type}::${(currentTurn.interviewer_text || "").trim()}::${(currentTurn.question_text || "").trim()}`
+    : null;
+
   const onSpeakCompleteRef = useRef<() => void>(undefined);
   onSpeakCompleteRef.current = () => {
+    if (currentTurnSpeechKey) {
+      completedSpeechTurnKeyRef.current = currentTurnSpeechKey;
+    }
     isAiSpeakingRef.current = false;
     setIsAiSpeaking(false);
     setCurrentlySpeakingText("");
@@ -332,6 +344,9 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
   };
 
   const handleSkipSpeaking = useCallback(() => {
+    if (currentTurnSpeechKey) {
+      completedSpeechTurnKeyRef.current = currentTurnSpeechKey;
+    }
     cancel();
     isAiSpeakingRef.current = false;
     setIsAiSpeaking(false);
@@ -344,7 +359,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     if (currentTurn?.turn_type === "closing" && !completionStartedRef.current) {
       finishInterview(false);
     }
-  }, [cancel, currentTurn?.turn_type, finishInterview]);
+  }, [cancel, currentTurn?.turn_type, currentTurnSpeechKey, finishInterview]);
 
   useEffect(() => {
     if (isProctoringPaused) {
@@ -361,6 +376,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       currentTurn &&
       avStream &&
       !isProctoringPaused &&
+      completedSpeechTurnKeyRef.current !== currentTurnSpeechKey &&
       !completionStartedRef.current &&
       !endEarlyRef.current &&
       session?.status !== "completed" &&
@@ -411,7 +427,16 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       if (closingFallbackTimer) clearTimeout(closingFallbackTimer);
       cancel();
     };
-  }, [currentTurn, avStream, isProctoringPaused, cancel, finishInterview, speak, session?.status]);
+  }, [
+    currentTurn,
+    avStream,
+    isProctoringPaused,
+    currentTurnSpeechKey,
+    cancel,
+    finishInterview,
+    speak,
+    session?.status,
+  ]);
 
   useEffect(() => {
     if (!currentTurn || !avStream) return;

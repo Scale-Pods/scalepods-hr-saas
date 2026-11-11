@@ -88,6 +88,9 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
   const [avStream, setAvStream] = useState<MediaStream | null>(null);
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const avStreamRef = useRef<MediaStream | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
 
   const recorder = useMediaRecorder();
   const recorderStopRef = useRef(recorder.stop);
@@ -112,6 +115,24 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
   const setMediaStreams = useCallback(
     (av: MediaStream | null, audio: MediaStream | null, screen: MediaStream | null) => {
+      if (avStreamRef.current && avStreamRef.current !== av) {
+        avStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
+      }
+      if (audioStreamRef.current && audioStreamRef.current !== audio) {
+        audioStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
+      }
+      if (screenStreamRef.current && screenStreamRef.current !== screen) {
+        screenStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
+      }
+      avStreamRef.current = av;
+      audioStreamRef.current = audio;
+      screenStreamRef.current = screen;
       setAvStream(av);
       setAudioStream(audio);
       setScreenStream(screen);
@@ -743,17 +764,13 @@ export function InterviewProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     return () => {
-      avStream?.getTracks().forEach((track) => {
-        track.stop();
-      });
-      audioStream?.getTracks().forEach((track) => {
-        track.stop();
-      });
-      screenStream?.getTracks().forEach((track) => {
-        track.stop();
-      });
+      for (const stream of [avStreamRef.current, audioStreamRef.current, screenStreamRef.current]) {
+        stream?.getTracks().forEach((track) => {
+          track.stop();
+        });
+      }
     };
-  }, [avStream, audioStream, screenStream]);
+  }, []);
 
   return (
     <InterviewContext.Provider
