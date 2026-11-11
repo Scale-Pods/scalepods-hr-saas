@@ -558,6 +558,7 @@ export function AnswerRecorder({
 
       // Try setting up Web Audio analyser for waveform
       try {
+        clearAudioActivityMonitor();
         const AudioCtxClass =
           typeof window !== "undefined"
             ? window.AudioContext ||
@@ -580,7 +581,6 @@ export function AnswerRecorder({
           let ambientNoiseFloor = 0;
           let calibrationTicks = 0;
           let speechStreak = 0;
-          clearAudioActivityMonitor();
 
           setTimeout(() => {
             if (gen !== generationRef.current || !isRecordingRef.current) return;
