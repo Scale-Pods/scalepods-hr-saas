@@ -1,5 +1,5 @@
 import type React from "react";
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { useProctoring } from "../hooks/useProctoring";
 import type { ProctoringEvent, ProctoringEventType, ProctoringSeverity } from "../types";
 
@@ -24,38 +24,55 @@ const ProctoringContext = createContext<ProctoringContextType | null>(null);
 
 export function ProctoringProvider({ children }: { children: React.ReactNode }) {
   const [sessionId, setSessionId] = useState<string>("");
-  const localProctoring = useProctoring(sessionId);
+  const {
+    violations,
+    isSecure,
+    recentEvent,
+    multiScreenBlocked,
+    multiTabBlocked,
+    wrongScreenBlocked,
+    start,
+    stop,
+    setScreenStream,
+    emitEvent,
+  } = useProctoring(sessionId);
 
   const startProctoring = useCallback(
     async (sid: string, screenStream?: MediaStream | null) => {
       setSessionId(sid);
-      await localProctoring.start(sid, screenStream);
+      await start(sid, screenStream);
     },
-    [localProctoring],
+    [start],
   );
 
-  const stopProctoring = useCallback(() => {
-    localProctoring.stop();
-  }, [localProctoring]);
-
-  return (
-    <ProctoringContext.Provider
-      value={{
-        violations: localProctoring.violations,
-        isSecure: localProctoring.isSecure,
-        recentEvent: localProctoring.recentEvent,
-        multiScreenBlocked: localProctoring.multiScreenBlocked,
-        multiTabBlocked: localProctoring.multiTabBlocked,
-        wrongScreenBlocked: localProctoring.wrongScreenBlocked,
-        startProctoring,
-        stopProctoring,
-        setProctoringScreenStream: localProctoring.setScreenStream,
-        emitEvent: localProctoring.emitEvent,
-      }}
-    >
-      {children}
-    </ProctoringContext.Provider>
+  const value = useMemo<ProctoringContextType>(
+    () => ({
+      violations,
+      isSecure,
+      recentEvent,
+      multiScreenBlocked,
+      multiTabBlocked,
+      wrongScreenBlocked,
+      startProctoring,
+      stopProctoring: stop,
+      setProctoringScreenStream: setScreenStream,
+      emitEvent,
+    }),
+    [
+      violations,
+      isSecure,
+      recentEvent,
+      multiScreenBlocked,
+      multiTabBlocked,
+      wrongScreenBlocked,
+      startProctoring,
+      stop,
+      setScreenStream,
+      emitEvent,
+    ],
   );
+
+  return <ProctoringContext.Provider value={value}>{children}</ProctoringContext.Provider>;
 }
 
 export function useProctoringContext() {

@@ -318,6 +318,9 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     [completeInterview, session?.status, stopProctoring, cancel],
   );
 
+  const finishInterviewRef = useRef(finishInterview);
+  finishInterviewRef.current = finishInterview;
+
   const completedSpeechTurnKeyRef = useRef<string | null>(null);
   const currentTurnSpeechKey = currentTurn
     ? `${currentQuestionId || ""}::${currentTurn.turn_type}::${(currentTurn.interviewer_text || "").trim()}::${(currentTurn.question_text || "").trim()}`
@@ -370,6 +373,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     }
   }, [isProctoringPaused, cancel]);
 
+  const isSessionEnded = session?.status === "completed" || session?.status === "incomplete";
+
   useEffect(() => {
     let closingFallbackTimer: ReturnType<typeof setTimeout> | null = null;
     if (
@@ -379,8 +384,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
       completedSpeechTurnKeyRef.current !== currentTurnSpeechKey &&
       !completionStartedRef.current &&
       !endEarlyRef.current &&
-      session?.status !== "completed" &&
-      session?.status !== "incomplete"
+      !isSessionEnded
     ) {
       const acknowledgment = (currentTurn.interviewer_text || "").trim();
       const questionText = currentTurn.question_text?.trim() || "";
@@ -390,7 +394,7 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
         // Hard safety net so closing always auto-submits even if TTS hangs or is blocked
         closingFallbackTimer = setTimeout(() => {
           if (!completionStartedRef.current) {
-            finishInterview(false);
+            finishInterviewRef.current(false);
           }
         }, 18000);
       }
@@ -433,9 +437,8 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
     isProctoringPaused,
     currentTurnSpeechKey,
     cancel,
-    finishInterview,
     speak,
-    session?.status,
+    isSessionEnded,
   ]);
 
   useEffect(() => {
