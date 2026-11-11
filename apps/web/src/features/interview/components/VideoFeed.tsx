@@ -7,6 +7,7 @@ interface VideoFeedProps {
   mirrored?: boolean;
   className?: string;
   label?: string;
+  videoId?: string;
 }
 
 export function VideoFeed({
@@ -15,6 +16,7 @@ export function VideoFeed({
   mirrored = true,
   className = "",
   label,
+  videoId = "camera-feed",
 }: VideoFeedProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -30,7 +32,7 @@ export function VideoFeed({
         <>
           <video
             ref={videoRef}
-            id="camera-feed"
+            id={videoId}
             autoPlay
             playsInline
             muted={muted}

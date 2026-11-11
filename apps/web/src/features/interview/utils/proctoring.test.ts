@@ -162,19 +162,27 @@ describe("checkSingleDisplay", () => {
 });
 
 describe("filterProhibitedDetections", () => {
-  it("extracts prohibited items above thresholds and normalizes remotes to cell phone", () => {
+  it("extracts prohibited items above thresholds, inspects secondary categories, and deduplicates", () => {
     const detections = [
-      { categories: [{ categoryName: "cell phone", score: 0.48 }] },
+      { categories: [{ categoryName: "cell phone", score: 0.34 }] },
       { categories: [{ categoryName: "remote", score: 0.62 }] },
       { categories: [{ categoryName: "book", score: 0.56 }] },
       { categories: [{ categoryName: "laptop", score: 0.55 }] },
-      { categories: [{ categoryName: "cup", score: 0.95 }] },
+      {
+        categories: [
+          { categoryName: "cup", score: 0.95 },
+          { categoryName: "cell phone", score: 0.41 },
+        ],
+      },
     ];
     expect(filterProhibitedDetections(detections)).toEqual([
-      { label: "cell phone", score: 0.48 },
       { label: "cell phone", score: 0.62 },
       { label: "book", score: 0.56 },
     ]);
+
+    expect(
+      filterProhibitedDetections([{ categories: [{ categoryName: "cell phone", score: 0.32 }] }]),
+    ).toEqual([{ label: "cell phone", score: 0.32 }]);
   });
 });
 

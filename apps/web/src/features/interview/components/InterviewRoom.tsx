@@ -1112,18 +1112,23 @@ export function InterviewRoom({ sessionId: propSessionId }: InterviewRoomProps) 
               )}
             </div>
 
-            {activeVideoTab === "camera" || !screenStream ? (
-              <VideoFeed
-                stream={avStream}
-                muted
-                label="Camera"
-                className="aspect-video rounded-xl overflow-hidden shadow-inner"
-              />
-            ) : (
+            <VideoFeed
+              stream={avStream}
+              muted
+              videoId="camera-feed"
+              label="Camera"
+              className={
+                activeVideoTab === "camera" || !screenStream
+                  ? "aspect-video rounded-xl overflow-hidden shadow-inner"
+                  : "w-0 h-0 opacity-0 pointer-events-none absolute overflow-hidden"
+              }
+            />
+            {activeVideoTab === "screen" && screenStream && (
               <VideoFeed
                 stream={screenStream}
                 muted
                 mirrored={false}
+                videoId="screen-feed"
                 label="Screen"
                 className="aspect-video rounded-xl overflow-hidden shadow-inner"
               />

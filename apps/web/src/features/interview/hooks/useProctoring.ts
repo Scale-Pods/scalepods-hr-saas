@@ -431,10 +431,14 @@ export function useProctoring(sessionId: string) {
       const detected = await detectProhibitedObjects(video);
       const seenLabels = new Set(detected.map((d) => d.label));
 
-      // Decay strikes for labels not seen in current frame
-      for (const label of Array.from(objectStrikesRef.current.keys())) {
+      // Gradually decay strikes for labels not seen in current frame instead of hard reset
+      for (const [label, strikes] of Array.from(objectStrikesRef.current.entries())) {
         if (!seenLabels.has(label)) {
-          objectStrikesRef.current.delete(label);
+          if (strikes <= 1) {
+            objectStrikesRef.current.delete(label);
+          } else {
+            objectStrikesRef.current.set(label, strikes - 1);
+          }
         }
       }
 
@@ -443,7 +447,7 @@ export function useProctoring(sessionId: string) {
         objectStrikesRef.current.set(obj.label, nextStrike);
 
         const isPhone = obj.label === "cell phone";
-        const triggerNow = (isPhone && obj.score >= 0.55) || nextStrike >= 2;
+        const triggerNow = (isPhone && obj.score >= 0.34) || nextStrike >= 2;
         if (triggerNow && canEmit("prohibited_object", 5000)) {
           void emitEvent("prohibited_object", isPhone ? "critical" : "warning", {
             label: obj.label,
@@ -451,7 +455,7 @@ export function useProctoring(sessionId: string) {
           });
         }
       }
-    }, 2000);
+    }, 1500);
 
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("blur", handleBlur);
