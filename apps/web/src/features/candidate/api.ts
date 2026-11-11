@@ -348,20 +348,17 @@ export async function scoreAssignment(
   submissionId: string,
   token: string,
 ): Promise<void> {
-  const n8n = n8nBase();
-  if (n8n) {
-    void fetch(`${n8n.replace(/\/+$/, "")}/webhook/hiring/assignment-score`, {
+  try {
+    await fetch("/api/assignment/score", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         round_instance_id: roundInstanceId,
         submission_id: submissionId,
         token,
       }),
-    }).catch(() => {});
+    });
+  } catch {
+    // Non-blocking background evaluation trigger
   }
-  const { callEdge } = await import("@/lib/edge");
-  void callEdge("score-assignment", {
-    body: { round_instance_id: roundInstanceId, submission_id: submissionId, token },
-  }).catch(() => {});
 }
