@@ -159,6 +159,7 @@ export async function insertProctoringEvent(
   sessionId: string,
   eventType: string,
   detail: string,
+  severity: "info" | "warning" | "critical" = "warning",
 ): Promise<void> {
   try {
     const res = await fetch("/api/interview/session", {
@@ -168,6 +169,7 @@ export async function insertProctoringEvent(
         action: "proctoring_event",
         sessionId,
         eventType,
+        severity,
         detail,
       }),
     });
@@ -304,7 +306,12 @@ export async function signUploads(
     const res = await fetch("/api/sign-upload", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: token ?? "", kind, resource_id: resourceId, file_names: fileNames }),
+      body: JSON.stringify({
+        token: token ?? "",
+        kind,
+        resource_id: resourceId,
+        file_names: fileNames,
+      }),
     });
     if (res.ok) {
       return await res.json();
@@ -312,9 +319,12 @@ export async function signUploads(
   } catch {}
 
   const { callEdge } = await import("@/lib/edge");
-  return callEdge<{ bucket: string; uploads: { name: string; url: string; path?: string }[] }>("sign-upload", {
-    body: { token: token ?? "", kind, resource_id: resourceId, file_names: fileNames },
-  });
+  return callEdge<{ bucket: string; uploads: { name: string; url: string; path?: string }[] }>(
+    "sign-upload",
+    {
+      body: { token: token ?? "", kind, resource_id: resourceId, file_names: fileNames },
+    },
+  );
 }
 
 export async function insertAssignmentSubmission(
@@ -343,7 +353,11 @@ export async function scoreAssignment(
     void fetch(`${n8n.replace(/\/+$/, "")}/webhook/hiring/assignment-score`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ round_instance_id: roundInstanceId, submission_id: submissionId, token }),
+      body: JSON.stringify({
+        round_instance_id: roundInstanceId,
+        submission_id: submissionId,
+        token,
+      }),
     }).catch(() => {});
   }
   const { callEdge } = await import("@/lib/edge");

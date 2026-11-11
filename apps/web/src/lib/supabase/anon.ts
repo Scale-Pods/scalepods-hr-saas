@@ -16,6 +16,7 @@ export function anonClient(): SupabaseClient<Database> {
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,
+        storageKey: "sb-scalepods-anon-readonly",
         storage: {
           getItem: () => null,
           setItem: () => {},

@@ -10,7 +10,6 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase/client";
 import type { ProctoringEvent, ProctoringSeverity } from "../types";
 import { enterFullscreen, getFullscreenElement, isFullscreenSupported } from "../utils/fullscreen";
 import { BEACON_COLOR_HEX, BEACON_PATTERNS, getBeaconPattern } from "../utils/screenVerification";
@@ -46,7 +45,7 @@ const BEACON_QUADRANT_IDS = ["tl", "tr", "bl", "br"] as const;
 
 export function ProctoringOverlay({
   violations,
-  sessionId,
+  sessionId: _sessionId,
   isScreenShareActive = true,
   onRequestScreenShare,
   multiScreenBlocked = false,
@@ -98,31 +97,6 @@ export function ProctoringOverlay({
       window.removeEventListener("keydown", handleKeyGesture, { capture: true });
     };
   }, [isFullscreen, isDisabled]);
-
-  useEffect(() => {
-    async function loadSummary() {
-      try {
-        const supabase = supabaseBrowser();
-        const { data, error } = await supabase
-          .from("proctoring_events")
-          .select("event_type, severity")
-          .eq("session_id", sessionId);
-        if (!error && data) {
-          setTabSwitchCount(
-            (data as Array<{ event_type: string; severity?: string }>).filter(
-              (e) => e.event_type === "tab_switch" || e.event_type === "window_blur",
-            ).length,
-          );
-          setTotalViolationCount(data.length);
-        }
-      } catch {
-        // Fallback to local state if network fetch fails
-      }
-    }
-    if (sessionId) {
-      loadSummary();
-    }
-  }, [sessionId]);
 
   const terminateSession = useCallback((reason: string) => {
     setIsDisabled(true);
@@ -194,9 +168,10 @@ export function ProctoringOverlay({
       return;
     }
 
-    if (last.event_type === "tab_switch" || last.event_type === "window_blur") {
-      setTabSwitchCount((prev) => prev + 1);
-    }
+    setTabSwitchCount(
+      violations.filter((v) => v.event_type === "tab_switch" || v.event_type === "window_blur")
+        .length,
+    );
 
     let message = "";
     const payload = (last.payload || {}) as Record<string, unknown>;
@@ -333,7 +308,6 @@ export function ProctoringOverlay({
           shadow: "0 8px 32px rgba(255, 159, 10, 0.3)",
           Icon: AlertTriangle,
         };
-      case "info":
       default:
         return {
           bg: "rgba(10, 132, 255, 0.95)",

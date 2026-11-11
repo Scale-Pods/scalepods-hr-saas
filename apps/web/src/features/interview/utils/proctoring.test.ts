@@ -3,24 +3,16 @@ import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProctoringOverlay } from "../components/ProctoringOverlay";
 import type { ProctoringEvent } from "../types";
+import { DeepgramSTT } from "./deepgram";
 import { checkDesktopDevice, checkSingleDisplay } from "./environmentCheck";
 import { filterProhibitedDetections } from "./mediapipeObjectDetector";
+import { acquireMediapipeQuietConsole } from "./mediapipeShared";
 import {
   classifyRgbCell,
   getBeaconPattern,
   verifyBeaconQuadrants,
   verifyScreenShareFrame,
 } from "./screenVerification";
-
-vi.mock("@/lib/supabase/client", () => ({
-  supabaseBrowser: () => ({
-    from: () => ({
-      select: () => ({
-        eq: async () => ({ data: [], error: null }),
-      }),
-    }),
-  }),
-}));
 
 describe("checkDesktopDevice", () => {
   const originalUa = navigator.userAgent;
@@ -405,5 +397,80 @@ describe("screenVerification live beacon", () => {
 
     expect(verifyScreenShareFrame(video, beaconEl, canvas, p0)).toBe(true);
     expect(verifyScreenShareFrame(video, beaconEl, canvas, getBeaconPattern(2))).toBe(false);
+  });
+});
+
+describe("console noise suppression & clean STT teardown", () => {
+  it("suppresses MediaPipe C++/WASM diagnostic messages while passing real app logs", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const release = acquireMediapipeQuietConsole();
+    try {
+      console.warn(
+        "W1111 04:28:35.707000 2213568 face_landmarker_graph.cc:181] Sets FaceBlendshapesGraph acceleration to xnnpack by default.",
+      );
+      console.info("INFO: Created TensorFlow Lite XNNPACK delegate for CPU.");
+      console.error("Graph successfully started running.");
+      console.error(
+        "W1111 04:28:36.399000 2213568 inference_feedback_manager.cc:121] Feedback manager requires a model",
+      );
+      console.error("Graph finished closing successfully.");
+      console.error(
+        "I1111 04:29:01.116999 2213568 gl_context_webgl.cc:149] Successfully destroyed WebGL context with handle 1",
+      );
+
+      console.error("Real application error");
+    } finally {
+      release();
+    }
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(infoSpy).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith("Real application error");
+
+    infoSpy.mockRestore();
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it("defers WebSocket.close() until handshake opens when stopped while CONNECTING", () => {
+    const closeSpy = vi.fn();
+    const sockets: MockWebSocket[] = [];
+
+    class MockWebSocket {
+      static CONNECTING = 0;
+      static OPEN = 1;
+      readyState = 0;
+      onopen: (() => void) | null = null;
+      onmessage: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      close = closeSpy;
+      constructor() {
+        sockets.push(this);
+      }
+    }
+
+    const originalWs = globalThis.WebSocket;
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket;
+
+    try {
+      const stt = new DeepgramSTT({ apiKey: "test-key" });
+      void stt.start();
+      const sock = sockets[0];
+      expect(sock).toBeDefined();
+
+      stt.stop();
+      expect(closeSpy).not.toHaveBeenCalled();
+
+      sock.readyState = 1;
+      sock.onopen?.();
+      expect(closeSpy).toHaveBeenCalledWith(1000, "stopped");
+    } finally {
+      globalThis.WebSocket = originalWs;
+    }
   });
 });

@@ -272,13 +272,23 @@ export class DeepgramSTT {
     if (this.socket) {
       const sock = this.socket;
       this.socket = null;
-      sock.onopen = null;
       sock.onmessage = null;
       sock.onerror = null;
       sock.onclose = null;
       try {
-        if (sock.readyState === WebSocket.OPEN || sock.readyState === WebSocket.CONNECTING) {
+        if (sock.readyState === WebSocket.OPEN) {
+          sock.onopen = null;
           sock.close(1000, "stopped");
+        } else if (sock.readyState === WebSocket.CONNECTING) {
+          // Wait for handshake completion before closing so Chrome doesn't log
+          // "WebSocket is closed before the connection is established."
+          sock.onopen = () => {
+            try {
+              sock.close(1000, "stopped");
+            } catch {}
+          };
+        } else {
+          sock.onopen = null;
         }
       } catch {}
     }

@@ -5,6 +5,7 @@ import { checkSingleDisplay } from "../utils/environmentCheck";
 import { exitFullscreen, getFullscreenElement, isFullscreenSupported } from "../utils/fullscreen";
 import { detectBehavior, disposeLandmarker } from "../utils/mediapipeLandmarker";
 import { detectProhibitedObjects, disposeObjectDetector } from "../utils/mediapipeObjectDetector";
+import { acquireMediapipeQuietConsole } from "../utils/mediapipeShared";
 import { getBeaconPattern, verifyScreenShareFrame } from "../utils/screenVerification";
 
 interface ProctoringState {
@@ -38,6 +39,7 @@ export function useProctoring(sessionId: string) {
   const screenVideoRef = useRef<HTMLVideoElement | null>(null);
   const screenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const screenCheckStartedAtRef = useRef(0);
+  const quietConsoleReleaseRef = useRef<(() => void) | null>(null);
 
   const faceAbsentStrikesRef = useRef(0);
   const faceMultipleStrikesRef = useRef(0);
@@ -95,7 +97,7 @@ export function useProctoring(sessionId: string) {
 
       try {
         const detailStr = payload ? JSON.stringify(payload) : `${eventType} detected`;
-        await insertProctoringEvent(sid, eventType, detailStr);
+        await insertProctoringEvent(sid, eventType, detailStr, effectiveSeverity);
       } catch {
         // Ignore non-fatal logging errors
       }
@@ -176,12 +178,17 @@ export function useProctoring(sessionId: string) {
     }
     disposeLandmarker();
     disposeObjectDetector();
+    quietConsoleReleaseRef.current?.();
+    quietConsoleReleaseRef.current = null;
 
     void exitFullscreen();
   }, []);
 
   useEffect(() => {
     if (!isActive) return;
+    if (!quietConsoleReleaseRef.current) {
+      quietConsoleReleaseRef.current = acquireMediapipeQuietConsole();
+    }
     const sid = activeSessionIdRef.current || sessionId;
 
     // 1. Multi-tab duplicate lock via BroadcastChannel
@@ -475,6 +482,8 @@ export function useProctoring(sessionId: string) {
         } catch {}
         channelRef.current = null;
       }
+      quietConsoleReleaseRef.current?.();
+      quietConsoleReleaseRef.current = null;
     };
   }, [isActive, sessionId, canEmit, emitEvent]);
 

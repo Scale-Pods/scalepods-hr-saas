@@ -760,8 +760,8 @@ export async function POST(request: NextRequest) {
           const [{ data: proctoringEvents }, { jdText, resumeText }] = await Promise.all([
             supabase
               .from("proctoring_events")
-              .select("event_type, severity, details, timestamp")
-              .eq("round_instance_id", sessionRow.round_instance_id),
+              .select("event_type, severity, detail, timestamp")
+              .eq("session_id", sessionId),
             resolveSessionJdAndResume(supabase, sessionRow),
           ]);
 
@@ -801,8 +801,8 @@ export async function POST(request: NextRequest) {
           const [{ data: procEvts }, { jdText, resumeText }] = await Promise.all([
             supabase
               .from("proctoring_events")
-              .select("event_type, severity, details, timestamp")
-              .eq("round_instance_id", sessionRow.round_instance_id),
+              .select("event_type, severity, detail, timestamp")
+              .eq("session_id", sessionId),
             resolveSessionJdAndResume(supabase, sessionRow),
           ]);
 
@@ -846,12 +846,16 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "eventType is required" }, { status: 400 });
         }
 
+        const normalizedSeverity =
+          severity === "info" || severity === "warning" || severity === "critical"
+            ? severity
+            : "warning";
+
         const { error } = await supabase.from("proctoring_events").insert({
-          account_id: sessionRow.account_id,
-          round_instance_id: sessionRow.round_instance_id,
+          session_id: sessionId,
           event_type: eventType,
-          severity: severity || "warning",
-          details: { detail: detail || `${eventType} detected` },
+          severity: normalizedSeverity,
+          detail: detail || `${eventType} detected`,
           timestamp: new Date().toISOString(),
         });
 
