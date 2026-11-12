@@ -81,17 +81,63 @@ export async function POST(req: NextRequest) {
       try {
         const { data: appRow } = await adminSupabase
           .from("applications")
-          .select("id, current_stage, current_round_number")
+          .select("id, campaign_id, current_stage, current_round_number")
           .eq("id", payload.application_id)
           .maybeSingle();
 
+        // 1. If currently in document verification stage, advance directly to offer stage
+        if (appRow && appRow.current_stage === "document_verification") {
+          await adminSupabase
+            .from("applications")
+            .update({
+              current_stage: "offer",
+              current_round_number: null,
+              status: "offer_ready",
+            })
+            .eq("id", appRow.id);
+
+          return NextResponse.json({
+            success: true,
+            application_id: appRow.id,
+            status: "offer_ready",
+            stage: "offer",
+          });
+        }
+
+        // 2. If in round stage, normalize completed round and check if it's the final round
         if (appRow && appRow.current_stage === "round" && appRow.current_round_number != null) {
           await adminSupabase
             .from("round_instances")
             .update({ status: "completed" })
             .eq("application_id", appRow.id)
             .eq("round_number", appRow.current_round_number)
-            .in("status", ["passed", "awaiting_review"]);
+            .in("status", ["passed", "awaiting_review", "in_progress"]);
+
+          const { data: campaignRow } = await adminSupabase
+            .from("campaigns")
+            .select("number_of_rounds")
+            .eq("id", appRow.campaign_id)
+            .maybeSingle();
+
+          const totalRounds = campaignRow?.number_of_rounds || 1;
+          if (appRow.current_round_number >= totalRounds) {
+            // Past final interview round: Advance to Document Verification
+            await adminSupabase
+              .from("applications")
+              .update({
+                current_stage: "document_verification",
+                current_round_number: null,
+                status: "active",
+              })
+              .eq("id", appRow.id);
+
+            return NextResponse.json({
+              success: true,
+              application_id: appRow.id,
+              status: "active",
+              stage: "document_verification",
+            });
+          }
         }
       } catch (normErr) {
         console.warn("[api/applications/command] Normalization warning:", normErr);

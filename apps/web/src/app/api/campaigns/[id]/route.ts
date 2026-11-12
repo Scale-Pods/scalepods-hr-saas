@@ -71,8 +71,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const roundInstanceIds = roundInstances.map((r) => r.id);
     const appIds = applicationsList.map((a) => a.id);
 
-    // 2. Fetch Sessions, Answers, Scorecards, Decision Ledger strictly for this campaign
-    const [sessionsRes, answersRes, dlRes] = await Promise.all([
+    // 2. Fetch Sessions, Answers, Scorecards, Decision Ledger, Offers strictly for this campaign
+    const [sessionsRes, answersRes, dlRes, offersRes] = await Promise.all([
       roundInstanceIds.length > 0
         ? admin.from("interview_sessions").select("*").in("round_instance_id", roundInstanceIds)
         : Promise.resolve({ data: [] }),
@@ -97,6 +97,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                 .join(","),
             )
             .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] }),
+      appIds.length > 0
+        ? admin
+            .from("offers")
+            .select(
+              "id, application_id, status, candidate_response_notes, signed_document_url, accepted_at, rejected_at",
+            )
+            .in("application_id", appIds)
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -141,9 +149,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const allAnswers = (answersRes.data ?? []) as AnswerItem[];
     const allScorecards = (scorecardsRes.data ?? []) as ScorecardItem[];
     const dlList = (dlRes.data ?? []) as DecisionLedgerItem[];
+    const allOffers = (offersRes.data ?? []) as Array<{
+      id: string;
+      application_id: string;
+      status?: string;
+      candidate_response_notes?: string;
+      signed_document_url?: string;
+      accepted_at?: string;
+      rejected_at?: string;
+    }>;
 
     // 3. Map candidates
     const candidates = applicationsList.map((app) => {
+      const appOffer = allOffers.find((o) => o.application_id === app.id);
       const appRi = roundInstances.find(
         (r) =>
           r.application_id === app.id ||
@@ -205,10 +223,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
       const isRoundStage = app.current_stage === "round" || Boolean(appRi);
       let stageLabel = "Resume Screening";
-      if (isRoundStage) {
+      if (
+        app.current_stage === "document_verification" ||
+        app.status === "document_verification" ||
+        app.status === "documents_requested" ||
+        app.status === "documents_verified"
+      ) {
+        stageLabel = "Document Verification";
+      } else if (isRoundStage) {
         stageLabel = `Round ${app.current_round_number ?? appRi?.round_number ?? 1}`;
-      } else if (app.current_stage === "offer") {
-        stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
+      } else if (
+        app.current_stage === "offer" ||
+        app.current_stage === "offer_decision" ||
+        app.status === "offer_sent" ||
+        app.status === "offer_accepted" ||
+        app.status === "offer_rejected" ||
+        app.status === "offer_declined"
+      ) {
+        if (app.status === "offer_accepted") {
+          stageLabel = "Offer Accepted";
+        } else if (app.status === "offer_rejected" || app.status === "offer_declined") {
+          stageLabel = "Offer Rejected";
+        } else {
+          stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
+        }
       }
 
       const resumeScore = appResumeScoreRow?.score != null ? Number(appResumeScoreRow.score) : null;
@@ -246,6 +284,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         round_number: isRoundStage ? (app.current_round_number ?? appRi?.round_number ?? 1) : null,
         reviewer_cutoff: appRi?.reviewer_cutoff ?? null,
         created_at: app.created_at,
+        offer_status: appOffer?.status ?? null,
+        signed_document_url: appOffer?.signed_document_url ?? null,
+        candidate_response_notes: appOffer?.candidate_response_notes ?? null,
+        requested_documents: app.requested_documents ?? [],
+        documents_status: app.documents_status ?? "not_requested",
+        documents_requested_at: app.documents_requested_at ?? null,
+        documents_verified_at: app.documents_verified_at ?? null,
       };
     });
 

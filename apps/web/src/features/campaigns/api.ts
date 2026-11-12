@@ -76,6 +76,26 @@ export interface ViewCandidate {
   round_number?: number;
   reviewer_cutoff?: number | null;
   created_at?: string;
+  signed_document_url?: string | null;
+  candidate_response_notes?: string | null;
+  offer_status?: string | null;
+  requested_documents?: Array<{
+    id?: string;
+    name: string;
+    status: "pending" | "verified" | "rejected";
+    notes?: string;
+    requested_at?: string;
+    verified_at?: string;
+  }> | null;
+  documents_status?:
+    | "not_requested"
+    | "requested"
+    | "partially_verified"
+    | "verified"
+    | "rejected"
+    | null;
+  documents_requested_at?: string | null;
+  documents_verified_at?: string | null;
 }
 
 export interface CampaignDetail {
@@ -261,10 +281,30 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
 
       const isRoundStage = app.current_stage === "round" || Boolean(appRi);
       let stageLabel = "Resume Screening";
-      if (isRoundStage) {
+      if (
+        app.current_stage === "document_verification" ||
+        app.status === "document_verification" ||
+        app.status === "documents_requested" ||
+        app.status === "documents_verified"
+      ) {
+        stageLabel = "Document Verification";
+      } else if (isRoundStage) {
         stageLabel = `Round ${app.current_round_number ?? appRi?.round_number ?? 1}`;
-      } else if (app.current_stage === "offer") {
-        stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
+      } else if (
+        app.current_stage === "offer" ||
+        app.current_stage === "offer_decision" ||
+        app.status === "offer_sent" ||
+        app.status === "offer_accepted" ||
+        app.status === "offer_rejected" ||
+        app.status === "offer_declined"
+      ) {
+        if (app.status === "offer_accepted") {
+          stageLabel = "Offer Accepted";
+        } else if (app.status === "offer_rejected" || app.status === "offer_declined") {
+          stageLabel = "Offer Rejected";
+        } else {
+          stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
+        }
       }
 
       const resumeScore = appResumeScoreRow?.score != null ? Number(appResumeScoreRow.score) : null;
@@ -302,6 +342,10 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         round_number: isRoundStage ? (app.current_round_number ?? appRi?.round_number ?? 1) : null,
         reviewer_cutoff: appRi?.reviewer_cutoff ?? null,
         created_at: app.created_at,
+        requested_documents: app.requested_documents ?? [],
+        documents_status: app.documents_status ?? "not_requested",
+        documents_requested_at: app.documents_requested_at ?? null,
+        documents_verified_at: app.documents_verified_at ?? null,
       };
     });
   } else {
@@ -526,4 +570,72 @@ export async function removeCandidateFromCampaign(params: {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || data.message || `Failed to remove candidate (${res.status})`);
   }
+}
+
+export async function requestVerificationDocuments(params: {
+  applicationId: string;
+  campaignId: string;
+  documents: string[];
+  customMessage?: string;
+  accessToken?: string;
+}): Promise<{ success: boolean; requested_documents: unknown[]; documents_status: string }> {
+  const token =
+    params.accessToken ??
+    (supabaseBrowser()
+      ? (await supabaseBrowser().auth.getSession()).data.session?.access_token
+      : undefined);
+
+  const res = await fetch("/api/documents/request", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      application_id: params.applicationId,
+      campaign_id: params.campaignId,
+      documents: params.documents,
+      custom_message: params.customMessage,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Failed to request documents (${res.status})`);
+  }
+  return data;
+}
+
+export async function verifyApplicationDocument(params: {
+  applicationId: string;
+  documentName: string;
+  status: "verified" | "pending" | "rejected";
+  notes?: string;
+  accessToken?: string;
+}): Promise<{ success: boolean; requested_documents: unknown[]; documents_status: string }> {
+  const token =
+    params.accessToken ??
+    (supabaseBrowser()
+      ? (await supabaseBrowser().auth.getSession()).data.session?.access_token
+      : undefined);
+
+  const res = await fetch("/api/documents/verify", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      application_id: params.applicationId,
+      document_name: params.documentName,
+      status: params.status,
+      notes: params.notes,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Failed to verify document (${res.status})`);
+  }
+  return data;
 }
