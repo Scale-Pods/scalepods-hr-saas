@@ -762,7 +762,7 @@ export function PipelineBoard({
                                 On Hold
                               </Badge>
                             )}
-                            {cand.status === "rejected" && !isOfferRejected && (
+                            {cand.status === "rejected" && (
                               <Badge
                                 variant="outline"
                                 className="border-rose-500/40 text-rose-600 bg-rose-500/10 text-[10px] gap-1 px-1.5 py-0"
@@ -781,7 +781,7 @@ export function PipelineBoard({
                                   Incomplete
                                 </Badge>
                               )}
-                            {isOfferSent && !isOfferAccepted && !isOfferRejected && (
+                            {isOfferSent && (
                               <button
                                 type="button"
                                 onClick={(e) => {
