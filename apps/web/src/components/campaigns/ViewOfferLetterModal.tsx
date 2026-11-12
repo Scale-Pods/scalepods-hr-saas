@@ -44,6 +44,8 @@ export interface OfferDetails {
   signatory_title: string;
   special_terms?: string;
   dynamic_variables?: Record<string, string>;
+  rendered_text?: string | null;
+  rendered_html?: string | null;
   status: string;
   sent_at: string;
 }
@@ -237,6 +239,30 @@ export function ViewOfferLetterModal({
           ) : error ? (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-xs text-destructive text-center">
               {error}
+            </div>
+          ) : activeTab === "preview" && (offer?.rendered_html || offer?.rendered_text) ? (
+            <div className="rounded-2xl border border-border/80 bg-card p-6 sm:p-8 shadow-sm">
+              <div className="mb-4 pb-3 border-b border-border/60 flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  <strong className="text-foreground">Recipient:</strong> {candidateName} (
+                  {offer.candidate_email || candidate.email || "Candidate"})
+                </span>
+                <span>
+                  <strong className="text-foreground">Sent:</strong>{" "}
+                  {formatDate(offer.sent_at || new Date().toISOString())}
+                </span>
+              </div>
+              {offer.rendered_html ? (
+                <div
+                  className="text-xs sm:text-sm leading-relaxed text-foreground [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_p]:mb-2.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2.5 [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-border [&_th]:bg-muted/50 [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5"
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: Offer HTML is generated from recruiter's own DOCX/template
+                  dangerouslySetInnerHTML={{ __html: offer.rendered_html }}
+                />
+              ) : (
+                <pre className="whitespace-pre-wrap font-sans text-xs sm:text-sm leading-relaxed text-foreground">
+                  {offer.rendered_text}
+                </pre>
+              )}
             </div>
           ) : activeTab === "preview" ? (
             /* Styled Executive Document */

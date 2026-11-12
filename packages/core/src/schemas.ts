@@ -500,6 +500,9 @@ export const offerRequestSchema = z.object({
   application_id: z.string().uuid(),
   // Omitted selects the workspace's first active company SignWell template.
   template_id: z.string().uuid().optional(),
+  offer_template_id: z.string().uuid().optional(),
+  rendered_text: z.string().optional(),
+  rendered_html: z.string().optional(),
   candidate_email: z.string().email().optional(),
   company_signer_email: z.string().email().optional(),
   field_values: z.record(z.unknown()).default({}),

@@ -50,6 +50,8 @@ export async function GET(req: NextRequest) {
       status?: string;
       signwell_document_id?: string;
       signwell_signing_url?: string;
+      rendered_text?: string | null;
+      rendered_html?: string | null;
       [key: string]: unknown;
     }
     interface CampaignOfferViewLookup {
@@ -256,6 +258,8 @@ export async function GET(req: NextRequest) {
         signatory_title: signatoryTitle,
         special_terms: specialTerms,
         dynamic_variables: dynamicVars,
+        rendered_text: offerRow?.rendered_text || null,
+        rendered_html: offerRow?.rendered_html || null,
         status: offerRow?.status || appRow?.status || "offer_sent",
         sent_at: sentAt,
       },

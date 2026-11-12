@@ -5,6 +5,7 @@ import { ArrowLeft, Check, Link2, Loader2, Mail, MessageSquare, Phone, Trash2 } 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { OfferTemplateManager } from "@/components/offers/OfferTemplateManager";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -682,6 +683,15 @@ function SettingsPageInner() {
             </Button>
           </Link>
         </div>
+      )}
+
+      {account?.id && (!session?.user?.id || session.user.id === account.id) && (
+        <SectionCard
+          title="Offer Letter Templates"
+          subtitle="Manage company-wide offer letter templates used after candidate document verification."
+        >
+          <OfferTemplateManager />
+        </SectionCard>
       )}
 
       <SectionCard

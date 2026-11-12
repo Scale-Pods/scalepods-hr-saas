@@ -17,9 +17,6 @@ export interface StoredCampaignDraft {
   numberOfRounds?: number;
   startDate?: string;
   endDate?: string;
-  offerTemplateText?: string;
-  offerTemplateFileName?: string;
-  offerTemplateVariables?: string[];
   rounds?: unknown[];
   whatsappOn?: boolean;
   dialnexaConfig?: unknown;

@@ -24,12 +24,9 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  FileSignature,
-  FileText,
   Info,
   Layers,
   Loader2,
-  Plus,
   Sparkles,
   Upload,
   X,
@@ -166,15 +163,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     d.setDate(d.getDate() + 30);
     return d.toISOString().split("T")[0];
   });
-  const [offerTemplateText, setOfferTemplateText] = useState("");
-  const [offerTemplateFileName, setOfferTemplateFileName] = useState("");
-  const [offerTemplateVariables, setOfferTemplateVariables] = useState<string[]>([
-    "DEPARTMENT",
-    "LOCATION",
-    "DURATION",
-    "PROBATION_PERIOD",
-  ]);
-  const [newVariableInput, setNewVariableInput] = useState("");
   const [rounds, setRounds] = useState<RoundDraft[]>(DEFAULT_ROUNDS);
   const [whatsappOn, setWhatsappOn] = useState(tierConfig.whatsapp);
   const hasVoiceRound = rounds
@@ -231,11 +219,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
         if (parsed.numberOfRounds) setNumberOfRounds(parsed.numberOfRounds);
         if (parsed.startDate) setStartDate(parsed.startDate);
         if (parsed.endDate) setEndDate(parsed.endDate);
-        if (parsed.offerTemplateText) setOfferTemplateText(parsed.offerTemplateText);
-        if (parsed.offerTemplateFileName) setOfferTemplateFileName(parsed.offerTemplateFileName);
-        if (Array.isArray(parsed.offerTemplateVariables)) {
-          setOfferTemplateVariables(parsed.offerTemplateVariables);
-        }
         if (Array.isArray(parsed.rounds) && parsed.rounds.length > 0) {
           setRounds(parsed.rounds as RoundDraft[]);
         }
@@ -270,7 +253,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           (numberOfOpenings && numberOfOpenings !== "0" && numberOfOpenings !== 0) ||
           salaryMin ||
           salaryMax ||
-          offerTemplateText ||
           rounds.length > 1,
       );
       if (hasContent) {
@@ -290,9 +272,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           numberOfRounds,
           startDate,
           endDate,
-          offerTemplateText,
-          offerTemplateFileName,
-          offerTemplateVariables,
           rounds,
           whatsappOn,
           dialnexaConfig,
@@ -318,9 +297,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     numberOfRounds,
     startDate,
     endDate,
-    offerTemplateText,
-    offerTemplateFileName,
-    offerTemplateVariables,
     rounds,
     whatsappOn,
     dialnexaConfig,
@@ -341,8 +317,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
     setNumberOfRounds(2);
     setRounds(DEFAULT_ROUNDS);
     setCustomCadence({});
-    setOfferTemplateText("");
-    setOfferTemplateFileName("");
     setLastSaved(null);
     goToStep(0, false);
     toast.success("Draft cleared.");
@@ -380,7 +354,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
   });
 
   const [uploadingDoc, setUploadingDoc] = useState(false);
-  const [uploadingOfferDoc, setUploadingOfferDoc] = useState(false);
 
   const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -403,71 +376,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
       });
     } finally {
       setUploadingDoc(false);
-      e.target.value = "";
-    }
-  };
-
-  const handleOfferDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingOfferDoc(true);
-    toast.loading(`Extracting template text from ${file.name}...`, { id: "offer-doc-upload" });
-    try {
-      const res = await extractTextFromFile(file);
-      if ("error" in res) {
-        toast.error(res.error, { id: "offer-doc-upload" });
-      } else if (res.text?.trim()) {
-        const text = res.text.trim();
-        setOfferTemplateText(text);
-        setOfferTemplateFileName(file.name);
-
-        // Auto-detect dynamic variables from template text (e.g. {{VARIABLE_NAME}})
-        const matches = text.match(/\{\{([A-Za-z0-9_]+)\}\}/g) || [];
-        const standardToExclude = new Set([
-          "VARIABLE",
-          "COMPANY_LOGO_PATH",
-          "COMPANY_NAME",
-          "COMPANY_WEBSITE",
-          "COMPANY_EMAIL",
-          "REF_NO",
-          "ISSUE_DATE",
-          "CANDIDATE_NAME",
-          "ROLE",
-          "POSITION_TITLE",
-          "SALARY",
-          "COMPENSATION",
-          "CURRENCY",
-          "START_DATE",
-          "JOINING_DATE",
-          "SPECIAL_TERMS",
-        ]);
-        const foundVars = Array.from(
-          new Set(
-            matches
-              .map((m) => m.replace(/[{}]/g, "").trim().toUpperCase())
-              .filter((v) => !standardToExclude.has(v)),
-          ),
-        );
-        if (foundVars.length > 0) {
-          setOfferTemplateVariables((prev) => Array.from(new Set([...prev, ...foundVars])));
-        }
-        toast.success(
-          `Loaded Offer Template from ${file.name} (${foundVars.length} dynamic variables detected)!`,
-          {
-            id: "offer-doc-upload",
-          },
-        );
-      } else {
-        toast.error("No extractable text found in this template document.", {
-          id: "offer-doc-upload",
-        });
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to parse document.", {
-        id: "offer-doc-upload",
-      });
-    } finally {
-      setUploadingOfferDoc(false);
       e.target.value = "";
     }
   };
@@ -774,15 +682,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             },
           ]),
         ),
-        offer_template:
-          offerTemplateText.trim() || offerTemplateVariables.length > 0
-            ? {
-                file_name: offerTemplateFileName || "ScalePods_Offer_Letter_TEMPLATE.pdf",
-                text: offerTemplateText.trim(),
-                uploaded_at: new Date().toISOString(),
-                variables: offerTemplateVariables,
-              }
-            : undefined,
       },
       voice_call_config: hasVoiceRound ? dialnexaConfig : undefined,
       rounds: rounds.slice(0, numberOfRounds).map((r, i) => ({
@@ -1352,181 +1251,6 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                     )}
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* Offer Letter & NDA Agreement Template */}
-            <div className="pt-4 border-t border-border">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                <div>
-                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <FileSignature className="h-4 w-4 text-primary" />
-                    Offer Letter & NDA Agreement Template (Optional)
-                  </span>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 max-w-xl">
-                    Upload your company&apos;s pre-signed offer letter or NDA (PDF, DOCX, or TXT).
-                    ScalePods&apos; AI will automatically detect and populate dynamic candidate
-                    variables (name, compensation, start date) when extending an offer.
-                  </p>
-                </div>
-                <div className="shrink-0">
-                  <label className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors">
-                    {uploadingOfferDoc ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Upload className="h-3.5 w-3.5" />
-                    )}
-                    {uploadingOfferDoc
-                      ? "Extracting..."
-                      : offerTemplateFileName
-                        ? "Replace Document"
-                        : "Upload Template"}
-                    <input
-                      type="file"
-                      accept=".pdf,.docx,.doc,.txt,.md"
-                      className="hidden"
-                      onChange={handleOfferDocUpload}
-                      disabled={uploadingOfferDoc}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {offerTemplateFileName ? (
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs mb-3">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <FileText className="h-4 w-4 text-primary shrink-0" />
-                    <span className="font-medium text-foreground truncate">
-                      {offerTemplateFileName}
-                    </span>
-                    <span className="text-muted-foreground text-[11px] shrink-0">
-                      ({offerTemplateText.length} characters extracted)
-                    </span>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs text-muted-foreground hover:text-destructive"
-                    onClick={() => {
-                      setOfferTemplateFileName("");
-                      setOfferTemplateText("");
-                    }}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ) : null}
-
-              {/* Dynamic Variables Configuration UI */}
-              <div className="rounded-xl border border-border bg-card/60 p-3.5 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                      <Sparkles className="h-3.5 w-3.5 text-primary" />
-                      Dynamic Offer Letter Variables
-                    </span>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Specify the dynamic variables for your offer letter. When generating an offer
-                      for a candidate, you will be prompted to fill in these values.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Variable Badges / Tags */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {offerTemplateVariables.map((v) => (
-                    <span
-                      key={v}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20 text-xs font-mono font-medium text-primary"
-                    >
-                      <span>{`{{${v}}}`}</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setOfferTemplateVariables((prev) => prev.filter((item) => item !== v))
-                        }
-                        className="text-primary/60 hover:text-destructive transition-colors ml-0.5"
-                        title={`Remove {{${v}}}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ))}
-                  {offerTemplateVariables.length === 0 && (
-                    <span className="text-xs text-muted-foreground italic">
-                      No custom variables defined.
-                    </span>
-                  )}
-                </div>
-
-                {/* Add Custom Variable Input + Presets */}
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
-                    <Input
-                      value={newVariableInput}
-                      onChange={(e) => setNewVariableInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          const val = newVariableInput
-                            .trim()
-                            .toUpperCase()
-                            .replace(/[{}]/g, "")
-                            .replace(/\s+/g, "_");
-                          if (val && !offerTemplateVariables.includes(val)) {
-                            setOfferTemplateVariables((prev) => [...prev, val]);
-                            setNewVariableInput("");
-                          }
-                        }
-                      }}
-                      placeholder="e.g. REPORTING_MANAGER, BONUS_PERCENT..."
-                      className="h-8 text-xs font-mono"
-                    />
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="h-8 px-2.5 text-xs shrink-0"
-                      onClick={() => {
-                        const val = newVariableInput
-                          .trim()
-                          .toUpperCase()
-                          .replace(/[{}]/g, "")
-                          .replace(/\s+/g, "_");
-                        if (val && !offerTemplateVariables.includes(val)) {
-                          setOfferTemplateVariables((prev) => [...prev, val]);
-                          setNewVariableInput("");
-                        }
-                      }}
-                    >
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Add
-                    </Button>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
-                    <span>Quick presets:</span>
-                    {[
-                      "DEPARTMENT",
-                      "LOCATION",
-                      "PROBATION_PERIOD",
-                      "DURATION",
-                      "REPORTING_MANAGER",
-                    ].map(
-                      (preset) =>
-                        !offerTemplateVariables.includes(preset) && (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setOfferTemplateVariables((prev) => [...prev, preset])}
-                            className="px-2 py-0.5 rounded-md border border-border bg-muted/40 hover:bg-muted text-[11px] text-foreground transition-colors"
-                          >
-                            + {preset}
-                          </button>
-                        ),
-                    )}
-                  </div>
-                </div>
               </div>
             </div>
           </div>

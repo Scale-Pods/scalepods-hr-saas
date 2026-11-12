@@ -3,17 +3,27 @@
 import { type CampaignsRow, TierLimitError } from "@scalepods/core";
 import {
   AlertCircle,
+  ArrowLeft,
+  ArrowRight,
   CheckCircle2,
+  Eye,
   FileSignature,
+  FileText,
   Loader2,
+  Pencil,
   Plus,
   Send,
   Sparkles,
+  Star,
+  Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { OfferTemplateEditor } from "@/components/offers/OfferTemplateEditor";
 import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -33,10 +43,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccount } from "@/features/account/hooks";
 import type { ViewCandidate } from "@/features/campaigns/api";
-import { accessToken as getAccessToken } from "@/lib/supabase/client";
+import { extractOfferTemplateFromFile } from "@/lib/extract-text";
+import {
+  extractCustomOfferVariables,
+  formatOfferVarLabel,
+  renderOfferTemplateText,
+} from "@/lib/offer-template-utils";
+import { accessToken as getAccessToken, supabaseBrowser } from "@/lib/supabase/client";
 
 export interface PrepareOfferModalProps {
   open: boolean;
@@ -49,46 +66,15 @@ export interface PrepareOfferModalProps {
   onViewOffer?: (candidate: ViewCandidate, offer?: unknown) => void;
 }
 
-const STANDARD_FORM_KEYS = new Set([
-  "POSITION_TITLE",
-  "ROLE",
-  "SALARY",
-  "COMPENSATION",
-  "CURRENCY",
-  "START_DATE",
-  "JOINING_DATE",
-  "SPECIAL_TERMS",
-  "TERMS",
-  "CANDIDATE_NAME",
-  "RECIPIENT_NAME",
-  "COMPANY_NAME",
-  "COMPANY_WEBSITE",
-  "COMPANY_EMAIL",
-  "REF_NO",
-  "ISSUE_DATE",
-  "VARIABLE",
-  "COMPANY_LOGO_PATH",
-]);
-
-function formatVarLabel(key: string): string {
-  const clean = key.replace(/^\{\{|\}\}$/g, "").trim();
-  const ACRONYMS: Record<string, string> = {
-    HRA: "HRA",
-    CTC: "CTC",
-    NDA: "NDA",
-    AI: "AI",
-    ID: "ID",
-    USD: "USD",
-    INR: "INR",
-  };
-  return clean
-    .split("_")
-    .map((word) => {
-      const upper = word.toUpperCase();
-      if (ACRONYMS[upper]) return ACRONYMS[upper];
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-    })
-    .join(" ");
+interface OfferTemplateRecord {
+  id: string;
+  name: string;
+  file_name: string;
+  storage_path: string;
+  raw_text: string;
+  html_content?: string | null;
+  variables: string[];
+  is_default: boolean;
 }
 
 export function PrepareOfferModal({
@@ -103,73 +89,390 @@ export function PrepareOfferModal({
 }: PrepareOfferModalProps) {
   const { account } = useAccount();
   const isFreeTier = (account?.tier ?? "free") === "free";
+
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+
+  // Step 1: Templates state
+  const [templates, setTemplates] = useState<OfferTemplateRecord[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [templateText, setTemplateText] = useState("");
+  const [templateHtml, setTemplateHtml] = useState("");
+  const [isEditingTemplate, setIsEditingTemplate] = useState(false);
+  const [savingTemplateEdit, setSavingTemplateEdit] = useState(false);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
+
+  // Inline upload state
+  const [showUploadBox, setShowUploadBox] = useState(false);
+  const [uploadName, setUploadName] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadRawText, setUploadRawText] = useState("");
+  const [uploadHtml, setUploadHtml] = useState("");
+  const [uploadingTemplate, setUploadingTemplate] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  // Step 2: Standard + dynamic variables (auto-filled from DB)
+  const [candidateName, setCandidateName] = useState(candidate?.name || "");
   const [positionTitle, setPositionTitle] = useState(campaign.name || "");
   const [salary, setSalary] = useState(campaign.salary_min ? String(campaign.salary_min) : "");
-  const [currency, setCurrency] = useState(campaign.salary_currency || "USD");
+  const [currency, setCurrency] = useState(campaign.salary_currency || "INR");
   const [startDate, setStartDate] = useState(() => {
-    // Default to 14 days in the future
     return new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0];
   });
+  const [companyName, setCompanyName] = useState(account?.company_name || "ScalePods Partner");
+  const [signatoryName, setSignatoryName] = useState(account?.name || "Hiring Manager");
   const [specialTerms, setSpecialTerms] = useState("");
-  const [sending, setSending] = useState(false);
-  const [capacityWarning, setCapacityWarning] = useState<string | null>(null);
 
-  // Extract template info
-  const campaignTemplate = (
-    campaign.cadence_config as {
-      offer_template?: {
-        file_name?: string;
-        text?: string;
-        variables?: string[];
-      };
-    } | null
-  )?.offer_template;
-
-  // Resolve template variables
-  const initialVariables = useMemo(() => {
-    const list: string[] = [];
-    if (campaignTemplate?.variables && campaignTemplate.variables.length > 0) {
-      list.push(...campaignTemplate.variables);
-    } else if (campaignTemplate?.text) {
-      const matches = campaignTemplate.text.match(/\{\{([A-Za-z0-9_]+)\}\}/g) || [];
-      for (const m of matches) {
-        list.push(m.replace(/[{}]/g, "").trim().toUpperCase());
-      }
-    } else {
-      // Default common offer variables
-      list.push("DEPARTMENT", "LOCATION", "DURATION", "PROBATION_PERIOD");
-    }
-
-    // Filter out standard keys that have their own inputs
-    const unique = Array.from(new Set(list)).filter(
-      (k) => !STANDARD_FORM_KEYS.has(k.toUpperCase()),
-    );
-    return unique;
-  }, [campaignTemplate]);
-
-  const [activeVariables, setActiveVariables] = useState<string[]>(initialVariables);
+  const [extraVariables, setExtraVariables] = useState<string[]>([]);
+  const [removedVariables, setRemovedVariables] = useState<string[]>([]);
   const [newVarName, setNewVarName] = useState("");
   const [showAddVar, setShowAddVar] = useState(false);
 
-  // State to hold dynamic variable values filled by the recruiter
   const [dynamicValues, setDynamicValues] = useState<Record<string, string>>(() => {
     const isIntern = (campaign.name || "").toLowerCase().includes("intern");
-    const defaults: Record<string, string> = {
-      DEPARTMENT: "AI & Automation",
+    const todayFormatted = new Date().toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+    const year = new Date().getFullYear();
+    const randRef = Math.floor(1000 + Math.random() * 9000);
+    return {
+      DEPARTMENT: "Engineering",
       LOCATION: campaign.location || "Remote",
       DURATION: isIntern ? "6 Months" : "Full-time",
       PROBATION_PERIOD: "3 Months",
       WORKING_DAYS: "Mon - Fri (5 Days/Wk)",
-      REPORTING_MANAGER: "Engineering Lead",
-      SIGNATORY_NAME: "Manish",
-      SIGNATORY_TITLE: "Head of Talent Acquisition",
+      REPORTING_MANAGER: "Hiring Manager",
+      SIGNATORY_TITLE: "Talent Acquisition Lead",
+      COMPANY_EMAIL: recruiterEmail || "",
+      ISSUE_DATE: todayFormatted,
+      REF_NO: `SP/${year}/OFFER/${randRef}`,
+      LETTER_TYPE: isIntern ? "intern" : "fulltime",
+      NOTICE_PERIOD: "15 Days",
     };
-    return defaults;
   });
+
+  // Step 3: Preview & Send
+  const [previewTab, setPreviewTab] = useState<"letter" | "pdf">("letter");
+  const [finalRenderedText, setFinalRenderedText] = useState("");
+  const [finalRenderedHtml, setFinalRenderedHtml] = useState("");
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [loadingPdfPreview, setLoadingPdfPreview] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  // Sync candidate/account defaults when modal opens
+  useEffect(() => {
+    if (!open) return;
+    setStep(1);
+    setPreviewTab("letter");
+    setIsEditingTemplate(false);
+    setShowUploadBox(false);
+    setCandidateName(candidate?.name || "");
+    setPositionTitle(campaign.name || "");
+    setSalary(campaign.salary_min ? String(campaign.salary_min) : "");
+    setCurrency(campaign.salary_currency || "INR");
+    if (account?.company_name) setCompanyName(account.company_name);
+    if (account?.name) setSignatoryName(account.name);
+  }, [
+    open,
+    candidate?.name,
+    campaign.name,
+    campaign.salary_min,
+    campaign.salary_currency,
+    account?.company_name,
+    account?.name,
+  ]);
+
+  const loadTemplates = useCallback(async () => {
+    setLoadingTemplates(true);
+    try {
+      const token = accessToken || (await getAccessToken());
+      const res = await fetch("/api/offer-templates", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.templates)) {
+        const list = data.templates as OfferTemplateRecord[];
+        setTemplates(list);
+        const preferred = list.find((t) => t.is_default) ?? list[0];
+        if (preferred) {
+          setSelectedTemplateId(preferred.id);
+          setTemplateText(preferred.raw_text || "");
+          setTemplateHtml(preferred.html_content || "");
+        } else {
+          setSelectedTemplateId("");
+          setTemplateText("");
+          setTemplateHtml("");
+          setShowUploadBox(true);
+        }
+      }
+    } catch {
+      // Non-fatal: user can upload a template inline
+    } finally {
+      setLoadingTemplates(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (open) {
+      void loadTemplates();
+    }
+  }, [open, loadTemplates]);
+
+  // Cleanup blob URL on unmount or when regenerated
+  useEffect(() => {
+    return () => {
+      if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+    };
+  }, [pdfPreviewUrl]);
+
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.id === selectedTemplateId) ?? null,
+    [templates, selectedTemplateId],
+  );
+
+  const hasSelectedTemplate = Boolean(selectedTemplate && templateText.trim().length > 0);
+
+  // Variables detected live from template text/HTML + any manually added vars
+  const activeVariables = useMemo(() => {
+    const source = templateHtml.trim() ? `${templateText}\n${templateHtml}` : templateText;
+    const base = hasSelectedTemplate ? extractCustomOfferVariables(source) : [];
+    const merged = Array.from(new Set([...base, ...extraVariables]));
+    return merged.filter((v) => !removedVariables.includes(v));
+  }, [hasSelectedTemplate, templateText, templateHtml, extraVariables, removedVariables]);
+
+  const buildAllOfferValues = useCallback((): Record<string, string | undefined> => {
+    const todayFormatted = new Date().toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+    return {
+      ...dynamicValues,
+      CANDIDATE_NAME: candidateName,
+      RECIPIENT_NAME: candidateName,
+      POSITION_TITLE: positionTitle,
+      ROLE: positionTitle,
+      SALARY: salary,
+      COMPENSATION: salary,
+      CURRENCY: currency,
+      START_DATE: startDate,
+      JOINING_DATE: startDate,
+      COMPANY_NAME: companyName,
+      SIGNATORY_NAME: signatoryName,
+      SIGNATORY_TITLE: dynamicValues.SIGNATORY_TITLE || "Talent Acquisition Lead",
+      SPECIAL_TERMS: specialTerms,
+      TERMS: specialTerms,
+      ISSUE_DATE: todayFormatted,
+    };
+  }, [
+    dynamicValues,
+    candidateName,
+    positionTitle,
+    salary,
+    currency,
+    startDate,
+    companyName,
+    signatoryName,
+    specialTerms,
+  ]);
+
+  // Compute rendered text and HTML from template + all filled values
+  const buildRenderedText = useCallback(() => {
+    if (!hasSelectedTemplate) return "";
+    return renderOfferTemplateText(templateText, buildAllOfferValues());
+  }, [hasSelectedTemplate, templateText, buildAllOfferValues]);
+
+  const buildRenderedHtml = useCallback(() => {
+    if (!hasSelectedTemplate || !templateHtml.trim()) return "";
+    return renderOfferTemplateText(templateHtml, buildAllOfferValues());
+  }, [hasSelectedTemplate, templateHtml, buildAllOfferValues]);
+
+  // Fetch live PDF preview when switching to PDF tab on Step 3
+  const loadPdfPreview = useCallback(
+    async (textToRender: string, htmlToRender?: string) => {
+      if (!textToRender.trim() && !htmlToRender?.trim()) return;
+      setLoadingPdfPreview(true);
+      try {
+        const res = await fetch("/api/offers/pdf?preview=true", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rendered_html: htmlToRender?.trim() || undefined,
+            rendered_text: textToRender,
+            candidate_name: candidateName || "Candidate",
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to generate preview PDF");
+        const blob = await res.blob();
+        setPdfPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(blob);
+        });
+      } catch (err) {
+        showErrorToast(err);
+      } finally {
+        setLoadingPdfPreview(false);
+      }
+    },
+    [candidateName],
+  );
 
   if (!candidate?.application_id) return null;
 
-  const handleSendOffer = async () => {
+  const handleSelectTemplate = (id: string) => {
+    setSelectedTemplateId(id);
+    setIsEditingTemplate(false);
+    setRemovedVariables([]);
+    setExtraVariables([]);
+    const tpl = templates.find((t) => t.id === id);
+    setTemplateText(tpl?.raw_text || "");
+    setTemplateHtml(tpl?.html_content || "");
+  };
+
+  const handleUploadFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadFile(file);
+    if (!uploadName) setUploadName(file.name.replace(/\.[^.]+$/, ""));
+    const result = await extractOfferTemplateFromFile(file);
+    if ("error" in result) {
+      showErrorToast(result.error);
+      setUploadRawText("");
+      setUploadHtml("");
+    } else {
+      setUploadRawText(result.text);
+      setUploadHtml(result.html);
+    }
+  };
+
+  const handleSaveUploadedTemplate = async () => {
+    if (!uploadFile || !uploadRawText.trim() || !uploadName.trim()) {
+      showErrorToast("Please choose a file and enter a template name.");
+      return;
+    }
+    setUploadingTemplate(true);
+    try {
+      const token = accessToken || (await getAccessToken());
+      const supabase = supabaseBrowser();
+      const { data: userData } = await supabase.auth.getUser();
+      const ownerId = userData.user?.id || account?.id || "shared";
+      const storagePath = `${ownerId}/${Date.now()}_${encodeURIComponent(uploadFile.name)}`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from("offer-templates")
+        .upload(storagePath, uploadFile, { upsert: false });
+      if (uploadErr) throw uploadErr;
+
+      const res = await fetch("/api/offer-templates", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          name: uploadName.trim(),
+          file_name: uploadFile.name,
+          storage_path: storagePath,
+          raw_text: uploadRawText.trim(),
+          html_content: uploadHtml.trim() || undefined,
+          is_default: templates.length === 0,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save template");
+
+      const created = data.template as OfferTemplateRecord;
+      setTemplates((prev) => [created, ...prev]);
+      setSelectedTemplateId(created.id);
+      setTemplateText(created.raw_text || uploadRawText.trim());
+      setTemplateHtml(created.html_content || uploadHtml.trim());
+      setShowUploadBox(false);
+      setUploadName("");
+      setUploadFile(null);
+      setUploadRawText("");
+      setUploadHtml("");
+      if (uploadInputRef.current) uploadInputRef.current.value = "";
+      showToast(`Template "${created.name}" uploaded and selected.`);
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setUploadingTemplate(false);
+    }
+  };
+
+  const handleSaveTemplateEdits = async () => {
+    if (!selectedTemplate || !templateText.trim()) return;
+    setSavingTemplateEdit(true);
+    try {
+      const token = accessToken || (await getAccessToken());
+      const res = await fetch("/api/offer-templates", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          id: selectedTemplate.id,
+          raw_text: templateText.trim(),
+          html_content: templateHtml.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update template");
+      const updated = data.template as OfferTemplateRecord;
+      setTemplates((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      setIsEditingTemplate(false);
+      showToast("Template changes saved.");
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setSavingTemplateEdit(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    setDeletingTemplateId(templateId);
+    try {
+      const token = accessToken || (await getAccessToken());
+      const res = await fetch(`/api/offer-templates?id=${encodeURIComponent(templateId)}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete template");
+
+      const remaining = templates.filter((t) => t.id !== templateId);
+      setTemplates(remaining);
+      if (selectedTemplateId === templateId) {
+        const next = remaining.find((t) => t.is_default) ?? remaining[0];
+        setSelectedTemplateId(next?.id ?? "");
+        setTemplateText(next?.raw_text ?? "");
+        setTemplateHtml(next?.html_content ?? "");
+        setIsEditingTemplate(false);
+        if (!next) setShowUploadBox(true);
+      }
+      showToast("Template deleted.");
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setDeletingTemplateId(null);
+    }
+  };
+
+  const handleAddCustomVar = () => {
+    const clean = newVarName.trim().toUpperCase().replace(/[{}]/g, "").replace(/\s+/g, "_");
+    if (!clean) return;
+    setRemovedVariables((prev) => prev.filter((k) => k !== clean));
+    if (!activeVariables.includes(clean)) {
+      setExtraVariables((prev) => [...prev, clean]);
+    }
+    setNewVarName("");
+    setShowAddVar(false);
+  };
+
+  const goToStep3 = () => {
     if (!positionTitle.trim()) {
       showErrorToast("Position title is required.");
       return;
@@ -178,16 +481,20 @@ export function PrepareOfferModal({
       showErrorToast("Compensation amount is required.");
       return;
     }
-
-    // Strictly ensure target start date / joining date is not in the past
     const today = new Date().toISOString().split("T")[0];
     if (!startDate || startDate < today) {
-      showErrorToast(
-        "Target start / joining date cannot be in the past. Please select today or a future date.",
-      );
+      showErrorToast("Target start / joining date cannot be in the past.");
       return;
     }
+    const rendered = buildRenderedText();
+    const renderedHtml = buildRenderedHtml();
+    setFinalRenderedText(rendered);
+    setFinalRenderedHtml(renderedHtml);
+    setPreviewTab("letter");
+    setStep(3);
+  };
 
+  const handleSendOffer = async () => {
     if (isFreeTier) {
       showErrorToast(
         new TierLimitError(
@@ -201,9 +508,12 @@ export function PrepareOfferModal({
       return;
     }
 
-    setSending(true);
-    setCapacityWarning(null);
+    if (!hasSelectedTemplate || !finalRenderedText.trim()) {
+      showErrorToast("Please select and preview an uploaded offer template before sending.");
+      return;
+    }
 
+    setSending(true);
     try {
       const token = accessToken || (await getAccessToken());
       const res = await fetch("/api/offers/send", {
@@ -215,11 +525,17 @@ export function PrepareOfferModal({
         body: JSON.stringify({
           campaign_id: campaign.id,
           application_id: candidate.application_id,
+          offer_template_id: selectedTemplateId,
+          rendered_text: finalRenderedText.trim(),
+          ...(finalRenderedHtml.trim() ? { rendered_html: finalRenderedHtml.trim() } : {}),
           field_values: {
+            candidate_name: candidateName.trim() || candidate.name,
             position_title: positionTitle,
             salary,
             currency,
             start_date: startDate,
+            company_name: companyName,
+            signatory_name: signatoryName,
             special_terms: specialTerms,
             dynamic_variables: dynamicValues,
             ...dynamicValues,
@@ -244,13 +560,17 @@ export function PrepareOfferModal({
         throw new Error(data.error || "Failed to send offer letter");
       }
 
-      if (data.overCapacityWarning) {
+      if (data.email_dispatched === false) {
+        showErrorToast(
+          `Offer saved, but n8n email workflow failed: ${data.email_warning || "check n8n executions"}`,
+        );
+      } else if (data.overCapacityWarning) {
         showToast(
           `Offer sent! Notice: Job capacity reached (${data.offersSent} of ${data.openings} openings filled).`,
         );
       } else {
         showToast(
-          `Offer letter & agreement generated and emailed directly to ${candidate.name || candidate.email}!`,
+          `Offer letter generated and emailed directly to ${candidateName || candidate.email}!`,
         );
       }
 
@@ -266,31 +586,51 @@ export function PrepareOfferModal({
     }
   };
 
-  const handleAddCustomVar = () => {
-    const clean = newVarName.trim().toUpperCase().replace(/[{}]/g, "").replace(/\s+/g, "_");
-    if (!clean) return;
-    if (!activeVariables.includes(clean)) {
-      setActiveVariables((prev) => [...prev, clean]);
-    }
-    setNewVarName("");
-    setShowAddVar(false);
-  };
-
   const todayStr = new Date().toISOString().split("T")[0];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-5xl sm:max-w-5xl max-h-[94vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSignature className="h-5 w-5 text-primary" />
-            Generate & Send Offer Letter
+            Prepare & Send Offer Letter
           </DialogTitle>
           <DialogDescription>
-            Generate an official employment offer and agreement. Fill in the template variables
-            below; ScalePods automatically replaces dynamic values and delivers the official
-            agreement directly to the candidate via email.
+            {step === 1 &&
+              "Step 1 of 3 · Select, upload, or edit an offer letter template. Placeholders like {{VAR}} are detected automatically."}
+            {step === 2 &&
+              "Step 2 of 3 · Review auto-filled candidate & role details and fill any custom template variables."}
+            {step === 3 &&
+              "Step 3 of 3 · Review the final offer letter and PDF before sending it to the candidate."}
           </DialogDescription>
+
+          {/* 3-Step Indicator */}
+          <div className="grid grid-cols-3 gap-2 pt-2">
+            {[
+              { num: 1, label: "1. Template" },
+              { num: 2, label: "2. Variables" },
+              { num: 3, label: "3. Preview & Send" },
+            ].map((s) => (
+              <button
+                key={s.num}
+                type="button"
+                disabled={s.num > step}
+                onClick={() => {
+                  if (s.num < step) setStep(s.num as 1 | 2 | 3);
+                }}
+                className={`rounded-lg border px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                  step === s.num
+                    ? "border-primary bg-primary/10 text-primary"
+                    : step > s.num
+                      ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400 cursor-pointer"
+                      : "border-border/60 bg-muted/20 text-muted-foreground opacity-60 cursor-not-allowed"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -312,243 +652,592 @@ export function PrepareOfferModal({
             </div>
           )}
 
-          {campaignTemplate?.file_name ? (
-            <div className="flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 p-2.5 text-xs text-primary">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              <span>
-                Using Campaign Template: <strong>{campaignTemplate.file_name}</strong> (AI variable
-                fill active)
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 p-2.5 text-xs text-muted-foreground">
-              <FileSignature className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span>
-                Using Standard Agreement Template. AI will automatically structure candidate terms.
-              </span>
+          {/* ────────────────────────── STEP 1: CHOOSE / UPLOAD / EDIT TEMPLATE ────────────────────────── */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground">
+                  Choose Company Offer Template
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => setShowUploadBox((v) => !v)}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {showUploadBox ? "Close Upload" : "Upload New Template"}
+                </Button>
+              </div>
+
+              {showUploadBox && (
+                <div className="rounded-xl border border-primary/25 bg-primary/5 p-3.5 space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Template Name</Label>
+                      <Input
+                        placeholder="e.g. Standard Engineering Offer"
+                        value={uploadName}
+                        onChange={(e) => setUploadName(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">
+                        Template File (.docx recommended, or PDF / TXT)
+                      </Label>
+                      <input
+                        ref={uploadInputRef}
+                        type="file"
+                        accept=".docx,.doc,.txt,.md,.pdf"
+                        onChange={handleUploadFilePick}
+                        className="block w-full text-xs text-muted-foreground file:mr-2.5 file:rounded-md file:border-0 file:bg-primary/15 file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-primary cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                  {uploadRawText && (
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] text-muted-foreground">
+                        Extracted {uploadRawText.length} characters ·{" "}
+                        {extractCustomOfferVariables(uploadRawText).length} custom variable(s)
+                        detected
+                      </span>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleSaveUploadedTemplate}
+                          disabled={uploadingTemplate || !uploadName.trim()}
+                          className="h-7 gap-1.5 text-xs"
+                        >
+                          {uploadingTemplate ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          )}
+                          {uploadingTemplate ? "Uploading..." : "Save & Use Template"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {loadingTemplates ? (
+                <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading company templates...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {templates.map((tpl) => {
+                    const selected = selectedTemplateId === tpl.id;
+                    return (
+                      <label
+                        key={tpl.id}
+                        className={`block cursor-pointer rounded-xl border p-3 transition-colors ${
+                          selected
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-border/80 bg-card"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2.5">
+                            <input
+                              type="radio"
+                              name="offer-template-choice"
+                              checked={selected}
+                              onChange={() => handleSelectTemplate(tpl.id)}
+                              className="mt-1 accent-primary"
+                            />
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-medium text-foreground">
+                                  {tpl.name}
+                                </span>
+                                {tpl.is_default && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-[10px]"
+                                  >
+                                    <Star className="h-2.5 w-2.5" /> Default
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">{tpl.file_name}</p>
+                              {tpl.variables.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {tpl.variables.map((v) => (
+                                    <span
+                                      key={v}
+                                      className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                                    >
+                                      {`{{${v}}}`}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {selected && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 gap-1 text-xs"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setIsEditingTemplate((v) => !v);
+                                }}
+                              >
+                                <Pencil className="h-3 w-3" />
+                                {isEditingTemplate ? "Hide Editor" : "Edit Template"}
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              disabled={deletingTemplateId === tpl.id}
+                              aria-label={`Delete ${tpl.name}`}
+                              title={`Delete ${tpl.name}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                void handleDeleteTemplate(tpl.id);
+                              }}
+                            >
+                              {deletingTemplateId === tpl.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+
+                  {templates.length === 0 && (
+                    <div className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed border-border py-6 text-center">
+                      <FileText className="h-6 w-6 text-muted-foreground/50" />
+                      <p className="text-xs font-medium text-foreground">
+                        No uploaded offer templates yet
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Upload a PDF, DOCX, or TXT offer template above to edit variables and send
+                        an offer.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Inline visual document template editor */}
+              {hasSelectedTemplate && isEditingTemplate && (
+                <div className="rounded-xl border border-border bg-muted/20 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">Edit Offer Letter Template</Label>
+                    {selectedTemplate && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-7 gap-1 text-xs"
+                        disabled={savingTemplateEdit}
+                        onClick={handleSaveTemplateEdits}
+                      >
+                        {savingTemplateEdit ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-3 w-3" />
+                        )}
+                        Save to Company Template
+                      </Button>
+                    )}
+                  </div>
+                  <OfferTemplateEditor
+                    value={templateText}
+                    onChange={setTemplateText}
+                    htmlValue={templateHtml}
+                    onHtmlChange={setTemplateHtml}
+                  />
+                </div>
+              )}
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
-            <div>
-              <span className="text-muted-foreground block">Sender (Company / Recruiter):</span>
-              <span className="font-semibold text-foreground truncate block">{recruiterEmail}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block">Candidate Recipient:</span>
-              <span className="font-semibold text-foreground truncate block">
-                {candidate.email}
-              </span>
-            </div>
-          </div>
-
-          {/* Standard Offer Details */}
-          <div className="space-y-1.5">
-            <Label htmlFor="position" className="text-xs">
-              Position Title
-            </Label>
-            <Input
-              id="position"
-              value={positionTitle}
-              onChange={(e) => setPositionTitle(e.target.value)}
-              placeholder="e.g. Senior Software Engineer"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="salary" className="text-xs">
-                Compensation Amount
-              </Label>
-              <Input
-                id="salary"
-                value={salary}
-                onChange={(e) => setSalary(e.target.value)}
-                placeholder="e.g. 140,000"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="currency" className="text-xs">
-                Currency
-              </Label>
-              <Select value={currency} onValueChange={setCurrency}>
-                <SelectTrigger id="currency" className="w-full">
-                  <SelectValue placeholder="Currency" />
-                </SelectTrigger>
-                <SelectContent className="border-border bg-card z-[60]">
-                  <SelectItem value="USD">USD ($)</SelectItem>
-                  <SelectItem value="INR">INR (₹)</SelectItem>
-                  <SelectItem value="EUR">EUR (€)</SelectItem>
-                  <SelectItem value="GBP">GBP (£)</SelectItem>
-                  <SelectItem value="CAD">CAD ($)</SelectItem>
-                  <SelectItem value="AUD">AUD ($)</SelectItem>
-                  <SelectItem value="SGD">SGD (S$)</SelectItem>
-                  <SelectItem value="AED">AED (د.إ)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Target Start Date / Joining Date with React DatePicker */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="start-date" className="text-xs">
-                Target Start Date (Joining Date)
-              </Label>
-              <span className="text-[11px] text-muted-foreground">Cannot be in the past</span>
-            </div>
-            <DatePicker
-              id="start-date"
-              value={startDate}
-              onChange={(val) => {
-                if (val && val < todayStr) {
-                  showErrorToast("Joining date cannot be in the past.");
-                  return;
-                }
-                setStartDate(val);
-              }}
-              minDate={new Date()}
-              placeholder="Select target start date"
-              className="w-full"
-            />
-          </div>
-
-          {/* Dynamic Offer Letter Variables to Fill */}
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <span className="text-xs font-semibold text-foreground">
-                  Dynamic Offer Letter Variables
-                </span>
+          {/* ────────────────────────── STEP 2: FILL VARIABLES ────────────────────────── */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 text-xs">
+                <div>
+                  <span className="text-muted-foreground block">Sender (Recruiter):</span>
+                  <span className="font-semibold text-foreground truncate block">
+                    {recruiterEmail}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">Candidate Recipient:</span>
+                  <span className="font-semibold text-foreground truncate block">
+                    {candidate.email}
+                  </span>
+                </div>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-[11px] text-primary hover:text-primary"
-                onClick={() => setShowAddVar(!showAddVar)}
-              >
-                <Plus className="h-3 w-3 mr-1" /> Add Variable
-              </Button>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              These dynamic variables will be merged into the official offer document before
-              delivery.
-            </p>
 
-            {showAddVar && (
-              <div className="flex items-center gap-2 pt-1 border-t border-primary/15">
-                <Input
-                  value={newVarName}
-                  onChange={(e) => setNewVarName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddCustomVar();
-                    }
-                  }}
-                  placeholder="e.g. REPORTING_MANAGER"
-                  className="h-7 text-xs font-mono"
-                  autoFocus
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={handleAddCustomVar}
-                >
-                  Add
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setShowAddVar(false)}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 max-h-80 overflow-y-auto pr-1">
-              {activeVariables.map((vKey) => (
-                <div
-                  key={vKey}
-                  className="space-y-1.5 rounded-lg border border-border/50 bg-background/50 p-2.5 transition-colors hover:border-border"
-                >
-                  <div className="flex items-center justify-between gap-1.5">
-                    <Label
-                      htmlFor={`var-${vKey}`}
-                      className="text-xs font-semibold text-foreground whitespace-normal break-words leading-tight"
-                    >
-                      {formatVarLabel(vKey)}
-                    </Label>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[10px] text-muted-foreground font-mono bg-muted/70 border border-border/40 px-1.5 py-0.5 rounded">
-                        {`{{${vKey}}}`}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveVariables((prev) => prev.filter((k) => k !== vKey));
-                          setDynamicValues((prev) => {
-                            const copy = { ...prev };
-                            delete copy[vKey];
-                            return copy;
-                          });
-                        }}
-                        className="text-muted-foreground/60 hover:text-destructive transition-colors p-0.5"
-                        title={`Remove ${vKey}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </div>
+              {/* Standard DB-populated fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cand-name" className="text-xs">
+                    Candidate Name <span className="text-[10px] text-emerald-600">(from DB)</span>
+                  </Label>
                   <Input
-                    id={`var-${vKey}`}
-                    value={dynamicValues[vKey] ?? ""}
-                    onChange={(e) =>
-                      setDynamicValues((prev) => ({ ...prev, [vKey]: e.target.value }))
-                    }
-                    placeholder={`e.g. ${formatVarLabel(vKey)}`}
-                    className="h-8 text-xs bg-background"
+                    id="cand-name"
+                    value={candidateName}
+                    onChange={(e) => setCandidateName(e.target.value)}
                   />
                 </div>
-              ))}
+                <div className="space-y-1.5">
+                  <Label htmlFor="position" className="text-xs">
+                    Position Title <span className="text-[10px] text-emerald-600">(from DB)</span>
+                  </Label>
+                  <Input
+                    id="position"
+                    value={positionTitle}
+                    onChange={(e) => setPositionTitle(e.target.value)}
+                    placeholder="e.g. Senior Software Engineer"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2 space-y-1.5">
+                  <Label htmlFor="salary" className="text-xs">
+                    Compensation Amount
+                  </Label>
+                  <Input
+                    id="salary"
+                    value={salary}
+                    onChange={(e) => setSalary(e.target.value)}
+                    placeholder="e.g. 140,000"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="currency" className="text-xs">
+                    Currency
+                  </Label>
+                  <Select value={currency} onValueChange={setCurrency}>
+                    <SelectTrigger id="currency" className="w-full">
+                      <SelectValue placeholder="Currency" />
+                    </SelectTrigger>
+                    <SelectContent className="border-border bg-card z-[60]">
+                      <SelectItem value="USD">USD ($)</SelectItem>
+                      <SelectItem value="INR">INR (₹)</SelectItem>
+                      <SelectItem value="EUR">EUR (€)</SelectItem>
+                      <SelectItem value="GBP">GBP (£)</SelectItem>
+                      <SelectItem value="CAD">CAD ($)</SelectItem>
+                      <SelectItem value="AUD">AUD ($)</SelectItem>
+                      <SelectItem value="SGD">SGD (S$)</SelectItem>
+                      <SelectItem value="AED">AED (د.إ)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="start-date" className="text-xs">
+                    Target Start Date
+                  </Label>
+                  <DatePicker
+                    id="start-date"
+                    value={startDate}
+                    onChange={(val) => {
+                      if (val && val < todayStr) {
+                        showErrorToast("Joining date cannot be in the past.");
+                        return;
+                      }
+                      setStartDate(val);
+                    }}
+                    minDate={new Date()}
+                    placeholder="Select start date"
+                    className="w-full"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="company-name" className="text-xs">
+                    Company Name <span className="text-[10px] text-emerald-600">(from DB)</span>
+                  </Label>
+                  <Input
+                    id="company-name"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="signatory-name" className="text-xs">
+                    Signatory Name
+                  </Label>
+                  <Input
+                    id="signatory-name"
+                    value={signatoryName}
+                    onChange={(e) => setSignatoryName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Dynamic Offer Letter Variables */}
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <span className="text-xs font-semibold text-foreground">
+                      Template Variables ({activeVariables.length})
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[11px] text-primary hover:text-primary"
+                    onClick={() => setShowAddVar(!showAddVar)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Add Variable
+                  </Button>
+                </div>
+
+                {showAddVar && (
+                  <div className="flex items-center gap-2 pt-1 border-t border-primary/15">
+                    <Input
+                      value={newVarName}
+                      onChange={(e) => setNewVarName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddCustomVar();
+                        }
+                      }}
+                      placeholder="e.g. REPORTING_MANAGER"
+                      className="h-7 text-xs font-mono"
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 px-2.5 text-xs"
+                      onClick={handleAddCustomVar}
+                    >
+                      Add
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setShowAddVar(false)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 max-h-96 overflow-y-auto pr-1">
+                  {activeVariables.map((vKey) => (
+                    <div
+                      key={vKey}
+                      className="space-y-1.5 rounded-lg border border-border/50 bg-background/50 p-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <Label
+                          htmlFor={`var-${vKey}`}
+                          className="text-xs font-semibold text-foreground"
+                        >
+                          {formatOfferVarLabel(vKey)}
+                        </Label>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] text-muted-foreground font-mono bg-muted/70 border border-border/40 px-1.5 py-0.5 rounded">
+                            {`{{${vKey}}}`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setRemovedVariables((prev) =>
+                                prev.includes(vKey) ? prev : [...prev, vKey],
+                              )
+                            }
+                            className="text-muted-foreground/60 hover:text-destructive p-0.5"
+                            title={`Remove ${vKey}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <Input
+                        id={`var-${vKey}`}
+                        value={dynamicValues[vKey] ?? ""}
+                        onChange={(e) =>
+                          setDynamicValues((prev) => ({ ...prev, [vKey]: e.target.value }))
+                        }
+                        placeholder={`Enter ${formatOfferVarLabel(vKey)}`}
+                        className="h-8 text-xs bg-background"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="terms" className="text-xs">
+                  Additional Offer Terms / Notes (Optional)
+                </Label>
+                <Textarea
+                  id="terms"
+                  rows={2}
+                  value={specialTerms}
+                  onChange={(e) => setSpecialTerms(e.target.value)}
+                  placeholder="Sign-on bonus, equity schedule, or reporting structure..."
+                />
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="terms" className="text-xs">
-              Additional Offer Terms / Notes (Optional)
-            </Label>
-            <Textarea
-              id="terms"
-              rows={2}
-              value={specialTerms}
-              onChange={(e) => setSpecialTerms(e.target.value)}
-              placeholder="Sign-on bonus, equity schedule, or reporting structure..."
-            />
-          </div>
+          {/* ────────────────────────── STEP 3: PREVIEW & SEND ────────────────────────── */}
+          {step === 3 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Tabs
+                  value={previewTab}
+                  onValueChange={(v) => {
+                    const tab = v as "letter" | "pdf";
+                    setPreviewTab(tab);
+                    if (tab === "pdf") {
+                      void loadPdfPreview(finalRenderedText, finalRenderedHtml);
+                    }
+                  }}
+                >
+                  <TabsList className="h-8">
+                    <TabsTrigger value="letter" className="text-xs gap-1.5 h-7">
+                      <FileText className="h-3.5 w-3.5" /> Letter Preview (Editable)
+                    </TabsTrigger>
+                    <TabsTrigger value="pdf" className="text-xs gap-1.5 h-7">
+                      <Eye className="h-3.5 w-3.5" /> PDF Preview
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <span className="text-[11px] text-muted-foreground">
+                  Sending to <strong>{candidate.email}</strong>
+                </span>
+              </div>
 
-          {capacityWarning && (
-            <div className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{capacityWarning}</span>
+              {previewTab === "letter" ? (
+                finalRenderedHtml ? (
+                  <div className="rounded-xl border border-border bg-slate-200/70 dark:bg-slate-900/70 p-3 sm:p-5 h-[56vh] min-h-[420px] overflow-y-auto">
+                    <div
+                      style={{ color: "#0f172a", backgroundColor: "#ffffff" }}
+                      className="mx-auto w-full max-w-[820px] rounded-md bg-white text-slate-900 [&_*]:text-slate-900 shadow-md border border-slate-200 px-8 py-7 text-[13px] leading-relaxed font-sans [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_p]:mb-2.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2.5 [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-slate-300 [&_td]:px-2.5 [&_td]:py-1.5"
+                    >
+                      <div
+                        contentEditable
+                        suppressContentEditableWarning
+                        onInput={(e) => {
+                          setFinalRenderedHtml(e.currentTarget.innerHTML);
+                          setFinalRenderedText(e.currentTarget.innerText.replace(/\r\n/g, "\n"));
+                        }}
+                        className="focus:outline-none"
+                        // biome-ignore lint/security/noDangerouslySetInnerHtml: Rendered offer HTML comes from recruiter's own DOCX/template
+                        dangerouslySetInnerHTML={{ __html: finalRenderedHtml }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Textarea
+                      rows={14}
+                      value={finalRenderedText}
+                      onChange={(e) => setFinalRenderedText(e.target.value)}
+                      className="font-sans text-xs leading-relaxed bg-card"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      You can make final edits directly above before sending.
+                    </p>
+                  </div>
+                )
+              ) : (
+                <div className="rounded-xl border border-border overflow-hidden bg-muted/20 h-[400px] flex items-center justify-center">
+                  {loadingPdfPreview ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Rendering PDF preview...
+                    </div>
+                  ) : pdfPreviewUrl ? (
+                    <iframe
+                      src={pdfPreviewUrl}
+                      title="Offer Letter PDF Preview"
+                      className="w-full h-full border-0"
+                    />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Preview unavailable</span>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="ghost" disabled={sending} onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSendOffer} disabled={sending || isFreeTier} className="gap-1.5">
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            {sending ? "Generating & Emailing Offer..." : "Generate & Email Offer Letter"}
-          </Button>
+        <DialogFooter className="gap-2 sm:justify-between">
+          <div>
+            {step > 1 && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={sending}
+                onClick={() => setStep((s) => (s === 3 ? 2 : 1))}
+                className="gap-1.5"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> Back
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" disabled={sending} onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            {step === 1 && (
+              <Button
+                type="button"
+                disabled={!hasSelectedTemplate}
+                onClick={() => setStep(2)}
+                className="gap-1.5"
+              >
+                Next: Fill Variables <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {step === 2 && (
+              <Button type="button" onClick={goToStep3} className="gap-1.5">
+                Next: Preview Offer <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {step === 3 && (
+              <Button
+                type="button"
+                onClick={handleSendOffer}
+                disabled={
+                  sending || isFreeTier || !hasSelectedTemplate || !finalRenderedText.trim()
+                }
+                className="gap-1.5"
+              >
+                {sending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                {sending ? "Sending Offer..." : "Confirm & Send Offer"}
+              </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

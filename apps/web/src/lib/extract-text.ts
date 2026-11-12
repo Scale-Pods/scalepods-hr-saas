@@ -3,7 +3,10 @@
  * builder. Loads heavy parsers lazily so they don't touch the initial bundle.
  */
 
+import { formatPlainTextAsRichHtml } from "./offer-template-utils";
+
 export type ExtractResult = { text: string } | { error: string };
+export type ExtractTemplateResult = { text: string; html: string } | { error: string };
 
 export interface PdfTextItem {
   str: string;
@@ -85,6 +88,37 @@ async function extractDocx(file: File): Promise<ExtractResult> {
   const result = await mammoth.extractRawText({ arrayBuffer: buffer });
   const text = result.value.trim();
   return text ? { text } : { error: "No extractable text found in the document." };
+}
+
+/**
+ * Extract both plain text and structured HTML (headings, bold, lists, tables)
+ * for offer letter templates. DOCX preserves full document structure via mammoth.
+ */
+export async function extractOfferTemplateFromFile(file: File): Promise<ExtractTemplateResult> {
+  const name = file.name.toLowerCase();
+  try {
+    if (name.endsWith(".docx") || name.endsWith(".doc")) {
+      const mammoth = await import("mammoth");
+      const buffer = await file.arrayBuffer();
+      const [rawRes, htmlRes] = await Promise.all([
+        mammoth.extractRawText({ arrayBuffer: buffer }),
+        mammoth.convertToHtml({ arrayBuffer: buffer }),
+      ]);
+      const text = rawRes.value.trim();
+      const html = htmlRes.value.trim();
+      if (!text && !html) return { error: "No extractable text found in the document." };
+      return {
+        text: text || html.replace(/<[^>]+>/g, " ").trim(),
+        html: html || formatPlainTextAsRichHtml(text),
+      };
+    }
+
+    const res = await extractTextFromFile(file);
+    if ("error" in res) return res;
+    return { text: res.text, html: formatPlainTextAsRichHtml(res.text) };
+  } catch (err) {
+    return { error: `Could not read ${file.name}: ${errorMessage(err)}` };
+  }
 }
 
 function errorMessage(err: unknown): string {

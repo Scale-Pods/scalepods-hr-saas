@@ -1,9 +1,50 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
+import { generateHtmlOfferPdf } from "@/lib/generate-html-offer-pdf";
 import { generateBrandedOfferPdf } from "@/lib/generate-offer-pdf";
+import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * POST /api/offers/pdf?preview=true
+ * Generates a live preview PDF from rendered HTML (DOCX/rich template) or plain text.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const body = (await req.json().catch(() => null)) as {
+      rendered_html?: string;
+      rendered_text?: string;
+      candidate_name?: string;
+    } | null;
+
+    if (!body?.rendered_html?.trim() && !body?.rendered_text?.trim()) {
+      return new NextResponse("rendered_html or rendered_text is required for preview", {
+        status: 400,
+      });
+    }
+
+    const pdfBuffer = body.rendered_html?.trim()
+      ? await generateHtmlOfferPdf(body.rendered_html.trim())
+      : generateTextOfferPdf(body.rendered_text?.trim() || "");
+
+    const safeName = (body.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
+    const filename = `Offer_Letter_Preview_${safeName}.pdf`;
+
+    return new NextResponse(new Uint8Array(pdfBuffer), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${filename}"`,
+        "Content-Length": String(pdfBuffer.length),
+      },
+    });
+  } catch (err) {
+    console.error("[api/offers/pdf POST] Preview PDF generation error:", err);
+    return new NextResponse("Failed to generate preview PDF", { status: 500 });
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -40,6 +81,8 @@ export async function GET(req: NextRequest) {
       field_values?: Record<string, unknown>;
       pdf_url?: string;
       pdf_base64?: string;
+      rendered_text?: string | null;
+      rendered_html?: string | null;
     }
     interface CampaignOfferLookup {
       id?: string;
@@ -195,17 +238,21 @@ export async function GET(req: NextRequest) {
 
     const dynamicVars = (fieldValues.dynamic_variables || fieldValues) as Record<string, string>;
 
-    const pdfBuffer = generateBrandedOfferPdf({
-      candidate_name: candidateName,
-      position_title: positionTitle,
-      salary,
-      currency,
-      start_date: startDate,
-      company_name: companyName,
-      signatory_name: signatoryName,
-      signatory_title: signatoryTitle,
-      dynamic_variables: dynamicVars,
-    });
+    const pdfBuffer = offerRow?.rendered_html?.trim()
+      ? await generateHtmlOfferPdf(offerRow.rendered_html.trim())
+      : offerRow?.rendered_text?.trim()
+        ? generateTextOfferPdf(offerRow.rendered_text.trim())
+        : generateBrandedOfferPdf({
+            candidate_name: candidateName,
+            position_title: positionTitle,
+            salary,
+            currency,
+            start_date: startDate,
+            company_name: companyName,
+            signatory_name: signatoryName,
+            signatory_title: signatoryTitle,
+            dynamic_variables: dynamicVars,
+          });
 
     const safeName = candidateName.replace(/[^a-zA-Z0-9]/g, "_");
     const filename = `Offer_Letter_${safeName}.pdf`;

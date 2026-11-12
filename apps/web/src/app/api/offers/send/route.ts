@@ -2,7 +2,9 @@ import { offerRequestSchema } from "@scalepods/core";
 import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
+import { generateHtmlOfferPdf } from "@/lib/generate-html-offer-pdf";
 import { generateBrandedOfferPdf } from "@/lib/generate-offer-pdf";
+import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
 import { supabaseServer } from "@/lib/supabase/server";
 
@@ -166,30 +168,42 @@ export async function POST(req: NextRequest) {
       (fieldValues.signatory_name as string) || user.user_metadata?.full_name || "Manish";
     const signatoryTitle = (fieldValues.signatory_title as string) || "Talent Acquisition Lead";
 
+    const renderedText = parsed.data.rendered_text?.trim() || "";
+    const renderedHtml = parsed.data.rendered_html?.trim() || "";
+    const offerTemplateId = parsed.data.offer_template_id || null;
+
     let pdfBase64: string | undefined;
     let pdfFilename: string | undefined;
 
     try {
-      const pdfBuffer = generateBrandedOfferPdf({
-        candidate_name: candidateName,
-        position_title: positionTitle,
-        salary,
-        currency,
-        start_date: startDate,
-        company_name: companyName,
-        signatory_name: signatoryName,
-        signatory_title: signatoryTitle,
-        dynamic_variables: (fieldValues.dynamic_variables || fieldValues) as Record<string, string>,
-      });
+      const pdfBuffer = renderedHtml
+        ? await generateHtmlOfferPdf(renderedHtml)
+        : renderedText
+          ? generateTextOfferPdf(renderedText)
+          : generateBrandedOfferPdf({
+              candidate_name: candidateName,
+              position_title: positionTitle,
+              salary,
+              currency,
+              start_date: startDate,
+              company_name: companyName,
+              signatory_name: signatoryName,
+              signatory_title: signatoryTitle,
+              dynamic_variables: (fieldValues.dynamic_variables || fieldValues) as Record<
+                string,
+                string
+              >,
+            });
       pdfBase64 = pdfBuffer.toString("base64");
       pdfFilename = `Offer_Letter_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
     } catch (pdfErr) {
-      console.warn("[api/offers/send] Branded PDF generation warning:", pdfErr);
+      console.warn("[api/offers/send] PDF generation warning:", pdfErr);
     }
 
     let n8nSuccess = false;
     let n8nPayload: unknown = null;
     let n8nStatus = 200;
+    let n8nErrorDetail: string | null = null;
 
     try {
       const { response, payload } = await callN8nGateway("hiring/offer-send", token || "", {
@@ -205,9 +219,11 @@ export async function POST(req: NextRequest) {
         n8nPayload = payload;
         n8nStatus = response.status;
       } else {
+        n8nErrorDetail = `n8n returned HTTP ${response.status}`;
         console.warn("[api/offers/send] n8n returned non-ok status:", response.status, payload);
       }
     } catch (n8nErr) {
+      n8nErrorDetail = n8nErr instanceof Error ? n8nErr.message : "n8n gateway unreachable";
       console.warn("[api/offers/send] n8n gateway unreachable:", n8nErr);
     }
 
@@ -241,6 +257,9 @@ export async function POST(req: NextRequest) {
         account_id: user.id,
         campaign_id: parsed.data.campaign_id,
         application_id: parsed.data.application_id,
+        offer_template_id: offerTemplateId,
+        rendered_text: renderedText || null,
+        rendered_html: renderedHtml || null,
         field_values: resolvedFieldValues,
         candidate_email: appRow?.candidate_email || (fieldValues.candidate_email as string) || "",
         company_signer_email: user.email || "",
@@ -285,22 +304,30 @@ export async function POST(req: NextRequest) {
       signatory_name: signatoryName,
       signatory_title: signatoryTitle,
       field_values: resolvedFieldValues,
+      rendered_text: renderedText || null,
       sent_at: new Date().toISOString(),
     };
 
     if (n8nSuccess) {
       return NextResponse.json(
         typeof n8nPayload === "object" && n8nPayload !== null
-          ? { ...(n8nPayload as Record<string, unknown>), success: true, offer: responseOffer }
-          : { success: true, offer: responseOffer },
+          ? {
+              ...(n8nPayload as Record<string, unknown>),
+              success: true,
+              email_dispatched: true,
+              offer: responseOffer,
+            }
+          : { success: true, email_dispatched: true, offer: responseOffer },
         { status: n8nStatus },
       );
     }
 
     return NextResponse.json({
       success: true,
+      email_dispatched: false,
+      email_warning: n8nErrorDetail || "n8n webhook did not respond with 2xx",
       offer: responseOffer,
-      message: `Offer letter generated and sent to ${candidateName || appRow?.candidate_email || "candidate"}.`,
+      message: `Offer letter saved for ${candidateName || appRow?.candidate_email || "candidate"}, but email dispatch via n8n failed (${n8nErrorDetail || "unknown error"}).`,
     });
   } catch (dispatchError) {
     console.error("[api/offers/send] Offer dispatch error:", dispatchError);
