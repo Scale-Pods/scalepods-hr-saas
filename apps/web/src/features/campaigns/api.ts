@@ -36,7 +36,7 @@ export async function fetchCampaigns(): Promise<CampaignListItem[]> {
   }
 
   const activeCampaigns = ((campaigns.data as CampaignsRow[] | null) ?? []).filter(
-    (row) => !(row.cadence_config as any)?.is_deleted,
+    (row) => !(row.cadence_config as { is_deleted?: boolean } | null)?.is_deleted,
   );
 
   return activeCampaigns.map((row) => ({
@@ -76,9 +76,6 @@ export interface ViewCandidate {
   round_number?: number;
   reviewer_cutoff?: number | null;
   created_at?: string;
-  signed_document_url?: string | null;
-  candidate_response_notes?: string | null;
-  offer_status?: string | null;
   requested_documents?: Array<{
     id?: string;
     name: string;
@@ -117,7 +114,7 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
     });
     if (res.ok) {
       const data = await res.json();
-      if (data && data.campaign) return data;
+      if (data?.campaign) return data;
     }
   } catch (err) {
     console.warn("API route fetchCampaignDetail failed, falling back to client query:", err);
@@ -164,7 +161,69 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
     reviewer_cutoff?: number | null;
   }[];
 
-  const applicationsList = (appsRes.data ?? []) as any[];
+  interface FallbackAppItem {
+    id: string;
+    candidate_id: string;
+    candidate_name?: string | null;
+    candidate_email?: string | null;
+    candidate_phone?: string | null;
+    resume_path?: string | null;
+    current_stage?: string | null;
+    current_round_number?: number | null;
+    status: string;
+    status_before_hold?: string | null;
+    rejection_reason?: string | null;
+    created_at: string;
+    requested_documents?: Array<{
+      id?: string;
+      name: string;
+      status: "pending" | "verified" | "rejected";
+      notes?: string;
+      requested_at?: string;
+      verified_at?: string;
+    }> | null;
+    documents_status?:
+      | "not_requested"
+      | "requested"
+      | "partially_verified"
+      | "verified"
+      | "rejected"
+      | null;
+    documents_requested_at?: string | null;
+    documents_verified_at?: string | null;
+  }
+  interface FallbackSessionItem {
+    id: string;
+    candidate_id?: string;
+    round_instance_id?: string;
+    status?: string;
+    started_at?: string;
+    created_at?: string;
+  }
+  interface FallbackAnswerItem {
+    id: string;
+    session_id?: string;
+    round_instance_id?: string;
+  }
+  interface FallbackScorecardItem {
+    id: string;
+    session_id?: string;
+    round_instance_id?: string;
+    overall_score?: number | null;
+  }
+  interface FallbackDlItem {
+    application_id?: string | null;
+    candidate_id?: string | null;
+    round_instance_id?: string | null;
+    stage?: string | null;
+    score?: number | null;
+    score_type?: string | null;
+    rationale?: string | null;
+    decided_at?: string | null;
+    created_at?: string | null;
+  }
+
+  const applicationsList = (appsRes.data ?? []) as FallbackAppItem[];
   const roundInstanceIds = roundInstances.map((r) => r.id);
   const appIds = applicationsList.map((a) => a.id);
 
@@ -176,14 +235,22 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
           .in("round_instance_id", roundInstanceIds)
       : Promise.resolve({ data: [] }),
     roundInstanceIds.length > 0
-      ? (supabase as any)
+      ? (
+          supabase as unknown as {
+            from: (t: string) => {
+              select: (s: string) => {
+                in: (k: string, v: string[]) => Promise<{ data: unknown[] }>;
+              };
+            };
+          }
+        )
           .from("interview_answers")
           .select("id,session_id,round_instance_id")
           .in("round_instance_id", roundInstanceIds)
       : Promise.resolve({ data: [] }),
   ]);
 
-  const allSessions = (sessionsRes.data ?? []) as any[];
+  const allSessions = (sessionsRes.data ?? []) as FallbackSessionItem[];
   const sessionIds = allSessions.map((s) => s.id);
 
   const scFilters = [
@@ -199,8 +266,8 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
           .or(scFilters.join(","))
       : { data: [] };
 
-  const allAnswers = (answersRes.data ?? []) as any[];
-  const allScorecards = (scorecardsRes.data ?? []) as any[];
+  const allAnswers = (answersRes.data ?? []) as FallbackAnswerItem[];
+  const allScorecards = (scorecardsRes.data ?? []) as FallbackScorecardItem[];
 
   let candidates: ViewCandidate[] = [];
 
@@ -221,7 +288,7 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
             .order("created_at", { ascending: false })
         : { data: [] };
 
-    const dlList = (dlData ?? []) as any[];
+    const dlList = (dlData ?? []) as FallbackDlItem[];
 
     candidates = applicationsList.map((app) => {
       const appResumeScoreRow = dlList.find(
@@ -290,21 +357,8 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         stageLabel = "Document Verification";
       } else if (isRoundStage) {
         stageLabel = `Round ${app.current_round_number ?? appRi?.round_number ?? 1}`;
-      } else if (
-        app.current_stage === "offer" ||
-        app.current_stage === "offer_decision" ||
-        app.status === "offer_sent" ||
-        app.status === "offer_accepted" ||
-        app.status === "offer_rejected" ||
-        app.status === "offer_declined"
-      ) {
-        if (app.status === "offer_accepted") {
-          stageLabel = "Offer Accepted";
-        } else if (app.status === "offer_rejected" || app.status === "offer_declined") {
-          stageLabel = "Offer Rejected";
-        } else {
-          stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
-        }
+      } else if (app.current_stage === "offer") {
+        stageLabel = app.status === "offer_sent" ? "Offer Sent" : "Offer Ready";
       }
 
       const resumeScore = appResumeScoreRow?.score != null ? Number(appResumeScoreRow.score) : null;
@@ -357,15 +411,22 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         .select("id,name,email,phone,resume_url")
         .in("id", candIds);
 
-      const allCands = (candsData ?? []) as any[];
+      interface FallbackCandItem {
+        id: string;
+        name?: string | null;
+        email?: string | null;
+        phone?: string | null;
+        resume_url?: string | null;
+      }
+      const allCands = (candsData ?? []) as FallbackCandItem[];
       candidates = allCands.map((cand) => {
         const candRi = roundInstances.find((r) => r.candidate_id === cand.id);
         return {
           candidate_id: cand.id,
-          name: cand.name,
-          email: cand.email,
-          phone: cand.phone,
-          resume_url: cand.resume_url,
+          name: cand.name ?? null,
+          email: cand.email ?? "",
+          phone: cand.phone ?? null,
+          resume_url: cand.resume_url ?? null,
           current_stage: candRi ? `Round ${candRi.round_number}` : "Resume Screening",
           latest_score: null,
           decision: candRi?.status ?? "active",
@@ -389,7 +450,7 @@ export async function decideApplication(params: {
   applicationId: string;
   action: "advance" | "reject" | "hold" | "resume";
   rejectionReason?: string | null;
-}): Promise<any> {
+}): Promise<Record<string, unknown>> {
   const supabase = supabaseBrowser();
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;

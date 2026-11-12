@@ -5,30 +5,20 @@ import {
   AlertCircle,
   ArrowRight,
   CheckCircle2,
-  ChevronRight,
   Clock,
-  ExternalLink,
   Eye,
   FileCheck2,
   FileSignature,
   FileText,
-  Filter,
   HelpCircle,
   LayoutGrid,
   List,
   Loader2,
-  Mic,
-  MoreVertical,
   Pause,
-  Phone,
   Play,
-  RotateCw,
   Search,
-  SlidersHorizontal,
   Sparkles,
   Trash2,
-  User,
-  UserCheck,
   UserX,
   XCircle,
 } from "lucide-react";
@@ -48,15 +38,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -149,7 +130,7 @@ export function PipelineBoard({
   accessToken,
   onRefresh,
 }: PipelineBoardProps) {
-  const router = useRouter();
+  const _router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") as "active" | "on_hold" | "rejected" | "all" | null;
   const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
@@ -201,20 +182,13 @@ export function PipelineBoard({
       if (!matchesSearch) return false;
 
       if (filterTab === "active") {
-        return (
-          c.status !== "rejected" &&
-          c.status !== "on_hold" &&
-          c.status !== "offer_rejected" &&
-          c.status !== "offer_declined"
-        );
+        return c.status !== "rejected" && c.status !== "on_hold";
       }
       if (filterTab === "on_hold") {
         return c.status === "on_hold";
       }
       if (filterTab === "rejected") {
-        return (
-          c.status === "rejected" || c.status === "offer_rejected" || c.status === "offer_declined"
-        );
+        return c.status === "rejected";
       }
       return true;
     });
@@ -268,14 +242,6 @@ export function PipelineBoard({
       roundNumber: null,
     });
 
-    cols.push({
-      id: "offer_decision",
-      title: "Offers Accepted / Rejected",
-      description: "Signed agreements & candidate decisions",
-      stage: "offer_decision",
-      roundNumber: null,
-    });
-
     return cols;
   }, [rounds]);
 
@@ -288,22 +254,13 @@ export function PipelineBoard({
 
     for (const cand of filteredCandidates) {
       if (
-        cand.status === "offer_accepted" ||
-        cand.status === "offer_rejected" ||
-        cand.status === "offer_declined" ||
-        cand.current_stage === "offer_decision" ||
-        cand.current_stage === "Offer Accepted" ||
-        cand.current_stage === "Offer Rejected"
-      ) {
-        if (map["offer_decision"]) map["offer_decision"].push(cand);
-      } else if (
         cand.status === "offer_ready" ||
         cand.status === "offer_sent" ||
         cand.current_stage === "offer" ||
         cand.current_stage === "Offer Sent" ||
         cand.current_stage === "Offer Ready"
       ) {
-        if (map["offer"]) map["offer"].push(cand);
+        if (map.offer) map.offer.push(cand);
       } else if (
         cand.current_stage === "document_verification" ||
         cand.current_stage === "Document Verification" ||
@@ -311,29 +268,29 @@ export function PipelineBoard({
         cand.status === "documents_requested" ||
         cand.status === "documents_verified"
       ) {
-        if (map["document_verification"]) map["document_verification"].push(cand);
+        if (map.document_verification) map.document_verification.push(cand);
       } else if (
         cand.current_stage === "needs_review" ||
         cand.current_stage === "Resume Screening" ||
         (!cand.round_instance_id && !cand.current_round_number)
       ) {
-        if (map["needs_review"]) map["needs_review"].push(cand);
+        if (map.needs_review) map.needs_review.push(cand);
       } else if (
         cand.round_instance_id ||
-        (cand.current_stage && cand.current_stage.startsWith("Round ")) ||
+        cand.current_stage?.startsWith("Round ") ||
         cand.current_round_number
       ) {
         const roundNum = cand.current_round_number || cand.round_number || 1;
         const colId = `round_${roundNum}`;
         if (map[colId]) {
           map[colId].push(cand);
-        } else if (map["round_1"]) {
-          map["round_1"].push(cand);
-        } else if (map["needs_review"]) {
-          map["needs_review"].push(cand);
+        } else if (map.round_1) {
+          map.round_1.push(cand);
+        } else if (map.needs_review) {
+          map.needs_review.push(cand);
         }
       } else {
-        if (map["needs_review"]) map["needs_review"].push(cand);
+        if (map.needs_review) map.needs_review.push(cand);
       }
     }
     return map;
@@ -599,7 +556,7 @@ export function PipelineBoard({
             return (
               <div
                 key={col.id}
-                className="flex flex-col w-72 shrink-0 rounded-2xl border border-border/70 bg-muted/15 shadow-2xs overflow-hidden"
+                className="flex flex-col w-80 shrink-0 rounded-2xl border border-border/70 bg-muted/15 shadow-2xs overflow-hidden"
               >
                 {/* Column Header */}
                 <div className="p-3.5 border-b border-border/60 bg-muted/30">
@@ -630,14 +587,7 @@ export function PipelineBoard({
                       const isBusy = actionBusyId === cand.application_id;
                       const isDocumentVerificationStage = col.stage === "document_verification";
                       const isOfferStage = col.stage === "offer";
-                      const isOfferDecisionStage = col.stage === "offer_decision";
                       const isOfferSent = cand.status === "offer_sent";
-                      const isOfferAccepted =
-                        cand.status === "offer_accepted" || cand.current_stage === "Offer Accepted";
-                      const isOfferRejected =
-                        cand.status === "offer_rejected" ||
-                        cand.status === "offer_declined" ||
-                        cand.current_stage === "Offer Rejected";
                       const roundMeta = getRoundMeta(cand, rounds);
 
                       return (
@@ -647,11 +597,9 @@ export function PipelineBoard({
                             "group rounded-xl border p-3.5 transition-all shadow-xs",
                             cand.status === "on_hold"
                               ? "border-amber-500/30 bg-amber-500/5 dark:bg-amber-950/10"
-                              : cand.status === "rejected" || isOfferRejected
+                              : cand.status === "rejected"
                                 ? "border-rose-500/30 bg-rose-500/5 dark:bg-rose-950/10 opacity-75"
-                                : isOfferAccepted
-                                  ? "border-emerald-500/50 bg-emerald-500/5 dark:bg-emerald-950/10 hover:border-emerald-500/70"
-                                  : "border-border/80 bg-card hover:border-primary/40 hover:shadow-sm",
+                                : "border-border/80 bg-card hover:border-primary/40 hover:shadow-sm",
                           )}
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -728,60 +676,28 @@ export function PipelineBoard({
                               </div>
                             )}
 
-                          {cand.current_stage !== "Resume Screening" && (
-                            <div className="mt-2.5 flex items-center justify-between rounded-lg bg-muted/40 px-2.5 py-1.5 border border-border/60">
-                              <span className="text-[11px] font-medium text-muted-foreground">
-                                {cand.current_stage} Score:
-                              </span>
-                              <span className="text-xs font-bold font-mono text-primary">
-                                {cand.ai_interview_score != null
-                                  ? `${cand.ai_interview_score}/100`
-                                  : cand.interview_status === "incomplete"
-                                    ? "Ended Early"
-                                    : roundMeta.type === "ai_voice_call"
-                                      ? "Awaiting Call"
-                                      : "Awaiting Score"}
-                              </span>
-                            </div>
-                          )}
+                          {cand.current_stage !== "Resume Screening" &&
+                            cand.current_stage !== "Document Verification" &&
+                            !isDocumentVerificationStage &&
+                            !isOfferStage && (
+                              <div className="mt-2.5 flex items-center justify-between rounded-lg bg-muted/40 px-2.5 py-1.5 border border-border/60">
+                                <span className="text-[11px] font-medium text-muted-foreground">
+                                  {cand.current_stage} Score:
+                                </span>
+                                <span className="text-xs font-bold font-mono text-primary">
+                                  {cand.ai_interview_score != null
+                                    ? `${cand.ai_interview_score}/100`
+                                    : cand.interview_status === "incomplete"
+                                      ? "Ended Early"
+                                      : roundMeta.type === "ai_voice_call"
+                                        ? "Awaiting Call"
+                                        : "Awaiting Score"}
+                                </span>
+                              </div>
+                            )}
 
                           {/* Status and Reason */}
                           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                            {/* Offer Decision Badges */}
-                            {isOfferAccepted && (
-                              <Badge
-                                variant="outline"
-                                className="border-emerald-500/50 text-emerald-600 bg-emerald-500/10 text-[10px] gap-1 px-2 py-0.5 font-semibold"
-                              >
-                                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                                Offer Accepted
-                              </Badge>
-                            )}
-
-                            {isOfferRejected && (
-                              <Badge
-                                variant="outline"
-                                className="border-rose-500/50 text-rose-600 bg-rose-500/10 text-[10px] gap-1 px-2 py-0.5 font-semibold"
-                              >
-                                <XCircle className="h-3 w-3 text-rose-500" />
-                                Offer Rejected
-                              </Badge>
-                            )}
-
-                            {cand.signed_document_url && (
-                              <a
-                                href={cand.signed_document_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-emerald-500/40 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 text-[10px] font-semibold transition-colors shadow-2xs"
-                                title="Open signed agreement document"
-                              >
-                                <FileText className="h-2.5 w-2.5" />
-                                <span>Signed Agreement</span>
-                                <ExternalLink className="h-2.5 w-2.5 opacity-60" />
-                              </a>
-                            )}
-
                             {/* Round Stage Status Badge */}
                             {cand.interview_status === "evaluated" && (
                               <Badge
@@ -890,42 +806,39 @@ export function PipelineBoard({
                             )}
 
                             {/* Document Verification Stage Badges */}
-                            {isDocumentVerificationStage && (
-                              <>
-                                {cand.documents_status === "verified" ? (
-                                  <Badge
-                                    variant="outline"
-                                    className="border-emerald-500/50 text-emerald-600 bg-emerald-500/10 text-[10px] gap-1 px-2 py-0.5 font-semibold"
-                                  >
-                                    <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                                    All Documents Verified
-                                  </Badge>
-                                ) : cand.documents_status === "partially_verified" ? (
-                                  <Badge
-                                    variant="outline"
-                                    className="border-amber-500/50 text-amber-600 bg-amber-500/10 text-[10px] gap-1 px-2 py-0.5 font-semibold"
-                                  >
-                                    <Clock className="h-3 w-3 text-amber-500" />
-                                    Verification In Progress
-                                  </Badge>
-                                ) : cand.documents_status === "requested" ? (
-                                  <Badge
-                                    variant="outline"
-                                    className="border-blue-500/50 text-blue-600 bg-blue-500/10 text-[10px] gap-1 px-2 py-0.5 font-semibold"
-                                  >
-                                    <Clock className="h-3 w-3 text-blue-500" />
-                                    Documents Requested
-                                  </Badge>
-                                ) : (
-                                  <Badge
-                                    variant="outline"
-                                    className="border-border text-muted-foreground bg-muted/20 text-[10px] gap-1 px-2 py-0.5"
-                                  >
-                                    Pending Document Request
-                                  </Badge>
-                                )}
-                              </>
-                            )}
+                            {isDocumentVerificationStage &&
+                              (cand.documents_status === "verified" ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-emerald-500/50 text-emerald-600 bg-emerald-500/10 text-[10px] gap-1 px-2 py-0.5 font-semibold"
+                                >
+                                  <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                                  All Documents Verified
+                                </Badge>
+                              ) : cand.documents_status === "partially_verified" ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-amber-500/50 text-amber-600 bg-amber-500/10 text-[10px] gap-1 px-2 py-0.5 font-semibold"
+                                >
+                                  <Clock className="h-3 w-3 text-amber-500" />
+                                  Verification In Progress
+                                </Badge>
+                              ) : cand.documents_status === "requested" ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-blue-500/50 text-blue-600 bg-blue-500/10 text-[10px] gap-1 px-2 py-0.5 font-semibold"
+                                >
+                                  <Clock className="h-3 w-3 text-blue-500" />
+                                  Documents Requested
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="border-border text-muted-foreground bg-muted/20 text-[10px] gap-1 px-2 py-0.5"
+                                >
+                                  Pending Document Request
+                                </Badge>
+                              ))}
                           </div>
 
                           {/* Document Verification Checklist Box */}
@@ -1026,20 +939,7 @@ export function PipelineBoard({
                             </div>
                           )}
 
-                          {cand.candidate_response_notes && (
-                            <p
-                              className={cn(
-                                "mt-1.5 text-[10px] italic line-clamp-2",
-                                isOfferAccepted
-                                  ? "text-emerald-600 dark:text-emerald-400 font-medium"
-                                  : "text-muted-foreground",
-                              )}
-                            >
-                              Response: "{cand.candidate_response_notes}"
-                            </p>
-                          )}
-
-                          {cand.rejection_reason && !cand.candidate_response_notes && (
+                          {cand.rejection_reason && (
                             <p className="mt-1.5 text-[10px] text-rose-500 italic truncate">
                               Reason: {cand.rejection_reason}
                             </p>
@@ -1049,134 +949,119 @@ export function PipelineBoard({
                           <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between gap-1.5">
                             <Link
                               href={`/candidates/${cand.candidate_id}?campaignId=${campaign.id}&tab=${filterTab}`}
-                              className="text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                              className="text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1 shrink-0"
                             >
                               <Eye className="h-3 w-3" />
                               View
                             </Link>
 
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 shrink-0">
                               {/* Remove Candidate Button */}
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 disabled={isBusy || isJobClosed}
                                 onClick={() => setCandidateToRemove(cand)}
-                                className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10"
+                                className="h-6 w-6 p-0 text-[10px] text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 shrink-0"
                                 title="Remove candidate from campaign"
                               >
                                 <Trash2 className="h-3 w-3" />
                               </Button>
 
-                              {isOfferDecisionStage ? (
+                              {/* Hold/Resume Button */}
+                              {cand.status !== "rejected" && (
                                 <Button
                                   size="sm"
-                                  variant="outline"
-                                  onClick={() => setViewingOfferCandidate(cand)}
-                                  className="h-6 px-2 text-[10px] font-semibold gap-1 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
-                                  title="View offer letter & terms"
+                                  variant="ghost"
+                                  disabled={isBusy || isJobClosed}
+                                  onClick={() => handleHoldToggle(cand)}
+                                  className="h-6 w-6 p-0 text-[10px] text-muted-foreground hover:text-foreground shrink-0"
+                                  title={
+                                    cand.status === "on_hold" ? "Resume hiring" : "Put on hold"
+                                  }
                                 >
-                                  <FileSignature className="h-3 w-3" />
-                                  View Offer
+                                  {cand.status === "on_hold" ? (
+                                    <Play className="h-3 w-3 text-emerald-500" />
+                                  ) : (
+                                    <Pause className="h-3 w-3" />
+                                  )}
                                 </Button>
-                              ) : (
-                                <>
-                                  {/* Hold/Resume Button */}
-                                  {cand.status !== "rejected" && (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      disabled={isBusy || isJobClosed}
-                                      onClick={() => handleHoldToggle(cand)}
-                                      className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
-                                      title={
-                                        cand.status === "on_hold" ? "Resume hiring" : "Put on hold"
-                                      }
-                                    >
-                                      {cand.status === "on_hold" ? (
-                                        <Play className="h-3 w-3 text-emerald-500" />
-                                      ) : (
-                                        <Pause className="h-3 w-3" />
-                                      )}
-                                    </Button>
-                                  )}
-
-                                  {/* Reject Button */}
-                                  {cand.status !== "rejected" && (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      disabled={isBusy || isJobClosed}
-                                      onClick={() => setRejectingCandidate(cand)}
-                                      className="h-6 px-1.5 text-[10px] text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
-                                      title="Reject candidate"
-                                    >
-                                      <XCircle className="h-3 w-3" />
-                                    </Button>
-                                  )}
-
-                                  {/* Advance or Offer Button */}
-                                  {cand.status !== "rejected" &&
-                                    cand.status !== "on_hold" &&
-                                    (isDocumentVerificationStage ? (
-                                      <Button
-                                        size="sm"
-                                        disabled={isBusy || isJobClosed}
-                                        onClick={() => handleAdvance(cand)}
-                                        className={cn(
-                                          "h-6 px-2 text-[10px] font-semibold gap-1 cursor-pointer shadow-2xs",
-                                          cand.documents_status === "verified"
-                                            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                            : "bg-primary text-primary-foreground hover:bg-primary/90",
-                                        )}
-                                        title="Advance candidate to Offers stage"
-                                      >
-                                        {isBusy ? (
-                                          <Loader2 className="h-3 w-3 animate-spin" />
-                                        ) : (
-                                          <ArrowRight className="h-3 w-3" />
-                                        )}
-                                        Advance to Offer
-                                      </Button>
-                                    ) : isOfferStage ? (
-                                      !isOfferSent ? (
-                                        <Button
-                                          size="sm"
-                                          disabled={isBusy || isJobClosed}
-                                          onClick={() => setOfferCandidate(cand)}
-                                          className="h-6 px-2 text-[10px] font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                                        >
-                                          <FileSignature className="h-3 w-3" />
-                                          Send Offer
-                                        </Button>
-                                      ) : (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => setViewingOfferCandidate(cand)}
-                                          className="h-6 px-2 text-[10px] font-semibold gap-1 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
-                                        >
-                                          <Eye className="h-3 w-3" />
-                                          View Offer
-                                        </Button>
-                                      )
-                                    ) : (
-                                      <Button
-                                        size="sm"
-                                        disabled={isBusy || isJobClosed}
-                                        onClick={() => handleAdvance(cand)}
-                                        className="h-6 px-2 text-[10px] font-semibold gap-1 bg-primary text-primary-foreground hover:bg-primary/90"
-                                      >
-                                        {isBusy ? (
-                                          <Loader2 className="h-3 w-3 animate-spin" />
-                                        ) : (
-                                          <ArrowRight className="h-3 w-3" />
-                                        )}
-                                        Advance
-                                      </Button>
-                                    ))}
-                                </>
                               )}
+
+                              {/* Reject Button */}
+                              {cand.status !== "rejected" && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={isBusy || isJobClosed}
+                                  onClick={() => setRejectingCandidate(cand)}
+                                  className="h-6 w-6 p-0 text-[10px] text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 shrink-0"
+                                  title="Reject candidate"
+                                >
+                                  <XCircle className="h-3 w-3" />
+                                </Button>
+                              )}
+
+                              {/* Advance or Offer Button */}
+                              {cand.status !== "rejected" &&
+                                cand.status !== "on_hold" &&
+                                (isDocumentVerificationStage ? (
+                                  <Button
+                                    size="sm"
+                                    disabled={isBusy || isJobClosed}
+                                    onClick={() => handleAdvance(cand)}
+                                    className={cn(
+                                      "h-6 px-2.5 text-[10px] font-semibold gap-1 cursor-pointer shadow-2xs shrink-0 whitespace-nowrap",
+                                      cand.documents_status === "verified"
+                                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        : "bg-primary text-primary-foreground hover:bg-primary/90",
+                                    )}
+                                    title="Advance candidate to Offers stage"
+                                  >
+                                    {isBusy ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <ArrowRight className="h-3 w-3" />
+                                    )}
+                                    Advance
+                                  </Button>
+                                ) : isOfferStage ? (
+                                  !isOfferSent ? (
+                                    <Button
+                                      size="sm"
+                                      disabled={isBusy || isJobClosed}
+                                      onClick={() => setOfferCandidate(cand)}
+                                      className="h-6 px-2.5 text-[10px] font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 whitespace-nowrap"
+                                    >
+                                      <FileSignature className="h-3 w-3" />
+                                      Send Offer
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setViewingOfferCandidate(cand)}
+                                      className="h-6 px-2.5 text-[10px] font-semibold gap-1 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer shrink-0 whitespace-nowrap"
+                                    >
+                                      <Eye className="h-3 w-3" />
+                                      View Offer
+                                    </Button>
+                                  )
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    disabled={isBusy || isJobClosed}
+                                    onClick={() => handleAdvance(cand)}
+                                    className="h-6 px-2.5 text-[10px] font-semibold gap-1 bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 whitespace-nowrap"
+                                  >
+                                    {isBusy ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <ArrowRight className="h-3 w-3" />
+                                    )}
+                                    Advance
+                                  </Button>
+                                ))}
                             </div>
                           </div>
                         </div>
@@ -1217,23 +1102,11 @@ export function PipelineBoard({
                     cand.status === "document_verification" ||
                     cand.status === "documents_requested" ||
                     cand.status === "documents_verified";
-                  const isOfferDecisionStage =
-                    cand.status === "offer_accepted" ||
-                    cand.status === "offer_rejected" ||
-                    cand.status === "offer_declined" ||
-                    cand.current_stage === "Offer Accepted" ||
-                    cand.current_stage === "Offer Rejected";
                   const isOfferStage =
                     cand.current_stage === "offer" ||
                     cand.status === "offer_ready" ||
                     cand.status === "offer_sent";
                   const isOfferSent = cand.status === "offer_sent";
-                  const isOfferAccepted =
-                    cand.status === "offer_accepted" || cand.current_stage === "Offer Accepted";
-                  const isOfferRejected =
-                    cand.status === "offer_rejected" ||
-                    cand.status === "offer_declined" ||
-                    cand.current_stage === "Offer Rejected";
 
                   return (
                     <TableRow
@@ -1261,36 +1134,7 @@ export function PipelineBoard({
                       </TableCell>
 
                       <TableCell className="text-center">
-                        {isOfferAccepted ? (
-                          <div className="inline-flex items-center gap-1.5 justify-center">
-                            <Badge
-                              variant="outline"
-                              className="border-emerald-500/40 text-emerald-600 bg-emerald-500/10 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5"
-                            >
-                              <CheckCircle2 className="h-2.5 w-2.5" />
-                              Offer Accepted
-                            </Badge>
-                            {cand.signed_document_url && (
-                              <a
-                                href={cand.signed_document_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 text-[10px]"
-                                title="Open signed document"
-                              >
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                            )}
-                          </div>
-                        ) : isOfferRejected ? (
-                          <Badge
-                            variant="outline"
-                            className="border-rose-500/40 text-rose-600 bg-rose-500/10 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5"
-                          >
-                            <XCircle className="h-2.5 w-2.5" />
-                            Offer Rejected
-                          </Badge>
-                        ) : cand.status === "offer_sent" ? (
+                        {cand.status === "offer_sent" ? (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1366,120 +1210,104 @@ export function PipelineBoard({
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
 
-                          {isOfferDecisionStage ? (
+                          {cand.status !== "rejected" && (
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => setViewingOfferCandidate(cand)}
-                              className="h-7 px-2.5 text-xs font-semibold gap-1 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 cursor-pointer"
-                              title="View offer letter & terms"
+                              disabled={isBusy || isJobClosed}
+                              onClick={() => handleHoldToggle(cand)}
+                              className="h-7 px-2 text-xs"
                             >
-                              <FileSignature className="h-3.5 w-3.5" />
-                              View Offer
+                              {cand.status === "on_hold" ? "Resume" : "Hold"}
                             </Button>
-                          ) : (
-                            <>
-                              {cand.status !== "rejected" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={isBusy || isJobClosed}
-                                  onClick={() => handleHoldToggle(cand)}
-                                  className="h-7 px-2 text-xs"
-                                >
-                                  {cand.status === "on_hold" ? "Resume" : "Hold"}
-                                </Button>
-                              )}
-
-                              {cand.status !== "rejected" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={isBusy || isJobClosed}
-                                  onClick={() => setRejectingCandidate(cand)}
-                                  className="h-7 px-2 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
-                                >
-                                  Reject
-                                </Button>
-                              )}
-
-                              {cand.status !== "rejected" &&
-                                cand.status !== "on_hold" &&
-                                (isDocumentVerificationStage ? (
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      disabled={isBusy || isJobClosed}
-                                      onClick={() => setRequestDocsCandidate(cand)}
-                                      className="h-7 px-2 text-xs font-semibold gap-1 text-primary border-primary/40 hover:bg-primary/10 cursor-pointer"
-                                      title="Configure & request documents"
-                                    >
-                                      <FileText className="h-3.5 w-3.5" />
-                                      {cand.requested_documents &&
-                                      cand.requested_documents.length > 0
-                                        ? "Docs"
-                                        : "Request Docs"}
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      disabled={isBusy || isJobClosed}
-                                      onClick={() => handleAdvance(cand)}
-                                      className={cn(
-                                        "h-7 px-2.5 text-xs font-semibold gap-1 cursor-pointer",
-                                        cand.documents_status === "verified"
-                                          ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                          : "",
-                                      )}
-                                      title="Advance candidate to Offers stage"
-                                    >
-                                      {isBusy ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <ArrowRight className="h-3.5 w-3.5" />
-                                      )}
-                                      Advance to Offer
-                                    </Button>
-                                  </div>
-                                ) : isOfferStage ? (
-                                  !isOfferSent ? (
-                                    <Button
-                                      size="sm"
-                                      disabled={isBusy || isJobClosed}
-                                      onClick={() => setOfferCandidate(cand)}
-                                      className="h-7 px-2.5 text-xs font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                                    >
-                                      <FileSignature className="h-3.5 w-3.5" />
-                                      Send Offer
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => setViewingOfferCandidate(cand)}
-                                      className="h-7 px-2.5 text-xs font-semibold gap-1 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 cursor-pointer"
-                                    >
-                                      <Eye className="h-3.5 w-3.5" />
-                                      View Offer
-                                    </Button>
-                                  )
-                                ) : (
-                                  <Button
-                                    size="sm"
-                                    disabled={isBusy || isJobClosed}
-                                    onClick={() => handleAdvance(cand)}
-                                    className="h-7 px-2.5 text-xs font-semibold gap-1"
-                                  >
-                                    {isBusy ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <ArrowRight className="h-3.5 w-3.5" />
-                                    )}
-                                    Advance
-                                  </Button>
-                                ))}
-                            </>
                           )}
+
+                          {cand.status !== "rejected" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isBusy || isJobClosed}
+                              onClick={() => setRejectingCandidate(cand)}
+                              className="h-7 px-2 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
+                            >
+                              Reject
+                            </Button>
+                          )}
+
+                          {cand.status !== "rejected" &&
+                            cand.status !== "on_hold" &&
+                            (isDocumentVerificationStage ? (
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={isBusy || isJobClosed}
+                                  onClick={() => setRequestDocsCandidate(cand)}
+                                  className="h-7 px-2 text-xs font-semibold gap-1 text-primary border-primary/40 hover:bg-primary/10 cursor-pointer"
+                                  title="Configure & request documents"
+                                >
+                                  <FileText className="h-3.5 w-3.5" />
+                                  {cand.requested_documents && cand.requested_documents.length > 0
+                                    ? "Docs"
+                                    : "Request Docs"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  disabled={isBusy || isJobClosed}
+                                  onClick={() => handleAdvance(cand)}
+                                  className={cn(
+                                    "h-7 px-2.5 text-xs font-semibold gap-1 cursor-pointer",
+                                    cand.documents_status === "verified"
+                                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                      : "",
+                                  )}
+                                  title="Advance candidate to Offers stage"
+                                >
+                                  {isBusy ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <ArrowRight className="h-3.5 w-3.5" />
+                                  )}
+                                  Advance to Offer
+                                </Button>
+                              </div>
+                            ) : isOfferStage ? (
+                              !isOfferSent ? (
+                                <Button
+                                  size="sm"
+                                  disabled={isBusy || isJobClosed}
+                                  onClick={() => setOfferCandidate(cand)}
+                                  className="h-7 px-2.5 text-xs font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                                >
+                                  <FileSignature className="h-3.5 w-3.5" />
+                                  Send Offer
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setViewingOfferCandidate(cand)}
+                                  className="h-7 px-2.5 text-xs font-semibold gap-1 text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 cursor-pointer"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                  View Offer
+                                </Button>
+                              )
+                            ) : (
+                              <Button
+                                size="sm"
+                                disabled={isBusy || isJobClosed}
+                                onClick={() => handleAdvance(cand)}
+                                className="h-7 px-2.5 text-xs font-semibold gap-1"
+                              >
+                                {isBusy ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <ArrowRight className="h-3.5 w-3.5" />
+                                )}
+                                Advance
+                              </Button>
+                            ))}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1629,7 +1457,9 @@ export function PipelineBoard({
           }}
           candidate={viewingOfferCandidate}
           campaignId={campaign.id}
-          initialOffer={viewingOfferData as any}
+          initialOffer={
+            viewingOfferData as Parameters<typeof ViewOfferLetterModal>[0]["initialOffer"]
+          }
         />
       )}
 
