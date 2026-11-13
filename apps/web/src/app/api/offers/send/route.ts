@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
             >,
           })
         : renderedHtml
-          ? await generateHtmlOfferPdf(renderedHtml)
+          ? await generateHtmlOfferPdf(renderedHtml, companyName)
           : renderedText
             ? generateTextOfferPdf(renderedText)
             : generateBrandedOfferPdf({

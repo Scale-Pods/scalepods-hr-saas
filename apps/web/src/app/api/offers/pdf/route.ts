@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
         dynamic_variables: body.dynamic_variables || {},
       });
     } else if (body.rendered_html?.trim()) {
-      pdfBuffer = await generateHtmlOfferPdf(body.rendered_html.trim());
+      pdfBuffer = await generateHtmlOfferPdf(body.rendered_html.trim(), body.company_name);
     } else {
       pdfBuffer = generateTextOfferPdf(body.rendered_text?.trim() || "");
     }
@@ -271,7 +271,7 @@ export async function GET(req: NextRequest) {
     const dynamicVars = (fieldValues.dynamic_variables || fieldValues) as Record<string, string>;
 
     const pdfBuffer = offerRow?.rendered_html?.trim()
-      ? await generateHtmlOfferPdf(offerRow.rendered_html.trim())
+      ? await generateHtmlOfferPdf(offerRow.rendered_html.trim(), companyName)
       : offerRow?.rendered_text?.trim()
         ? generateTextOfferPdf(offerRow.rendered_text.trim())
         : generateBrandedOfferPdf({
