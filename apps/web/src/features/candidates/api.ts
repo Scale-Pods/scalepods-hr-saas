@@ -189,7 +189,31 @@ export async function fetchCandidateProfile(
   if (accountId) {
     candQuery = candQuery.eq("account_id", accountId);
   }
-  const { data: cand, error: candErr } = await candQuery.maybeSingle();
+  let { data: cand, error: candErr } = await candQuery.maybeSingle();
+
+  let resolvedCandidateId = id;
+  if (!cand) {
+    // Check if id is an application_id
+    const { data: appById } = await supabase
+      .from("applications")
+      .select("id, candidate_id, campaign_id, account_id, resume_path")
+      .eq("id", id)
+      .maybeSingle();
+    if (appById?.candidate_id) {
+      resolvedCandidateId = appById.candidate_id;
+      if (!targetCampaignId && appById.campaign_id) {
+        targetCampaignId = appById.campaign_id;
+      }
+      let fallbackQuery = supabase.from("candidates").select("*").eq("id", appById.candidate_id);
+      if (accountId) {
+        fallbackQuery = fallbackQuery.eq("account_id", accountId);
+      }
+      const { data: realCand, error: realErr } = await fallbackQuery.maybeSingle();
+      cand = realCand;
+      candErr = realErr;
+    }
+  }
+
   if (candErr || !cand) throw new Error("Candidate not found");
   if (accountId && cand.account_id !== accountId) {
     throw new Error("Unauthorized access to candidate");
@@ -202,13 +226,13 @@ export async function fetchCandidateProfile(
       .select(
         "id,account_id,candidate_id,application_id,round_instance_id,stage,score,score_type,rationale,weight,created_at,raw_text",
       )
-      .eq("candidate_id", id)
+      .eq("candidate_id", resolvedCandidateId)
       .eq("account_id", cand.account_id)
       .order("created_at", { ascending: true }),
     supabase
       .from("round_instances")
       .select("*")
-      .eq("candidate_id", id)
+      .eq("candidate_id", resolvedCandidateId)
       .eq("account_id", cand.account_id)
       .order("round_number"),
     supabase
@@ -216,18 +240,18 @@ export async function fetchCandidateProfile(
       .select(
         "id,round_instance_id,candidate_id,status,expires_at,started_at,created_at,account_id",
       )
-      .eq("candidate_id", id)
+      .eq("candidate_id", resolvedCandidateId)
       .eq("account_id", cand.account_id),
     supabase
       .from("outreach_log")
       .select("*")
-      .eq("candidate_id", id)
+      .eq("candidate_id", resolvedCandidateId)
       .eq("account_id", cand.account_id)
       .order("sent_at", { ascending: true }),
     supabase
       .from("applications")
       .select("*")
-      .eq("candidate_id", id)
+      .eq("candidate_id", resolvedCandidateId)
       .eq("account_id", cand.account_id),
   ]);
 

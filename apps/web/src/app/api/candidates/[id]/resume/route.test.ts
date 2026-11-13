@@ -67,7 +67,7 @@ describe("GET /api/candidates/[id]/resume", () => {
   it("returns 404 if candidate does not exist", async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: "acc-1" } } });
     mockFrom.mockImplementation((table: string) => {
-      if (table === "candidates") {
+      if (table === "candidates" || table === "applications") {
         return {
           select: () => ({
             eq: () => ({
@@ -141,5 +141,65 @@ describe("GET /api/candidates/[id]/resume", () => {
 
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("resume.pdf?token=abc");
+  });
+
+  it("returns JSON with signedUrl when format=json is requested", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "acc-1" } } });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "candidates") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: {
+                    id: "cand-1",
+                    account_id: "acc-1",
+                    name: "Candidate One",
+                    resume_url: null,
+                  },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      if (table === "applications") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: {
+                      id: "app-1",
+                      resume_path: "acc-1/camp-1/resume.pdf",
+                    },
+                  }),
+              }),
+            }),
+          }),
+        };
+      }
+      return {};
+    });
+
+    mockCreateSignedUrl.mockResolvedValue({
+      data: {
+        signedUrl:
+          "https://test.supabase.co/storage/v1/object/sign/resumes/acc-1/camp-1/resume.pdf?token=abc",
+      },
+      error: null,
+    });
+
+    const req = new NextRequest(
+      "http://localhost:3000/api/candidates/cand-1/resume?format=json&campaignId=camp-1",
+    );
+    const res = await GET(req, { params: Promise.resolve({ id: "cand-1" }) });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.signedUrl).toContain("resume.pdf?token=abc");
   });
 });

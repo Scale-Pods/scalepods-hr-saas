@@ -99,7 +99,8 @@ import {
   updateApplicationContact,
 } from "@/features/candidates/api";
 import { useCandidateProfile } from "@/features/candidates/hooks";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { BUCKETS } from "@/lib/storage";
+import { accessToken, supabaseBrowser } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 function formatDisplayText(text?: string | null): string {
@@ -331,6 +332,86 @@ export default function CandidateProfilePage() {
       : "";
     return `/api/candidates/${encodeURIComponent(id)}/resume${campParam}`;
   }, [resumeUrl, id, selectedCampaignId]);
+
+  const [resumeLoading, setResumeLoading] = useState(false);
+
+  const handleOpenResume = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setResumeLoading(true);
+    try {
+      // 1. If we already have a valid signed HTTP URL from query data, open it directly
+      if (resumeUrl && (resumeUrl.startsWith("http://") || resumeUrl.startsWith("https://"))) {
+        window.open(resumeUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      // 2. Try direct client signing via Supabase storage
+      const supabase = supabaseBrowser();
+      const storagePath =
+        application?.resume_path ||
+        candidate?.resume_url ||
+        data?.application?.resume_path ||
+        (typeof resumeUrl === "string" && !resumeUrl.startsWith("/") ? resumeUrl : null);
+
+      if (storagePath) {
+        const cleanPath = storagePath.replace(/^\/+/, "").replace(/^resumes\//, "");
+        const { data: signed, error: signErr } = await supabase.storage
+          .from(BUCKETS.resumes)
+          .createSignedUrl(cleanPath, 3600);
+
+        if (signed?.signedUrl && !signErr) {
+          window.open(signed.signedUrl, "_blank", "noopener,noreferrer");
+          return;
+        }
+      }
+
+      // 3. Fallback: Request fresh signed URL from server API route with Bearer token
+      const token = await accessToken();
+      const campParam = selectedCampaignId
+        ? `&campaignId=${encodeURIComponent(selectedCampaignId)}`
+        : "";
+      const res = await fetch(
+        `/api/candidates/${encodeURIComponent(id)}/resume?format=json${campParam}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        },
+      );
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.signedUrl) {
+          window.open(json.signedUrl, "_blank", "noopener,noreferrer");
+          return;
+        }
+      }
+
+      // 4. Direct download stream fallback
+      if (storagePath) {
+        const cleanPath = storagePath.replace(/^\/+/, "").replace(/^resumes\//, "");
+        const { data: blob, error: dlErr } = await supabase.storage
+          .from(BUCKETS.resumes)
+          .download(cleanPath);
+
+        if (blob && !dlErr) {
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, "_blank", "noopener,noreferrer");
+          return;
+        }
+      }
+
+      // 5. If server redirected
+      if (res.redirected && res.url) {
+        window.open(res.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      showErrorToast("Could not open resume. File not found in storage.");
+    } catch (err) {
+      showErrorToast(err instanceof Error ? err.message : "Failed to open resume");
+    } finally {
+      setResumeLoading(false);
+    }
+  };
   const timeline = data?.timeline ?? [];
   const outreach = data?.outreach ?? [];
   const interviewRecordings = data?.interviewRecordings ?? [];
@@ -883,15 +964,21 @@ export default function CandidateProfilePage() {
         <OffersHistorySection offers={offers} onViewOffer={() => setViewOfferOpen(true)} />
       )}
 
-      {resolvedResumeHref && (
+      {(resolvedResumeHref || application?.resume_path || candidate?.resume_url) && (
         <SectionCard title="Resume">
           <a
-            href={resolvedResumeHref}
+            href={resolvedResumeHref || "#"}
+            onClick={handleOpenResume}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-accent-foreground"
+            className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-accent-foreground cursor-pointer"
           >
-            <FileText className="h-4 w-4" aria-hidden /> Open resume{" "}
+            {resumeLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden />
+            ) : (
+              <FileText className="h-4 w-4" aria-hidden />
+            )}
+            {resumeLoading ? "Opening resume…" : "Open resume"}{" "}
             <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           </a>
           <p className="mt-1 text-xs text-muted-foreground">Short-lived signed URL (1 hour)</p>
