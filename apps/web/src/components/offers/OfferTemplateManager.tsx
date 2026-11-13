@@ -21,7 +21,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession } from "@/features/auth/hooks";
 import { extractOfferTemplateFromFile } from "@/lib/extract-text";
-import { extractCustomOfferVariables } from "@/lib/offer-template-utils";
+import {
+  cleanOfferTemplateDirectives,
+  extractCustomOfferVariables,
+} from "@/lib/offer-template-utils";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 export interface OfferTemplateItem {
@@ -207,8 +210,8 @@ export function OfferTemplateManager() {
   const startEdit = (t: OfferTemplateItem) => {
     setEditingId(t.id);
     setEditName(t.name);
-    setEditText(t.raw_text || "");
-    setEditHtml(t.html_content || "");
+    setEditText(cleanOfferTemplateDirectives(t.raw_text || ""));
+    setEditHtml(cleanOfferTemplateDirectives(t.html_content || ""));
   };
 
   const handleEditSave = async () => {

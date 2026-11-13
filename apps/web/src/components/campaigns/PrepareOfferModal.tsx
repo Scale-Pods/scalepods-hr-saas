@@ -49,6 +49,7 @@ import { useAccount } from "@/features/account/hooks";
 import type { ViewCandidate } from "@/features/campaigns/api";
 import { extractOfferTemplateFromFile } from "@/lib/extract-text";
 import {
+  cleanOfferTemplateDirectives,
   extractCustomOfferVariables,
   formatOfferVarLabel,
   renderOfferTemplateText,
@@ -202,8 +203,8 @@ export function PrepareOfferModal({
         const preferred = list.find((t) => t.is_default) ?? list[0];
         if (preferred) {
           setSelectedTemplateId(preferred.id);
-          setTemplateText(preferred.raw_text || "");
-          setTemplateHtml(preferred.html_content || "");
+          setTemplateText(cleanOfferTemplateDirectives(preferred.raw_text || ""));
+          setTemplateHtml(cleanOfferTemplateDirectives(preferred.html_content || ""));
         } else {
           setSelectedTemplateId("");
           setTemplateText("");
@@ -306,6 +307,14 @@ export function PrepareOfferModal({
             rendered_html: htmlToRender?.trim() || undefined,
             rendered_text: textToRender,
             candidate_name: candidateName || "Candidate",
+            position_title: positionTitle || "Software Engineer",
+            salary: salary || "1200000",
+            currency: currency || "INR",
+            start_date: startDate || new Date().toISOString().split("T")[0],
+            company_name: companyName || "ScalePods Technologies",
+            signatory_name: signatoryName || "Manish",
+            dynamic_variables: dynamicValues,
+            use_branded_template: selectedTemplate?.is_default ?? true,
           }),
         });
         if (!res.ok) throw new Error("Failed to generate preview PDF");
@@ -320,7 +329,17 @@ export function PrepareOfferModal({
         setLoadingPdfPreview(false);
       }
     },
-    [candidateName],
+    [
+      candidateName,
+      positionTitle,
+      salary,
+      currency,
+      startDate,
+      companyName,
+      signatoryName,
+      dynamicValues,
+      selectedTemplate,
+    ],
   );
 
   const parseTemplateWithAi = useCallback(
@@ -391,8 +410,8 @@ export function PrepareOfferModal({
     setRemovedVariables([]);
     setExtraVariables([]);
     const tpl = templates.find((t) => t.id === id);
-    setTemplateText(tpl?.raw_text || "");
-    setTemplateHtml(tpl?.html_content || "");
+    setTemplateText(cleanOfferTemplateDirectives(tpl?.raw_text || ""));
+    setTemplateHtml(cleanOfferTemplateDirectives(tpl?.html_content || ""));
   };
 
   const handleUploadFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1350,8 +1369,10 @@ export function PrepareOfferModal({
                   <div className="rounded-xl border border-border bg-slate-200/70 dark:bg-slate-900/70 p-3 sm:p-5 h-[56vh] min-h-[420px] overflow-y-auto">
                     <div
                       style={{ color: "#0f172a", backgroundColor: "#ffffff" }}
-                      className="mx-auto w-full max-w-[820px] rounded-md bg-white text-slate-900 [&_*]:text-slate-900 shadow-md border border-slate-200 px-8 py-7 text-[13px] leading-relaxed font-sans [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_p]:mb-2.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2.5 [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-slate-300 [&_td]:px-2.5 [&_td]:py-1.5"
+                      className="mx-auto w-full max-w-[820px] rounded-md bg-white text-slate-900 shadow-md border border-slate-200 overflow-hidden"
                     >
+                      {/* Top letterhead decorative brand accent */}
+                      <div className="h-2 w-full bg-gradient-to-r from-[#0f2942] via-[#1e40af] to-[#2563eb]" />
                       <div
                         contentEditable
                         suppressContentEditableWarning
@@ -1359,7 +1380,7 @@ export function PrepareOfferModal({
                           setFinalRenderedHtml(e.currentTarget.innerHTML);
                           setFinalRenderedText(e.currentTarget.innerText.replace(/\r\n/g, "\n"));
                         }}
-                        className="focus:outline-none"
+                        className="min-h-[400px] px-8 py-7 text-[13px] leading-relaxed text-slate-900 font-sans focus:outline-none [&_h1]:text-[#0f2942] [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-[#0f2942] [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-slate-200 [&_h2]:pb-1 [&_h3]:text-[#1e40af] [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_p]:mb-2.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2.5 [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-4 [&_table]:shadow-sm [&_th]:border [&_th]:border-[#0f2942] [&_th]:bg-[#0f2942] [&_th]:text-white [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:tracking-wide [&_td]:border [&_td]:border-slate-300 [&_td]:px-3 [&_td]:py-1.5 [&_tr:nth-child(even)]:bg-slate-50/70 [&_img]:max-h-20 [&_img]:object-contain"
                         // biome-ignore lint/security/noDangerouslySetInnerHtml: Rendered offer HTML comes from recruiter's own DOCX/template
                         dangerouslySetInnerHTML={{ __html: finalRenderedHtml }}
                       />

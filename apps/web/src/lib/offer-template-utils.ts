@@ -47,11 +47,15 @@ export function cleanOfferTemplateDirectives(
 ): string {
   if (!content) return "";
 
+  // Normalize HTML block endings with newlines so Mammoth single-line HTML doesn't drop multi-page content
+  const normalized = content.replace(/(<\/(?:p|div|tr|h[1-6]|table|ul|ol)>)/gi, "$1\n");
+
+  const hasSpecificType = options?.isIntern !== undefined || Boolean(options?.letterType?.trim());
   const isIntern =
     options?.isIntern ??
     (options?.letterType ? options.letterType.toLowerCase().includes("intern") : false);
 
-  const lines = content.split("\n");
+  const lines = normalized.split("\n");
   const result: string[] = [];
   let currentCondition: "any" | "fulltime" | "intern" = "any";
 
@@ -59,18 +63,26 @@ export function cleanOfferTemplateDirectives(
     const rawLine = lines[i];
     const lineTrim = rawLine.replace(/<[^>]+>/g, "").trim();
 
-    // 1. Drop developer notes / legend / logo placeholder instructions
-    if (/\{\{VARIABLE\}\}\s*=\s*dynamic field/i.test(lineTrim)) continue;
-    if (/LETTERHEAD\s*\/\s*LOGO\s*AREA/i.test(lineTrim)) continue;
+    // Reset condition on empty lines
+    if (!lineTrim) {
+      currentCondition = "any";
+      result.push(rawLine);
+      continue;
+    }
 
-    // 2. Inline conditional title: "Show this section only when: LETTER_TYPE = fulltime → show 'APPOINTMENT LETTER'"
+    // 1. Drop developer notes / legend / logo placeholder instructions
+    if (/\{\{VARIABLE\}\}.*?dynamic field/i.test(lineTrim)) continue;
+    if (/LETTERHEAD\s*\/\s*LOGO\s*AREA/i.test(lineTrim)) continue;
+    if (/Attach client letterhead as background image/i.test(lineTrim)) continue;
+
+    // 2. Inline conditional title: "Show this section only when: LETTER_TYPE = fulltime -> show 'APPOINTMENT LETTER'"
     const inlineTitleMatch = lineTrim.match(
-      /Show this section only when:\s*LETTER_TYPE\s*=\s*(fulltime|intern)\s*→\s*show\s*['"]?([^'"]+)['"]?/i,
+      /Show this section only when:\s*LETTER_TYPE\s*=\s*(fulltime|intern)\s*(?:→|->|-->|=>)\s*show\s*['"]?([^'"]+)['"]?/i,
     );
     if (inlineTitleMatch) {
       const targetType = inlineTitleMatch[1].toLowerCase();
       const titleText = inlineTitleMatch[2].trim();
-      const shouldShow = targetType === "intern" ? isIntern : !isIntern;
+      const shouldShow = !hasSpecificType || (targetType === "intern" ? isIntern : !isIntern);
       if (shouldShow) {
         result.push(rawLine.includes("<") ? `<h2>${titleText}</h2>` : titleText);
       }
@@ -89,28 +101,26 @@ export function cleanOfferTemplateDirectives(
       /Show this section only when:\s*LETTER_TYPE\s*=\s*(fulltime|intern)/i,
     );
     if (blockMatch) {
-      currentCondition = blockMatch[1].toLowerCase() as "fulltime" | "intern";
+      if (hasSpecificType) {
+        currentCondition = blockMatch[1].toLowerCase() as "fulltime" | "intern";
+      }
+      // Always drop the directive line itself from output
       continue;
     }
 
-    // Reset condition when hitting a known major section
-    if (
-      /^[A-Z0-9 _-]{4,60}$/.test(lineTrim) &&
-      !lineTrim.startsWith("{{") &&
-      (lineTrim.includes("TERMS") ||
-        lineTrim.includes("COMPENSATION") ||
-        lineTrim.includes("BENEFITS") ||
-        lineTrim.includes("ACCEPTANCE") ||
-        lineTrim.includes("SIGNATURE") ||
-        lineTrim.includes("CONFIDENTIAL"))
-    ) {
-      currentCondition = "any";
+    // 4. Filter only the immediate target paragraph for the condition, then reset
+    if (hasSpecificType) {
+      if (currentCondition === "fulltime" && isIntern) {
+        currentCondition = "any";
+        continue;
+      }
+      if (currentCondition === "intern" && !isIntern) {
+        currentCondition = "any";
+        continue;
+      }
     }
 
-    // Filter based on active block condition
-    if (currentCondition === "fulltime" && isIntern) continue;
-    if (currentCondition === "intern" && !isIntern) continue;
-
+    currentCondition = "any";
     result.push(rawLine);
   }
 

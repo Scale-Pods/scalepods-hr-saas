@@ -210,10 +210,27 @@ export async function generateHtmlOfferPdf(html: string): Promise<Buffer> {
   let page: PDFPage = pdfDoc.addPage([PAGE_W, PAGE_H]);
   let cursorY = PAGE_H - MARGIN_TOP;
 
+  // Draw top accent bar on Page 1
+  page.drawRectangle({
+    x: MARGIN_X,
+    y: PAGE_H - 32,
+    width: CONTENT_W,
+    height: 3.5,
+    color: rgb(0.06, 0.25, 0.55),
+  });
+
   const ensureSpace = (neededH: number) => {
     if (cursorY - neededH < MARGIN_BOTTOM) {
       page = pdfDoc.addPage([PAGE_W, PAGE_H]);
       cursorY = PAGE_H - MARGIN_TOP;
+      // Draw running top border on continuation pages
+      page.drawRectangle({
+        x: MARGIN_X,
+        y: PAGE_H - 32,
+        width: CONTENT_W,
+        height: 1.5,
+        color: rgb(0.8, 0.84, 0.88),
+      });
     }
   };
 
@@ -222,7 +239,7 @@ export async function generateHtmlOfferPdf(html: string): Promise<Buffer> {
     x: number,
     fontSize: number,
     lineHeight: number,
-    color = rgb(0.1, 0.13, 0.18),
+    color = rgb(0.1, 0.14, 0.2),
   ) => {
     for (const line of lines) {
       ensureSpace(lineHeight);
@@ -247,20 +264,26 @@ export async function generateHtmlOfferPdf(html: string): Promise<Buffer> {
     if (block.kind === "heading") {
       const size = block.level === 1 ? 15 : block.level === 2 ? 12.5 : 11;
       const lh = size * 1.45;
+      const headingColor =
+        block.level === 1
+          ? rgb(0.06, 0.16, 0.26)
+          : block.level === 2
+            ? rgb(0.08, 0.25, 0.58)
+            : rgb(0.12, 0.28, 0.45);
       const lines = wrapRuns(block.runs, CONTENT_W, size, regularFont, boldFont);
-      cursorY -= 6;
-      ensureSpace(lines.length * lh + 6);
-      drawWrappedLines(lines, MARGIN_X, size, lh, rgb(0.06, 0.09, 0.16));
+      cursorY -= 8;
+      ensureSpace(lines.length * lh + 8);
+      drawWrappedLines(lines, MARGIN_X, size, lh, headingColor);
       cursorY -= 4;
     } else if (block.kind === "paragraph") {
-      const size = 10.5;
-      const lh = 15;
+      const size = 10;
+      const lh = 14.5;
       const lines = wrapRuns(block.runs, CONTENT_W, size, regularFont, boldFont);
       drawWrappedLines(lines, MARGIN_X, size, lh);
       cursorY -= 6;
     } else if (block.kind === "list_item") {
-      const size = 10.5;
-      const lh = 15;
+      const size = 10;
+      const lh = 14.5;
       const indent = 16;
       const lines = wrapRuns(block.runs, CONTENT_W - indent, size, regularFont, boldFont);
       ensureSpace(lh);
@@ -269,20 +292,21 @@ export async function generateHtmlOfferPdf(html: string): Promise<Buffer> {
         y: cursorY,
         size,
         font: boldFont,
-        color: rgb(0.15, 0.2, 0.28),
+        color: rgb(0.08, 0.25, 0.58),
       });
       drawWrappedLines(lines, MARGIN_X + indent, size, lh);
       cursorY -= 3;
     } else if (block.kind === "table" && block.rows.length > 0) {
       const numCols = Math.max(...block.rows.map((r) => r.cells.length));
       const colW = CONTENT_W / numCols;
-      const cellPadX = 6;
+      const cellPadX = 7;
       const cellPadY = 6;
       const size = 9.5;
       const lh = 13;
 
-      cursorY -= 4;
-      for (const row of block.rows) {
+      cursorY -= 6;
+      for (let rIdx = 0; rIdx < block.rows.length; rIdx++) {
+        const row = block.rows[rIdx];
         const wrappedCells = row.cells.map((cellRuns) =>
           wrapRuns(cellRuns, colW - cellPadX * 2, size, regularFont, boldFont),
         );
@@ -296,13 +320,20 @@ export async function generateHtmlOfferPdf(html: string): Promise<Buffer> {
 
         for (let c = 0; c < numCols; c++) {
           const cellX = MARGIN_X + c * colW;
+          const isHeader = row.isHeader;
+          const isAlternate = !isHeader && rIdx % 2 === 1;
+
           page.drawRectangle({
             x: cellX,
             y: rowBottom,
             width: colW,
             height: rowH,
-            color: row.isHeader ? rgb(0.92, 0.95, 0.99) : rgb(1, 1, 1),
-            borderColor: rgb(0.82, 0.85, 0.9),
+            color: isHeader
+              ? rgb(0.06, 0.16, 0.26)
+              : isAlternate
+                ? rgb(0.97, 0.98, 0.995)
+                : rgb(1, 1, 1),
+            borderColor: isHeader ? rgb(0.06, 0.16, 0.26) : rgb(0.78, 0.82, 0.88),
             borderWidth: 0.7,
           });
 
@@ -312,13 +343,13 @@ export async function generateHtmlOfferPdf(html: string): Promise<Buffer> {
             let drawX = cellX + cellPadX;
             for (const seg of line.segments) {
               if (!seg.text) continue;
-              const font = seg.bold ? boldFont : regularFont;
+              const font = isHeader || seg.bold ? boldFont : regularFont;
               page.drawText(seg.text, {
                 x: drawX,
                 y: cellY,
                 size,
                 font,
-                color: rgb(0.08, 0.1, 0.14),
+                color: isHeader ? rgb(1, 1, 1) : rgb(0.1, 0.14, 0.2),
               });
               drawX += font.widthOfTextAtSize(seg.text, size);
             }
@@ -330,6 +361,35 @@ export async function generateHtmlOfferPdf(html: string): Promise<Buffer> {
       }
       cursorY -= 8;
     }
+  }
+
+  // Draw footer on every page
+  const allPages = pdfDoc.getPages();
+  const totalPages = allPages.length;
+  for (let idx = 0; idx < totalPages; idx++) {
+    const curPage = allPages[idx];
+    curPage.drawLine({
+      start: { x: MARGIN_X, y: 38 },
+      end: { x: PAGE_W - MARGIN_X, y: 38 },
+      thickness: 0.5,
+      color: rgb(0.85, 0.88, 0.92),
+    });
+    curPage.drawText("Private & Confidential · Employment Agreement", {
+      x: MARGIN_X,
+      y: 26,
+      size: 8,
+      font: regularFont,
+      color: rgb(0.45, 0.52, 0.6),
+    });
+    const pageNumText = `Page ${idx + 1} of ${totalPages}`;
+    const pageNumW = regularFont.widthOfTextAtSize(pageNumText, 8);
+    curPage.drawText(pageNumText, {
+      x: PAGE_W - MARGIN_X - pageNumW,
+      y: 26,
+      size: 8,
+      font: regularFont,
+      color: rgb(0.45, 0.52, 0.6),
+    });
   }
 
   const saved = await pdfDoc.save();

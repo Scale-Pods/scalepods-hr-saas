@@ -17,17 +17,49 @@ export async function POST(req: NextRequest) {
       rendered_html?: string;
       rendered_text?: string;
       candidate_name?: string;
+      position_title?: string;
+      salary?: string;
+      currency?: string;
+      start_date?: string;
+      company_name?: string;
+      signatory_name?: string;
+      signatory_title?: string;
+      dynamic_variables?: Record<string, string>;
+      use_branded_template?: boolean;
     } | null;
 
-    if (!body?.rendered_html?.trim() && !body?.rendered_text?.trim()) {
-      return new NextResponse("rendered_html or rendered_text is required for preview", {
-        status: 400,
-      });
+    if (
+      !body?.rendered_html?.trim() &&
+      !body?.rendered_text?.trim() &&
+      !body?.use_branded_template
+    ) {
+      return new NextResponse(
+        "rendered_html, rendered_text, or use_branded_template is required for preview",
+        {
+          status: 400,
+        },
+      );
     }
 
-    const pdfBuffer = body.rendered_html?.trim()
-      ? await generateHtmlOfferPdf(body.rendered_html.trim())
-      : generateTextOfferPdf(body.rendered_text?.trim() || "");
+    let pdfBuffer: Buffer;
+
+    if (body.use_branded_template && !body.rendered_html?.trim()) {
+      pdfBuffer = generateBrandedOfferPdf({
+        candidate_name: body.candidate_name || "Candidate",
+        position_title: body.position_title || "Software Engineer",
+        salary: body.salary || "1200000",
+        currency: body.currency || "INR",
+        start_date: body.start_date || new Date().toISOString().split("T")[0],
+        company_name: body.company_name || "ScalePods Technologies",
+        signatory_name: body.signatory_name || "Manish",
+        signatory_title: body.signatory_title || "Head of Talent Acquisition",
+        dynamic_variables: body.dynamic_variables || {},
+      });
+    } else if (body.rendered_html?.trim()) {
+      pdfBuffer = await generateHtmlOfferPdf(body.rendered_html.trim());
+    } else {
+      pdfBuffer = generateTextOfferPdf(body.rendered_text?.trim() || "");
+    }
 
     const safeName = (body.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
     const filename = `Offer_Letter_Preview_${safeName}.pdf`;

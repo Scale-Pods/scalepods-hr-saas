@@ -108,7 +108,16 @@ export async function extractOfferTemplateFromFile(file: File): Promise<ExtractT
     const buffer = await file.arrayBuffer();
     const [rawRes, htmlRes] = await Promise.all([
       mammoth.extractRawText({ arrayBuffer: buffer }),
-      mammoth.convertToHtml({ arrayBuffer: buffer }),
+      mammoth.convertToHtml(
+        { arrayBuffer: buffer },
+        {
+          convertImage: mammoth.images.imgElement((element) =>
+            element.read("base64").then((imageBuffer) => ({
+              src: `data:${element.contentType};base64,${imageBuffer}`,
+            })),
+          ),
+        },
+      ),
     ]);
     const rawText = rawRes.value.trim();
     const rawHtml = htmlRes.value.trim();

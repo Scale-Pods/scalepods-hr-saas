@@ -7,7 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { extractAllOfferVariables, formatPlainTextAsRichHtml } from "@/lib/offer-template-utils";
+import {
+  cleanOfferTemplateDirectives,
+  extractAllOfferVariables,
+  formatPlainTextAsRichHtml,
+} from "@/lib/offer-template-utils";
 import { accessToken as getAccessToken } from "@/lib/supabase/client";
 
 export interface OfferTemplateEditorProps {
@@ -173,6 +177,18 @@ export function OfferTemplateEditor({
     }
   };
 
+  const handleCleanDirectives = () => {
+    const cleanedText = cleanOfferTemplateDirectives(value);
+    const cleanedHtml = cleanOfferTemplateDirectives(effectiveHtml);
+    onChange(cleanedText);
+    onHtmlChange?.(cleanedHtml);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = cleanedHtml;
+      lastHtmlRef.current = cleanedHtml;
+    }
+    showToast("Cleaned template directives and notes.");
+  };
+
   return (
     <div className="space-y-3">
       {/* AI Template Assistant (Claude via n8n) */}
@@ -310,15 +326,31 @@ export function OfferTemplateEditor({
       {/* Editor / Preview Surface */}
       {mode === "rich" ? (
         <div className="rounded-xl border border-border bg-slate-200/70 dark:bg-slate-900/70 p-3 sm:p-5 h-[62vh] min-h-[460px] overflow-y-auto">
-          <div className="mx-auto w-full max-w-[820px] rounded-md bg-white text-slate-900 shadow-md border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-2 text-[11px] text-slate-500">
-              <span>Editable Document · Tables, headings &amp; formatting preserved</span>
-              <Badge
-                variant="outline"
-                className="text-[10px] font-normal border-slate-200 text-slate-600"
-              >
-                DOCX / Rich Editor
-              </Badge>
+          <div className="mx-auto w-full max-w-[820px] rounded-md bg-white text-slate-900 shadow-md border border-slate-200 overflow-hidden">
+            {/* Top letterhead decorative brand accent bar */}
+            <div className="h-2 w-full bg-gradient-to-r from-[#0f2942] via-[#1e40af] to-[#2563eb]" />
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-2 text-[11px] text-slate-500 bg-slate-50/70">
+              <span className="font-medium text-slate-700">
+                Official Document Preview · Original Tables &amp; Executive Layout
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleCleanDirectives}
+                  className="h-6 px-2 text-[10px] text-primary hover:bg-primary/10 gap-1 font-normal"
+                  title="Strip template developer notes and conditional markers"
+                >
+                  <Sparkles className="h-2.5 w-2.5" /> Clean Directives
+                </Button>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] font-normal border-slate-200 text-slate-600 bg-white"
+                >
+                  DOCX / Rich Editor
+                </Badge>
+              </div>
             </div>
             <div
               ref={editorRef}
@@ -326,7 +358,7 @@ export function OfferTemplateEditor({
               suppressContentEditableWarning
               onInput={handleRichInput}
               style={{ color: "#0f172a", backgroundColor: "#ffffff" }}
-              className="min-h-[400px] px-8 py-7 text-[13px] leading-relaxed text-slate-900 [&_*]:text-slate-900 font-sans focus:outline-none [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_p]:mb-2.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2.5 [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-slate-300 [&_td]:px-2.5 [&_td]:py-1.5"
+              className="min-h-[400px] px-8 py-7 text-[13px] leading-relaxed text-slate-900 font-sans focus:outline-none [&_h1]:text-[#0f2942] [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-3 [&_h2]:text-[#0f2942] [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-slate-200 [&_h2]:pb-1 [&_h3]:text-[#1e40af] [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_p]:mb-2.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2.5 [&_li]:mb-1 [&_table]:w-full [&_table]:border-collapse [&_table]:my-4 [&_table]:shadow-sm [&_th]:border [&_th]:border-[#0f2942] [&_th]:bg-[#0f2942] [&_th]:text-white [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:tracking-wide [&_td]:border [&_td]:border-slate-300 [&_td]:px-3 [&_td]:py-1.5 [&_tr:nth-child(even)]:bg-slate-50/70 [&_img]:max-h-20 [&_img]:object-contain"
             />
           </div>
         </div>
