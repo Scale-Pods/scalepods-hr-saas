@@ -57,13 +57,31 @@ export function cleanOfferTemplateDirectives(
     options?.isIntern ??
     (options?.letterType ? options.letterType.toLowerCase().includes("intern") : false);
 
-  const lines = normalized.split("\n");
+  // Normalize AI-mutated dual titles
+  let preprocessed = normalized;
+  if (/APPOINTMENT LETTER\s*\/\s*INTERNSHIP APPOINTMENT LETTER/i.test(preprocessed)) {
+    const targetTitle = isIntern ? "INTERNSHIP APPOINTMENT LETTER" : "APPOINTMENT LETTER";
+    preprocessed = preprocessed.replace(
+      /APPOINTMENT LETTER\s*\/\s*INTERNSHIP APPOINTMENT LETTER/gi,
+      targetTitle,
+    );
+  }
+
+  const lines = preprocessed.split("\n");
   const result: string[] = [];
   let currentCondition: "any" | "fulltime" | "intern" = "any";
+  let skipMode:
+    | "none"
+    | "fulltime_opening"
+    | "intern_opening"
+    | "fulltime_comp"
+    | "intern_comp"
+    | "fulltime_status"
+    | "intern_status" = "none";
 
   for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i];
-    const lineTrim = rawLine
+    let rawLine = lines[i];
+    let lineTrim = rawLine
       .replace(/<[^>]+>/g, "")
       .replace(/^[|\s]+|[|\s]+$/g, "")
       .trim();
@@ -72,6 +90,7 @@ export function cleanOfferTemplateDirectives(
     if (/\{\{VARIABLE\}\}.*?dynamic field/i.test(lineTrim)) continue;
     if (/LETTERHEAD\s*\/\s*LOGO\s*AREA/i.test(lineTrim)) continue;
     if (/Attach client letterhead as background image/i.test(lineTrim)) continue;
+    if (lineTrim === "{{COMPANY_LOGO_PATH}}") continue;
 
     // 2. Inline conditional title: "Show this section only when: LETTER_TYPE = fulltime -> show 'APPOINTMENT LETTER'"
     const inlineTitleMatch = lineTrim.match(
@@ -84,7 +103,7 @@ export function cleanOfferTemplateDirectives(
       if (shouldShow) {
         result.push(rawLine.includes("<") ? `<h2>${titleText}</h2>` : titleText);
       }
-      // Look ahead across empty lines to find and skip duplicate title if present
+      // Always look ahead across empty lines to find and skip duplicate title if present
       for (let nextIdx = i + 1; nextIdx < lines.length; nextIdx++) {
         const nextClean = lines[nextIdx]
           .replace(/<[^>]+>/g, "")
@@ -142,6 +161,7 @@ export function cleanOfferTemplateDirectives(
 
     if (isUnconditionalHeading) {
       currentCondition = "any";
+      skipMode = "none";
     }
 
     // 6. Filter lines based on active block condition
@@ -153,6 +173,99 @@ export function cleanOfferTemplateDirectives(
         continue;
       }
     }
+
+    // 7. Handle AI-mutated dual templates (Alternatively, For Regular Full-Time Position, etc.)
+    if (hasSpecificType) {
+      // Opening paragraph resolution
+      if (isIntern) {
+        if (
+          /We are pleased to offer you the position of/i.test(lineTrim) &&
+          !/internship/i.test(lineTrim)
+        ) {
+          if (!/contribute to our growth/i.test(lineTrim)) {
+            skipMode = "fulltime_opening";
+          }
+          continue;
+        }
+        if (skipMode === "fulltime_opening") {
+          if (/contribute to our growth/i.test(lineTrim)) {
+            skipMode = "none";
+          }
+          continue;
+        }
+        if (/^Alternatively,\s*we are pleased to offer you/i.test(lineTrim)) {
+          rawLine = rawLine.replace(/Alternatively,\s*/i, "");
+          // Capitalize 'we' -> 'We'
+          rawLine = rawLine.replace(/we are pleased/i, "We are pleased");
+          lineTrim = rawLine
+            .replace(/<[^>]+>/g, "")
+            .replace(/^[|\s]+|[|\s]+$/g, "")
+            .trim();
+        }
+      } else {
+        if (/^(?:Alternatively,\s*)?we are pleased to offer you a.*?internship/i.test(lineTrim)) {
+          if (!/contribute meaningfully to our initiatives/i.test(lineTrim)) {
+            skipMode = "intern_opening";
+          }
+          continue;
+        }
+        if (skipMode === "intern_opening") {
+          if (/contribute meaningfully to our initiatives/i.test(lineTrim)) {
+            skipMode = "none";
+          }
+          continue;
+        }
+      }
+
+      // Section 2: Compensation
+      if (/^2\.\s+Compensation/i.test(lineTrim)) {
+        rawLine = isIntern ? "2. Compensation" : "2. Compensation & Benefits";
+        lineTrim = rawLine;
+        result.push(rawLine);
+        continue;
+      }
+      if (/^For Regular Full-Time Position:/i.test(lineTrim)) {
+        skipMode = isIntern ? "fulltime_comp" : "none";
+        continue;
+      }
+      if (/^For Internship Position:/i.test(lineTrim)) {
+        skipMode = isIntern ? "none" : "intern_comp";
+        continue;
+      }
+
+      // Section 3: Status
+      if (/^3\.\s+(?:Employment|Internship)\s+Status/i.test(lineTrim)) {
+        rawLine = isIntern ? "3. Internship Status" : "3. Employment Status";
+        lineTrim = rawLine;
+        result.push(rawLine);
+        continue;
+      }
+
+      // Section 7: Termination
+      if (/^Either party may terminate this engagement with/i.test(lineTrim)) {
+        if (isIntern) continue;
+      }
+      if (
+        /^(?:For internship positions,\s*)?either party may terminate this internship/i.test(
+          lineTrim,
+        )
+      ) {
+        if (!isIntern) continue;
+        rawLine = rawLine.replace(/For internship positions,\s*/i, "");
+        rawLine = rawLine.replace(/^either party/i, "Either party");
+        lineTrim = rawLine
+          .replace(/<[^>]+>/g, "")
+          .replace(/^[|\s]+|[|\s]+$/g, "")
+          .trim();
+      }
+
+      if (skipMode === "fulltime_comp" || skipMode === "intern_comp") {
+        continue;
+      }
+    }
+
+    // Clean space before punctuation
+    rawLine = rawLine.replace(/\s+([,.])/g, "$1").replace(/\s+'s\b/g, "'s");
 
     result.push(rawLine);
   }

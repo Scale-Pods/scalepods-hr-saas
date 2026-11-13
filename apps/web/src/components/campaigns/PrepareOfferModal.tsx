@@ -483,8 +483,13 @@ export function PrepareOfferModal({
     // Run Claude AI parsing immediately
     const parsed = await parseTemplateWithAi(result.text, result.html, file.name);
     if (parsed) {
-      if (parsed.cleaned_text) setUploadRawText(parsed.cleaned_text);
-      if (parsed.cleaned_html) setUploadHtml(parsed.cleaned_html);
+      const alreadyHasPlaceholders =
+        /\{\{[A-Za-z0-9_ -]+?\}\}/.test(result.text) ||
+        /Show this section only when:/i.test(result.text);
+      if (!alreadyHasPlaceholders) {
+        if (parsed.cleaned_text) setUploadRawText(parsed.cleaned_text);
+        if (parsed.cleaned_html) setUploadHtml(parsed.cleaned_html);
+      }
     }
   };
 

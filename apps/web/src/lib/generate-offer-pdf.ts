@@ -266,16 +266,9 @@ export function generateBrandedOfferPdf(data: OfferPdfData): Buffer {
     if (isIntern) {
       // Hide fulltime title & opening paragraph completely before variable substitution
       s = hideTjText(s, "APPOINTMENT LETTER");
-      s = hideTjText(s, "We are pleased to offer you the position of ");
-      s = s.replace(/\(\{\{ROLE\}\} \) Tj/, "() Tj");
-      s = hideTjText(s, "at ");
-      s = s.replace(/\(\{\{COMPANY_NAME\}\} \) Tj/, "() Tj");
-      s = hideTjText(s, ", commencing from ");
-      s = s.replace(/\(\{\{JOINING_DATE\}\} \) Tj/, "() Tj");
-      s = s.replace(/\(\.\) Tj/, "() Tj");
-      s = hideTjText(
-        s,
-        "This offer reflects our confidence in your abilities and your potential to contribute to our growth.",
+      s = s.replace(
+        /BT[^\n\r]*?\(We are pleased to offer you the position of \)[\s\S]*?\(This offer reflects our confidence in your abilities and your potential to contribute to our growth\.\) Tj T\* ET/g,
+        "BT () Tj ET",
       );
 
       // Hide entire Section 2 compensation table on Page 1
@@ -307,20 +300,10 @@ export function generateBrandedOfferPdf(data: OfferPdfData): Buffer {
     } else {
       // Hide intern title & opening paragraph completely before variable substitution
       s = hideTjText(s, "INTERNSHIP APPOINTMENT LETTER");
-      s = hideTjText(s, "We are pleased to offer you a ");
-      s = s.replace(/\(\{\{DURATION\}\} \) Tj/, "() Tj");
-      s = hideTjText(s, "internship");
-      s = hideTjText(s, " position with ");
-      s = s.replace(/\(\{\{COMPANY_NAME\}\} \) Tj/, "() Tj");
-      s = hideTjText(s, "in the capacity of ");
-      s = s.replace(/\(\{\{ROLE\}\}\) Tj/, "() Tj");
-      s = hideTjText(s, ", commencing from ");
-      s = s.replace(/\(\{\{JOINING_DATE\}\} \) Tj/, "() Tj");
-      s = hideTjText(
-        s,
-        ". This offer is extended with confidence in your skills and enthusiasm to",
+      s = s.replace(
+        /BT[^\n\r]*?\(We are pleased to offer you a \)[\s\S]*?\(contribute meaningfully to our initiatives\.\) Tj T\* ET/g,
+        "BT () Tj ET",
       );
-      s = hideTjText(s, "contribute meaningfully to our initiatives.");
 
       // Populate table cells
       s = s.replace(/\(\{\{BASIC_SALARY\}\}\) Tj/g, `(${basicMonthlyStr}) Tj`);
@@ -361,31 +344,28 @@ export function generateBrandedOfferPdf(data: OfferPdfData): Buffer {
       s = hideTjText(s, "Y}}");
       s = hideTjText(s, "{{GROSS_ANNUAL");
       s = hideTjText(s, "}}");
-      s = hideTjText(s, "* Gross Annual CTC: ");
-      s = hideTjText(s, "INR ");
-      s = hideTjText(s, "{{GROSS_ANNUAL}} ");
-      s = hideTjText(s, "/- \\(");
-      s = hideTjText(s, " {{GROSS_ANNUAL_WORDS}} ");
-      s = hideTjText(s, "\\)");
-      s = hideTjText(s, "* Incentive / Variable Pay: ");
-      s = hideTjText(s, "{{INCENTIVE_NOTE}}");
 
-      // Hide fulltime Employment Status completely (including the variables)
-      s = hideTjText(s, "3. Employment Status");
-      s = hideTjText(s, "* This is a ");
-      s = hideTjText(s, "full-time");
-      s = hideTjText(s, " position.");
-      s = hideTjText(s, "* The first ");
-      s = s.replace(/\(\{\{PROBATION_PERIOD\}\} \) Tj/, "() Tj");
-      s = hideTjText(
-        s,
-        "will be a probationary period. Either party may terminate during probation with",
+      // Hide fulltime Gross Annual CTC line specifically
+      s = s.replace(
+        /BT[^\n\r]*?\(\* Gross Annual CTC: \)[\s\S]*?\(\\\)\) Tj T\* ET/g,
+        "BT () Tj ET",
       );
-      s = s.replace(/\(\{\{NOTICE_PERIOD\}\} \) Tj/, "() Tj");
-      s = hideTjText(s, "written notice.");
-      s = hideTjText(s, "* On confirmation, standard notice period of ");
-      s = s.replace(/\(\{\{NOTICE_PERIOD\}\} \) Tj/, "() Tj");
-      s = hideTjText(s, "applies.");
+      s = s.replace(/BT[^\n\r]*?\(\* Incentive \/ Variable Pay: \)[\s\S]*?T\* ET/g, "BT () Tj ET");
+
+      // Hide fulltime Employment Status completely
+      s = s.replace(/BT[^\n\r]*?\(3\. Employment Status\) Tj T\* ET/g, "BT () Tj ET");
+      s = s.replace(
+        /BT[^\n\r]*?\(\* This is a \) Tj \/F2 9\.5 Tf \(full-time\)[\s\S]*?position\.\) Tj T\* ET/g,
+        "BT () Tj ET",
+      );
+      s = s.replace(
+        /BT[^\n\r]*?\(\* The first \)[\s\S]*?\(written notice\.\) Tj T\* ET/g,
+        "BT () Tj ET",
+      );
+      s = s.replace(
+        /BT[^\n\r]*?\(\* On confirmation, standard notice period of \)[\s\S]*?\(applies\.\) Tj T\* ET/g,
+        "BT () Tj ET",
+      );
 
       // Neutralize Page 2 top table blue fill & lines
       s = s.replace(/\.839216 \.909804 1 rg\s*n 0 38 511\.2756 -38 re f\*/g, "n 0 0 0 0 re");
@@ -408,31 +388,30 @@ export function generateBrandedOfferPdf(data: OfferPdfData): Buffer {
       if (incentiveNote) {
         s = s.split("{{INCENTIVE_NOTE}}").join(incentiveNote);
       } else {
-        s = hideTjText(s, "* Incentive / Variable Pay: ");
-        s = hideTjText(s, "{{INCENTIVE_NOTE}}");
+        s = s.replace(
+          /BT[^\n\r]*?\(\* Incentive \/ Variable Pay: \)[\s\S]*?T\* ET/g,
+          "BT () Tj ET",
+        );
       }
 
       // Hide intern compensation (stipend) & intern engagement details
-      s = hideTjText(s, "2. Compensation");
-      s = hideTjText(s, "* Monthly Stipend: ");
-      s = hideTjText(s, "INR ");
-      s = hideTjText(s, "{{STIPEND_AMOUNT}} ");
-      s = hideTjText(s, "{{STIPEND_WORDS}} ");
-      s = hideTjText(s, "/- \\(");
-      s = hideTjText(s, "\\)");
-      s = hideTjText(s, ", paid between the 1st to 3rd of each");
-      s = hideTjText(s, "month.");
-      s = hideTjText(s, "3. Internship Status");
-      s = hideTjText(s, "* This is a ");
-      s = hideTjText(s, "full-time internship");
-      s = hideTjText(s, " engagement for a fixed duration of ");
-      s = s.replace(/\(\{\{DURATION\}\} \) Tj/, "() Tj");
-      s = hideTjText(s, ".");
-      s = hideTjText(s, "* You are expected to dedicate your full working capacity to ");
-      s = hideTjText(s, "during this period.");
-      s = hideTjText(s, "* Based on your performance, ");
-      s = s.replace(/\(may offer a full-time role at the Company's discretion upon\) Tj/g, "() Tj");
-      s = hideTjText(s, "successful completion of the internship.");
+      s = s.replace(/BT[^\n\r]*?\(2\. Compensation\) Tj T\* ET/g, "BT () Tj ET");
+      s = s.replace(
+        /BT[^\n\r]*?\(\* Monthly Stipend: \)[\s\S]*?\(month\.\) Tj T\* ET/g,
+        "BT () Tj ET",
+      );
+
+      // Hide intern status details
+      s = s.replace(/BT[^\n\r]*?\(3\. Internship Status\) Tj T\* ET/g, "BT () Tj ET");
+      s = s.replace(
+        /BT[^\n\r]*?\(\* This is a \) Tj \/F2 9\.5 Tf \(full-time internship\)[\s\S]*?T\* ET/g,
+        "BT () Tj ET",
+      );
+      s = s.replace(
+        /BT[^\n\r]*?\(\* You are expected to dedicate your full working capacity to \)[\s\S]*?T\* ET/g,
+        "BT () Tj ET",
+      );
+      s = s.replace(/BT[^\n\r]*?\(\* Based on your performance, \)[\s\S]*?T\* ET/g, "BT () Tj ET");
     }
 
     s = applyCustomDynamicReplacements(s);
@@ -453,26 +432,16 @@ export function generateBrandedOfferPdf(data: OfferPdfData): Buffer {
 
     if (isIntern) {
       // Hide fulltime termination clause completely
-      s = hideTjText(s, "Either party may terminate this engagement with ");
-      s = s.replace(/\(\{\{NOTICE_PERIOD\}\} \) Tj/, "() Tj");
-      s = hideTjText(s, "prior written notice");
-      s = s.replace(/\(\. \) Tj/, "() Tj");
-      s = s.replace(new RegExp(`\\(${companyName}\\) Tj`), "() Tj");
-      s = hideTjText(
-        s,
-        "reserves the right to terminate immediately without notice in cases of misconduct or breach of confidentiality.",
+      s = s.replace(
+        /BT[^\n\r]*?\(Either party may terminate this engagement with \)[\s\S]*?breach of confidentiality\.\) Tj T\* ET/g,
+        "BT () Tj ET",
       );
     } else {
       s = s.split("{{NOTICE_PERIOD}}").join(noticePeriod);
       // Hide intern termination clause completely
-      s = hideTjText(s, "Either party may terminate this internship with ");
-      s = hideTjText(s, "15 days' prior written notice");
-      s = s.replace(/\(\. \) Tj/, "() Tj");
-      s = s.replace(new RegExp(`\\(${companyName} \\) Tj`), "() Tj");
-      s = hideTjText(s, "reserves the right to");
-      s = hideTjText(
-        s,
-        "terminate immediately without notice in cases of misconduct or breach of confidentiality.",
+      s = s.replace(
+        /BT[^\n\r]*?\(Either party may terminate this internship with \)[\s\S]*?breach of confidentiality\.\) Tj T\* ET/g,
+        "BT () Tj ET",
       );
     }
 

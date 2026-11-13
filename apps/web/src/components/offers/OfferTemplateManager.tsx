@@ -121,8 +121,13 @@ export function OfferTemplateManager() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setUploadText(data.cleaned_text || result.text);
-        setUploadHtml(data.cleaned_html || result.html);
+        const alreadyHasPlaceholders =
+          /\{\{[A-Za-z0-9_ -]+?\}\}/.test(result.text) ||
+          /Show this section only when:/i.test(result.text);
+        if (!alreadyHasPlaceholders) {
+          setUploadText(data.cleaned_text || result.text);
+          setUploadHtml(data.cleaned_html || result.html);
+        }
         const keys = Array.isArray(data.variables)
           ? data.variables.map((v: { key: string }) => v.key)
           : extractCustomOfferVariables(data.cleaned_html || data.cleaned_text);
