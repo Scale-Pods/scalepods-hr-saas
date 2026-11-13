@@ -312,16 +312,9 @@ export function PrepareOfferModal({
     const source = isEditingTemplate
       ? templateHtml
       : selectedTemplate?.html_content || templateHtml;
-    if (!source.trim()) return buildRenderedText();
+    if (!source?.trim()) return "";
     return renderOfferTemplateText(source, buildAllOfferValues());
-  }, [
-    hasSelectedTemplate,
-    isEditingTemplate,
-    templateHtml,
-    selectedTemplate,
-    buildRenderedText,
-    buildAllOfferValues,
-  ]);
+  }, [hasSelectedTemplate, isEditingTemplate, templateHtml, selectedTemplate, buildAllOfferValues]);
 
   // Fetch live PDF preview when switching to PDF tab on Step 3
   const loadPdfPreview = useCallback(
