@@ -59,7 +59,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PrepareOfferModal } from "@/components/campaigns/PrepareOfferModal";
 import { ViewOfferLetterModal } from "@/components/campaigns/ViewOfferLetterModal";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -317,6 +317,20 @@ export default function CandidateProfilePage() {
   const campaignName = data?.campaignName;
   const candidateCampaigns = data?.candidateCampaigns ?? [];
   const resumeUrl = data?.resumeUrl;
+  const resolvedResumeHref = useMemo(() => {
+    if (!resumeUrl) return null;
+    if (
+      resumeUrl.startsWith("http://") ||
+      resumeUrl.startsWith("https://") ||
+      resumeUrl.startsWith("/")
+    ) {
+      return resumeUrl;
+    }
+    const campParam = selectedCampaignId
+      ? `?campaignId=${encodeURIComponent(selectedCampaignId)}`
+      : "";
+    return `/api/candidates/${encodeURIComponent(id)}/resume${campParam}`;
+  }, [resumeUrl, id, selectedCampaignId]);
   const timeline = data?.timeline ?? [];
   const outreach = data?.outreach ?? [];
   const interviewRecordings = data?.interviewRecordings ?? [];
@@ -869,10 +883,10 @@ export default function CandidateProfilePage() {
         <OffersHistorySection offers={offers} onViewOffer={() => setViewOfferOpen(true)} />
       )}
 
-      {resumeUrl && (
+      {resolvedResumeHref && (
         <SectionCard title="Resume">
           <a
-            href={resumeUrl}
+            href={resolvedResumeHref}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-accent-foreground"

@@ -637,29 +637,67 @@ export async function fetchCandidateProfile(
 
   // 8. Resolve campaign-specific resume URL
   let resumeUrl: string | null = null;
-  if (cand.account_id && activeCampaignId && cand.email) {
+  const rawResumePath =
+    matchedApplication?.resume_path ||
+    (cand as any).resume_url ||
+    allApplications.find((a) => a.resume_path)?.resume_path ||
+    null;
+
+  if (rawResumePath) {
+    if (rawResumePath.startsWith("http://") || rawResumePath.startsWith("https://")) {
+      resumeUrl = rawResumePath;
+    } else {
+      const cleanPath = rawResumePath.replace(/^\/+/, "").replace(/^resumes\//, "");
+      try {
+        const { data: signed, error: signErr } = await supabase.storage
+          .from(BUCKETS.resumes)
+          .createSignedUrl(cleanPath, 3600);
+        if (signed?.signedUrl && !signErr) {
+          resumeUrl = signed.signedUrl;
+        }
+      } catch (err) {
+        console.warn("[CandidateProfile] Failed to create client signed URL:", err);
+      }
+    }
+  }
+
+  // Fallback: search campaign folder in bucket if path wasn't in DB or sign failed
+  if (!resumeUrl && cand.account_id && activeCampaignId) {
     try {
+      const folderPath = `${cand.account_id}/${activeCampaignId}`;
       const { data: files } = await supabase.storage
         .from(BUCKETS.resumes)
-        .list(`${cand.account_id}/${activeCampaignId}/${cand.email}`, { limit: 1 });
-      if (files && files.length > 0 && files[0]?.name) {
-        const path = `${cand.account_id}/${activeCampaignId}/${cand.email}/${files[0].name}`;
-        const { data: signed } = await supabase.storage
-          .from(BUCKETS.resumes)
-          .createSignedUrl(path, 3600);
-        resumeUrl = signed?.signedUrl ?? null;
+        .list(folderPath, { limit: 50 });
+      if (files && files.length > 0) {
+        const safeEmail = (cand.email || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const safeName = (cand.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const matched =
+          files.find((f) => {
+            const lower = f.name.toLowerCase();
+            return (
+              (safeEmail && lower.includes(safeEmail)) || (safeName && lower.includes(safeName))
+            );
+          }) || files[0];
+        if (matched?.name) {
+          const path = `${folderPath}/${matched.name}`;
+          const { data: signed } = await supabase.storage
+            .from(BUCKETS.resumes)
+            .createSignedUrl(path, 3600);
+          if (signed?.signedUrl) {
+            resumeUrl = signed.signedUrl;
+          }
+        }
       }
     } catch {}
   }
-  if (!resumeUrl && (cand as any).resume_url) {
-    try {
-      const { data } = await supabase.storage
-        .from(BUCKETS.resumes)
-        .createSignedUrl((cand as any).resume_url, 3600);
-      resumeUrl = data?.signedUrl ?? (cand as any).resume_url;
-    } catch {
-      resumeUrl = (cand as any).resume_url;
-    }
+
+  // Final fallback: If candidate has a resume on record but client-side signing could not produce a URL,
+  // route through our authenticated server API endpoint so opening resume NEVER attempts a relative 404 URL
+  if (!resumeUrl && (rawResumePath || matchedApplication || allApplications.length > 0)) {
+    const campaignParam = activeCampaignId
+      ? `?campaignId=${encodeURIComponent(activeCampaignId)}`
+      : "";
+    resumeUrl = `/api/candidates/${encodeURIComponent(cand.id)}/resume${campaignParam}`;
   }
 
   // 9. Fetch interview recordings strictly for this campaign's sessions
@@ -1113,7 +1151,7 @@ export async function fetchCandidateProfile(
     campaignName,
     selectedCampaignId: activeCampaignId,
     candidateCampaigns,
-    resumeUrl: matchedApplication?.resume_path || resumeUrl,
+    resumeUrl,
     timeline: deduplicatedView,
     outreach,
     interviewSessionId: sessionRows[0]?.id || null,

@@ -114,11 +114,17 @@ export function CandidateProfilePage() {
     setOutreach((logs.data ?? []) as OutreachLogRow[]);
 
     if (cand.resume_url) {
-      const { data } = await supabase.storage
-        .from(BUCKETS.resumes)
-        .createSignedUrl(cand.resume_url, 3600);
-      // Fall back to the raw path if the file/bucket isn't set up yet.
-      setResumeUrl(data?.signedUrl ?? cand.resume_url);
+      if (cand.resume_url.startsWith("http://") || cand.resume_url.startsWith("https://")) {
+        setResumeUrl(cand.resume_url);
+      } else {
+        const cleanPath = cand.resume_url.replace(/^\/+/, "").replace(/^resumes\//, "");
+        const { data } = await supabase.storage
+          .from(BUCKETS.resumes)
+          .createSignedUrl(cleanPath, 3600);
+        if (data?.signedUrl) {
+          setResumeUrl(data.signedUrl);
+        }
+      }
     }
   }, [id, account?.tier, supabase]);
 
