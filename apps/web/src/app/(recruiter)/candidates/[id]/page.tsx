@@ -338,13 +338,39 @@ export default function CandidateProfilePage() {
   const handleOpenResume = async (e: React.MouseEvent) => {
     e.preventDefault();
     setResumeLoading(true);
-    try {
-      // 1. If we already have a valid signed HTTP URL from query data, open it directly
-      if (resumeUrl && (resumeUrl.startsWith("http://") || resumeUrl.startsWith("https://"))) {
-        window.open(resumeUrl, "_blank", "noopener,noreferrer");
-        return;
-      }
 
+    // 1. If we already have a valid signed HTTP URL from query data, open it directly
+    if (resumeUrl && (resumeUrl.startsWith("http://") || resumeUrl.startsWith("https://"))) {
+      window.open(resumeUrl, "_blank", "noopener,noreferrer");
+      setResumeLoading(false);
+      return;
+    }
+
+    // Open target window synchronously within user click event to prevent popup blockers
+    let targetWindow: Window | null = null;
+    try {
+      targetWindow = window.open("about:blank", "_blank");
+    } catch {
+      targetWindow = null;
+    }
+
+    const openUrl = (url: string) => {
+      if (targetWindow && !targetWindow.closed) {
+        targetWindow.location.href = url;
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    };
+
+    const closeTargetWindow = () => {
+      if (targetWindow && !targetWindow.closed) {
+        try {
+          targetWindow.close();
+        } catch {}
+      }
+    };
+
+    try {
       // 2. Try direct client signing via Supabase storage
       const supabase = supabaseBrowser();
       const storagePath =
@@ -360,7 +386,7 @@ export default function CandidateProfilePage() {
           .createSignedUrl(cleanPath, 3600);
 
         if (signed?.signedUrl && !signErr) {
-          window.open(signed.signedUrl, "_blank", "noopener,noreferrer");
+          openUrl(signed.signedUrl);
           return;
         }
       }
@@ -380,7 +406,7 @@ export default function CandidateProfilePage() {
       if (res.ok) {
         const json = await res.json();
         if (json.signedUrl) {
-          window.open(json.signedUrl, "_blank", "noopener,noreferrer");
+          openUrl(json.signedUrl);
           return;
         }
       }
@@ -394,19 +420,21 @@ export default function CandidateProfilePage() {
 
         if (blob && !dlErr) {
           const blobUrl = URL.createObjectURL(blob);
-          window.open(blobUrl, "_blank", "noopener,noreferrer");
+          openUrl(blobUrl);
           return;
         }
       }
 
       // 5. If server redirected
       if (res.redirected && res.url) {
-        window.open(res.url, "_blank", "noopener,noreferrer");
+        openUrl(res.url);
         return;
       }
 
+      closeTargetWindow();
       showErrorToast("Could not open resume. File not found in storage.");
     } catch (err) {
+      closeTargetWindow();
       showErrorToast(err instanceof Error ? err.message : "Failed to open resume");
     } finally {
       setResumeLoading(false);

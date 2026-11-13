@@ -113,11 +113,25 @@ export function CandidateProfilePage() {
     setTimeline(view);
     setOutreach((logs.data ?? []) as OutreachLogRow[]);
 
-    if (cand.resume_url) {
-      if (cand.resume_url.startsWith("http://") || cand.resume_url.startsWith("https://")) {
-        setResumeUrl(cand.resume_url);
+    let rawPath = cand.resume_url;
+    if (!rawPath) {
+      const { data: apps } = await supabase
+        .from("applications")
+        .select("resume_path")
+        .eq("candidate_id", id)
+        .not("resume_path", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (apps && apps.length > 0 && apps[0]?.resume_path) {
+        rawPath = apps[0].resume_path;
+      }
+    }
+
+    if (rawPath) {
+      if (rawPath.startsWith("http://") || rawPath.startsWith("https://")) {
+        setResumeUrl(rawPath);
       } else {
-        const cleanPath = cand.resume_url.replace(/^\/+/, "").replace(/^resumes\//, "");
+        const cleanPath = rawPath.replace(/^\/+/, "").replace(/^resumes\//, "");
         const { data } = await supabase.storage
           .from(BUCKETS.resumes)
           .createSignedUrl(cleanPath, 3600);

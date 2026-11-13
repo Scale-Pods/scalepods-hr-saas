@@ -226,6 +226,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.redirect(signed.signedUrl, 307);
     }
 
+    if (wantsJson) {
+      const campParam = campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : "";
+      return NextResponse.json({
+        success: true,
+        signedUrl: `/api/candidates/${encodeURIComponent(lookupId)}/resume${campParam}`,
+        fileName,
+      });
+    }
+
     // 7. If signed URL generation failed, attempt direct download and stream
     const { data: fileBlob, error: dlErr } = await admin.storage
       .from(BUCKETS.resumes)
