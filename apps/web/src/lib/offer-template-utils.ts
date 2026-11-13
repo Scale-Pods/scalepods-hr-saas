@@ -84,15 +84,17 @@ export function cleanOfferTemplateDirectives(
       if (shouldShow) {
         result.push(rawLine.includes("<") ? `<h2>${titleText}</h2>` : titleText);
       }
-      // If the immediate next line repeats the exact titleText, skip it to avoid duplication
-      if (i + 1 < lines.length) {
-        const nextClean = lines[i + 1]
+      // Look ahead across empty lines to find and skip duplicate title if present
+      for (let nextIdx = i + 1; nextIdx < lines.length; nextIdx++) {
+        const nextClean = lines[nextIdx]
           .replace(/<[^>]+>/g, "")
           .replace(/^[|\s]+|[|\s]+$/g, "")
           .trim();
+        if (!nextClean) continue;
         if (nextClean.toLowerCase() === titleText.toLowerCase()) {
-          i++;
+          i = nextIdx;
         }
+        break;
       }
       continue;
     }
@@ -112,9 +114,17 @@ export function cleanOfferTemplateDirectives(
     // 4. Incentive note condition: "Show this section only when: Show incentive line only when INCENTIVE_NOTE is non-empty"
     if (/Show incentive line only when INCENTIVE_NOTE/i.test(lineTrim)) {
       if (!options?.incentiveNote?.trim()) {
-        // Skip the immediate following incentive line if present
-        if (i + 1 < lines.length && /Incentive\s*\/\s*Variable\s*Pay/i.test(lines[i + 1])) {
-          i++;
+        // Skip the immediate following incentive line across blank lines
+        for (let nextIdx = i + 1; nextIdx < lines.length; nextIdx++) {
+          const nextClean = lines[nextIdx]
+            .replace(/<[^>]+>/g, "")
+            .replace(/^[|\s]+|[|\s]+$/g, "")
+            .trim();
+          if (!nextClean) continue;
+          if (/Incentive\s*\/\s*Variable\s*Pay/i.test(nextClean)) {
+            i = nextIdx;
+          }
+          break;
         }
       }
       continue;
@@ -127,7 +137,8 @@ export function cleanOfferTemplateDirectives(
       ) ||
       /^(?:1\.\s+Role\s+&\s+Scope|4\.\s+Confidentiality|5\.\s+Intellectual\s+Property|6\.\s+Code\s+of\s+Conduct|7\.\s+Termination)/i.test(
         lineTrim,
-      );
+      ) ||
+      /^(?:Signature:|Date:|Place:|I,\s*\{\{CANDIDATE_NAME\}\})/i.test(lineTrim);
 
     if (isUnconditionalHeading) {
       currentCondition = "any";

@@ -202,9 +202,20 @@ export function PrepareOfferModal({
         setTemplates(list);
         const preferred = list.find((t) => t.is_default) ?? list[0];
         if (preferred) {
+          const isIntern = (campaign.name || "").toLowerCase().includes("intern");
           setSelectedTemplateId(preferred.id);
-          setTemplateText(cleanOfferTemplateDirectives(preferred.raw_text || ""));
-          setTemplateHtml(cleanOfferTemplateDirectives(preferred.html_content || ""));
+          setTemplateText(
+            cleanOfferTemplateDirectives(preferred.raw_text || "", {
+              isIntern,
+              letterType: isIntern ? "intern" : "fulltime",
+            }),
+          );
+          setTemplateHtml(
+            cleanOfferTemplateDirectives(preferred.html_content || "", {
+              isIntern,
+              letterType: isIntern ? "intern" : "fulltime",
+            }),
+          );
         } else {
           setSelectedTemplateId("");
           setTemplateText("");
@@ -217,7 +228,7 @@ export function PrepareOfferModal({
     } finally {
       setLoadingTemplates(false);
     }
-  }, [accessToken]);
+  }, [accessToken, campaign.name]);
 
   useEffect(() => {
     if (open) {
@@ -258,6 +269,7 @@ export function PrepareOfferModal({
       dynamicValues.LETTER_TYPE === "intern";
     return {
       ...dynamicValues,
+      STIPEND_AMOUNT: dynamicValues.STIPEND_AMOUNT || (isIntern ? salary : undefined),
       CANDIDATE_NAME: candidateName,
       RECIPIENT_NAME: candidateName,
       POSITION_TITLE: positionTitle,
@@ -291,13 +303,25 @@ export function PrepareOfferModal({
   // Compute rendered text and HTML from template + all filled values
   const buildRenderedText = useCallback(() => {
     if (!hasSelectedTemplate) return "";
-    return renderOfferTemplateText(templateText, buildAllOfferValues());
-  }, [hasSelectedTemplate, templateText, buildAllOfferValues]);
+    const source = isEditingTemplate ? templateText : selectedTemplate?.raw_text || templateText;
+    return renderOfferTemplateText(source, buildAllOfferValues());
+  }, [hasSelectedTemplate, isEditingTemplate, templateText, selectedTemplate, buildAllOfferValues]);
 
   const buildRenderedHtml = useCallback(() => {
-    if (!hasSelectedTemplate || !templateHtml.trim()) return "";
-    return renderOfferTemplateText(templateHtml, buildAllOfferValues());
-  }, [hasSelectedTemplate, templateHtml, buildAllOfferValues]);
+    if (!hasSelectedTemplate) return "";
+    const source = isEditingTemplate
+      ? templateHtml
+      : selectedTemplate?.html_content || templateHtml;
+    if (!source.trim()) return buildRenderedText();
+    return renderOfferTemplateText(source, buildAllOfferValues());
+  }, [
+    hasSelectedTemplate,
+    isEditingTemplate,
+    templateHtml,
+    selectedTemplate,
+    buildRenderedText,
+    buildAllOfferValues,
+  ]);
 
   // Fetch live PDF preview when switching to PDF tab on Step 3
   const loadPdfPreview = useCallback(
@@ -415,8 +439,21 @@ export function PrepareOfferModal({
     setRemovedVariables([]);
     setExtraVariables([]);
     const tpl = templates.find((t) => t.id === id);
-    setTemplateText(cleanOfferTemplateDirectives(tpl?.raw_text || ""));
-    setTemplateHtml(cleanOfferTemplateDirectives(tpl?.html_content || ""));
+    const isIntern =
+      (positionTitle || campaign.name || "").toLowerCase().includes("intern") ||
+      dynamicValues.LETTER_TYPE === "intern";
+    setTemplateText(
+      cleanOfferTemplateDirectives(tpl?.raw_text || "", {
+        isIntern,
+        letterType: isIntern ? "intern" : "fulltime",
+      }),
+    );
+    setTemplateHtml(
+      cleanOfferTemplateDirectives(tpl?.html_content || "", {
+        isIntern,
+        letterType: isIntern ? "intern" : "fulltime",
+      }),
+    );
   };
 
   const handleUploadFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
