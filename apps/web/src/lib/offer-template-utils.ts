@@ -43,12 +43,14 @@ export function normalizeVarKey(rawKey: string): string {
  */
 export function cleanOfferTemplateDirectives(
   content: string,
-  options?: { letterType?: string; isIntern?: boolean },
+  options?: { letterType?: string; isIntern?: boolean; incentiveNote?: string },
 ): string {
   if (!content) return "";
 
   // Normalize HTML block endings with newlines so Mammoth single-line HTML doesn't drop multi-page content
-  const normalized = content.replace(/(<\/(?:p|div|tr|h[1-6]|table|ul|ol)>)/gi, "$1\n");
+  const normalized = content
+    .replace(/(<\/(?:p|div|tr|h[1-6]|table|ul|ol)>)/gi, "$1\n")
+    .replace(/(<(?:br)\s*\/?>)/gi, "\n");
 
   const hasSpecificType = options?.isIntern !== undefined || Boolean(options?.letterType?.trim());
   const isIntern =
@@ -61,14 +63,10 @@ export function cleanOfferTemplateDirectives(
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
-    const lineTrim = rawLine.replace(/<[^>]+>/g, "").trim();
-
-    // Reset condition on empty lines
-    if (!lineTrim) {
-      currentCondition = "any";
-      result.push(rawLine);
-      continue;
-    }
+    const lineTrim = rawLine
+      .replace(/<[^>]+>/g, "")
+      .replace(/^[|\s]+|[|\s]+$/g, "")
+      .trim();
 
     // 1. Drop developer notes / legend / logo placeholder instructions
     if (/\{\{VARIABLE\}\}.*?dynamic field/i.test(lineTrim)) continue;
@@ -88,7 +86,10 @@ export function cleanOfferTemplateDirectives(
       }
       // If the immediate next line repeats the exact titleText, skip it to avoid duplication
       if (i + 1 < lines.length) {
-        const nextClean = lines[i + 1].replace(/<[^>]+>/g, "").trim();
+        const nextClean = lines[i + 1]
+          .replace(/<[^>]+>/g, "")
+          .replace(/^[|\s]+|[|\s]+$/g, "")
+          .trim();
         if (nextClean.toLowerCase() === titleText.toLowerCase()) {
           i++;
         }
@@ -108,19 +109,40 @@ export function cleanOfferTemplateDirectives(
       continue;
     }
 
-    // 4. Filter only the immediate target paragraph for the condition, then reset
+    // 4. Incentive note condition: "Show this section only when: Show incentive line only when INCENTIVE_NOTE is non-empty"
+    if (/Show incentive line only when INCENTIVE_NOTE/i.test(lineTrim)) {
+      if (!options?.incentiveNote?.trim()) {
+        // Skip the immediate following incentive line if present
+        if (i + 1 < lines.length && /Incentive\s*\/\s*Variable\s*Pay/i.test(lines[i + 1])) {
+          i++;
+        }
+      }
+      continue;
+    }
+
+    // 5. Unconditional major section headings — reset condition so subsequent terms are never dropped
+    const isUnconditionalHeading =
+      /^(?:TERMS OF ENGAGEMENT|ACKNOWLEDGEMENT|For\s+\{\{COMPANY_NAME\}\}|We look forward to welcoming you)/i.test(
+        lineTrim,
+      ) ||
+      /^(?:1\.\s+Role\s+&\s+Scope|4\.\s+Confidentiality|5\.\s+Intellectual\s+Property|6\.\s+Code\s+of\s+Conduct|7\.\s+Termination)/i.test(
+        lineTrim,
+      );
+
+    if (isUnconditionalHeading) {
+      currentCondition = "any";
+    }
+
+    // 6. Filter lines based on active block condition
     if (hasSpecificType) {
       if (currentCondition === "fulltime" && isIntern) {
-        currentCondition = "any";
         continue;
       }
       if (currentCondition === "intern" && !isIntern) {
-        currentCondition = "any";
         continue;
       }
     }
 
-    currentCondition = "any";
     result.push(rawLine);
   }
 
@@ -204,6 +226,7 @@ export function renderOfferTemplateText(
   const cleaned = cleanOfferTemplateDirectives(rawText, {
     letterType: normalized.LETTER_TYPE,
     isIntern,
+    incentiveNote: normalized.INCENTIVE_NOTE,
   });
 
   return cleaned.replace(PLACEHOLDER_REGEX, (full, key: string) => {
@@ -222,12 +245,13 @@ function escapeHtmlBasic(str: string): string {
 
 /**
  * Convert plain extracted text into structured HTML
- * with <h2>/<h3> headings, <ul> bullet lists, and <p> paragraphs.
+ * with <h2>/<h3> headings, <table> tables, <ul> bullet lists, and <p> paragraphs.
  */
 export function formatPlainTextAsRichHtml(text: string): string {
   const lines = text.split("\n");
   const out: string[] = [];
   let listItems: string[] = [];
+  let tableRows: string[] = [];
 
   const flushList = () => {
     if (listItems.length > 0) {
@@ -236,12 +260,48 @@ export function formatPlainTextAsRichHtml(text: string): string {
     }
   };
 
+  const flushTable = () => {
+    if (tableRows.length > 0) {
+      const parsedRows = tableRows.map((r) =>
+        r
+          .split("|")
+          .map((c) => c.trim())
+          .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1),
+      );
+      if (parsedRows.length > 0) {
+        let tableHtml = "<table>\n";
+        parsedRows.forEach((row, rIdx) => {
+          const isHeader = rIdx === 0 && row.some((c) => /Component|Monthly|Annual/i.test(c));
+          tableHtml += "  <tr>\n";
+          row.forEach((cell) => {
+            const tag = isHeader ? "th" : "td";
+            tableHtml += `    <${tag}>${escapeHtmlBasic(cell)}</${tag}>\n`;
+          });
+          tableHtml += "  </tr>\n";
+        });
+        tableHtml += "</table>";
+        out.push(tableHtml);
+      }
+      tableRows = [];
+    }
+  };
+
   for (const raw of lines) {
     const line = raw.trim();
     if (!line) {
       flushList();
+      flushTable();
       continue;
     }
+
+    // Markdown table row: starts and ends with "|"
+    if (line.startsWith("|") && line.endsWith("|") && line.length > 2) {
+      flushList();
+      tableRows.push(line);
+      continue;
+    }
+
+    flushTable();
 
     // Bullet item: "* ..." or "- ..." or "• ..."
     const bulletMatch = line.match(/^(?:\*|-|•)\s+(.*)$/);
@@ -271,5 +331,6 @@ export function formatPlainTextAsRichHtml(text: string): string {
   }
 
   flushList();
+  flushTable();
   return out.join("\n");
 }

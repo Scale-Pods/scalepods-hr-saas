@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     let pdfBuffer: Buffer;
 
-    if (body.use_branded_template && !body.rendered_html?.trim()) {
+    if (body.use_branded_template) {
       pdfBuffer = generateBrandedOfferPdf({
         candidate_name: body.candidate_name || "Candidate",
         position_title: body.position_title || "Software Engineer",

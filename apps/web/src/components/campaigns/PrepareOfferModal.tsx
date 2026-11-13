@@ -253,6 +253,9 @@ export function PrepareOfferModal({
       day: "numeric",
       year: "numeric",
     });
+    const isIntern =
+      (positionTitle || campaign.name || "").toLowerCase().includes("intern") ||
+      dynamicValues.LETTER_TYPE === "intern";
     return {
       ...dynamicValues,
       CANDIDATE_NAME: candidateName,
@@ -270,11 +273,13 @@ export function PrepareOfferModal({
       SPECIAL_TERMS: specialTerms,
       TERMS: specialTerms,
       ISSUE_DATE: todayFormatted,
+      LETTER_TYPE: isIntern ? "intern" : "fulltime",
     };
   }, [
     dynamicValues,
     candidateName,
     positionTitle,
+    campaign.name,
     salary,
     currency,
     startDate,
@@ -678,8 +683,9 @@ export function PrepareOfferModal({
             company_name: companyName,
             signatory_name: signatoryName,
             special_terms: specialTerms,
-            dynamic_variables: dynamicValues,
-            ...dynamicValues,
+            dynamic_variables: buildAllOfferValues(),
+            ...buildAllOfferValues(),
+            use_branded_template: selectedTemplate?.is_default ?? true,
           },
         }),
       });
