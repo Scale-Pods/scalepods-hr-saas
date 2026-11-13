@@ -54,6 +54,7 @@ export function OfferTemplateManager() {
   const [uploadText, setUploadText] = useState("");
   const [uploadHtml, setUploadHtml] = useState("");
   const [uploadVars, setUploadVars] = useState<string[]>([]);
+  const [parsingWithAi, setParsingWithAi] = useState(false);
   const [setDefault, setSetDefault] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
 
@@ -82,6 +83,13 @@ export function OfferTemplateManager() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".docx")) {
+      showErrorToast("Only Word documents (.docx) are supported for offer letters.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
     setUploadFile(file);
     if (!uploadName) setUploadName(file.name.replace(/\.[^.]+$/, ""));
 
@@ -91,10 +99,39 @@ export function OfferTemplateManager() {
       setUploadText("");
       setUploadHtml("");
       setUploadVars([]);
-    } else {
-      setUploadText(result.text);
-      setUploadHtml(result.html);
+      return;
+    }
+
+    setUploadText(result.text);
+    setUploadHtml(result.html);
+    setParsingWithAi(true);
+
+    try {
+      const res = await fetch("/api/offer-templates/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          raw_text: result.text,
+          html_content: result.html,
+          file_name: file.name,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setUploadText(data.cleaned_text || result.text);
+        setUploadHtml(data.cleaned_html || result.html);
+        const keys = Array.isArray(data.variables)
+          ? data.variables.map((v: { key: string }) => v.key)
+          : extractCustomOfferVariables(data.cleaned_html || data.cleaned_text);
+        setUploadVars(keys);
+        showToast("Claude AI parsed document & extracted dynamic variables.");
+      } else {
+        setUploadVars(extractCustomOfferVariables(result.html || result.text));
+      }
+    } catch {
       setUploadVars(extractCustomOfferVariables(result.html || result.text));
+    } finally {
+      setParsingWithAi(false);
     }
   };
 
@@ -222,9 +259,8 @@ export function OfferTemplateManager() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Upload your company offer letter template (PDF, DOCX, or TXT). Use{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{"{{VAR_NAME}}"}</code>{" "}
-          placeholders for custom fields — ScalePods auto-detects them.
+          Upload your company offer letter or agreement (.docx). Claude AI auto-detects dynamic
+          variables and standardizes the document.
         </p>
         <Button
           size="sm"
@@ -263,16 +299,23 @@ export function OfferTemplateManager() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">File (.docx recommended, or PDF / TXT)</Label>
+              <Label className="text-xs">Word Document (.docx only)</Label>
               <input
                 ref={fileRef}
                 type="file"
-                accept=".docx,.doc,.txt,.md,.pdf"
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 onChange={handleFileChange}
                 className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary hover:file:bg-primary/20 cursor-pointer"
               />
             </div>
           </div>
+
+          {parsingWithAi && (
+            <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 p-2.5 text-xs text-primary">
+              <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+              <span>Claude AI is analyzing template & extracting dynamic variables via n8n...</span>
+            </div>
+          )}
 
           {uploadVars.length > 0 && (
             <div className="rounded-lg border border-border/60 bg-muted/30 p-2.5">

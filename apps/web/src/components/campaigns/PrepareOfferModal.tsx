@@ -109,6 +109,7 @@ export function PrepareOfferModal({
   const [uploadRawText, setUploadRawText] = useState("");
   const [uploadHtml, setUploadHtml] = useState("");
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
+  const [parsingWithAi, setParsingWithAi] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   // Step 2: Standard + dynamic variables (auto-filled from DB)
@@ -127,6 +128,17 @@ export function PrepareOfferModal({
   const [removedVariables, setRemovedVariables] = useState<string[]>([]);
   const [newVarName, setNewVarName] = useState("");
   const [showAddVar, setShowAddVar] = useState(false);
+
+  // Step 3: Preview & Send + Claude AI live editing
+  const [previewTab, setPreviewTab] = useState<"letter" | "pdf">("letter");
+  const [finalRenderedText, setFinalRenderedText] = useState("");
+  const [finalRenderedHtml, setFinalRenderedHtml] = useState("");
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [loadingPdfPreview, setLoadingPdfPreview] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [showAiStep3, setShowAiStep3] = useState(false);
+  const [aiStep3Instruction, setAiStep3Instruction] = useState("");
+  const [applyingAiStep3, setApplyingAiStep3] = useState(false);
 
   const [dynamicValues, setDynamicValues] = useState<Record<string, string>>(() => {
     const isIntern = (campaign.name || "").toLowerCase().includes("intern");
@@ -152,14 +164,6 @@ export function PrepareOfferModal({
       NOTICE_PERIOD: "15 Days",
     };
   });
-
-  // Step 3: Preview & Send
-  const [previewTab, setPreviewTab] = useState<"letter" | "pdf">("letter");
-  const [finalRenderedText, setFinalRenderedText] = useState("");
-  const [finalRenderedHtml, setFinalRenderedHtml] = useState("");
-  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
-  const [loadingPdfPreview, setLoadingPdfPreview] = useState(false);
-  const [sending, setSending] = useState(false);
 
   // Sync candidate/account defaults when modal opens
   useEffect(() => {
@@ -319,7 +323,67 @@ export function PrepareOfferModal({
     [candidateName],
   );
 
-  if (!candidate?.application_id) return null;
+  const parseTemplateWithAi = useCallback(
+    async (text: string, html: string, fileName?: string) => {
+      if (!text.trim() && !html.trim()) return null;
+      setParsingWithAi(true);
+      try {
+        const token = accessToken || (await getAccessToken());
+        const isIntern = (campaign.name || "").toLowerCase().includes("intern");
+        const res = await fetch("/api/offer-templates/parse", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            raw_text: text,
+            html_content: html,
+            file_name: fileName || "document.docx",
+            campaign_context: {
+              position_title: campaign.name,
+              salary: campaign.salary_min ? String(campaign.salary_min) : undefined,
+              currency: campaign.salary_currency,
+              is_intern: isIntern,
+            },
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          if (data.cleaned_text) setTemplateText(data.cleaned_text);
+          if (data.cleaned_html) setTemplateHtml(data.cleaned_html);
+
+          if (Array.isArray(data.variables) && data.variables.length > 0) {
+            const detectedMap: Record<string, string> = {};
+            const keys: string[] = [];
+            for (const item of data.variables) {
+              const k = String(item.key || "")
+                .trim()
+                .toUpperCase();
+              if (k) {
+                keys.push(k);
+                if (item.detected_value && !dynamicValues[k]) {
+                  detectedMap[k] = item.detected_value;
+                }
+              }
+            }
+            if (Object.keys(detectedMap).length > 0) {
+              setDynamicValues((prev) => ({ ...detectedMap, ...prev }));
+            }
+            setExtraVariables((prev) => Array.from(new Set([...prev, ...keys])));
+          }
+          showToast("Claude AI parsed document & dynamic variables.");
+          return data;
+        }
+      } catch (err) {
+        console.warn("[parseTemplateWithAi]", err);
+      } finally {
+        setParsingWithAi(false);
+      }
+      return null;
+    },
+    [accessToken, campaign, dynamicValues],
+  );
 
   const handleSelectTemplate = (id: string) => {
     setSelectedTemplateId(id);
@@ -334,16 +398,69 @@ export function PrepareOfferModal({
   const handleUploadFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".docx")) {
+      showErrorToast("Only Word documents (.docx) are allowed. Please upload a .docx file.");
+      if (uploadInputRef.current) uploadInputRef.current.value = "";
+      return;
+    }
+
     setUploadFile(file);
     if (!uploadName) setUploadName(file.name.replace(/\.[^.]+$/, ""));
+
     const result = await extractOfferTemplateFromFile(file);
     if ("error" in result) {
       showErrorToast(result.error);
       setUploadRawText("");
       setUploadHtml("");
-    } else {
-      setUploadRawText(result.text);
-      setUploadHtml(result.html);
+      return;
+    }
+
+    setUploadRawText(result.text);
+    setUploadHtml(result.html);
+
+    // Run Claude AI parsing immediately
+    const parsed = await parseTemplateWithAi(result.text, result.html, file.name);
+    if (parsed) {
+      if (parsed.cleaned_text) setUploadRawText(parsed.cleaned_text);
+      if (parsed.cleaned_html) setUploadHtml(parsed.cleaned_html);
+    }
+  };
+
+  const handleAiEditStep3 = async () => {
+    if (!aiStep3Instruction.trim()) {
+      showErrorToast("Please enter an instruction for Claude AI.");
+      return;
+    }
+    setApplyingAiStep3(true);
+    try {
+      const token = accessToken || (await getAccessToken());
+      const res = await fetch("/api/offer-templates/ai-edit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          instruction: aiStep3Instruction.trim(),
+          raw_text: finalRenderedText,
+          html_content: finalRenderedHtml,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to edit letter with Claude AI");
+      if (data.updated_text) setFinalRenderedText(data.updated_text);
+      if (data.updated_html) setFinalRenderedHtml(data.updated_html);
+      setAiStep3Instruction("");
+      setShowAiStep3(false);
+      showToast("Offer letter updated with Claude AI.");
+      if (previewTab === "pdf") {
+        void loadPdfPreview(data.updated_text, data.updated_html);
+      }
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setApplyingAiStep3(false);
     }
   };
 
@@ -513,6 +630,11 @@ export function PrepareOfferModal({
       return;
     }
 
+    if (!candidate?.application_id) {
+      showErrorToast("No valid candidate selected.");
+      return;
+    }
+
     setSending(true);
     try {
       const token = accessToken || (await getAccessToken());
@@ -587,6 +709,8 @@ export function PrepareOfferModal({
   };
 
   const todayStr = new Date().toISOString().split("T")[0];
+
+  if (!candidate?.application_id) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -684,23 +808,31 @@ export function PrepareOfferModal({
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">
-                        Template File (.docx recommended, or PDF / TXT)
-                      </Label>
+                      <Label className="text-xs">Word Document (.docx only)</Label>
                       <input
                         ref={uploadInputRef}
                         type="file"
-                        accept=".docx,.doc,.txt,.md,.pdf"
+                        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         onChange={handleUploadFilePick}
                         className="block w-full text-xs text-muted-foreground file:mr-2.5 file:rounded-md file:border-0 file:bg-primary/15 file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-primary cursor-pointer"
                       />
                     </div>
                   </div>
+
+                  {parsingWithAi && (
+                    <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 p-2.5 text-xs text-primary">
+                      <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                      <span>
+                        Claude AI is analyzing document & extracting dynamic variables via n8n...
+                      </span>
+                    </div>
+                  )}
+
                   {uploadRawText && (
                     <div className="space-y-1.5">
                       <span className="text-[11px] text-muted-foreground">
                         Extracted {uploadRawText.length} characters ·{" "}
-                        {extractCustomOfferVariables(uploadRawText).length} custom variable(s)
+                        {extractCustomOfferVariables(uploadRawText).length} dynamic variable(s)
                         detected
                       </span>
                       <div className="flex justify-end">
@@ -708,7 +840,7 @@ export function PrepareOfferModal({
                           type="button"
                           size="sm"
                           onClick={handleSaveUploadedTemplate}
-                          disabled={uploadingTemplate || !uploadName.trim()}
+                          disabled={uploadingTemplate || !uploadName.trim() || parsingWithAi}
                           className="h-7 gap-1.5 text-xs"
                         >
                           {uploadingTemplate ? (
@@ -781,20 +913,41 @@ export function PrepareOfferModal({
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
                             {selected && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 gap-1 text-xs"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setIsEditingTemplate((v) => !v);
-                                }}
-                              >
-                                <Pencil className="h-3 w-3" />
-                                {isEditingTemplate ? "Hide Editor" : "Edit Template"}
-                              </Button>
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 gap-1 text-xs text-primary hover:text-primary hover:bg-primary/10"
+                                  disabled={parsingWithAi}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    void parseTemplateWithAi(templateText, templateHtml, tpl.name);
+                                  }}
+                                >
+                                  {parsingWithAi ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="h-3 w-3" />
+                                  )}
+                                  Re-extract with Claude
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 gap-1 text-xs"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setIsEditingTemplate((v) => !v);
+                                  }}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                  {isEditingTemplate ? "Hide Editor" : "Edit Template"}
+                                </Button>
+                              </>
                             )}
                             <Button
                               type="button"
@@ -1108,7 +1261,7 @@ export function PrepareOfferModal({
           {/* ────────────────────────── STEP 3: PREVIEW & SEND ────────────────────────── */}
           {step === 3 && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <Tabs
                   value={previewTab}
                   onValueChange={(v) => {
@@ -1128,10 +1281,69 @@ export function PrepareOfferModal({
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
-                <span className="text-[11px] text-muted-foreground">
-                  Sending to <strong>{candidate.email}</strong>
-                </span>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 text-xs text-primary border-primary/30 hover:bg-primary/10"
+                    onClick={() => setShowAiStep3((v) => !v)}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {showAiStep3 ? "Hide Claude AI" : "Edit with Claude AI"}
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                    Sending to <strong>{candidate.email}</strong>
+                  </span>
+                </div>
               </div>
+
+              {showAiStep3 && (
+                <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-primary">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5" /> Instruct Claude AI to Edit This Offer
+                      Letter
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAiStep3(false)}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="e.g. 'Remove probation period', 'Add annual performance bonus clause', 'Format compensation table'..."
+                      value={aiStep3Instruction}
+                      onChange={(e) => setAiStep3Instruction(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          void handleAiEditStep3();
+                        }
+                      }}
+                      className="text-xs h-8 bg-background"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={applyingAiStep3 || !aiStep3Instruction.trim()}
+                      onClick={handleAiEditStep3}
+                      className="h-8 gap-1.5 shrink-0 text-xs"
+                    >
+                      {applyingAiStep3 ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      {applyingAiStep3 ? "Claude Editing..." : "Apply Edit"}
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {previewTab === "letter" ? (
                 finalRenderedHtml ? (

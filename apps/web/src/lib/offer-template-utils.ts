@@ -24,16 +24,101 @@ export const STANDARD_OFFER_VAR_KEYS = new Set([
   "COMPANY_NAME",
   "SIGNATORY_NAME",
   "VARIABLE",
+  "COMPANY_LOGO_PATH",
 ]);
 
 const PLACEHOLDER_REGEX = /\{\{\s*([A-Za-z0-9_ -]+?)\s*\}\}/g;
 
-function normalizeVarKey(rawKey: string): string {
+export function normalizeVarKey(rawKey: string): string {
   return rawKey
     .trim()
     .replace(/[\s-]+/g, "_")
     .replace(/_+/g, "_")
     .toUpperCase();
+}
+
+/**
+ * Clean template developer notes, legend lines, and conditional directives
+ * (e.g. "Show this section only when: LETTER_TYPE = fulltime") from raw docx text or HTML.
+ */
+export function cleanOfferTemplateDirectives(
+  content: string,
+  options?: { letterType?: string; isIntern?: boolean },
+): string {
+  if (!content) return "";
+
+  const isIntern =
+    options?.isIntern ??
+    (options?.letterType ? options.letterType.toLowerCase().includes("intern") : false);
+
+  const lines = content.split("\n");
+  const result: string[] = [];
+  let currentCondition: "any" | "fulltime" | "intern" = "any";
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const lineTrim = rawLine.replace(/<[^>]+>/g, "").trim();
+
+    // 1. Drop developer notes / legend / logo placeholder instructions
+    if (/\{\{VARIABLE\}\}\s*=\s*dynamic field/i.test(lineTrim)) continue;
+    if (/LETTERHEAD\s*\/\s*LOGO\s*AREA/i.test(lineTrim)) continue;
+
+    // 2. Inline conditional title: "Show this section only when: LETTER_TYPE = fulltime → show 'APPOINTMENT LETTER'"
+    const inlineTitleMatch = lineTrim.match(
+      /Show this section only when:\s*LETTER_TYPE\s*=\s*(fulltime|intern)\s*→\s*show\s*['"]?([^'"]+)['"]?/i,
+    );
+    if (inlineTitleMatch) {
+      const targetType = inlineTitleMatch[1].toLowerCase();
+      const titleText = inlineTitleMatch[2].trim();
+      const shouldShow = targetType === "intern" ? isIntern : !isIntern;
+      if (shouldShow) {
+        result.push(rawLine.includes("<") ? `<h2>${titleText}</h2>` : titleText);
+      }
+      // If the immediate next line repeats the exact titleText, skip it to avoid duplication
+      if (i + 1 < lines.length) {
+        const nextClean = lines[i + 1].replace(/<[^>]+>/g, "").trim();
+        if (nextClean.toLowerCase() === titleText.toLowerCase()) {
+          i++;
+        }
+      }
+      continue;
+    }
+
+    // 3. Block condition start: "Show this section only when: LETTER_TYPE = fulltime"
+    const blockMatch = lineTrim.match(
+      /Show this section only when:\s*LETTER_TYPE\s*=\s*(fulltime|intern)/i,
+    );
+    if (blockMatch) {
+      currentCondition = blockMatch[1].toLowerCase() as "fulltime" | "intern";
+      continue;
+    }
+
+    // Reset condition when hitting a known major section
+    if (
+      /^[A-Z0-9 _-]{4,60}$/.test(lineTrim) &&
+      !lineTrim.startsWith("{{") &&
+      (lineTrim.includes("TERMS") ||
+        lineTrim.includes("COMPENSATION") ||
+        lineTrim.includes("BENEFITS") ||
+        lineTrim.includes("ACCEPTANCE") ||
+        lineTrim.includes("SIGNATURE") ||
+        lineTrim.includes("CONFIDENTIAL"))
+    ) {
+      currentCondition = "any";
+    }
+
+    // Filter based on active block condition
+    if (currentCondition === "fulltime" && isIntern) continue;
+    if (currentCondition === "intern" && !isIntern) continue;
+
+    result.push(rawLine);
+  }
+
+  return result
+    .join("\n")
+    .replace(/<p>\s*<\/p>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**
@@ -88,7 +173,7 @@ export function formatOfferVarLabel(key: string): string {
 /**
  * Substitute all {{VAR_NAME}} placeholders in template text using the supplied map.
  * Matching is case-insensitive and whitespace-tolerant on the key name.
- * Unfilled keys remain visible as {{KEY}}.
+ * Also cleans template directive markers automatically.
  */
 export function renderOfferTemplateText(
   rawText: string,
@@ -101,7 +186,17 @@ export function renderOfferTemplateText(
     }
   }
 
-  return rawText.replace(PLACEHOLDER_REGEX, (full, key: string) => {
+  const isIntern =
+    normalized.LETTER_TYPE === "intern" ||
+    (normalized.POSITION_TITLE || normalized.ROLE || "").toLowerCase().includes("intern");
+
+  // First clean conditional directives and meta notes
+  const cleaned = cleanOfferTemplateDirectives(rawText, {
+    letterType: normalized.LETTER_TYPE,
+    isIntern,
+  });
+
+  return cleaned.replace(PLACEHOLDER_REGEX, (full, key: string) => {
     const upper = normalizeVarKey(key);
     return normalized[upper] ?? full;
   });
@@ -116,9 +211,8 @@ function escapeHtmlBasic(str: string): string {
 }
 
 /**
- * Convert plain extracted text (from PDF or TXT) into structured HTML
- * with <h2>/<h3> headings, <ul> bullet lists, and <p> paragraphs so it
- * renders cleanly in the rich editor and HTML-to-PDF generator.
+ * Convert plain extracted text into structured HTML
+ * with <h2>/<h3> headings, <ul> bullet lists, and <p> paragraphs.
  */
 export function formatPlainTextAsRichHtml(text: string): string {
   const lines = text.split("\n");

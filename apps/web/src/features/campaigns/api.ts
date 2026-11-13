@@ -372,10 +372,10 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
       return {
         application_id: app.id,
         candidate_id: app.candidate_id,
-        name: app.candidate_name,
-        email: app.candidate_email,
-        phone: app.candidate_phone,
-        resume_url: app.resume_path,
+        name: app.candidate_name ?? null,
+        email: app.candidate_email || "",
+        phone: app.candidate_phone ?? null,
+        resume_url: app.resume_path ?? null,
         current_stage: stageLabel,
         current_round_number: isRoundStage
           ? (app.current_round_number ?? appRi?.round_number ?? 1)
@@ -393,7 +393,9 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
         score_rationale: (appRoundScoreRow || appResumeScoreRow)?.rationale ?? null,
         decision: app.status === "rejected" ? "rejected" : (appRi?.status ?? app.status),
         round_instance_id: appRi?.id ?? null,
-        round_number: isRoundStage ? (app.current_round_number ?? appRi?.round_number ?? 1) : null,
+        round_number: isRoundStage
+          ? (app.current_round_number ?? appRi?.round_number ?? 1)
+          : undefined,
         reviewer_cutoff: appRi?.reviewer_cutoff ?? null,
         created_at: app.created_at,
         requested_documents: app.requested_documents ?? [],

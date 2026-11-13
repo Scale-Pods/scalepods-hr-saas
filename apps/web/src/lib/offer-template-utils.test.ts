@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cleanOfferTemplateDirectives,
   extractAllOfferVariables,
   extractCustomOfferVariables,
   formatOfferVarLabel,
@@ -44,5 +45,32 @@ describe("offer-template-utils", () => {
       BONUS: "",
     });
     expect(rendered).toBe("Hello Manish Sharma, Dept: AI & Automation, Bonus: {{BONUS}}");
+  });
+
+  it("cleans template directives, legend notes, and conditional sections for intern vs fulltime", () => {
+    const sample = `{{COMPANY_NAME}} | {{COMPANY_WEBSITE}}
+{{VARIABLE}} = dynamic field — replace at generation time.
+LETTERHEAD / LOGO AREA Attach client letterhead as background image.
+Show this section only when: LETTER_TYPE = fulltime → show 'APPOINTMENT LETTER'
+APPOINTMENT LETTER
+Show this section only when: LETTER_TYPE = intern → show 'INTERNSHIP APPOINTMENT LETTER'
+INTERNSHIP APPOINTMENT LETTER
+Dear {{CANDIDATE_NAME}},
+Show this section only when: LETTER_TYPE = fulltime
+We are pleased to offer you the full-time position of {{ROLE}}.
+Show this section only when: LETTER_TYPE = intern
+We are pleased to offer you an internship position of {{ROLE}}.
+TERMS OF ENGAGEMENT`;
+
+    const internCleaned = cleanOfferTemplateDirectives(sample, { isIntern: true });
+    expect(internCleaned).not.toContain("{{VARIABLE}} = dynamic field");
+    expect(internCleaned).not.toContain("LETTERHEAD / LOGO AREA");
+    expect(internCleaned).not.toContain("Show this section only when");
+    expect(internCleaned).not.toContain("We are pleased to offer you the full-time position");
+    expect(internCleaned).toContain("We are pleased to offer you an internship position");
+
+    const fulltimeCleaned = cleanOfferTemplateDirectives(sample, { isIntern: false });
+    expect(fulltimeCleaned).not.toContain("We are pleased to offer you an internship position");
+    expect(fulltimeCleaned).toContain("We are pleased to offer you the full-time position");
   });
 });

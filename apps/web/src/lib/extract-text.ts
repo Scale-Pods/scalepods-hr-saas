@@ -3,7 +3,7 @@
  * builder. Loads heavy parsers lazily so they don't touch the initial bundle.
  */
 
-import { formatPlainTextAsRichHtml } from "./offer-template-utils";
+import { cleanOfferTemplateDirectives, formatPlainTextAsRichHtml } from "./offer-template-utils";
 
 export type ExtractResult = { text: string } | { error: string };
 export type ExtractTemplateResult = { text: string; html: string } | { error: string };
@@ -96,26 +96,31 @@ async function extractDocx(file: File): Promise<ExtractResult> {
  */
 export async function extractOfferTemplateFromFile(file: File): Promise<ExtractTemplateResult> {
   const name = file.name.toLowerCase();
-  try {
-    if (name.endsWith(".docx") || name.endsWith(".doc")) {
-      const mammoth = await import("mammoth");
-      const buffer = await file.arrayBuffer();
-      const [rawRes, htmlRes] = await Promise.all([
-        mammoth.extractRawText({ arrayBuffer: buffer }),
-        mammoth.convertToHtml({ arrayBuffer: buffer }),
-      ]);
-      const text = rawRes.value.trim();
-      const html = htmlRes.value.trim();
-      if (!text && !html) return { error: "No extractable text found in the document." };
-      return {
-        text: text || html.replace(/<[^>]+>/g, " ").trim(),
-        html: html || formatPlainTextAsRichHtml(text),
-      };
-    }
+  if (!name.endsWith(".docx")) {
+    return {
+      error:
+        "Only Word documents (.docx) are supported. Please upload a .docx offer letter or template.",
+    };
+  }
 
-    const res = await extractTextFromFile(file);
-    if ("error" in res) return res;
-    return { text: res.text, html: formatPlainTextAsRichHtml(res.text) };
+  try {
+    const mammoth = await import("mammoth");
+    const buffer = await file.arrayBuffer();
+    const [rawRes, htmlRes] = await Promise.all([
+      mammoth.extractRawText({ arrayBuffer: buffer }),
+      mammoth.convertToHtml({ arrayBuffer: buffer }),
+    ]);
+    const rawText = rawRes.value.trim();
+    const rawHtml = htmlRes.value.trim();
+    if (!rawText && !rawHtml) return { error: "No extractable text found in the document." };
+
+    const text = cleanOfferTemplateDirectives(rawText || rawHtml.replace(/<[^>]+>/g, " ").trim());
+    const html = cleanOfferTemplateDirectives(rawHtml || formatPlainTextAsRichHtml(rawText));
+
+    return {
+      text,
+      html,
+    };
   } catch (err) {
     return { error: `Could not read ${file.name}: ${errorMessage(err)}` };
   }

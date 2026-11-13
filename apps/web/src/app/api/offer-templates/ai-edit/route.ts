@@ -2,7 +2,11 @@ import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
 import { callN8nGateway } from "@/lib/n8n-gateway";
-import { extractCustomOfferVariables, formatPlainTextAsRichHtml } from "@/lib/offer-template-utils";
+import {
+  cleanOfferTemplateDirectives,
+  extractCustomOfferVariables,
+  formatPlainTextAsRichHtml,
+} from "@/lib/offer-template-utils";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -101,11 +105,11 @@ export async function POST(req: NextRequest) {
     >;
     const updatedText =
       typeof resObj.updated_text === "string" && resObj.updated_text.trim()
-        ? resObj.updated_text.trim()
-        : rawText;
+        ? cleanOfferTemplateDirectives(resObj.updated_text.trim())
+        : cleanOfferTemplateDirectives(rawText);
     const updatedHtml =
       typeof resObj.updated_html === "string" && resObj.updated_html.trim()
-        ? resObj.updated_html.trim()
+        ? cleanOfferTemplateDirectives(resObj.updated_html.trim())
         : formatPlainTextAsRichHtml(updatedText);
 
     const variables = extractCustomOfferVariables(`${updatedText}\n${updatedHtml}`);
