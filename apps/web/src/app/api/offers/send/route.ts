@@ -172,63 +172,28 @@ export async function POST(req: NextRequest) {
     const renderedHtml = parsed.data.rendered_html?.trim() || "";
     const offerTemplateId = parsed.data.offer_template_id || null;
 
-    let isDefaultTemplate = false;
-    if (offerTemplateId) {
-      const { data: tplData } = await adminSupabase
-        .from("offer_templates")
-        .select("is_default")
-        .eq("id", offerTemplateId)
-        .maybeSingle();
-      if (tplData?.is_default) {
-        isDefaultTemplate = true;
-      }
-    } else {
-      isDefaultTemplate = true;
-    }
-
-    const shouldUseBranded = Boolean(
-      fieldValues.use_branded_template !== undefined
-        ? fieldValues.use_branded_template
-        : isDefaultTemplate,
-    );
-
     let pdfBase64: string | undefined;
     let pdfFilename: string | undefined;
 
     try {
-      const pdfBuffer = shouldUseBranded
-        ? generateBrandedOfferPdf({
-            candidate_name: candidateName,
-            position_title: positionTitle,
-            salary,
-            currency,
-            start_date: startDate,
-            company_name: companyName,
-            signatory_name: signatoryName,
-            signatory_title: signatoryTitle,
-            dynamic_variables: (fieldValues.dynamic_variables || fieldValues) as Record<
-              string,
-              string
-            >,
-          })
-        : renderedHtml
-          ? await generateHtmlOfferPdf(renderedHtml, companyName)
-          : renderedText
-            ? generateTextOfferPdf(renderedText)
-            : generateBrandedOfferPdf({
-                candidate_name: candidateName,
-                position_title: positionTitle,
-                salary,
-                currency,
-                start_date: startDate,
-                company_name: companyName,
-                signatory_name: signatoryName,
-                signatory_title: signatoryTitle,
-                dynamic_variables: (fieldValues.dynamic_variables || fieldValues) as Record<
-                  string,
-                  string
-                >,
-              });
+      const pdfBuffer = renderedHtml
+        ? await generateHtmlOfferPdf(renderedHtml, companyName)
+        : renderedText
+          ? generateTextOfferPdf(renderedText)
+          : generateBrandedOfferPdf({
+              candidate_name: candidateName,
+              position_title: positionTitle,
+              salary,
+              currency,
+              start_date: startDate,
+              company_name: companyName,
+              signatory_name: signatoryName,
+              signatory_title: signatoryTitle,
+              dynamic_variables: (fieldValues.dynamic_variables || fieldValues) as Record<
+                string,
+                string
+              >,
+            });
       pdfBase64 = pdfBuffer.toString("base64");
       pdfFilename = `Offer_Letter_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
     } catch (pdfErr) {

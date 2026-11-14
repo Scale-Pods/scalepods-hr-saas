@@ -4,6 +4,7 @@ import { getEnv } from "@/env";
 import { generateHtmlOfferPdf } from "@/lib/generate-html-offer-pdf";
 import { generateBrandedOfferPdf } from "@/lib/generate-offer-pdf";
 import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
+import { renderOfferTemplateText } from "@/lib/offer-template-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,11 @@ export async function POST(req: NextRequest) {
 
     let pdfBuffer: Buffer;
 
-    if (body.use_branded_template) {
+    if (body.rendered_html?.trim()) {
+      pdfBuffer = await generateHtmlOfferPdf(body.rendered_html.trim(), body.company_name);
+    } else if (body.rendered_text?.trim()) {
+      pdfBuffer = generateTextOfferPdf(body.rendered_text.trim());
+    } else {
       pdfBuffer = generateBrandedOfferPdf({
         candidate_name: body.candidate_name || "Candidate",
         position_title: body.position_title || "Software Engineer",
@@ -55,10 +60,6 @@ export async function POST(req: NextRequest) {
         signatory_title: body.signatory_title || "Head of Talent Acquisition",
         dynamic_variables: body.dynamic_variables || {},
       });
-    } else if (body.rendered_html?.trim()) {
-      pdfBuffer = await generateHtmlOfferPdf(body.rendered_html.trim(), body.company_name);
-    } else {
-      pdfBuffer = generateTextOfferPdf(body.rendered_text?.trim() || "");
     }
 
     const safeName = (body.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
@@ -115,6 +116,7 @@ export async function GET(req: NextRequest) {
       pdf_base64?: string;
       rendered_text?: string | null;
       rendered_html?: string | null;
+      offer_template_id?: string | null;
     }
     interface CampaignOfferLookup {
       id?: string;
@@ -270,10 +272,26 @@ export async function GET(req: NextRequest) {
 
     const dynamicVars = (fieldValues.dynamic_variables || fieldValues) as Record<string, string>;
 
-    const pdfBuffer = offerRow?.rendered_html?.trim()
-      ? await generateHtmlOfferPdf(offerRow.rendered_html.trim(), companyName)
-      : offerRow?.rendered_text?.trim()
-        ? generateTextOfferPdf(offerRow.rendered_text.trim())
+    let htmlToRender = offerRow?.rendered_html?.trim();
+    let textToRender = offerRow?.rendered_text?.trim();
+
+    if (!htmlToRender && !textToRender && offerRow?.offer_template_id) {
+      const { data: tplRow } = await adminSupabase
+        .from("offer_templates")
+        .select("html_content, raw_text")
+        .eq("id", offerRow.offer_template_id)
+        .maybeSingle();
+      if (tplRow?.html_content?.trim()) {
+        htmlToRender = renderOfferTemplateText(tplRow.html_content.trim(), dynamicVars);
+      } else if (tplRow?.raw_text?.trim()) {
+        textToRender = renderOfferTemplateText(tplRow.raw_text.trim(), dynamicVars);
+      }
+    }
+
+    const pdfBuffer = htmlToRender
+      ? await generateHtmlOfferPdf(htmlToRender, companyName)
+      : textToRender
+        ? generateTextOfferPdf(textToRender)
         : generateBrandedOfferPdf({
             candidate_name: candidateName,
             position_title: positionTitle,

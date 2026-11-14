@@ -200,7 +200,10 @@ export function PrepareOfferModal({
       if (res.ok && Array.isArray(data.templates)) {
         const list = data.templates as OfferTemplateRecord[];
         setTemplates(list);
-        const preferred = list.find((t) => t.is_default) ?? list[0];
+        const preferred =
+          list.find((t) => t.id === selectedTemplateId) ??
+          list.find((t) => t.is_default) ??
+          list[0];
         if (preferred) {
           const isIntern = (campaign.name || "").toLowerCase().includes("intern");
           setSelectedTemplateId(preferred.id);
@@ -228,7 +231,7 @@ export function PrepareOfferModal({
     } finally {
       setLoadingTemplates(false);
     }
-  }, [accessToken, campaign.name]);
+  }, [accessToken, campaign.name, selectedTemplateId]);
 
   useEffect(() => {
     if (open) {
@@ -303,18 +306,16 @@ export function PrepareOfferModal({
   // Compute rendered text and HTML from template + all filled values
   const buildRenderedText = useCallback(() => {
     if (!hasSelectedTemplate) return "";
-    const source = isEditingTemplate ? templateText : selectedTemplate?.raw_text || templateText;
+    const source = templateText.trim() ? templateText : selectedTemplate?.raw_text || "";
     return renderOfferTemplateText(source, buildAllOfferValues());
-  }, [hasSelectedTemplate, isEditingTemplate, templateText, selectedTemplate, buildAllOfferValues]);
+  }, [hasSelectedTemplate, templateText, selectedTemplate, buildAllOfferValues]);
 
   const buildRenderedHtml = useCallback(() => {
     if (!hasSelectedTemplate) return "";
-    const source = isEditingTemplate
-      ? templateHtml
-      : selectedTemplate?.html_content || templateHtml;
+    const source = templateHtml.trim() ? templateHtml : selectedTemplate?.html_content || "";
     if (!source?.trim()) return "";
     return renderOfferTemplateText(source, buildAllOfferValues());
-  }, [hasSelectedTemplate, isEditingTemplate, templateHtml, selectedTemplate, buildAllOfferValues]);
+  }, [hasSelectedTemplate, templateHtml, selectedTemplate, buildAllOfferValues]);
 
   // Fetch live PDF preview when switching to PDF tab on Step 3
   const loadPdfPreview = useCallback(
@@ -336,7 +337,7 @@ export function PrepareOfferModal({
             company_name: companyName || "ScalePods Technologies",
             signatory_name: signatoryName || "Manish",
             dynamic_variables: dynamicValues,
-            use_branded_template: selectedTemplate?.is_default ?? true,
+            use_branded_template: false,
           }),
         });
         if (!res.ok) throw new Error("Failed to generate preview PDF");
@@ -360,7 +361,6 @@ export function PrepareOfferModal({
       companyName,
       signatoryName,
       dynamicValues,
-      selectedTemplate,
     ],
   );
 
@@ -553,28 +553,71 @@ export function PrepareOfferModal({
           storage_path: storagePath,
           raw_text: uploadRawText.trim(),
           html_content: uploadHtml.trim() || undefined,
-          is_default: templates.length === 0,
+          is_default: true,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save template");
 
       const created = data.template as OfferTemplateRecord;
-      setTemplates((prev) => [created, ...prev]);
+      const isIntern =
+        (positionTitle || campaign.name || "").toLowerCase().includes("intern") ||
+        dynamicValues.LETTER_TYPE === "intern";
+
+      const cleanedText = cleanOfferTemplateDirectives(created.raw_text || uploadRawText.trim(), {
+        isIntern,
+        letterType: isIntern ? "intern" : "fulltime",
+      });
+      const cleanedHtml = cleanOfferTemplateDirectives(created.html_content || uploadHtml.trim(), {
+        isIntern,
+        letterType: isIntern ? "intern" : "fulltime",
+      });
+
+      setTemplates((prev) => [created, ...prev.map((t) => ({ ...t, is_default: false }))]);
       setSelectedTemplateId(created.id);
-      setTemplateText(created.raw_text || uploadRawText.trim());
-      setTemplateHtml(created.html_content || uploadHtml.trim());
+      setTemplateText(cleanedText);
+      setTemplateHtml(cleanedHtml);
       setShowUploadBox(false);
       setUploadName("");
       setUploadFile(null);
       setUploadRawText("");
       setUploadHtml("");
       if (uploadInputRef.current) uploadInputRef.current.value = "";
-      showToast(`Template "${created.name}" uploaded and selected.`);
+      showToast(`Template "${created.name}" uploaded and set as active.`);
     } catch (err) {
       showErrorToast(err);
     } finally {
       setUploadingTemplate(false);
+    }
+  };
+
+  const handleSetDefaultTemplate = async (templateId: string) => {
+    try {
+      const token = accessToken || (await getAccessToken());
+      const res = await fetch("/api/offer-templates", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          id: templateId,
+          is_default: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to set default template");
+
+      setTemplates((prev) =>
+        prev.map((t) => ({
+          ...t,
+          is_default: t.id === templateId,
+        })),
+      );
+      handleSelectTemplate(templateId);
+      showToast("Template set as default.");
+    } catch (err) {
+      showErrorToast(err);
     }
   };
 
@@ -720,7 +763,7 @@ export function PrepareOfferModal({
             special_terms: specialTerms,
             dynamic_variables: buildAllOfferValues(),
             ...buildAllOfferValues(),
-            use_branded_template: selectedTemplate?.is_default ?? true,
+            use_branded_template: false,
           },
         }),
       });
@@ -974,6 +1017,22 @@ export function PrepareOfferModal({
                           <div className="flex shrink-0 items-center gap-1">
                             {selected && (
                               <>
+                                {!tpl.is_default && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 gap-1 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      void handleSetDefaultTemplate(tpl.id);
+                                    }}
+                                  >
+                                    <Star className="h-3 w-3" />
+                                    Set as Default
+                                  </Button>
+                                )}
                                 <Button
                                   type="button"
                                   size="sm"

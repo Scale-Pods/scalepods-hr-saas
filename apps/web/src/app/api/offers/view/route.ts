@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
+import { renderOfferTemplateText } from "@/lib/offer-template-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -234,6 +235,23 @@ export async function GET(req: NextRequest) {
 
     const dynamicVars = (fieldValues.dynamic_variables || fieldValues) as Record<string, string>;
 
+    let resolvedRenderedHtml = offerRow?.rendered_html?.trim() || null;
+    let resolvedRenderedText = offerRow?.rendered_text?.trim() || null;
+
+    if (!resolvedRenderedHtml && !resolvedRenderedText && offerRow?.offer_template_id) {
+      const { data: tplRow } = await adminSupabase
+        .from("offer_templates")
+        .select("html_content, raw_text")
+        .eq("id", offerRow.offer_template_id)
+        .maybeSingle();
+      if (tplRow?.html_content?.trim()) {
+        resolvedRenderedHtml = renderOfferTemplateText(tplRow.html_content.trim(), dynamicVars);
+      }
+      if (tplRow?.raw_text?.trim()) {
+        resolvedRenderedText = renderOfferTemplateText(tplRow.raw_text.trim(), dynamicVars);
+      }
+    }
+
     const sentAt =
       offerRow?.sent_to_candidate_at ||
       decisionRow?.decided_at ||
@@ -258,8 +276,8 @@ export async function GET(req: NextRequest) {
         signatory_title: signatoryTitle,
         special_terms: specialTerms,
         dynamic_variables: dynamicVars,
-        rendered_text: offerRow?.rendered_text || null,
-        rendered_html: offerRow?.rendered_html || null,
+        rendered_text: resolvedRenderedText,
+        rendered_html: resolvedRenderedHtml,
         status: offerRow?.status || appRow?.status || "offer_sent",
         sent_at: sentAt,
       },
