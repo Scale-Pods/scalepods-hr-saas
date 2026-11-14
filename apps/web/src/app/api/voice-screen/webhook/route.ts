@@ -65,6 +65,42 @@ export async function POST(req: NextRequest) {
       unknown
     >;
 
+    // Detect test calls - test calls should NEVER be stored in the database or mutate candidate records
+    const isTestCall = Boolean(
+      payload.is_test_call === true ||
+        payload.is_test_call === "true" ||
+        meta.is_test_call === true ||
+        meta.is_test_call === "true" ||
+        body.is_test_call === true ||
+        body.is_test_call === "true" ||
+        String(payload.source || "")
+          .toLowerCase()
+          .includes("test") ||
+        String(meta.source || "")
+          .toLowerCase()
+          .includes("test") ||
+        String(body.source || "")
+          .toLowerCase()
+          .includes("test") ||
+        String(meta.candidate_name || payload.candidate_name || body.candidate_name || "")
+          .toLowerCase()
+          .includes("recruiter test") ||
+        String(meta.candidate_name || payload.candidate_name || body.candidate_name || "")
+          .toLowerCase()
+          .includes("alex morgan") ||
+        String(meta.role_title || payload.role_title || body.role_title || "")
+          .toLowerCase()
+          .includes("agent test"),
+    );
+
+    if (isTestCall) {
+      return NextResponse.json({
+        success: true,
+        is_test_call: true,
+        message: "Test call webhook received - intentionally not stored in database",
+      });
+    }
+
     const candidateId = meta.candidate_id || payload.candidate_id || null;
     const roundInstanceId = meta.round_instance_id || payload.round_instance_id || null;
     const accountId = meta.account_id || payload.account_id || null;

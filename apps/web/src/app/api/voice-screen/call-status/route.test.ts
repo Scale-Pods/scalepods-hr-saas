@@ -198,4 +198,77 @@ describe("Call Status API Route", () => {
       global.fetch = originalFetch;
     }
   });
+
+  it("excludes test calls when querying for candidate calls", async () => {
+    const originalFetch = global.fetch;
+    const mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith("/v1/calls")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              id: "call_real_candidate",
+              to_number: "+919876543210",
+              duration: "120",
+              status: "completed",
+              source: "scalepods_direct_dispatch",
+            },
+            {
+              id: "call_test_1",
+              to_number: "+919876543210",
+              duration: "30",
+              status: "completed",
+              is_test_call: true,
+            },
+            {
+              id: "call_test_2",
+              to_number: "+919876543210",
+              duration: "45",
+              status: "completed",
+              metadata: { is_test_call: true, source: "scalepods_test_call" },
+            },
+            {
+              id: "call_test_3",
+              to_number: "+919876543210",
+              duration: "25",
+              status: "completed",
+              notes: JSON.stringify({ candidate_name: "Recruiter Test" }),
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+    global.fetch = mockFetch;
+
+    try {
+      // 1. Without is_test_call=true: test calls must be strictly excluded from frontend candidate views
+      const req = new Request(
+        "http://localhost:3000/api/voice-screen/call-status?phone=+919876543210",
+      );
+      const res = await GET(req);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.calls).toHaveLength(1);
+      expect(data.calls[0].id).toBe("call_real_candidate");
+
+      // 2. With is_test_call=true: only test calls should be returned
+      const testReq = new Request(
+        "http://localhost:3000/api/voice-screen/call-status?phone=+919876543210&is_test_call=true",
+      );
+      const testRes = await GET(testReq);
+      expect(testRes.status).toBe(200);
+      const testData = await testRes.json();
+      expect(testData.success).toBe(true);
+      const ids = testData.calls.map((c: { id: string }) => c.id);
+      expect(ids).toContain("call_test_1");
+      expect(ids).toContain("call_test_2");
+      expect(ids).toContain("call_test_3");
+      expect(ids).not.toContain("call_real_candidate");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });

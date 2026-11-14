@@ -176,6 +176,32 @@ function isSyntheticLedgerScore(row: DecisionLedgerRow): boolean {
   return false;
 }
 
+function isTestLedgerRow(row: DecisionLedgerRow): boolean {
+  const stage = String(row.stage || "").toLowerCase();
+  if (stage.includes("test_call") || stage === "voice_screen_test") return true;
+  const source = String(row.source || "").toLowerCase();
+  if (source.includes("test")) return true;
+  const rationale = String(row.rationale || "").toLowerCase();
+  if (
+    rationale.includes("recruiter test") ||
+    rationale.includes("alex morgan") ||
+    rationale.includes("test call dispatched")
+  ) {
+    return true;
+  }
+  const rawText = String(row.raw_text || "").toLowerCase();
+  if (
+    rawText.includes("is_test_call") ||
+    rawText.includes("recruiter test") ||
+    rawText.includes("alex morgan") ||
+    rawText.includes("scalepods_test") ||
+    rawText.includes("agent test")
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export async function fetchCandidateProfile(
   id: string,
   tier: string = "free",
@@ -382,8 +408,11 @@ export async function fetchCandidateProfile(
     interviewerFeedback = (fbData ?? []) as InterviewerFeedbackRow[];
   }
 
-  // 7. Filter timeline (decision_ledger) strictly to this campaign
+  // 7. Filter timeline (decision_ledger) strictly to this campaign (and exclude test calls)
   const ledgerRows = allLedgerRows.filter((row) => {
+    // Exclude test calls from frontend candidate timeline and transcripts
+    if (isTestLedgerRow(row)) return false;
+
     // 7a. Explicit round instance linkage
     if (row.round_instance_id) {
       return roundIds.includes(row.round_instance_id);

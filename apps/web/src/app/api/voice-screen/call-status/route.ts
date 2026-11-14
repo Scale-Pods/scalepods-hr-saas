@@ -180,6 +180,31 @@ async function transcribeAudio(
   }
 }
 
+function parseMetaObj(val: unknown): Record<string, unknown> {
+  if (!val) return {};
+  if (typeof val === "object" && val !== null) return val as Record<string, unknown>;
+  if (typeof val === "string") {
+    try {
+      const parsed = JSON.parse(val);
+      if (typeof parsed === "object" && parsed !== null) return parsed;
+    } catch {}
+  }
+  return {};
+}
+
+function checkIsTestCall(c: Record<string, unknown>, meta: Record<string, unknown>): boolean {
+  if (c.is_test_call === true || c.is_test_call === "true") return true;
+  if (meta.is_test_call === true || meta.is_test_call === "true") return true;
+  const source = String(meta.source || c.source || "").toLowerCase();
+  if (source.includes("test")) return true;
+  const candidateName = String(meta.candidate_name || c.candidate_name || "").toLowerCase();
+  if (candidateName.includes("recruiter test") || candidateName.includes("alex morgan"))
+    return true;
+  const roleTitle = String(meta.role_title || c.role_title || "").toLowerCase();
+  if (roleTitle.includes("agent test") || roleTitle.includes("voice agent test")) return true;
+  return false;
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -372,19 +397,20 @@ export async function GET(req: Request) {
       const matchesPhone = toNumber.includes(cleanPhone) || cleanPhone.includes(toNumber);
       if (!matchesPhone) return false;
 
-      // Check metadata / notes if present
-      const meta = (c.metadata || c.notes || {}) as Record<string, unknown>;
-      const isCallTest = Boolean(
-        meta.is_test_call ||
-          meta.source === "scalepods_test_console" ||
-          meta.source === "scalepods_test_call_fallback" ||
-          meta.source === "scalepods_test_call",
-      );
+      // Parse metadata / notes / variables cleanly
+      const meta = {
+        ...parseMetaObj(c.metadata),
+        ...parseMetaObj(c.notes),
+        ...parseMetaObj(c.variables),
+        ...parseMetaObj(c.dynamic_variables),
+      };
+      const isCallTest = checkIsTestCall(c, meta);
 
       // Separate test calls from real candidate campaign calls
       if (isTestCallQuery && !isCallTest && !sinceMs) {
         return false;
       }
+      // CRITICAL: NEVER show or return test calls when querying for candidates or campaigns in the frontend
       if (!isTestCallQuery && isCallTest) {
         return false;
       }
@@ -449,6 +475,14 @@ export async function GET(req: Request) {
     // Populate individual call details (including recording_sas_url and transcript) for matching calls
     const calls = await Promise.all(
       matching.slice(0, 5).map(async (c) => {
+        const meta = {
+          ...parseMetaObj(c.metadata),
+          ...parseMetaObj(c.notes),
+          ...parseMetaObj(c.variables),
+          ...parseMetaObj(c.dynamic_variables),
+        };
+        const isCallTest = checkIsTestCall(c, meta);
+
         let recUrl = (c.recording_sas_url as string) || null;
         if (!recUrl && c.status === "completed" && c.id) {
           try {
@@ -572,8 +606,14 @@ export async function GET(req: Request) {
         };
 
         // If call is completed and candidate belongs to this account, auto-record score in decision_ledger
-        if (callObj.status === "completed" && candidateId && accountId) {
-          const meta = (c.metadata || c.notes || {}) as Record<string, unknown>;
+        // CRITICAL: NEVER store test calls into decision_ledger or candidate records
+        if (
+          callObj.status === "completed" &&
+          candidateId &&
+          accountId &&
+          !isCallTest &&
+          !isTestCallQuery
+        ) {
           const roundInstanceId =
             (meta.round_instance_id as string) || allowedRoundInstanceIds?.[0] || null;
           await recordVoiceScreenScoreIfMissing({
@@ -633,6 +673,21 @@ async function recordVoiceScreenScoreIfMissing(params: {
   } = params;
 
   if (!candidateId || !accountId || status !== "completed") return;
+
+  // Never store test calls into decision_ledger
+  const lowerTranscript = String(transcript || "").toLowerCase();
+  const lowerRationale = String(realRationale || "").toLowerCase();
+  if (
+    lowerTranscript.includes("is_test_call") ||
+    lowerTranscript.includes("recruiter test") ||
+    lowerTranscript.includes("alex morgan") ||
+    lowerTranscript.includes("scalepods voice agent test") ||
+    lowerRationale.includes("test call") ||
+    lowerRationale.includes("recruiter test") ||
+    lowerRationale.includes("alex morgan")
+  ) {
+    return;
+  }
 
   try {
     const env = getEnv();

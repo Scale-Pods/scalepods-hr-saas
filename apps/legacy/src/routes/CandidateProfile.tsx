@@ -95,7 +95,15 @@ export function CandidateProfilePage() {
     const retentionDays = TIER_LIMITS[account?.tier ?? "free"].retentionDays;
     const now = Date.now();
 
-    const view = ((ledger.data ?? []) as DecisionLedgerRow[]).map((row) => {
+    const nonTestRows = ((ledger.data ?? []) as DecisionLedgerRow[]).filter((row) => {
+      const stage = String(row.stage || "").toLowerCase();
+      if (stage.includes("test_call") || stage === "voice_screen_test") return false;
+      const rationale = String(row.rationale || "").toLowerCase();
+      if (rationale.includes("recruiter test") || rationale.includes("alex morgan")) return false;
+      return true;
+    });
+
+    const view = nonTestRows.map((row) => {
       const roundNumber = roundNumberFromStage(row.stage);
       const forRound = roundNumber ? roundRows.find((r) => r.round_number === roundNumber) : undefined;
       const session =

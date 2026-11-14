@@ -688,7 +688,14 @@ export default function CandidateProfilePage() {
       .then((res) => res.json())
       .then((json) => {
         if (json.calls && Array.isArray(json.calls)) {
-          setDialnexaCalls(json.calls);
+          // Exclude any test calls from the candidate view
+          const realCalls = json.calls.filter((c: any) => {
+            if (c.is_test_call === true || c.is_test_call === "true") return false;
+            const source = String(c.source || "").toLowerCase();
+            if (source.includes("test")) return false;
+            return true;
+          });
+          setDialnexaCalls(realCalls);
         } else {
           setDialnexaCalls([]);
         }
