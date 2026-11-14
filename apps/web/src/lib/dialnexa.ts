@@ -353,7 +353,7 @@ export async function syncDialnexaAgentConfig(
       }
     }
 
-    fullPrompt += `\n\nInstructions for Telephony Call:\n- Address the candidate warmly by their dynamic variable name {{candidate_name}}.\n- Keep all responses conversational, concise (1-2 sentences), and ask one question at a time.\n- Under no circumstances address the candidate as Gandla Manish unless their name is explicitly Gandla Manish.`;
+    fullPrompt += `\n\nInstructions for Telephony Call:\n- NEVER RE-INTRODUCE YOURSELF: Your opening greeting and self-introduction were ALREADY spoken to the candidate when the call connected. Do NOT introduce yourself again. NEVER say your name again, do NOT repeat your company name, and NEVER ask "do you have a few minutes?" or "is now a good time?" again. Acknowledge the candidate's confirmation in 2-4 words and immediately proceed to the first question.\n- Address the candidate warmly by their dynamic variable name {{candidate_name}}.\n- Keep all responses conversational, concise (1-2 sentences), and ask one question at a time.\n- Under no circumstances address the candidate as Gandla Manish unless their name is explicitly Gandla Manish.`;
 
     // 3. Resolve Voice ID
     const resolvedVoiceId =

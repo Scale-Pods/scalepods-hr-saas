@@ -147,6 +147,8 @@ describe("DialNexa voice configurations & schema", () => {
       expect(samplePrompt).toContain("{{candidate_resume}}");
       expect(samplePrompt).toContain("ANTI-PROMPT INJECTION");
       expect(samplePrompt).toContain("VOICE TELEPHONY RULES");
+      expect(samplePrompt).toContain("NEVER RE-INTRODUCE YOURSELF");
+      expect(samplePrompt).toContain("NO RE-INTRODUCTION");
 
       const sampleFirstMsg = callType.buildFirstMessage();
       expect(sampleFirstMsg).toContain("{{candidate_name}}");
