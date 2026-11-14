@@ -97,6 +97,10 @@ export function PrepareOfferModal({
   const [templates, setTemplates] = useState<OfferTemplateRecord[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const selectedTemplateIdRef = useRef(selectedTemplateId);
+  useEffect(() => {
+    selectedTemplateIdRef.current = selectedTemplateId;
+  }, [selectedTemplateId]);
   const [templateText, setTemplateText] = useState("");
   const [templateHtml, setTemplateHtml] = useState("");
   const [isEditingTemplate, setIsEditingTemplate] = useState(false);
@@ -201,24 +205,13 @@ export function PrepareOfferModal({
         const list = data.templates as OfferTemplateRecord[];
         setTemplates(list);
         const preferred =
-          list.find((t) => t.id === selectedTemplateId) ??
+          list.find((t) => t.id === selectedTemplateIdRef.current) ??
           list.find((t) => t.is_default) ??
           list[0];
         if (preferred) {
-          const isIntern = (campaign.name || "").toLowerCase().includes("intern");
           setSelectedTemplateId(preferred.id);
-          setTemplateText(
-            cleanOfferTemplateDirectives(preferred.raw_text || "", {
-              isIntern,
-              letterType: isIntern ? "intern" : "fulltime",
-            }),
-          );
-          setTemplateHtml(
-            cleanOfferTemplateDirectives(preferred.html_content || "", {
-              isIntern,
-              letterType: isIntern ? "intern" : "fulltime",
-            }),
-          );
+          setTemplateText(cleanOfferTemplateDirectives(preferred.raw_text || ""));
+          setTemplateHtml(cleanOfferTemplateDirectives(preferred.html_content || ""));
         } else {
           setSelectedTemplateId("");
           setTemplateText("");
@@ -231,7 +224,7 @@ export function PrepareOfferModal({
     } finally {
       setLoadingTemplates(false);
     }
-  }, [accessToken, campaign.name, selectedTemplateId]);
+  }, [accessToken]);
 
   useEffect(() => {
     if (open) {
@@ -307,15 +300,45 @@ export function PrepareOfferModal({
   const buildRenderedText = useCallback(() => {
     if (!hasSelectedTemplate) return "";
     const source = templateText.trim() ? templateText : selectedTemplate?.raw_text || "";
-    return renderOfferTemplateText(source, buildAllOfferValues());
-  }, [hasSelectedTemplate, templateText, selectedTemplate, buildAllOfferValues]);
+    const isIntern =
+      (positionTitle || campaign.name || "").toLowerCase().includes("intern") ||
+      dynamicValues.LETTER_TYPE === "intern";
+    const cleaned = cleanOfferTemplateDirectives(source, {
+      isIntern,
+      letterType: isIntern ? "intern" : "fulltime",
+    });
+    return renderOfferTemplateText(cleaned, buildAllOfferValues());
+  }, [
+    hasSelectedTemplate,
+    templateText,
+    selectedTemplate,
+    positionTitle,
+    campaign.name,
+    dynamicValues.LETTER_TYPE,
+    buildAllOfferValues,
+  ]);
 
   const buildRenderedHtml = useCallback(() => {
     if (!hasSelectedTemplate) return "";
     const source = templateHtml.trim() ? templateHtml : selectedTemplate?.html_content || "";
     if (!source?.trim()) return "";
-    return renderOfferTemplateText(source, buildAllOfferValues());
-  }, [hasSelectedTemplate, templateHtml, selectedTemplate, buildAllOfferValues]);
+    const isIntern =
+      (positionTitle || campaign.name || "").toLowerCase().includes("intern") ||
+      dynamicValues.LETTER_TYPE === "intern";
+    const cleaned = cleanOfferTemplateDirectives(source, {
+      isIntern,
+      letterType: isIntern ? "intern" : "fulltime",
+    });
+    return renderOfferTemplateText(cleaned, buildAllOfferValues());
+  }, [
+    hasSelectedTemplate,
+    templateHtml,
+    selectedTemplate,
+    positionTitle,
+    campaign.name,
+    dynamicValues.LETTER_TYPE,
+    buildAllOfferValues,
+  ]);
 
   // Fetch live PDF preview when switching to PDF tab on Step 3
   const loadPdfPreview = useCallback(
@@ -391,9 +414,6 @@ export function PrepareOfferModal({
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          if (data.cleaned_text) setTemplateText(data.cleaned_text);
-          if (data.cleaned_html) setTemplateHtml(data.cleaned_html);
-
           if (Array.isArray(data.variables) && data.variables.length > 0) {
             const detectedMap: Record<string, string> = {};
             const keys: string[] = [];
@@ -413,7 +433,7 @@ export function PrepareOfferModal({
             }
             setExtraVariables((prev) => Array.from(new Set([...prev, ...keys])));
           }
-          showToast("Claude AI parsed document & dynamic variables.");
+          showToast("Claude AI analyzed template variables.");
           return data;
         }
       } catch (err) {
@@ -432,21 +452,8 @@ export function PrepareOfferModal({
     setRemovedVariables([]);
     setExtraVariables([]);
     const tpl = templates.find((t) => t.id === id);
-    const isIntern =
-      (positionTitle || campaign.name || "").toLowerCase().includes("intern") ||
-      dynamicValues.LETTER_TYPE === "intern";
-    setTemplateText(
-      cleanOfferTemplateDirectives(tpl?.raw_text || "", {
-        isIntern,
-        letterType: isIntern ? "intern" : "fulltime",
-      }),
-    );
-    setTemplateHtml(
-      cleanOfferTemplateDirectives(tpl?.html_content || "", {
-        isIntern,
-        letterType: isIntern ? "intern" : "fulltime",
-      }),
-    );
+    setTemplateText(cleanOfferTemplateDirectives(tpl?.raw_text || ""));
+    setTemplateHtml(cleanOfferTemplateDirectives(tpl?.html_content || ""));
   };
 
   const handleUploadFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -560,18 +567,8 @@ export function PrepareOfferModal({
       if (!res.ok) throw new Error(data.error || "Failed to save template");
 
       const created = data.template as OfferTemplateRecord;
-      const isIntern =
-        (positionTitle || campaign.name || "").toLowerCase().includes("intern") ||
-        dynamicValues.LETTER_TYPE === "intern";
-
-      const cleanedText = cleanOfferTemplateDirectives(created.raw_text || uploadRawText.trim(), {
-        isIntern,
-        letterType: isIntern ? "intern" : "fulltime",
-      });
-      const cleanedHtml = cleanOfferTemplateDirectives(created.html_content || uploadHtml.trim(), {
-        isIntern,
-        letterType: isIntern ? "intern" : "fulltime",
-      });
+      const cleanedText = cleanOfferTemplateDirectives(created.raw_text || uploadRawText.trim());
+      const cleanedHtml = cleanOfferTemplateDirectives(created.html_content || uploadHtml.trim());
 
       setTemplates((prev) => [created, ...prev.map((t) => ({ ...t, is_default: false }))]);
       setSelectedTemplateId(created.id);
@@ -1042,7 +1039,14 @@ export function PrepareOfferModal({
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    void parseTemplateWithAi(templateText, templateHtml, tpl.name);
+                                    void parseTemplateWithAi(
+                                      templateText,
+                                      templateHtml,
+                                      tpl.name,
+                                    ).then((res) => {
+                                      if (res?.cleaned_text) setTemplateText(res.cleaned_text);
+                                      if (res?.cleaned_html) setTemplateHtml(res.cleaned_html);
+                                    });
                                   }}
                                 >
                                   {parsingWithAi ? (

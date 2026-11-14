@@ -41,24 +41,146 @@ export function normalizeVarKey(rawKey: string): string {
  * Clean template developer notes, legend lines, and conditional directives
  * (e.g. "Show this section only when: LETTER_TYPE = fulltime") from raw docx text or HTML.
  */
-export function cleanOfferTemplateDirectives(
-  content: string,
+function cleanOfferTemplateDirectivesHtml(
+  html: string,
   options?: { letterType?: string; isIntern?: boolean; incentiveNote?: string },
 ): string {
-  if (!content) return "";
-
-  // Normalize HTML block endings with newlines so Mammoth single-line HTML doesn't drop multi-page content
-  const normalized = content
+  // Normalize HTML block endings with newlines
+  const normalized = html
     .replace(/(<\/(?:p|div|tr|h[1-6]|table|ul|ol)>)/gi, "$1\n")
     .replace(/(<(?:br)\s*\/?>)/gi, "\n");
+
+  const blocks: string[] = [];
+  const regex =
+    /<table[^>]*>[\s\S]*?<\/table>|<(?:p|h[1-6]|div|ul|ol)[^>]*>[\s\S]*?<\/(?:p|h[1-6]|div|ul|ol)>/gi;
+  for (const match of normalized.matchAll(regex)) {
+    blocks.push(match[0]);
+  }
+
+  if (blocks.length === 0) return html;
 
   const hasSpecificType = options?.isIntern !== undefined || Boolean(options?.letterType?.trim());
   const isIntern =
     options?.isIntern ??
     (options?.letterType ? options.letterType.toLowerCase().includes("intern") : false);
 
-  // Normalize AI-mutated dual titles
-  let preprocessed = normalized;
+  const out: string[] = [];
+  let activeCondition: "any" | "fulltime" | "intern" = "any";
+
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    const text = b
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // 1. Drop developer notes and logo instructions
+    if (/\{\{VARIABLE\}\}.*?dynamic field/i.test(text)) continue;
+    if (/LETTERHEAD\s*\/\s*LOGO\s*AREA/i.test(text)) continue;
+    if (/Attach client letterhead as background image/i.test(text)) continue;
+    if (/^\{\{COMPANY_LOGO_PATH\}\}$/i.test(text)) continue;
+
+    // 2. Inline conditional title: "Show this section only when: LETTER_TYPE = fulltime -> show 'APPOINTMENT LETTER'"
+    const inlineMatch = text.match(
+      /Show this section only when:\s*LETTER_TYPE\s*=\s*(fulltime|intern)\s*(?:→|->|-->|=>)\s*show\s*['"]?([^'"]+)['"]?/i,
+    );
+    if (inlineMatch) {
+      if (hasSpecificType) {
+        const targetType = inlineMatch[1].toLowerCase();
+        const title = inlineMatch[2].trim();
+        const shouldShow = targetType === "intern" ? isIntern : !isIntern;
+        if (shouldShow) {
+          out.push(`<h2>${title}</h2>`);
+        }
+        // Skip duplicate title block following it
+        if (i + 1 < blocks.length) {
+          const nextText = blocks[i + 1]
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (nextText.toLowerCase() === title.toLowerCase()) {
+            i++;
+          }
+        }
+      }
+      continue;
+    }
+
+    // 3. Block condition: "Show this section only when: LETTER_TYPE = fulltime" or intern
+    const blockMatch = text.match(
+      /Show this section only when:\s*LETTER_TYPE\s*=\s*(fulltime|intern)/i,
+    );
+    if (blockMatch) {
+      if (hasSpecificType) {
+        activeCondition = blockMatch[1].toLowerCase() as "fulltime" | "intern";
+      }
+      continue;
+    }
+
+    // 4. Incentive directive: "Show this section only when: Show incentive line only when INCENTIVE_NOTE is non-empty"
+    if (/Show incentive line only when INCENTIVE_NOTE/i.test(text)) {
+      if (!options?.incentiveNote?.trim()) {
+        if (i + 1 < blocks.length) {
+          const nextText = blocks[i + 1]
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (/Incentive\s*\/\s*Variable\s*Pay/i.test(nextText)) {
+            i++;
+          }
+        }
+      }
+      continue;
+    }
+
+    // 5. Major unconditional section heading resets condition
+    if (
+      /^(?:TERMS OF ENGAGEMENT|ACKNOWLEDGEMENT|For\s+\{\{COMPANY_NAME\}\}|We look forward to welcoming you)/i.test(
+        text,
+      ) ||
+      /^(?:1\.\s+Role\s+&|4\.\s+Confidentiality|5\.\s+Intellectual|6\.\s+Code|7\.\s+Termination)/i.test(
+        text,
+      ) ||
+      /^(?:Signature:|Date:|Place:|I,\s*\{\{CANDIDATE_NAME\}\})/i.test(text)
+    ) {
+      activeCondition = "any";
+    }
+
+    // Filter by active condition if generating for a specific type
+    if (hasSpecificType) {
+      if (activeCondition === "fulltime" && isIntern) continue;
+      if (activeCondition === "intern" && !isIntern) continue;
+    }
+
+    let formattedBlock = b;
+    if (/^<table/i.test(b)) {
+      const rows = b.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) ?? [];
+      if (rows.length === 1 && !/<thead/i.test(b)) {
+        const cells = rows[0].match(/<(?:th|td)[^>]*>[\s\S]*?<\/(?:th|td)>/gi) ?? [];
+        if (cells.length === 2) {
+          formattedBlock = `<table class="offer-layout-table" style="width:100%;border-collapse:collapse;border:none;margin:8px 0;"><tr><td style="border:none;padding:2px 0;vertical-align:top;width:50%;text-align:left;">${cells[0].replace(/^<(?:th|td)[^>]*>|<\/(?:th|td)>$/gi, "")}</td><td style="border:none;padding:2px 0;vertical-align:top;width:50%;text-align:right;">${cells[1].replace(/^<(?:th|td)[^>]*>|<\/(?:th|td)>$/gi, "")}</td></tr></table>`;
+        } else if (cells.length === 3) {
+          formattedBlock = `<table class="offer-layout-table" style="width:100%;border-collapse:collapse;border:none;margin:12px 0;"><tr><td style="border:none;padding:2px 0;vertical-align:top;width:33.3%;text-align:left;">${cells[0].replace(/^<(?:th|td)[^>]*>|<\/(?:th|td)>$/gi, "")}</td><td style="border:none;padding:2px 0;vertical-align:top;width:33.3%;text-align:center;">${cells[1].replace(/^<(?:th|td)[^>]*>|<\/(?:th|td)>$/gi, "")}</td><td style="border:none;padding:2px 0;vertical-align:top;width:33.3%;text-align:right;">${cells[2].replace(/^<(?:th|td)[^>]*>|<\/(?:th|td)>$/gi, "")}</td></tr></table>`;
+        }
+      }
+    }
+
+    out.push(formattedBlock);
+  }
+
+  return out.join("\n");
+}
+
+function cleanOfferTemplateDirectivesText(
+  content: string,
+  options?: { letterType?: string; isIntern?: boolean; incentiveNote?: string },
+): string {
+  const hasSpecificType = options?.isIntern !== undefined || Boolean(options?.letterType?.trim());
+  const isIntern =
+    options?.isIntern ??
+    (options?.letterType ? options.letterType.toLowerCase().includes("intern") : false);
+
+  let preprocessed = content;
   if (/APPOINTMENT LETTER\s*\/\s*INTERNSHIP APPOINTMENT LETTER/i.test(preprocessed)) {
     const targetTitle = isIntern ? "INTERNSHIP APPOINTMENT LETTER" : "APPOINTMENT LETTER";
     preprocessed = preprocessed.replace(
@@ -97,23 +219,24 @@ export function cleanOfferTemplateDirectives(
       /Show this section only when:\s*LETTER_TYPE\s*=\s*(fulltime|intern)\s*(?:→|->|-->|=>)\s*show\s*['"]?([^'"]+)['"]?/i,
     );
     if (inlineTitleMatch) {
-      const targetType = inlineTitleMatch[1].toLowerCase();
-      const titleText = inlineTitleMatch[2].trim();
-      const shouldShow = !hasSpecificType || (targetType === "intern" ? isIntern : !isIntern);
-      if (shouldShow) {
-        result.push(rawLine.includes("<") ? `<h2>${titleText}</h2>` : titleText);
-      }
-      // Always look ahead across empty lines to find and skip duplicate title if present
-      for (let nextIdx = i + 1; nextIdx < lines.length; nextIdx++) {
-        const nextClean = lines[nextIdx]
-          .replace(/<[^>]+>/g, "")
-          .replace(/^[|\s]+|[|\s]+$/g, "")
-          .trim();
-        if (!nextClean) continue;
-        if (nextClean.toLowerCase() === titleText.toLowerCase()) {
-          i = nextIdx;
+      if (hasSpecificType) {
+        const targetType = inlineTitleMatch[1].toLowerCase();
+        const titleText = inlineTitleMatch[2].trim();
+        const shouldShow = targetType === "intern" ? isIntern : !isIntern;
+        if (shouldShow) {
+          result.push(titleText);
         }
-        break;
+        for (let nextIdx = i + 1; nextIdx < lines.length; nextIdx++) {
+          const nextClean = lines[nextIdx]
+            .replace(/<[^>]+>/g, "")
+            .replace(/^[|\s]+|[|\s]+$/g, "")
+            .trim();
+          if (!nextClean) continue;
+          if (nextClean.toLowerCase() === titleText.toLowerCase()) {
+            i = nextIdx;
+          }
+          break;
+        }
       }
       continue;
     }
@@ -126,14 +249,12 @@ export function cleanOfferTemplateDirectives(
       if (hasSpecificType) {
         currentCondition = blockMatch[1].toLowerCase() as "fulltime" | "intern";
       }
-      // Always drop the directive line itself from output
       continue;
     }
 
     // 4. Incentive note condition: "Show this section only when: Show incentive line only when INCENTIVE_NOTE is non-empty"
     if (/Show incentive line only when INCENTIVE_NOTE/i.test(lineTrim)) {
       if (!options?.incentiveNote?.trim()) {
-        // Skip the immediate following incentive line across blank lines
         for (let nextIdx = i + 1; nextIdx < lines.length; nextIdx++) {
           const nextClean = lines[nextIdx]
             .replace(/<[^>]+>/g, "")
@@ -195,7 +316,6 @@ export function cleanOfferTemplateDirectives(
         }
         if (/^Alternatively,\s*we are pleased to offer you/i.test(lineTrim)) {
           rawLine = rawLine.replace(/Alternatively,\s*/i, "");
-          // Capitalize 'we' -> 'We'
           rawLine = rawLine.replace(/we are pleased/i, "We are pleased");
           lineTrim = rawLine
             .replace(/<[^>]+>/g, "")
@@ -275,6 +395,18 @@ export function cleanOfferTemplateDirectives(
     .replace(/<p>\s*<\/p>/gi, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+export function cleanOfferTemplateDirectives(
+  content: string,
+  options?: { letterType?: string; isIntern?: boolean; incentiveNote?: string },
+): string {
+  if (!content) return "";
+  const isHtml = /<table|<p|<div|<h[1-6]/i.test(content);
+  if (isHtml) {
+    return cleanOfferTemplateDirectivesHtml(content, options);
+  }
+  return cleanOfferTemplateDirectivesText(content, options);
 }
 
 /**

@@ -217,6 +217,8 @@ describe("PrepareOfferModal (3-step flow)", () => {
     await waitFor(() => {
       expect(screen.queryByText("Old Offer Template")).not.toBeInTheDocument();
     });
-    expect(screen.getByText("No uploaded offer templates yet")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("No uploaded offer templates yet")).toBeInTheDocument();
+    });
   });
 });

@@ -133,12 +133,8 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          cleaned_text: cleanOfferTemplateDirectives(cleanedText, {
-            isIntern: campaignContext?.is_intern,
-          }),
-          cleaned_html: cleanOfferTemplateDirectives(cleanedHtml, {
-            isIntern: campaignContext?.is_intern,
-          }),
+          cleaned_text: cleanOfferTemplateDirectives(cleanedText),
+          cleaned_html: cleanOfferTemplateDirectives(cleanedHtml),
           variables,
           source: "n8n_claude",
         });
@@ -151,12 +147,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Local resilient fallback parser
-    const cleanedText = cleanOfferTemplateDirectives(rawText, {
-      isIntern: campaignContext?.is_intern,
-    });
-    const cleanedHtml = cleanOfferTemplateDirectives(htmlContent, {
-      isIntern: campaignContext?.is_intern,
-    });
+    const cleanedText = cleanOfferTemplateDirectives(rawText);
+    const cleanedHtml = cleanOfferTemplateDirectives(htmlContent);
     const varKeys = extractCustomOfferVariables(cleanedHtml || cleanedText);
 
     const variables: ExtractedOfferVariable[] = varKeys.map((key) => ({
