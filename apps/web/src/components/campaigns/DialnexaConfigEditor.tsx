@@ -129,6 +129,24 @@ export function DialnexaConfigEditor({
       VOICE_CALL_TYPES.find((t) => t.id === detectedInitialType) || VOICE_CALL_TYPES[1];
     return typeDef.defaultTopics.map((t) => ({ ...t }));
   });
+
+  useEffect(() => {
+    if (
+      value.call_type_id &&
+      (value.call_type_id === "technical" ||
+        value.call_type_id === "general_screening" ||
+        value.call_type_id === "cultural_fit") &&
+      value.call_type_id !== selectedCallTypeId
+    ) {
+      setSelectedCallTypeId(value.call_type_id);
+    }
+  }, [value.call_type_id, selectedCallTypeId]);
+
+  useEffect(() => {
+    if (Array.isArray(value.topics) && value.topics.length > 0) {
+      setCallTypeTopics(value.topics.map((t) => ({ ...t })));
+    }
+  }, [value.topics]);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
   const [newTopicText, setNewTopicText] = useState<string>("");
 
@@ -367,6 +385,10 @@ export function DialnexaConfigEditor({
           activePrompt = activePrompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
         }
       }
+      let activeFirstMessage = value.first_message || callType?.buildFirstMessage();
+      if (jobTitle?.trim() && activeFirstMessage) {
+        activeFirstMessage = activeFirstMessage.replace(/\{\{job_title\}\}/g, jobTitle.trim());
+      }
 
       const res = await fetch("/api/voice-screen/test-call", {
         method: "POST",
@@ -377,6 +399,7 @@ export function DialnexaConfigEditor({
           role_title: jobTitle || "ScalePods Voice Agent Test",
           prompt: activePrompt,
           custom_prompt: activePrompt,
+          first_message: activeFirstMessage,
           topics: callTypeTopics,
           discussion_topics: callTypeTopics,
           from_phone_number:
@@ -385,6 +408,7 @@ export function DialnexaConfigEditor({
           voice_call_config: {
             ...value,
             prompt: activePrompt,
+            first_message: activeFirstMessage,
             topics: callTypeTopics,
             call_type_id: selectedCallTypeId,
             outbound_from_number:
