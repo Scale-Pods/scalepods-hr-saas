@@ -1,5 +1,7 @@
 import type { RoundType, Tier } from "./types";
 
+export type { Tier } from "./types";
+
 /**
  * Static client-side mirror of the tier limits. These numbers are
  * PLACEHOLDERS - replace with the authoritative table from the integration

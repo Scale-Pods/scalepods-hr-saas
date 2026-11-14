@@ -30,6 +30,11 @@ export interface DialnexaPostCallField {
   display_order?: number;
 }
 
+export interface VoiceCallTopic {
+  id: string;
+  text: string;
+}
+
 export interface DialnexaVoiceConfig {
   prompt: string;
   voice: string;
@@ -44,6 +49,8 @@ export interface DialnexaVoiceConfig {
   from_number?: string;
   caller_id?: string;
   phone_number_id?: string;
+  call_type_id?: string;
+  topics?: VoiceCallTopic[];
 
   // Turn-Taking & Latency (Eagerness & Responsiveness)
   response_eagerness?: number; // 0.0 (patient) to 1.0 (eager)

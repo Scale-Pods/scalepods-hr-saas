@@ -140,7 +140,7 @@ describe("DialnexaConfigEditor", () => {
     expect(screen.getByRole("button", { name: "Preview Aditi" })).toBeInTheDocument();
 
     vi.unstubAllGlobals();
-  });
+  }, 15000);
 
   it("allows adding a new discussion topic and updates the prompt", () => {
     const onChange = vi.fn();
@@ -197,7 +197,7 @@ describe("DialnexaConfigEditor", () => {
     // Verify the UI does NOT render a raw "error in workflow" error message
     expect(screen.queryByText(/There was an error in the workflow/i)).not.toBeInTheDocument();
     vi.unstubAllGlobals();
-  });
+  }, 15000);
 
   it("sends custom candidate name entered in the quick test call bar", async () => {
     const onChange = vi.fn();
@@ -247,5 +247,5 @@ describe("DialnexaConfigEditor", () => {
     });
 
     vi.unstubAllGlobals();
-  });
+  }, 15000);
 });

@@ -1,4 +1,6 @@
-import type { DialnexaVoiceConfig } from "./types";
+import type { DialnexaVoiceConfig, VoiceCallTopic } from "./types";
+
+export type { VoiceCallTopic } from "./types";
 
 export interface DialnexaModelOption {
   id: string;
@@ -359,11 +361,6 @@ export const DIALNEXA_VOICES: DialnexaVoiceOption[] = [
 // ── Fixed Voice Call Types (Predefined configurations, recruiter picks voice + questions only) ──
 
 export type VoiceCallTypeId = "technical" | "general_screening" | "cultural_fit";
-
-export interface VoiceCallTopic {
-  id: string;
-  text: string;
-}
 
 export interface VoiceCallTypeConfig {
   id: VoiceCallTypeId;

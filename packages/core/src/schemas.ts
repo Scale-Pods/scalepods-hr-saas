@@ -146,6 +146,10 @@ export const dialnexaVoiceConfigSchema = z
     // Functions & Tools
     agent_functions: z.array(dialnexaFunctionSchema).optional(),
 
+    // Discussion Topics & Call Type
+    topics: z.array(z.object({ id: z.string(), text: z.string() })).optional(),
+    call_type_id: z.string().optional(),
+
     // Post-Call Extraction Scorecard
     post_call_analysis: z.array(dialnexaPostCallFieldSchema).optional(),
   })

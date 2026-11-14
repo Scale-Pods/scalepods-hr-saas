@@ -122,6 +122,9 @@ export function DialnexaConfigEditor({
   const [selectedCallTypeId, setSelectedCallTypeId] =
     useState<VoiceCallTypeId>(detectedInitialType);
   const [callTypeTopics, setCallTypeTopics] = useState<VoiceCallTopic[]>(() => {
+    if (Array.isArray(value.topics) && value.topics.length > 0) {
+      return value.topics.map((t) => ({ ...t }));
+    }
     const typeDef =
       VOICE_CALL_TYPES.find((t) => t.id === detectedInitialType) || VOICE_CALL_TYPES[1];
     return typeDef.defaultTopics.map((t) => ({ ...t }));
@@ -256,6 +259,8 @@ export function DialnexaConfigEditor({
 
     onChange({
       ...value,
+      call_type_id: typeId,
+      topics,
       model: callType.model,
       max_duration_seconds: callType.max_duration_seconds,
       response_eagerness: callType.response_eagerness,
@@ -284,6 +289,8 @@ export function DialnexaConfigEditor({
     onChange({
       ...value,
       prompt,
+      topics: newTopics,
+      call_type_id: selectedCallTypeId,
     });
   };
 
@@ -351,6 +358,16 @@ export function DialnexaConfigEditor({
     setPhoneCallStatus("Dispatching outbound test call...");
 
     try {
+      const callType =
+        VOICE_CALL_TYPES.find((t) => t.id === selectedCallTypeId) || VOICE_CALL_TYPES[1];
+      let activePrompt = value.prompt;
+      if (callType && callTypeTopics.length > 0) {
+        activePrompt = callType.buildPrompt(callTypeTopics);
+        if (jobTitle?.trim()) {
+          activePrompt = activePrompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
+        }
+      }
+
       const res = await fetch("/api/voice-screen/test-call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -358,11 +375,18 @@ export function DialnexaConfigEditor({
           phone_number: testPhoneNumber,
           candidate_name: testCandidateName.trim() || "Alex Morgan",
           role_title: jobTitle || "ScalePods Voice Agent Test",
+          prompt: activePrompt,
+          custom_prompt: activePrompt,
+          topics: callTypeTopics,
+          discussion_topics: callTypeTopics,
           from_phone_number:
             value.outbound_from_number || value.from_phone_number || "+912264233051",
           from_number: value.outbound_from_number || value.from_number || "+912264233051",
           voice_call_config: {
             ...value,
+            prompt: activePrompt,
+            topics: callTypeTopics,
+            call_type_id: selectedCallTypeId,
             outbound_from_number:
               value.outbound_from_number || value.from_phone_number || "+912264233051",
             from_phone_number:

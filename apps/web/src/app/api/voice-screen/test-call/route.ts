@@ -41,6 +41,9 @@ export async function POST(req: Request) {
         ? voice_call_config.agent_version_number
         : undefined;
 
+    const promptToUse = voice_call_config?.prompt || body.prompt || body.custom_prompt || "";
+    const topics = body.topics || voice_call_config?.topics;
+
     // DialNexa loads prompt & welcome_message from the agent entity, not the call dispatch payload.
     // Sync the customized prompt, greeting, latency settings, and caller ID before placing the call.
     try {
@@ -50,8 +53,8 @@ export async function POST(req: Request) {
         voice_speed: voice_call_config?.voice_speed,
         voice_pitch: voice_call_config?.voice_pitch,
         voice_temperature: voice_call_config?.voice_temperature,
-        prompt: voice_call_config?.prompt,
-        first_message: voice_call_config?.first_message,
+        prompt: promptToUse,
+        first_message: voice_call_config?.first_message || body.first_message,
         response_eagerness: voice_call_config?.response_eagerness,
         responsiveness: voice_call_config?.responsiveness,
         interruption_sensitivity: voice_call_config?.interruption_sensitivity,
@@ -129,6 +132,10 @@ export async function POST(req: Request) {
             candidate_name: candidate_name || "Recruiter Test",
             role_title: role_title || "ScalePods Voice Agent Test",
             company_name: "ScalePods",
+            prompt: promptToUse,
+            custom_prompt: promptToUse,
+            topics,
+            discussion_topics: topics,
             agent_version_number: publishedAgentVersion,
             dynamic_variables: {
               candidate_name: candidate_name || "Recruiter Test",
@@ -161,6 +168,8 @@ export async function POST(req: Request) {
                 : "00000000-0000-0000-0000-000000000000",
             voice_call_config: {
               ...voice_call_config,
+              prompt: promptToUse,
+              topics,
               agent_id: targetAgentId,
               agent_version_number: publishedAgentVersion,
               outbound_from_number: outboundFromNumber,
@@ -241,6 +250,11 @@ export async function POST(req: Request) {
     );
     const dialnexaApiKey = process.env.DIALNEXA_API_KEY || DEFAULT_DIALNEXA_API_KEY;
 
+    const populatedPrompt = (promptToUse || "")
+      .replace(/\{\{candidate_name\}\}/g, candidate_name || "Recruiter Test")
+      .replace(/\{\{job_title\}\}/g, role_title || "ScalePods Voice Agent Test")
+      .replace(/\{\{company_name\}\}/g, "ScalePods");
+
     const dialnexaRes = await fetch("https://api.dialnexa.com/v1/calls", {
       method: "POST",
       headers: {
@@ -251,6 +265,10 @@ export async function POST(req: Request) {
         phone_number: phone,
         agent_id: targetAgentId,
         phone_number_id: outboundPhoneNumberId,
+        from_phone_number: outboundFromNumber,
+        from_number: outboundFromNumber,
+        caller_id: outboundFromNumber,
+        prompt: populatedPrompt,
         ...(publishedAgentVersion ? { agent_version_number: publishedAgentVersion } : {}),
         dynamic_variables: {
           candidate_name: candidate_name || "Recruiter Test",

@@ -236,4 +236,62 @@ describe("Voice Screen Test Call API Route", () => {
       global.fetch = originalFetch;
     }
   });
+
+  it("forwards discussion topics and custom prompt to n8n webhook payload", async () => {
+    const originalFetch = global.fetch;
+    const fetchCalls: Array<{ url: string; options?: RequestInit }> = [];
+
+    const mockFetch = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+      fetchCalls.push({ url, options });
+      if (url.includes("/webhook/voice-screen-test")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ status: "success", call_id: "call_topics_123" }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, text: async () => "{}" });
+    });
+    global.fetch = mockFetch;
+
+    try {
+      const customTopics = [
+        { id: "t1", text: "Explain React Server Components vs Client Components" },
+        { id: "t2", text: "Discuss experience with PostgreSQL connection pooling" },
+      ];
+      const customPrompt =
+        "You are screening candidate Jordan for Fullstack Engineer. Discussion topics:\n1. RSC vs Client Components\n2. Connection pooling";
+
+      const req = new Request("http://localhost:3000/api/voice-screen/test-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone_number: "+919876543210",
+          candidate_name: "Jordan Lee",
+          role_title: "Fullstack Engineer",
+          prompt: customPrompt,
+          topics: customTopics,
+          voice_call_config: {
+            prompt: customPrompt,
+            topics: customTopics,
+          },
+        }),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const n8nCall = fetchCalls.find((c) => c.url.includes("/webhook/voice-screen-test"));
+      expect(n8nCall).toBeDefined();
+
+      const n8nBody = JSON.parse(String(n8nCall?.options?.body));
+      expect(n8nBody.prompt).toBe(customPrompt);
+      expect(n8nBody.topics).toEqual(customTopics);
+      expect(n8nBody.discussion_topics).toEqual(customTopics);
+      expect(n8nBody.voice_call_config.prompt).toBe(customPrompt);
+      expect(n8nBody.voice_call_config.topics).toEqual(customTopics);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });
