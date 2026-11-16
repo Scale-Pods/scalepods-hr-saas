@@ -7,7 +7,6 @@ interface RawAgentResponse {
   reply?: string;
   suggestions?: string[];
   actionButtons?: Array<{ label?: string; href?: string; isExternal?: boolean }>;
-  [key: string]: unknown;
 }
 
 function cleanAndNormalizeResponse(data: RawAgentResponse | null | undefined) {
