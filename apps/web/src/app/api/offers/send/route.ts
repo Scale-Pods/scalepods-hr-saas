@@ -286,6 +286,18 @@ export async function POST(req: NextRequest) {
       pdfFilename = `Offer_Letter_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
     } catch (pdfErr) {
       console.warn("[api/offers/send] PDF generation warning:", pdfErr);
+      if (offerTemplateId) {
+        return NextResponse.json(
+          {
+            error: "Failed to generate offer PDF",
+            detail:
+              pdfErr instanceof Error
+                ? pdfErr.message
+                : "PDF conversion failed. Please ensure Gotenberg is running (or CloudConvert is configured).",
+          },
+          { status: 502 },
+        );
+      }
     }
 
     let n8nSuccess = false;

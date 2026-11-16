@@ -1,3 +1,10 @@
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 export class OfferPdfConversionError extends Error {
   constructor(
     message: string,
@@ -72,7 +79,98 @@ export async function convertDocxToPdf(
     return convertViaCloudConvert(docxBuffer, timeoutMs);
   }
 
-  return convertViaGotenberg(docxBuffer, timeoutMs);
+  if (provider === "libreoffice" || provider === "soffice" || provider === "local") {
+    return convertViaLocalLibreOffice(docxBuffer, timeoutMs);
+  }
+
+  try {
+    return await convertViaGotenberg(docxBuffer, timeoutMs);
+  } catch (gotenbergErr) {
+    const localBin = findLocalLibreOffice();
+    if (localBin) {
+      console.info(
+        `[docx-to-pdf] Gotenberg unreachable, falling back to local LibreOffice at ${localBin}`,
+      );
+      return await convertViaLocalLibreOffice(docxBuffer, timeoutMs, localBin);
+    }
+    throw gotenbergErr;
+  }
+}
+
+export function findLocalLibreOffice(): string | null {
+  const candidates = [
+    process.env.LIBREOFFICE_PATH,
+    "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+    "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
+    path.join(process.env.LOCALAPPDATA || "", "Programs", "LibreOffice", "program", "soffice.exe"),
+    "/usr/bin/soffice",
+    "/usr/bin/libreoffice",
+    "/usr/local/bin/soffice",
+    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+  ].filter(Boolean) as string[];
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      // ignore check errors
+    }
+  }
+  return null;
+}
+
+export async function convertViaLocalLibreOffice(
+  docxBuffer: Buffer,
+  timeoutMs: number,
+  binPath?: string,
+): Promise<Buffer> {
+  const execPath = binPath || findLocalLibreOffice();
+  if (!execPath) {
+    throw new OfferPdfConversionError(
+      "Local LibreOffice binary (soffice) not found on system. Please set LIBREOFFICE_PATH, start Gotenberg, or configure CloudConvert.",
+      500,
+    );
+  }
+
+  const tmpDir = path.join(os.tmpdir(), `scalepods_docx_${randomUUID()}`);
+  await fsp.mkdir(tmpDir, { recursive: true });
+  const inputDocx = path.join(tmpDir, "document.docx");
+  const outputPdf = path.join(tmpDir, "document.pdf");
+
+  try {
+    await fsp.writeFile(inputDocx, docxBuffer);
+
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        execPath,
+        ["--headless", "--convert-to", "pdf:writer_pdf_Export", "--outdir", tmpDir, inputDocx],
+        { timeout: timeoutMs },
+        (error, stdout, stderr) => {
+          if (error) {
+            reject(
+              new OfferPdfConversionError(
+                `Local LibreOffice conversion failed: ${error.message} - ${stderr || stdout}`,
+                500,
+              ),
+            );
+          } else {
+            resolve();
+          }
+        },
+      );
+    });
+
+    const pdfBuffer = await fsp.readFile(outputPdf);
+    return pdfBuffer;
+  } catch (err) {
+    if (err instanceof OfferPdfConversionError) throw err;
+    throw new OfferPdfConversionError(
+      `Failed to convert document with local LibreOffice: ${err instanceof Error ? err.message : String(err)}`,
+      500,
+    );
+  } finally {
+    await fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 async function convertViaGotenberg(docxBuffer: Buffer, timeoutMs: number): Promise<Buffer> {
