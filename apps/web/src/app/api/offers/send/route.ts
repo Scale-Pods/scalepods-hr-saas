@@ -2,8 +2,6 @@ import { offerRequestSchema } from "@scalepods/core";
 import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { generateBrandedOfferPdf } from "@/lib/generate-offer-pdf";
-import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
 import { convertDocxToPdf } from "@/lib/offers/docx-to-pdf";
 import { fillOfferDocx } from "@/lib/offers/fill-docx";
@@ -196,108 +194,86 @@ export async function POST(req: NextRequest) {
     };
 
     try {
-      let pdfBuffer: Buffer;
-
-      // 1. If offerTemplateId provided: execute DOCX engine
-      if (offerTemplateId) {
-        const { data: tplRow } = await adminSupabase
-          .from("offer_templates")
-          .select("id, account_id, file_name, storage_path")
-          .eq("id", offerTemplateId)
-          .maybeSingle();
-
-        if (tplRow?.storage_path) {
-          const { data: fileBlob } = await adminSupabase.storage
-            .from("offer-templates")
-            .download(tplRow.storage_path);
-
-          if (fileBlob) {
-            const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
-            const filledBuffer = sendAsIs
-              ? docxBuffer
-              : fillOfferDocx(docxBuffer, resolvedFieldValues);
-
-            try {
-              pdfBuffer = await convertDocxToPdf(filledBuffer, { tenantId: user.id });
-            } catch (convErr) {
-              console.warn(
-                "[api/offers/send] LibreOffice conversion unavailable, falling back to built-in engine:",
-                convErr,
-              );
-              if (renderedText) {
-                pdfBuffer = generateTextOfferPdf(renderedText);
-              } else {
-                pdfBuffer = generateBrandedOfferPdf({
-                  candidate_name: candidateName,
-                  position_title: positionTitle,
-                  salary,
-                  currency,
-                  start_date: startDate,
-                  company_name: companyName,
-                  signatory_name: signatoryName,
-                  signatory_title: signatoryTitle,
-                  dynamic_variables: dynamicVars,
-                });
-              }
-            }
-
-            // Store filled docx and generated pdf in Supabase Storage for audit trail
-            const timestamp = Date.now();
-            const auditDocxPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_filled.docx`;
-            const auditPdfPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_offer.pdf`;
-
-            await Promise.all([
-              adminSupabase.storage.from("offer-templates").upload(auditDocxPath, filledBuffer, {
-                contentType:
-                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                upsert: true,
-              }),
-              adminSupabase.storage.from("offer-templates").upload(auditPdfPath, pdfBuffer, {
-                contentType: "application/pdf",
-                upsert: true,
-              }),
-            ]);
-
-            filledDocxPath = auditDocxPath;
-            generatedPdfPath = auditPdfPath;
-          } else {
-            throw new Error("Template file missing from storage");
-          }
-        } else {
-          throw new Error("Template record not found");
-        }
-      } else if (renderedText) {
-        pdfBuffer = generateTextOfferPdf(renderedText);
-      } else {
-        pdfBuffer = generateBrandedOfferPdf({
-          candidate_name: candidateName,
-          position_title: positionTitle,
-          salary,
-          currency,
-          start_date: startDate,
-          company_name: companyName,
-          signatory_name: signatoryName,
-          signatory_title: signatoryTitle,
-          dynamic_variables: dynamicVars,
-        });
+      if (!offerTemplateId) {
+        return NextResponse.json(
+          {
+            error: "Template required",
+            detail:
+              "An offer template (.docx) is required to generate and send an offer letter. Generic text fallbacks have been removed.",
+          },
+          { status: 400 },
+        );
       }
 
+      const { data: tplRow } = await adminSupabase
+        .from("offer_templates")
+        .select("id, account_id, file_name, storage_path")
+        .eq("id", offerTemplateId)
+        .maybeSingle();
+
+      if (!tplRow?.storage_path) {
+        return NextResponse.json(
+          { error: "Template record or storage path not found" },
+          { status: 404 },
+        );
+      }
+
+      const { data: fileBlob } = await adminSupabase.storage
+        .from("offer-templates")
+        .download(tplRow.storage_path);
+
+      if (!fileBlob) {
+        return NextResponse.json({ error: "Template file missing from storage" }, { status: 404 });
+      }
+
+      const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+      const filledBuffer = sendAsIs ? docxBuffer : fillOfferDocx(docxBuffer, resolvedFieldValues);
+
+      // Exact template PDF conversion only: NO fallback to text or branded
+      const pdfBuffer = await convertDocxToPdf(filledBuffer, { tenantId: user.id });
+
+      // Store filled docx and generated pdf in Supabase Storage for audit trail
+      const timestamp = Date.now();
+      const auditDocxPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_filled.docx`;
+      const auditPdfPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_offer.pdf`;
+
+      await Promise.all([
+        adminSupabase.storage.from("offer-templates").upload(auditDocxPath, filledBuffer, {
+          contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          upsert: true,
+        }),
+        adminSupabase.storage.from("offer-templates").upload(auditPdfPath, pdfBuffer, {
+          contentType: "application/pdf",
+          upsert: true,
+        }),
+      ]);
+
+      filledDocxPath = auditDocxPath;
+      generatedPdfPath = auditPdfPath;
       pdfBase64 = pdfBuffer.toString("base64");
       pdfFilename = `Offer_Letter_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
     } catch (pdfErr) {
-      console.warn("[api/offers/send] PDF generation warning:", pdfErr);
-      if (offerTemplateId) {
-        return NextResponse.json(
-          {
-            error: "Failed to generate offer PDF",
-            detail:
-              pdfErr instanceof Error
-                ? pdfErr.message
-                : "PDF conversion failed. Please ensure Gotenberg is running (or CloudConvert is configured).",
-          },
-          { status: 502 },
-        );
-      }
+      console.error("[api/offers/send] Exact template PDF generation error:", pdfErr);
+      return NextResponse.json(
+        {
+          error: "Failed to generate exact offer PDF",
+          detail:
+            pdfErr instanceof Error
+              ? pdfErr.message
+              : "PDF conversion failed. Exact template rendering requires LibreOffice, Gotenberg, or CloudConvert.",
+        },
+        { status: 502 },
+      );
+    }
+
+    if (!pdfBase64) {
+      return NextResponse.json(
+        {
+          error: "Offer letter PDF was not generated",
+          detail: "Cannot dispatch offer letter without the exact template PDF.",
+        },
+        { status: 502 },
+      );
     }
 
     let n8nSuccess = false;
