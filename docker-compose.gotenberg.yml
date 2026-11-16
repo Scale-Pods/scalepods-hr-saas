@@ -1,0 +1,30 @@
+# Gotenberg LibreOffice PDF Conversion Service
+#
+# Provides high-fidelity DOCX to PDF conversion with exact layout, table,
+# font, margin, and pagination preservation.
+#
+# Fonts:
+# Gotenberg 8 includes standard Debian fonts, Liberation (Arial/Times/Courier metrics),
+# and Google Carlito & Caladea (metric-compatible drop-in replacements for Calibri & Cambria).
+# If you need custom corporate TTF/OTF fonts, mount them into /usr/local/share/fonts.
+#
+# Run locally:
+#   docker compose -f docker-compose.gotenberg.yml up -d
+#
+# Connect via .env:
+#   PDF_CONVERTER=gotenberg
+#   GOTENBERG_URL=http://localhost:3000
+
+services:
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: gotenberg-scalepods
+    restart: unless-stopped
+    ports:
+      - "${GOTENBERG_PORT:-3000}:3000"
+    environment:
+      - LOG_LEVEL=info
+      - LIBREOFFICE_AUTO_START=true
+    # Optional: mount custom corporate fonts if your templates use non-standard typefaces
+    # volumes:
+    #   - ./fonts:/usr/local/share/fonts:ro

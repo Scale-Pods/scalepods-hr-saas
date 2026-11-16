@@ -2,10 +2,11 @@ import { offerRequestSchema } from "@scalepods/core";
 import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { generateHtmlOfferPdf } from "@/lib/generate-html-offer-pdf";
 import { generateBrandedOfferPdf } from "@/lib/generate-offer-pdf";
 import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
+import { convertDocxToPdf } from "@/lib/offers/docx-to-pdf";
+import { fillOfferDocx } from "@/lib/offers/fill-docx";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -171,40 +172,94 @@ export async function POST(req: NextRequest) {
     const renderedText = parsed.data.rendered_text?.trim() || "";
     const renderedHtml = parsed.data.rendered_html?.trim() || "";
     const offerTemplateId = parsed.data.offer_template_id || null;
+    const sendAsIs = Boolean(parsed.data.send_as_is);
 
     let pdfBase64: string | undefined;
     let pdfFilename: string | undefined;
+    let filledDocxPath: string | null = null;
+    let generatedPdfPath: string | null = null;
 
     const dynamicVars = (fieldValues.dynamic_variables || fieldValues) as Record<string, string>;
-    const isIntern =
-      positionTitle.toLowerCase().includes("intern") ||
-      (appRow?.campaigns as { name?: string } | undefined)?.name
-        ?.toLowerCase()
-        .includes("intern") ||
-      Boolean(
-        dynamicVars?.LETTER_TYPE &&
-          String(dynamicVars.LETTER_TYPE).toLowerCase().includes("intern"),
-      );
+    const resolvedFieldValues: Record<string, unknown> = {
+      ...fieldValues,
+      ...dynamicVars,
+      candidate_name: candidateName,
+      position_title: positionTitle,
+      role: positionTitle,
+      salary,
+      currency,
+      start_date: startDate,
+      joining_date: startDate,
+      company_name: companyName,
+      signatory_name: signatoryName,
+      signatory_title: signatoryTitle,
+    };
 
     try {
-      const pdfBuffer = renderedHtml
-        ? await generateHtmlOfferPdf(renderedHtml, companyName, { isIntern })
-        : renderedText
-          ? generateTextOfferPdf(renderedText)
-          : generateBrandedOfferPdf({
-              candidate_name: candidateName,
-              position_title: positionTitle,
-              salary,
-              currency,
-              start_date: startDate,
-              company_name: companyName,
-              signatory_name: signatoryName,
-              signatory_title: signatoryTitle,
-              dynamic_variables: (fieldValues.dynamic_variables || fieldValues) as Record<
-                string,
-                string
-              >,
-            });
+      let pdfBuffer: Buffer;
+
+      // 1. If offerTemplateId provided: execute DOCX engine
+      if (offerTemplateId) {
+        const { data: tplRow } = await adminSupabase
+          .from("offer_templates")
+          .select("id, account_id, file_name, storage_path")
+          .eq("id", offerTemplateId)
+          .maybeSingle();
+
+        if (tplRow?.storage_path) {
+          const { data: fileBlob } = await adminSupabase.storage
+            .from("offer-templates")
+            .download(tplRow.storage_path);
+
+          if (fileBlob) {
+            const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+            const filledBuffer = sendAsIs
+              ? docxBuffer
+              : fillOfferDocx(docxBuffer, resolvedFieldValues);
+
+            pdfBuffer = await convertDocxToPdf(filledBuffer, { tenantId: user.id });
+
+            // Store filled docx and generated pdf in Supabase Storage for audit trail
+            const timestamp = Date.now();
+            const auditDocxPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_filled.docx`;
+            const auditPdfPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_offer.pdf`;
+
+            await Promise.all([
+              adminSupabase.storage.from("offer-templates").upload(auditDocxPath, filledBuffer, {
+                contentType:
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                upsert: true,
+              }),
+              adminSupabase.storage.from("offer-templates").upload(auditPdfPath, pdfBuffer, {
+                contentType: "application/pdf",
+                upsert: true,
+              }),
+            ]);
+
+            filledDocxPath = auditDocxPath;
+            generatedPdfPath = auditPdfPath;
+          } else {
+            throw new Error("Template file missing from storage");
+          }
+        } else {
+          throw new Error("Template record not found");
+        }
+      } else if (renderedText) {
+        pdfBuffer = generateTextOfferPdf(renderedText);
+      } else {
+        pdfBuffer = generateBrandedOfferPdf({
+          candidate_name: candidateName,
+          position_title: positionTitle,
+          salary,
+          currency,
+          start_date: startDate,
+          company_name: companyName,
+          signatory_name: signatoryName,
+          signatory_title: signatoryTitle,
+          dynamic_variables: dynamicVars,
+        });
+      }
+
       pdfBase64 = pdfBuffer.toString("base64");
       pdfFilename = `Offer_Letter_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
     } catch (pdfErr) {
@@ -245,18 +300,6 @@ export async function POST(req: NextRequest) {
       .eq("id", parsed.data.application_id);
 
     // Guaranteed persistence: Upsert into offers table
-    const resolvedFieldValues = {
-      ...fieldValues,
-      candidate_name: candidateName,
-      position_title: positionTitle,
-      salary,
-      currency,
-      start_date: startDate,
-      company_name: companyName,
-      signatory_name: signatoryName,
-      signatory_title: signatoryTitle,
-    };
-
     try {
       const { data: existingOffer } = await adminSupabase
         .from("offers")
@@ -271,6 +314,9 @@ export async function POST(req: NextRequest) {
         offer_template_id: offerTemplateId,
         rendered_text: renderedText || null,
         rendered_html: renderedHtml || null,
+        filled_docx_path: filledDocxPath,
+        generated_pdf_path: generatedPdfPath,
+        send_as_is: sendAsIs,
         field_values: resolvedFieldValues,
         candidate_email: appRow?.candidate_email || (fieldValues.candidate_email as string) || "",
         company_signer_email: user.email || "",

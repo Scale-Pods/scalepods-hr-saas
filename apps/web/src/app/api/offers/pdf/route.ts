@@ -1,20 +1,24 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { generateHtmlOfferPdf } from "@/lib/generate-html-offer-pdf";
 import { generateBrandedOfferPdf } from "@/lib/generate-offer-pdf";
 import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
 import { renderOfferTemplateText } from "@/lib/offer-template-utils";
+import { convertDocxToPdf } from "@/lib/offers/docx-to-pdf";
+import { fillOfferDocx } from "@/lib/offers/fill-docx";
 
 export const dynamic = "force-dynamic";
 
 /**
  * POST /api/offers/pdf?preview=true
- * Generates a live preview PDF from rendered HTML (DOCX/rich template) or plain text.
+ * Generates a live preview PDF using generic DOCX fill engine or legacy fallback.
  */
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as {
+      template_id?: string;
+      field_values?: Record<string, unknown>;
+      send_as_is?: boolean;
       rendered_html?: string;
       rendered_text?: string;
       candidate_name?: string;
@@ -29,34 +33,54 @@ export async function POST(req: NextRequest) {
       use_branded_template?: boolean;
     } | null;
 
-    if (
-      !body?.rendered_html?.trim() &&
-      !body?.rendered_text?.trim() &&
-      !body?.use_branded_template
-    ) {
-      return new NextResponse(
-        "rendered_html, rendered_text, or use_branded_template is required for preview",
-        {
-          status: 400,
-        },
-      );
-    }
+    const env = getEnv();
+    const serviceKey =
+      env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const adminSupabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, serviceKey, {
+      auth: { persistSession: false },
+    });
 
     let pdfBuffer: Buffer;
 
-    if (body.rendered_html?.trim()) {
-      const isIntern =
-        (body.position_title || "").toLowerCase().includes("intern") ||
-        Boolean(
-          body.dynamic_variables?.LETTER_TYPE &&
-            String(body.dynamic_variables.LETTER_TYPE).toLowerCase().includes("intern"),
-        );
-      pdfBuffer = await generateHtmlOfferPdf(body.rendered_html.trim(), body.company_name, {
-        isIntern,
-      });
-    } else if (body.rendered_text?.trim()) {
+    // Generic DOCX Pipeline: template_id provided
+    if (body?.template_id) {
+      const { data: tpl, error: tplErr } = await adminSupabase
+        .from("offer_templates")
+        .select("id, account_id, file_name, storage_path")
+        .eq("id", body.template_id)
+        .maybeSingle();
+
+      if (tplErr || !tpl) {
+        return new NextResponse("Template not found", { status: 404 });
+      }
+
+      const { data: fileBlob, error: dlErr } = await adminSupabase.storage
+        .from("offer-templates")
+        .download(tpl.storage_path);
+
+      if (dlErr || !fileBlob) {
+        return new NextResponse("Template file missing from storage", { status: 404 });
+      }
+
+      const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+
+      if (body.send_as_is) {
+        pdfBuffer = await convertDocxToPdf(docxBuffer, { tenantId: tpl.account_id });
+      } else {
+        const values = body.field_values || body.dynamic_variables || {};
+        const filled = fillOfferDocx(docxBuffer, values);
+        pdfBuffer = await convertDocxToPdf(filled, { tenantId: tpl.account_id });
+      }
+    } else if (body?.rendered_html?.trim()) {
+      return new NextResponse(
+        "Legacy HTML templates require re-upload as a .docx file for high-fidelity conversion.",
+        { status: 400 },
+      );
+    } else if (body?.rendered_text?.trim()) {
       pdfBuffer = generateTextOfferPdf(body.rendered_text.trim());
-    } else {
+    } else if (body?.use_branded_template) {
       pdfBuffer = generateBrandedOfferPdf({
         candidate_name: body.candidate_name || "Candidate",
         position_title: body.position_title || "Software Engineer",
@@ -68,6 +92,11 @@ export async function POST(req: NextRequest) {
         signatory_title: body.signatory_title || "Head of Talent Acquisition",
         dynamic_variables: body.dynamic_variables || {},
       });
+    } else {
+      return new NextResponse(
+        "template_id, rendered_html, rendered_text, or use_branded_template is required for preview",
+        { status: 400 },
+      );
     }
 
     const safeName = (body.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
@@ -125,6 +154,8 @@ export async function GET(req: NextRequest) {
       rendered_text?: string | null;
       rendered_html?: string | null;
       offer_template_id?: string | null;
+      generated_pdf_path?: string | null;
+      filled_docx_path?: string | null;
     }
     interface CampaignOfferLookup {
       id?: string;
@@ -215,6 +246,28 @@ export async function GET(req: NextRequest) {
       offerRow = data;
     }
 
+    // Direct audit PDF retrieval: If the generated PDF is already stored in Supabase Storage, stream it directly
+    if (offerRow?.generated_pdf_path) {
+      const { data: pdfBlob } = await adminSupabase.storage
+        .from("offer-templates")
+        .download(offerRow.generated_pdf_path);
+      if (pdfBlob) {
+        const pdfBuf = Buffer.from(await pdfBlob.arrayBuffer());
+        const safeName = (appRow?.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
+        const filename = `Offer_Letter_${safeName}.pdf`;
+        return new NextResponse(new Uint8Array(pdfBuf), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": download
+              ? `attachment; filename="${filename}"`
+              : `inline; filename="${filename}"`,
+            "Content-Length": String(pdfBuf.length),
+          },
+        });
+      }
+    }
+
     // 3. Fetch campaign details directly
     let campRow: CampaignOfferLookup | null = null;
     if (resolvedCampaignId) {
@@ -296,29 +349,19 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const isIntern =
-      positionTitle.toLowerCase().includes("intern") ||
-      (campRow?.name ? String(campRow.name).toLowerCase().includes("intern") : false) ||
-      Boolean(
-        dynamicVars?.LETTER_TYPE &&
-          String(dynamicVars.LETTER_TYPE).toLowerCase().includes("intern"),
-      );
-
-    const pdfBuffer = htmlToRender
-      ? await generateHtmlOfferPdf(htmlToRender, companyName, { isIntern })
-      : textToRender
-        ? generateTextOfferPdf(textToRender)
-        : generateBrandedOfferPdf({
-            candidate_name: candidateName,
-            position_title: positionTitle,
-            salary,
-            currency,
-            start_date: startDate,
-            company_name: companyName,
-            signatory_name: signatoryName,
-            signatory_title: signatoryTitle,
-            dynamic_variables: dynamicVars,
-          });
+    const pdfBuffer = textToRender
+      ? generateTextOfferPdf(textToRender)
+      : generateBrandedOfferPdf({
+          candidate_name: candidateName,
+          position_title: positionTitle,
+          salary,
+          currency,
+          start_date: startDate,
+          company_name: companyName,
+          signatory_name: signatoryName,
+          signatory_title: signatoryTitle,
+          dynamic_variables: dynamicVars,
+        });
 
     const safeName = candidateName.replace(/[^a-zA-Z0-9]/g, "_");
     const filename = `Offer_Letter_${safeName}.pdf`;
