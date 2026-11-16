@@ -140,28 +140,61 @@ export async function POST(req: NextRequest) {
           .eq("is_default", true);
       }
 
-      const { data: templateRecord, error: insertError } = await admin
+      let templateRecord: unknown = null;
+      let insertError: { message?: string } | null = null;
+
+      const fullTemplatePayload = {
+        account_id: user.id,
+        name: templateName,
+        file_name: file.name,
+        storage_path: storagePath,
+        raw_text: "[Raw DOCX Template]",
+        variables: detectedPlaceholders,
+        placeholders: detectedPlaceholders,
+        is_finished_letter: false,
+        is_default: isDefault,
+        created_by: user.id,
+      };
+
+      const res1 = await admin
         .from("offer_templates")
-        .insert({
+        .insert(fullTemplatePayload)
+        .select()
+        .single();
+      if (!res1.error) {
+        templateRecord = res1.data;
+      } else if (res1.error.code === "PGRST204" || res1.error.message?.includes("column")) {
+        // Fallback for pre-0059 database schema cache (uses base 0058 columns)
+        const basePayload = {
           account_id: user.id,
           name: templateName,
           file_name: file.name,
           storage_path: storagePath,
           raw_text: "[Raw DOCX Template]",
           variables: detectedPlaceholders,
-          placeholders: detectedPlaceholders,
-          is_finished_letter: false,
           is_default: isDefault,
           created_by: user.id,
-        })
-        .select(
-          "id, name, file_name, storage_path, variables, placeholders, is_finished_letter, is_default, created_at",
-        )
-        .single();
+        };
+        const res2 = await admin.from("offer_templates").insert(basePayload).select().single();
+        if (res2.error) {
+          insertError = res2.error;
+        } else {
+          templateRecord = {
+            ...res2.data,
+            placeholders: detectedPlaceholders,
+            is_finished_letter: false,
+          };
+        }
+      } else {
+        insertError = res1.error;
+      }
 
       if (insertError) {
         console.error("[api/offer-templates/upload] Database insert error:", insertError);
-        return NextResponse.json({ error: "Failed to register template record" }, { status: 500 });
+        return NextResponse.json(
+          { error: insertError.message || "Failed to register template record" },
+          { status: 500 },
+        );
       }
 
       return NextResponse.json(
@@ -175,31 +208,60 @@ export async function POST(req: NextRequest) {
     }
 
     // Case B: No placeholders detected (Finished letter)
-    const { data: letterRecord, error: letterInsertError } = await admin
-      .from("offer_templates")
-      .insert({
+    let letterRecord: unknown = null;
+    let letterInsertError: { message?: string } | null = null;
+
+    const fullLetterPayload = {
+      account_id: user.id,
+      name: templateName,
+      file_name: file.name,
+      storage_path: storagePath,
+      raw_text: "[Finished Letter]",
+      variables: [],
+      placeholders: [],
+      is_finished_letter: true,
+      is_default: false,
+      created_by: user.id,
+    };
+
+    const lRes1 = await admin.from("offer_templates").insert(fullLetterPayload).select().single();
+    if (!lRes1.error) {
+      letterRecord = lRes1.data;
+    } else if (lRes1.error.code === "PGRST204" || lRes1.error.message?.includes("column")) {
+      // Fallback for pre-0059 database schema cache (uses base 0058 columns)
+      const baseLetterPayload = {
         account_id: user.id,
         name: templateName,
         file_name: file.name,
         storage_path: storagePath,
         raw_text: "[Finished Letter]",
         variables: [],
-        placeholders: [],
-        is_finished_letter: true,
         is_default: false,
         created_by: user.id,
-      })
-      .select(
-        "id, name, file_name, storage_path, variables, placeholders, is_finished_letter, is_default, created_at",
-      )
-      .single();
+      };
+      const lRes2 = await admin.from("offer_templates").insert(baseLetterPayload).select().single();
+      if (lRes2.error) {
+        letterInsertError = lRes2.error;
+      } else {
+        letterRecord = {
+          ...lRes2.data,
+          placeholders: [],
+          is_finished_letter: true,
+        };
+      }
+    } else {
+      letterInsertError = lRes1.error;
+    }
 
     if (letterInsertError) {
       console.error(
         "[api/offer-templates/upload] Database letter insert error:",
         letterInsertError,
       );
-      return NextResponse.json({ error: "Failed to register letter record" }, { status: 500 });
+      return NextResponse.json(
+        { error: letterInsertError.message || "Failed to register letter record" },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json(

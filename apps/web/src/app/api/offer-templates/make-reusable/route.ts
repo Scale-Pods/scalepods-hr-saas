@@ -173,29 +173,59 @@ export async function POST(req: NextRequest) {
     // 7. Insert new template record linked to the source
     const newName = body.name?.trim() || `${sourceTpl.name} (Reusable Template)`;
 
-    const { data: newTemplate, error: insertError } = await admin
-      .from("offer_templates")
-      .insert({
+    let newTemplate: unknown = null;
+    let insertError: { message?: string } | null = null;
+
+    const fullPayload = {
+      account_id: user.id,
+      source_template_id: sourceTpl.id,
+      name: newName,
+      file_name: sourceTpl.file_name,
+      storage_path: newStoragePath,
+      raw_text: "[Reusable DOCX Template]",
+      variables: detectedPlaceholders,
+      placeholders: detectedPlaceholders,
+      is_finished_letter: false,
+      is_default: false,
+      created_by: user.id,
+    };
+
+    const res1 = await admin.from("offer_templates").insert(fullPayload).select().single();
+    if (!res1.error) {
+      newTemplate = res1.data;
+    } else if (res1.error.code === "PGRST204" || res1.error.message?.includes("column")) {
+      // Fallback for pre-0059 database schema cache (uses base 0058 columns)
+      const basePayload = {
         account_id: user.id,
-        source_template_id: sourceTpl.id,
         name: newName,
         file_name: sourceTpl.file_name,
         storage_path: newStoragePath,
         raw_text: "[Reusable DOCX Template]",
         variables: detectedPlaceholders,
-        placeholders: detectedPlaceholders,
-        is_finished_letter: false,
         is_default: false,
         created_by: user.id,
-      })
-      .select(
-        "id, name, file_name, storage_path, variables, placeholders, is_finished_letter, source_template_id, created_at",
-      )
-      .single();
+      };
+      const res2 = await admin.from("offer_templates").insert(basePayload).select().single();
+      if (res2.error) {
+        insertError = res2.error;
+      } else {
+        newTemplate = {
+          ...res2.data,
+          placeholders: detectedPlaceholders,
+          is_finished_letter: false,
+          source_template_id: sourceTpl.id,
+        };
+      }
+    } else {
+      insertError = res1.error;
+    }
 
     if (insertError) {
       console.error("[api/offer-templates/make-reusable] Insert error:", insertError);
-      return NextResponse.json({ error: "Failed to register reusable template" }, { status: 500 });
+      return NextResponse.json(
+        { error: insertError.message || "Failed to register reusable template" },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({

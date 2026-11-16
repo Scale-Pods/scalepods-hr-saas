@@ -361,7 +361,7 @@ export function PrepareOfferModal({
   const handleSelectTemplate = (id: string) => {
     setSelectedTemplateId(id);
     const tpl = templates.find((t) => t.id === id);
-    setSendAsIs(Boolean(tpl?.is_finished_letter));
+    setSendAsIs(Boolean(tpl?.is_finished_letter || tpl?.raw_text === "[Finished Letter]"));
   };
 
   const handleUploadFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -480,7 +480,10 @@ export function PrepareOfferModal({
       showErrorToast("Please choose or upload a template first.");
       return;
     }
-    if (selectedTemplate.is_finished_letter && sendAsIs) {
+    const isFinished = Boolean(
+      selectedTemplate.is_finished_letter || selectedTemplate.raw_text === "[Finished Letter]",
+    );
+    if (isFinished && sendAsIs) {
       // Finished letter with send as-is chosen skips straight to Preview & Send
       setFinalRenderedText("[Finished Letter - Sent As-Is]");
       setStep(3);
@@ -728,7 +731,9 @@ export function PrepareOfferModal({
                   <div className="space-y-2">
                     {templates.map((tpl) => {
                       const selected = selectedTemplateId === tpl.id;
-                      const isFinished = Boolean(tpl.is_finished_letter);
+                      const isFinished = Boolean(
+                        tpl.is_finished_letter || tpl.raw_text === "[Finished Letter]",
+                      );
                       const placeholdersList =
                         tpl.placeholders && tpl.placeholders.length > 0
                           ? tpl.placeholders
@@ -1215,11 +1220,21 @@ export function PrepareOfferModal({
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => setStep(selectedTemplate?.is_finished_letter && sendAsIs ? 1 : 2)}
+                  onClick={() =>
+                    setStep(
+                      (selectedTemplate?.is_finished_letter ||
+                        selectedTemplate?.raw_text === "[Finished Letter]") &&
+                        sendAsIs
+                        ? 1
+                        : 2,
+                    )
+                  }
                   className="gap-1 text-xs"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
-                  {selectedTemplate?.is_finished_letter && sendAsIs
+                  {(selectedTemplate?.is_finished_letter ||
+                    selectedTemplate?.raw_text === "[Finished Letter]") &&
+                  sendAsIs
                     ? "Back to Template"
                     : "Back to Variables"}
                 </Button>
