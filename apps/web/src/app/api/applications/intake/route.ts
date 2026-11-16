@@ -7,6 +7,15 @@ import { normalizePhoneNumber } from "@/lib/parse-resume";
 
 export const dynamic = "force-dynamic";
 
+function normalizeCandidateEmail(email: string): string {
+  const trimmed = email.trim().toLowerCase();
+  const atIndex = trimmed.indexOf("@");
+  if (atIndex === -1) return trimmed;
+  const local = trimmed.slice(0, atIndex).replace(/\+.*$/, "");
+  const domain = trimmed.slice(atIndex + 1);
+  return `${local}@${domain}`;
+}
+
 function getAuthClient(authHeader?: string | null) {
   const env = getEnv();
   const token = authHeader?.replace(/^Bearer\s+/i, "");
@@ -34,13 +43,14 @@ export async function POST(req: NextRequest) {
     const token = authHeader?.replace(/^Bearer\s+/i, "");
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const client = getAuthClient(authHeader);
     const {
       data: { user },
       error: authError,
-    } = await getAuthClient(authHeader).auth.getUser(token);
+    } = await client.auth.getUser(token);
     if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { data: campaign, error: campaignError } = await getAuthClient(authHeader)
+    const { data: campaign, error: campaignError } = await client
       .from("campaigns")
       .select("jd_text")
       .eq("id", parsed.data.campaign_id)
@@ -50,6 +60,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "The campaign job description is unavailable." },
         { status: 400 },
+      );
+    }
+
+    const normalizedEmail = normalizeCandidateEmail(parsed.data.candidate_email);
+    const { data: existingApp, error: existingAppError } = await client
+      .from("applications")
+      .select("id")
+      .eq("campaign_id", parsed.data.campaign_id)
+      .eq("normalized_email", normalizedEmail)
+      .maybeSingle();
+
+    if (existingAppError) {
+      console.warn(
+        "[api/applications/intake] Duplicate candidate check warning:",
+        existingAppError,
+      );
+    } else if (existingApp) {
+      return NextResponse.json(
+        {
+          error: "Candidate already added to this campaign",
+          message: "Candidate already added to this campaign",
+          code: "candidate_already_uploaded",
+        },
+        { status: 409 },
       );
     }
 
@@ -63,15 +97,45 @@ export async function POST(req: NextRequest) {
       jd_text: campaign.jd_text,
     });
     if (!response.ok) {
-      const details = payload && typeof payload === "object" ? payload : { error: "Intake failed" };
+      const details =
+        payload && typeof payload === "object"
+          ? (payload as Record<string, unknown>)
+          : { error: "Intake failed" };
+      const rawError =
+        (typeof details.error === "string" && details.error) ||
+        (typeof details.message === "string" && details.message) ||
+        "";
+      if (
+        response.status === 409 ||
+        details.code === "candidate_already_uploaded" ||
+        /candidate_already_uploaded|already uploaded|already added|23505/i.test(rawError)
+      ) {
+        return NextResponse.json(
+          {
+            ...details,
+            error: "Candidate already added to this campaign",
+            message: "Candidate already added to this campaign",
+            code: "candidate_already_uploaded",
+          },
+          { status: 409 },
+        );
+      }
       return NextResponse.json(details, { status: response.status });
     }
     return NextResponse.json(payload, { status: response.status });
   } catch (err) {
     console.error("[api/applications/intake] Error:", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Application intake workflow failed" },
-      { status: 502 },
-    );
+    const msg = err instanceof Error ? err.message : "Application intake workflow failed";
+    if (/candidate_already_uploaded|already uploaded|already added|23505/i.test(msg)) {
+      return NextResponse.json(
+        {
+          error: "Candidate already added to this campaign",
+          message: "Candidate already added to this campaign",
+          code: "candidate_already_uploaded",
+        },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 }

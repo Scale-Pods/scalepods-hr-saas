@@ -38,11 +38,22 @@ export async function callN8nGateway(
 
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
     const obj = payload as Record<string, unknown>;
-    const rawMsg =
-      (typeof obj.errorMessage === "string" && obj.errorMessage) ||
-      (typeof obj.error === "string" && obj.error) ||
-      (typeof obj.message === "string" && obj.message);
-    if (rawMsg && /error in the workflow|error in workflow/i.test(rawMsg)) {
+    const combinedStr = [obj.errorMessage, obj.error, obj.message, obj.code, obj.details, obj.hint]
+      .filter((v): v is string => typeof v === "string")
+      .join(" ");
+
+    if (
+      /candidate_already_uploaded|already uploaded|already added|23505|unique constraint/i.test(
+        combinedStr,
+      )
+    ) {
+      payload = {
+        ...obj,
+        error: "Candidate already added to this campaign",
+        message: "Candidate already added to this campaign",
+        code: "candidate_already_uploaded",
+      };
+    } else if (/error in the workflow|error in workflow/i.test(combinedStr)) {
       payload = {
         ...obj,
         error: "Workflow execution failed. Please check your inputs and try again.",

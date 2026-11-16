@@ -116,7 +116,13 @@ export function ResumeUploader({
             });
 
             if (!intakeRes.ok) {
-              const errJson = await intakeRes.json().catch(() => ({}));
+              const errJson = (await intakeRes.json().catch(() => ({}))) as {
+                error?: string;
+                message?: string;
+                code?: string;
+                detail?: string;
+                reason?: string;
+              };
               await supabase.storage.from("resumes").remove([filePath]);
               if (intakeRes.status === 402 || intakeRes.status === 403) {
                 showErrorToast(
@@ -131,7 +137,16 @@ export function ResumeUploader({
                 );
                 throw new Error("Plan limit reached: upgrade in Billing to continue screening");
               }
-              throw new Error(errJson.error || "Failed to create application");
+              if (
+                intakeRes.status === 409 ||
+                errJson.code === "candidate_already_uploaded" ||
+                /candidate_already_uploaded|already uploaded|already added|23505/i.test(
+                  errJson.error || errJson.message || "",
+                )
+              ) {
+                throw new Error("Candidate already added to this campaign");
+              }
+              throw new Error(errJson.error || errJson.message || "Failed to create application");
             }
 
             patch(i, { status: "done", note: "Resume scored; ready for recruiter review" });
