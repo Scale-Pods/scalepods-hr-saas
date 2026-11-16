@@ -69,10 +69,18 @@ function cleanOfferTemplateDirectivesHtml(
 
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
-    const text = b
+    const rawText = b
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+    const text =
+      escapeHtmlBasic(rawText) === rawText
+        ? rawText
+        : rawText
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"');
 
     // 1. Drop developer notes and logo instructions
     if (/\{\{VARIABLE\}\}.*?dynamic field/i.test(text)) continue;
@@ -92,7 +100,7 @@ function cleanOfferTemplateDirectivesHtml(
         if (shouldShow) {
           out.push(`<h2>${title}</h2>`);
         }
-        // Skip duplicate title block following it
+        // Always skip duplicate title block following it whether shown or not
         if (i + 1 < blocks.length) {
           const nextText = blocks[i + 1]
             .replace(/<[^>]+>/g, " ")
@@ -102,8 +110,12 @@ function cleanOfferTemplateDirectivesHtml(
             i++;
           }
         }
+        continue;
+      } else {
+        // Master template preservation: keep directive when options not specified
+        out.push(b);
+        continue;
       }
-      continue;
     }
 
     // 3. Block condition: "Show this section only when: LETTER_TYPE = fulltime" or intern
@@ -113,24 +125,32 @@ function cleanOfferTemplateDirectivesHtml(
     if (blockMatch) {
       if (hasSpecificType) {
         activeCondition = blockMatch[1].toLowerCase() as "fulltime" | "intern";
+        continue;
+      } else {
+        out.push(b);
+        continue;
       }
-      continue;
     }
 
     // 4. Incentive directive: "Show this section only when: Show incentive line only when INCENTIVE_NOTE is non-empty"
     if (/Show incentive line only when INCENTIVE_NOTE/i.test(text)) {
-      if (!options?.incentiveNote?.trim()) {
-        if (i + 1 < blocks.length) {
-          const nextText = blocks[i + 1]
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\s+/g, " ")
-            .trim();
-          if (/Incentive\s*\/\s*Variable\s*Pay/i.test(nextText)) {
-            i++;
+      if (hasSpecificType) {
+        if (!options?.incentiveNote?.trim()) {
+          if (i + 1 < blocks.length) {
+            const nextText = blocks[i + 1]
+              .replace(/<[^>]+>/g, " ")
+              .replace(/\s+/g, " ")
+              .trim();
+            if (/Incentive\s*\/\s*Variable\s*Pay/i.test(nextText)) {
+              i++;
+            }
           }
         }
+        continue;
+      } else {
+        out.push(b);
+        continue;
       }
-      continue;
     }
 
     // 5. Major unconditional section heading resets condition
@@ -150,6 +170,69 @@ function cleanOfferTemplateDirectivesHtml(
     if (hasSpecificType) {
       if (activeCondition === "fulltime" && isIntern) continue;
       if (activeCondition === "intern" && !isIntern) continue;
+    }
+
+    // 6. Fallback deduplication for templates where directive tables were already missing or stripped
+    if (hasSpecificType) {
+      // Titles deduplication
+      if (/^APPOINTMENT LETTER$/i.test(text) && isIntern) continue;
+      if (/^INTERNSHIP APPOINTMENT LETTER$/i.test(text) && !isIntern) continue;
+
+      // Opening paragraph deduplication
+      if (
+        isIntern &&
+        /We are pleased to offer you the position of/i.test(text) &&
+        !/internship/i.test(text)
+      ) {
+        continue;
+      }
+      if (!isIntern && /We are pleased to offer you a.*?internship/i.test(text)) {
+        continue;
+      }
+
+      // Section 2 (Compensation) deduplication
+      if (isIntern && /2\.\s+Compensation\s+(?:&|&amp;)\s+Benefits/i.test(text)) {
+        continue;
+      }
+      if (isIntern && /^<table/i.test(b) && /Basic Salary|HRA|Total CTC/i.test(text)) {
+        continue;
+      }
+      if (isIntern && /Gross Annual CTC/i.test(text)) {
+        continue;
+      }
+      if (!isIntern && /2\.\s+Compensation$/i.test(text)) {
+        continue;
+      }
+      if (!isIntern && /Monthly Stipend/i.test(text)) {
+        continue;
+      }
+
+      // Section 3 (Status) deduplication
+      if (isIntern && /3\.\s+Employment\s+Status/i.test(text)) {
+        continue;
+      }
+      if (isIntern && /(?:full-time position|probationary period)/i.test(text)) {
+        continue;
+      }
+      if (!isIntern && /3\.\s+Internship\s+Status/i.test(text)) {
+        continue;
+      }
+      if (!isIntern && /(?:internship engagement|fixed duration of)/i.test(text)) {
+        continue;
+      }
+
+      // Section 7 (Termination) deduplication
+      if (
+        isIntern &&
+        /Either party may terminate this engagement with/i.test(text) &&
+        /prior written notice/i.test(text) &&
+        !/internship/i.test(text)
+      ) {
+        continue;
+      }
+      if (!isIntern && /Either party may terminate this internship/i.test(text)) {
+        continue;
+      }
     }
 
     let formattedBlock = b;
@@ -237,8 +320,11 @@ function cleanOfferTemplateDirectivesText(
           }
           break;
         }
+        continue;
+      } else {
+        result.push(rawLine);
+        continue;
       }
-      continue;
     }
 
     // 3. Block condition start: "Show this section only when: LETTER_TYPE = fulltime"
@@ -248,26 +334,34 @@ function cleanOfferTemplateDirectivesText(
     if (blockMatch) {
       if (hasSpecificType) {
         currentCondition = blockMatch[1].toLowerCase() as "fulltime" | "intern";
+        continue;
+      } else {
+        result.push(rawLine);
+        continue;
       }
-      continue;
     }
 
     // 4. Incentive note condition: "Show this section only when: Show incentive line only when INCENTIVE_NOTE is non-empty"
     if (/Show incentive line only when INCENTIVE_NOTE/i.test(lineTrim)) {
-      if (!options?.incentiveNote?.trim()) {
-        for (let nextIdx = i + 1; nextIdx < lines.length; nextIdx++) {
-          const nextClean = lines[nextIdx]
-            .replace(/<[^>]+>/g, "")
-            .replace(/^[|\s]+|[|\s]+$/g, "")
-            .trim();
-          if (!nextClean) continue;
-          if (/Incentive\s*\/\s*Variable\s*Pay/i.test(nextClean)) {
-            i = nextIdx;
+      if (hasSpecificType) {
+        if (!options?.incentiveNote?.trim()) {
+          for (let nextIdx = i + 1; nextIdx < lines.length; nextIdx++) {
+            const nextClean = lines[nextIdx]
+              .replace(/<[^>]+>/g, "")
+              .replace(/^[|\s]+|[|\s]+$/g, "")
+              .trim();
+            if (!nextClean) continue;
+            if (/Incentive\s*\/\s*Variable\s*Pay/i.test(nextClean)) {
+              i = nextIdx;
+            }
+            break;
           }
-          break;
         }
+        continue;
+      } else {
+        result.push(rawLine);
+        continue;
       }
-      continue;
     }
 
     // 5. Unconditional major section headings — reset condition so subsequent terms are never dropped
@@ -297,6 +391,10 @@ function cleanOfferTemplateDirectivesText(
 
     // 7. Handle AI-mutated dual templates (Alternatively, For Regular Full-Time Position, etc.)
     if (hasSpecificType) {
+      // Titles deduplication
+      if (/^APPOINTMENT LETTER$/i.test(lineTrim) && isIntern) continue;
+      if (/^INTERNSHIP APPOINTMENT LETTER$/i.test(lineTrim) && !isIntern) continue;
+
       // Opening paragraph resolution
       if (isIntern) {
         if (
@@ -476,7 +574,8 @@ export function renderOfferTemplateText(
 
   const isIntern =
     normalized.LETTER_TYPE === "intern" ||
-    (normalized.POSITION_TITLE || normalized.ROLE || "").toLowerCase().includes("intern");
+    (normalized.POSITION_TITLE || normalized.ROLE || "").toLowerCase().includes("intern") ||
+    Boolean(normalized.STIPEND_AMOUNT);
 
   // First clean conditional directives and meta notes
   const cleaned = cleanOfferTemplateDirectives(rawText, {

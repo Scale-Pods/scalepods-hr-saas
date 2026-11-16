@@ -1,16 +1,15 @@
 import { PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from "pdf-lib";
+import { cleanOfferTemplateDirectives } from "./offer-template-utils";
 
 const PAGE_W = 595.28; // A4 width in pt
 const PAGE_H = 841.89; // A4 height in pt
 const MARGIN_X = 54;
-const MARGIN_TOP = 72; // Extra top margin for the header area
-const MARGIN_BOTTOM = 60;
+const MARGIN_TOP = 54;
+const MARGIN_BOTTOM = 54;
 const CONTENT_W = PAGE_W - MARGIN_X * 2;
 
-// Navy brand colours (matches the DOCX template)
+// Brand colours
 const NAVY = rgb(0.059, 0.161, 0.259); // #0f2942
-const BLUE = rgb(0.078, 0.247, 0.569); // #143f91
-const MID_BLUE = rgb(0.118, 0.275, 0.447); // #1e4672
 const TEXT_DARK = rgb(0.09, 0.12, 0.18);
 const TEXT_GREY = rgb(0.42, 0.49, 0.58);
 
@@ -80,7 +79,6 @@ function isDirectiveTable(tableHtml: string): boolean {
     const cells = rows[0].match(/<(?:th|td)[^>]*>[\s\S]*?<\/(?:th|td)>/gi) ?? [];
     if (cells.length === 1) {
       const cellText = cells[0].replace(/<[^>]+>/g, " ").trim();
-      // If the single cell contains "Show this section" or similar
       if (
         /Show (this section|incentive line)/i.test(cellText) ||
         /LETTER_TYPE/i.test(cellText) ||
@@ -95,16 +93,15 @@ function isDirectiveTable(tableHtml: string): boolean {
 }
 
 /**
- * Returns true if this is a simple 2-column layout table used as a header
+ * Returns true if this is a simple 2-column or 3-column layout table used as a header
  * (e.g. "Ref: {{REF_NO}} | Date: {{ISSUE_DATE}}" or "Dear {{NAME}} | Starting Date: {{DATE}}")
- * These should be rendered as a small info-row, not a full data table.
+ * These should be rendered as a small info-row, not a boxed data table.
  */
 function isLayoutTable(tableHtml: string): boolean {
   const rows = tableHtml.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) ?? [];
   if (rows.length !== 1) return false;
   const cells = rows[0].match(/<(?:th|td)[^>]*>[\s\S]*?<\/(?:th|td)>/gi) ?? [];
   if (cells.length < 2 || cells.length > 3) return false;
-  // No thead = not a data table
   if (/<thead/i.test(tableHtml)) return false;
   return true;
 }
@@ -157,15 +154,10 @@ function parseTableBlock(tableHtml: string): HtmlBlock {
 /**
  * Heuristic: is this paragraph actually a section heading?
  * Mammoth outputs DOCX headings/bold section titles as <p><strong>TEXT</strong></p>
- * We detect these patterns:
- *   - ALL CAPS text (e.g. "APPOINTMENT LETTER", "TERMS OF ENGAGEMENT")
- *   - Numbered headings like "1. Role & Scope", "2. Compensation & Benefits"
- *   - Known fixed headings ("ACKNOWLEDGEMENT", "For {{COMPANY_NAME}}", etc.)
  */
 function detectHeadingLevel(runs: TextRun[]): 1 | 2 | 3 | null {
   if (runs.length === 0) return null;
 
-  // Only bold runs qualify as headings
   if (!runs.every((r) => r.bold)) return null;
 
   const text = runs
@@ -174,10 +166,9 @@ function detectHeadingLevel(runs: TextRun[]): 1 | 2 | 3 | null {
     .trim();
   if (!text) return null;
 
-  // Level 1: Major ALL_CAPS headings (no lowercase letters, 3+ chars, not a placeholder alone)
+  // Level 1: Major ALL_CAPS headings
   const hasLowercase = /[a-z]/.test(text);
   if (!hasLowercase && text.length >= 3 && !/^\{\{/.test(text)) {
-    // Check it's not just punctuation or numbers
     if (/[A-Z]{2,}/.test(text)) return 1;
   }
 
@@ -199,9 +190,8 @@ function detectHeadingLevel(runs: TextRun[]): 1 | 2 | 3 | null {
     words.length <= 6 &&
     /^[A-Z]/.test(text) &&
     !text.includes("{{") &&
-    !text.includes(":") // labels with colons are not headings
+    !text.includes(":")
   ) {
-    // Only promote if most words are Title Case or uppercase
     const titleCaseCount = words.filter((w) => /^[A-Z]/.test(w)).length;
     if (titleCaseCount >= words.length * 0.7) return 3;
   }
@@ -211,7 +201,6 @@ function detectHeadingLevel(runs: TextRun[]): 1 | 2 | 3 | null {
 
 function parseHtmlToBlocks(html: string): HtmlBlock[] {
   const blocks: HtmlBlock[] = [];
-  // Extract top-level blocks in document order
   const blockRegex =
     /<table[^>]*>[\s\S]*?<\/table>|<h([1-3])[^>]*>[\s\S]*?<\/h\1>|<ul[^>]*>[\s\S]*?<\/ul>|<ol[^>]*>[\s\S]*?<\/ol>|<p[^>]*>[\s\S]*?<\/p>/gi;
 
@@ -230,21 +219,12 @@ function parseHtmlToBlocks(html: string): HtmlBlock[] {
 
     const full = match[0];
     if (/^<table/i.test(full)) {
-      // Skip directive/conditional tables entirely
       if (isDirectiveTable(full)) continue;
-
       blocks.push(parseTableBlock(full));
     } else if (/^<h([1-3])/i.test(full)) {
       const level = Number(match[1]) as 1 | 2 | 3;
       const inner = full.replace(/^<h[1-3][^>]*>/i, "").replace(/<\/h[1-3]>$/i, "");
       const runs = parseInlineRuns(inner).map((r) => ({ ...r, bold: true }));
-      const text = runs
-        .map((r) => r.text)
-        .join(" ")
-        .trim();
-      if (/^2\.\s+Compensation/i.test(text) || /^7\.\s+Termination/i.test(text)) {
-        blocks.push({ kind: "page_break" });
-      }
       if (runs.length > 0) blocks.push({ kind: "heading", level, runs });
     } else if (/^<(ul|ol)/i.test(full)) {
       const isOrdered = /^<ol/i.test(full);
@@ -261,21 +241,9 @@ function parseHtmlToBlocks(html: string): HtmlBlock[] {
         }
       });
     } else {
-      // <p> element — check if it should be promoted to a heading
       const inner = full.replace(/^<p[^>]*>/i, "").replace(/<\/p>$/i, "");
       const runs = parseInlineRuns(inner);
       if (runs.some((r) => r.text.trim())) {
-        const text = runs
-          .map((r) => r.text)
-          .join(" ")
-          .trim();
-        // Section-based page breaks matching the 3-page template structure:
-        // Page 1 ends after 1. Role & Scope -> Section 2 starts Page 2
-        // Page 2 ends after 6. Code of Conduct -> Section 7 starts Page 3
-        if (/^2\.\s+Compensation/i.test(text) || /^7\.\s+Termination/i.test(text)) {
-          blocks.push({ kind: "page_break" });
-        }
-
         const headingLevel = detectHeadingLevel(runs);
         if (headingLevel !== null) {
           blocks.push({ kind: "heading", level: headingLevel, runs });
@@ -350,107 +318,43 @@ function wrapRuns(
 }
 
 /**
- * Draw the company letterhead/header area on Page 1.
- * Mimics the branded ScalePods style: full-width navy top bar, company name, divider.
- */
-function drawLetterhead(
-  page: PDFPage,
-  boldFont: PDFFont,
-  regularFont: PDFFont,
-  companyName = "ScalePods Technologies",
-): void {
-  // Full-width top navy bar
-  page.drawRectangle({
-    x: 0,
-    y: PAGE_H - 24,
-    width: PAGE_W,
-    height: 24,
-    color: NAVY,
-  });
-
-  // Company name in the bar (white)
-  const nameText = sanitizeWinAnsi(companyName);
-  page.drawText(nameText, {
-    x: MARGIN_X,
-    y: PAGE_H - 17,
-    size: 11,
-    font: boldFont,
-    color: rgb(1, 1, 1),
-  });
-
-  // "CONFIDENTIAL" label right-aligned in the bar
-  const confText = "CONFIDENTIAL";
-  const confW = regularFont.widthOfTextAtSize(confText, 7);
-  page.drawText(confText, {
-    x: PAGE_W - MARGIN_X - confW,
-    y: PAGE_H - 16,
-    size: 7,
-    font: regularFont,
-    color: rgb(0.8, 0.88, 1.0),
-  });
-
-  // Thin blue underline below the bar
-  page.drawRectangle({
-    x: 0,
-    y: PAGE_H - 26,
-    width: PAGE_W,
-    height: 2,
-    color: BLUE,
-  });
-}
-
-/**
  * Render structured HTML (from DOCX/mammoth or HTML templates) into a clean,
- * properly typeset multi-page A4 PDF with real tables, headings, bold spans,
- * and automatic text reflow.
+ * executive-grade A4 PDF matching the original uploaded Word template.
  *
- * Key improvements over previous version:
- * - Directive/conditional tables are detected and skipped
- * - <p><strong>ALL CAPS</strong></p> paragraphs promoted to heading blocks
- * - Numbered section headings (1. Role & Scope) promoted to h2
- * - Branded navy letterhead bar on Page 1
- * - Layout tables (Ref/Date header rows) rendered as inline key-value pairs
+ * Background: Clean white page background (no artificial navy top banners).
+ * Alignment: Proper left/right layout alignment and proportional table column widths.
+ * Spacing: Natural content flow without artificial page breaks.
  */
-export async function generateHtmlOfferPdf(html: string, companyName?: string): Promise<Buffer> {
+export async function generateHtmlOfferPdf(
+  html: string,
+  companyName?: string,
+  options?: { isIntern?: boolean; letterType?: string },
+): Promise<Buffer> {
+  const isIntern =
+    options?.isIntern ??
+    (options?.letterType
+      ? options.letterType.toLowerCase().includes("intern")
+      : /\b(?:internship|intern|stipend)\b/i.test(html) &&
+        !/\b(?:Total CTC|Basic Salary|House Rent Allowance)\b/i.test(html));
+
+  // Ensure directives and duplicate sections are thoroughly cleaned
+  const cleanedHtml = cleanOfferTemplateDirectives(html, {
+    isIntern,
+    letterType: isIntern ? "intern" : "fulltime",
+  });
+
   const pdfDoc = await PDFDocument.create();
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const blocks = parseHtmlToBlocks(html);
+  const blocks = parseHtmlToBlocks(cleanedHtml);
   let page: PDFPage = pdfDoc.addPage([PAGE_W, PAGE_H]);
   let cursorY = PAGE_H - MARGIN_TOP;
 
-  // Draw letterhead on Page 1
-  drawLetterhead(page, boldFont, regularFont, companyName);
-
   const addNewPage = () => {
-    if (cursorY >= PAGE_H - MARGIN_TOP - 10) return; // Prevent creating empty extra pages
+    if (cursorY >= PAGE_H - MARGIN_TOP - 10) return;
     page = pdfDoc.addPage([PAGE_W, PAGE_H]);
     cursorY = PAGE_H - MARGIN_TOP;
-
-    // Header bar on continuation pages
-    page.drawRectangle({
-      x: 0,
-      y: PAGE_H - 24,
-      width: PAGE_W,
-      height: 24,
-      color: NAVY,
-    });
-    const headerCompany = sanitizeWinAnsi(companyName || "ScalePods Technologies");
-    page.drawText(`${headerCompany} | Private & Confidential`, {
-      x: MARGIN_X,
-      y: PAGE_H - 16,
-      size: 7.5,
-      font: regularFont,
-      color: rgb(0.9, 0.94, 1.0),
-    });
-    page.drawRectangle({
-      x: 0,
-      y: PAGE_H - 26,
-      width: PAGE_W,
-      height: 2,
-      color: BLUE,
-    });
   };
 
   const ensureSpace = (neededH: number) => {
@@ -492,102 +396,128 @@ export async function generateHtmlOfferPdf(html: string, companyName?: string): 
     }
 
     if (block.kind === "heading") {
-      const size = block.level === 1 ? 14 : block.level === 2 ? 11.5 : 10.5;
-      const lh = size * 1.5;
-      const headingColor = block.level === 1 ? NAVY : block.level === 2 ? BLUE : MID_BLUE;
+      const size = block.level === 1 ? 13.5 : block.level === 2 ? 11 : 10;
+      const lh = size * 1.45;
+      const headingColor = NAVY;
       const lines = wrapRuns(block.runs, CONTENT_W, size, regularFont, boldFont);
       cursorY -= block.level === 1 ? 10 : 7;
-      ensureSpace(lines.length * lh + 10);
-
-      // Draw subtle underline for H1 (major section titles)
-      if (block.level === 1) {
-        const textH = lines.length * lh;
-        // We'll draw the line after rendering text, so track start Y
-        const startY = cursorY;
-        drawWrappedLines(lines, MARGIN_X, size, lh, headingColor);
-        // Underline below heading text
-        page.drawLine({
-          start: { x: MARGIN_X, y: startY - textH - 1 },
-          end: { x: MARGIN_X + CONTENT_W * 0.4, y: startY - textH - 1 },
-          thickness: 1.5,
-          color: BLUE,
-        });
-        cursorY -= 5;
-      } else {
-        drawWrappedLines(lines, MARGIN_X, size, lh, headingColor);
-        cursorY -= 3;
-      }
+      ensureSpace(lines.length * lh + 6);
+      drawWrappedLines(lines, MARGIN_X, size, lh, headingColor);
+      cursorY -= 3;
     } else if (block.kind === "paragraph") {
-      const size = 10;
-      const lh = 15;
+      const size = 9.5;
+      const lh = 14;
       const lines = wrapRuns(block.runs, CONTENT_W, size, regularFont, boldFont);
       if (lines.length > 0 && lines.some((l) => l.segments.some((s) => s.text.trim()))) {
         drawWrappedLines(lines, MARGIN_X, size, lh);
         cursorY -= 4;
       }
     } else if (block.kind === "list_item") {
-      const size = 10;
-      const lh = 15;
-      const indent = 18;
+      const size = 9.5;
+      const lh = 14;
+      const indent = 16;
       const lines = wrapRuns(block.runs, CONTENT_W - indent, size, regularFont, boldFont);
       ensureSpace(lh);
-      // Bullet/number
       page.drawText(block.bullet, {
         x: MARGIN_X + 4,
         y: cursorY,
         size,
         font: boldFont,
-        color: BLUE,
+        color: NAVY,
       });
       drawWrappedLines(lines, MARGIN_X + indent, size, lh);
       cursorY -= 2;
     } else if (block.kind === "table" && block.rows.length > 0) {
       if (block.isLayoutTable) {
-        // Render as a simple key-value info row (no borders, no header style)
-        // e.g. "Ref: {{REF_NO}} | Date: {{ISSUE_DATE}}"
         cursorY -= 4;
         const size = 9.5;
         const lh = 14;
         const numCols = block.rows[0].cells.length;
-        const colW = CONTENT_W / numCols;
         ensureSpace(lh + 4);
 
-        for (let c = 0; c < numCols; c++) {
-          const cellRuns = block.rows[0].cells[c] ?? [];
-          const lines = wrapRuns(cellRuns, colW - 8, size, regularFont, boldFont);
+        if (numCols === 2) {
+          // Left cell at MARGIN_X, Right cell right-aligned at PAGE_W - MARGIN_X
+          const leftRuns = block.rows[0].cells[0] ?? [];
+          const rightRuns = block.rows[0].cells[1] ?? [];
+          const maxCellW = CONTENT_W * 0.55;
+          const leftLines = wrapRuns(leftRuns, maxCellW, size, regularFont, boldFont);
+          const rightLines = wrapRuns(rightRuns, maxCellW, size, regularFont, boldFont);
+          const totalLines = Math.max(leftLines.length, rightLines.length);
+
           let cellY = cursorY;
-          for (const line of lines) {
-            let drawX = MARGIN_X + c * colW;
+          for (const line of leftLines) {
+            let drawX = MARGIN_X;
             for (const seg of line.segments) {
               if (!seg.text) continue;
               const font = seg.bold ? boldFont : regularFont;
-              page.drawText(seg.text, {
-                x: drawX,
-                y: cellY,
-                size,
-                font,
-                color: TEXT_DARK,
-              });
+              page.drawText(seg.text, { x: drawX, y: cellY, size, font, color: TEXT_DARK });
               drawX += font.widthOfTextAtSize(seg.text, size);
             }
             cellY -= lh;
           }
-        }
-        cursorY -= lh + 4;
-      } else {
-        // Full data table with navy headers
-        const numCols = Math.max(...block.rows.map((r) => r.cells.length));
-        const colW = CONTENT_W / numCols;
-        const cellPadX = 7;
-        const cellPadY = 6;
-        const size = 9.5;
-        const lh = 13.5;
 
-        cursorY -= 8;
+          cellY = cursorY;
+          for (const line of rightLines) {
+            const lineWidth = line.segments.reduce((acc, seg) => {
+              const font = seg.bold ? boldFont : regularFont;
+              return acc + font.widthOfTextAtSize(seg.text, size);
+            }, 0);
+            let drawX = PAGE_W - MARGIN_X - lineWidth;
+            for (const seg of line.segments) {
+              if (!seg.text) continue;
+              const font = seg.bold ? boldFont : regularFont;
+              page.drawText(seg.text, { x: drawX, y: cellY, size, font, color: TEXT_DARK });
+              drawX += font.widthOfTextAtSize(seg.text, size);
+            }
+            cellY -= lh;
+          }
+          cursorY -= totalLines * lh + 6;
+        } else {
+          const colW = CONTENT_W / numCols;
+          for (let c = 0; c < numCols; c++) {
+            const cellRuns = block.rows[0].cells[c] ?? [];
+            const lines = wrapRuns(cellRuns, colW - 8, size, regularFont, boldFont);
+            let cellY = cursorY;
+            for (const line of lines) {
+              let drawX = MARGIN_X + c * colW;
+              for (const seg of line.segments) {
+                if (!seg.text) continue;
+                const font = seg.bold ? boldFont : regularFont;
+                page.drawText(seg.text, {
+                  x: drawX,
+                  y: cellY,
+                  size,
+                  font,
+                  color: TEXT_DARK,
+                });
+                drawX += font.widthOfTextAtSize(seg.text, size);
+              }
+              cellY -= lh;
+            }
+          }
+          cursorY -= lh + 6;
+        }
+      } else {
+        const numCols = Math.max(...block.rows.map((r) => r.cells.length));
+        const colWidths =
+          numCols === 4 ? [35, 215, 118, 119] : Array(numCols).fill(CONTENT_W / numCols);
+
+        const cellPadX = 6;
+        const cellPadY = 5;
+        const size = 9;
+        const lh = 13;
+
+        cursorY -= 6;
         for (let rIdx = 0; rIdx < block.rows.length; rIdx++) {
           const row = block.rows[rIdx];
-          const wrappedCells = row.cells.map((cellRuns) =>
-            wrapRuns(cellRuns, colW - cellPadX * 2, size, regularFont, boldFont),
+          const wrappedCells = row.cells.map((cellRuns, cIdx) =>
+            wrapRuns(
+              cellRuns,
+              (colWidths[cIdx] || 100) - cellPadX * 2,
+              size,
+              regularFont,
+              boldFont,
+            ),
           );
           const maxLines = Math.max(1, ...wrappedCells.map((c) => c.length));
           const rowH = maxLines * lh + cellPadY * 2;
@@ -597,25 +527,26 @@ export async function generateHtmlOfferPdf(html: string, companyName?: string): 
           const rowTop = cursorY + size * 0.8;
           const rowBottom = rowTop - rowH;
 
+          let currentX = MARGIN_X;
           for (let c = 0; c < numCols; c++) {
-            const cellX = MARGIN_X + c * colW;
+            const colW = colWidths[c] || 100;
             const isHeader = row.isHeader;
             const isAlternate = !isHeader && rIdx % 2 === 1;
 
             page.drawRectangle({
-              x: cellX,
+              x: currentX,
               y: rowBottom,
               width: colW,
               height: rowH,
-              color: isHeader ? NAVY : isAlternate ? rgb(0.955, 0.965, 0.98) : rgb(1, 1, 1),
-              borderColor: isHeader ? NAVY : rgb(0.78, 0.82, 0.88),
+              color: isHeader ? NAVY : isAlternate ? rgb(0.96, 0.97, 0.98) : rgb(1, 1, 1),
+              borderColor: isHeader ? NAVY : rgb(0.8, 0.84, 0.9),
               borderWidth: 0.75,
             });
 
             const cellLines = wrappedCells[c] ?? [];
             let cellY = rowTop - cellPadY - size * 0.85;
             for (const line of cellLines) {
-              let drawX = cellX + cellPadX;
+              let drawX = currentX + cellPadX;
               for (const seg of line.segments) {
                 if (!seg.text) continue;
                 const font = isHeader || seg.bold ? boldFont : regularFont;
@@ -630,41 +561,40 @@ export async function generateHtmlOfferPdf(html: string, companyName?: string): 
               }
               cellY -= lh;
             }
+            currentX += colW;
           }
 
           cursorY = rowBottom - size * 0.8;
         }
-        cursorY -= 10;
+        cursorY -= 8;
       }
     }
   }
 
-  // Draw footer on every page
+  // Draw clean, subtle footer on every page
   const allPages = pdfDoc.getPages();
   const totalPages = allPages.length;
   for (let idx = 0; idx < totalPages; idx++) {
     const curPage = allPages[idx];
-    // Footer divider line
     curPage.drawLine({
-      start: { x: MARGIN_X, y: 42 },
-      end: { x: PAGE_W - MARGIN_X, y: 42 },
+      start: { x: MARGIN_X, y: 38 },
+      end: { x: PAGE_W - MARGIN_X, y: 38 },
       thickness: 0.5,
-      color: rgb(0.82, 0.86, 0.9),
+      color: rgb(0.85, 0.88, 0.92),
     });
-    // Footer left: Private & Confidential
-    curPage.drawText("Private & Confidential - Employment Agreement", {
+    const footerCompany = companyName ? sanitizeWinAnsi(companyName) : "Private & Confidential";
+    curPage.drawText(`${footerCompany} - Employment Agreement`, {
       x: MARGIN_X,
-      y: 28,
+      y: 26,
       size: 7.5,
       font: regularFont,
       color: TEXT_GREY,
     });
-    // Footer right: Page X of Y
     const pageNumText = `Page ${idx + 1} of ${totalPages}`;
     const pageNumW = regularFont.widthOfTextAtSize(pageNumText, 7.5);
     curPage.drawText(pageNumText, {
       x: PAGE_W - MARGIN_X - pageNumW,
-      y: 28,
+      y: 26,
       size: 7.5,
       font: regularFont,
       color: TEXT_GREY,

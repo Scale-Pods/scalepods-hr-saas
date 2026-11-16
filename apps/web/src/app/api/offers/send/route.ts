@@ -175,9 +175,20 @@ export async function POST(req: NextRequest) {
     let pdfBase64: string | undefined;
     let pdfFilename: string | undefined;
 
+    const dynamicVars = (fieldValues.dynamic_variables || fieldValues) as Record<string, string>;
+    const isIntern =
+      positionTitle.toLowerCase().includes("intern") ||
+      (appRow?.campaigns as { name?: string } | undefined)?.name
+        ?.toLowerCase()
+        .includes("intern") ||
+      Boolean(
+        dynamicVars?.LETTER_TYPE &&
+          String(dynamicVars.LETTER_TYPE).toLowerCase().includes("intern"),
+      );
+
     try {
       const pdfBuffer = renderedHtml
-        ? await generateHtmlOfferPdf(renderedHtml, companyName)
+        ? await generateHtmlOfferPdf(renderedHtml, companyName, { isIntern })
         : renderedText
           ? generateTextOfferPdf(renderedText)
           : generateBrandedOfferPdf({

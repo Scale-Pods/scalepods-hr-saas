@@ -92,6 +92,6 @@ describe("generateHtmlOfferPdf", () => {
     const bufFulltime = await generateHtmlOfferPdf(renderedFulltime, "ScalePods Technologies");
     const docFulltime = await PDFDocument.load(new Uint8Array(bufFulltime));
     console.log("Fulltime PDF page count:", docFulltime.getPageCount());
-    expect(docFulltime.getPageCount()).toBe(3);
+    expect(docFulltime.getPageCount()).toBe(2);
   });
 });

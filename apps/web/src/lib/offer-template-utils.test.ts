@@ -119,4 +119,47 @@ TERMS OF ENGAGEMENT`;
     expect(fulltimeHtml).toContain("{{BASIC_SALARY}}");
     expect(fulltimeHtml).toContain("Ref: <strong>{{REF_NO}}</strong>");
   });
+
+  it("handles fallback deduplication for templates where directives were already stripped", () => {
+    const strippedHtml = `<h2>APPOINTMENT LETTER</h2>
+<h2>INTERNSHIP APPOINTMENT LETTER</h2>
+<p>We are pleased to offer you the position of Software Engineer.</p>
+<p>We are pleased to offer you a 3 months internship position of Software Engineer.</p>
+<p><strong>2. Compensation &amp; Benefits</strong></p>
+<table><tr><td>Basic Salary</td><td>50,000</td></tr></table>
+<p>Gross Annual CTC: 6,00,000</p>
+<p><strong>2. Compensation</strong></p>
+<p>Monthly Stipend: 15,000</p>
+<p><strong>3. Employment Status</strong></p>
+<p>This is a full-time position with probation.</p>
+<p><strong>3. Internship Status</strong></p>
+<p>This is a full-time internship engagement.</p>
+<p><strong>7. Termination</strong></p>
+<p>Either party may terminate this engagement with 30 days prior written notice.</p>
+<p>Either party may terminate this internship with 15 days prior written notice.</p>`;
+
+    const intern = cleanOfferTemplateDirectives(strippedHtml, { isIntern: true });
+    expect(intern).not.toContain("<h2>APPOINTMENT LETTER</h2>");
+    expect(intern).toContain("<h2>INTERNSHIP APPOINTMENT LETTER</h2>");
+    expect(intern).not.toContain("We are pleased to offer you the position of Software Engineer.");
+    expect(intern).toContain("internship position");
+    expect(intern).not.toContain("2. Compensation &amp; Benefits");
+    expect(intern).toContain("Monthly Stipend: 15,000");
+    expect(intern).not.toContain("3. Employment Status");
+    expect(intern).toContain("3. Internship Status");
+    expect(intern).not.toContain("30 days prior written notice");
+    expect(intern).toContain("15 days prior written notice");
+
+    const fulltime = cleanOfferTemplateDirectives(strippedHtml, { isIntern: false });
+    expect(fulltime).toContain("<h2>APPOINTMENT LETTER</h2>");
+    expect(fulltime).not.toContain("INTERNSHIP APPOINTMENT LETTER");
+    expect(fulltime).toContain("We are pleased to offer you the position of Software Engineer.");
+    expect(fulltime).not.toContain("internship position");
+    expect(fulltime).toContain("2. Compensation &amp; Benefits");
+    expect(fulltime).not.toContain("Monthly Stipend: 15,000");
+    expect(fulltime).toContain("3. Employment Status");
+    expect(fulltime).not.toContain("3. Internship Status");
+    expect(fulltime).toContain("30 days prior written notice");
+    expect(fulltime).not.toContain("15 days prior written notice");
+  });
 });

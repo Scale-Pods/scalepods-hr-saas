@@ -45,7 +45,15 @@ export async function POST(req: NextRequest) {
     let pdfBuffer: Buffer;
 
     if (body.rendered_html?.trim()) {
-      pdfBuffer = await generateHtmlOfferPdf(body.rendered_html.trim(), body.company_name);
+      const isIntern =
+        (body.position_title || "").toLowerCase().includes("intern") ||
+        Boolean(
+          body.dynamic_variables?.LETTER_TYPE &&
+            String(body.dynamic_variables.LETTER_TYPE).toLowerCase().includes("intern"),
+        );
+      pdfBuffer = await generateHtmlOfferPdf(body.rendered_html.trim(), body.company_name, {
+        isIntern,
+      });
     } else if (body.rendered_text?.trim()) {
       pdfBuffer = generateTextOfferPdf(body.rendered_text.trim());
     } else {
@@ -288,8 +296,16 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const isIntern =
+      positionTitle.toLowerCase().includes("intern") ||
+      (campRow?.name ? String(campRow.name).toLowerCase().includes("intern") : false) ||
+      Boolean(
+        dynamicVars?.LETTER_TYPE &&
+          String(dynamicVars.LETTER_TYPE).toLowerCase().includes("intern"),
+      );
+
     const pdfBuffer = htmlToRender
-      ? await generateHtmlOfferPdf(htmlToRender, companyName)
+      ? await generateHtmlOfferPdf(htmlToRender, companyName, { isIntern })
       : textToRender
         ? generateTextOfferPdf(textToRender)
         : generateBrandedOfferPdf({
