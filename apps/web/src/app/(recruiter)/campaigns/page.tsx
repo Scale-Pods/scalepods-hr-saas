@@ -2,6 +2,7 @@
 
 import { formatDateTime, TIER_LIMITS, type Tier } from "@scalepods/core";
 import {
+  ArrowLeft,
   ArrowRight,
   Brain,
   Calendar,
@@ -243,44 +244,32 @@ function CampaignsContent() {
 
   return (
     <div className="space-y-6">
-      {/* Top Tab Bar: Merged Campaigns & New Campaign */}
+      {/* Top Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-1 sm:gap-2 rounded-full bg-accent/60 p-1">
+          {activeTab === "new" ? (
             <button
               type="button"
-              onClick={() => setActiveTab("list")}
-              className={cn(
-                "flex items-center gap-2 rounded-full px-3.5 sm:px-4 py-1.5 text-xs font-semibold transition-all",
-                activeTab === "list"
-                  ? "bg-card text-foreground shadow-xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
+              onClick={() => {
+                setActiveTab("list");
+                router.push("/campaigns");
+              }}
+              className="inline-flex items-center gap-2 rounded-full px-3.5 sm:px-4 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-all"
             >
-              <FolderKanban className="h-3.5 w-3.5" />
-              <span>All Campaigns</span>
-              {rows.length > 0 && (
-                <span className="rounded-full bg-primary/10 px-2 py-0.2 text-[10px] font-bold text-primary">
-                  {rows.length}
-                </span>
-              )}
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Back to Campaigns</span>
             </button>
-            <button
-              type="button"
-              onClick={handleNewCampaign}
-              className={cn(
-                "flex items-center gap-2 rounded-full px-3.5 sm:px-4 py-1.5 text-xs font-semibold transition-all",
-                activeTab === "new"
-                  ? "bg-primary text-white shadow-xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>New Campaign</span>
-            </button>
-          </div>
-          {activeTab === "list" && (
+          ) : (
             <>
+              <div className="inline-flex items-center gap-2 rounded-full bg-accent/60 px-3.5 sm:px-4 py-1.5 text-xs font-semibold text-foreground">
+                <FolderKanban className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>All Campaigns</span>
+                {rows.length > 0 && (
+                  <span className="rounded-full bg-primary/10 px-2 py-0.2 text-[10px] font-bold text-primary">
+                    {rows.length}
+                  </span>
+                )}
+              </div>
               <HowToCreateButton />
               <Link
                 href="/guide/resume-scoring"
