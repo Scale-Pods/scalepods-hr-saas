@@ -85,8 +85,34 @@ export async function POST(req: NextRequest) {
           .eq("id", payload.application_id)
           .maybeSingle();
 
-        // 1. If currently in document verification stage, advance directly to offer stage
+        // 1. If currently in document verification stage, verify all documents before advancing to offer stage
         if (appRow && appRow.current_stage === "document_verification") {
+          const { data: fullApp } = await adminSupabase
+            .from("applications")
+            .select("documents_status, requested_documents")
+            .eq("id", appRow.id)
+            .maybeSingle();
+
+          const reqDocs = (
+            Array.isArray(fullApp?.requested_documents) ? fullApp.requested_documents : []
+          ) as Array<{ name?: string; status?: string } | string>;
+
+          const allVerified =
+            fullApp?.documents_status === "verified" ||
+            (reqDocs.length > 0 &&
+              reqDocs.every((d) => (typeof d === "string" ? false : d.status === "verified")));
+
+          if (!allVerified) {
+            return NextResponse.json(
+              {
+                error:
+                  "Cannot advance candidate: All required documents must be checked and verified first.",
+                code: "DOCUMENTS_NOT_VERIFIED",
+              },
+              { status: 400 },
+            );
+          }
+
           await adminSupabase
             .from("applications")
             .update({

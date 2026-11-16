@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     if (body?.template_id) {
       const { data: tpl, error: tplErr } = await adminSupabase
         .from("offer_templates")
-        .select("id, account_id, file_name, storage_path")
+        .select("id, account_id, file_name, storage_path, raw_text")
         .eq("id", body.template_id)
         .maybeSingle();
 
@@ -56,22 +56,60 @@ export async function POST(req: NextRequest) {
         return new NextResponse("Template not found", { status: 404 });
       }
 
-      const { data: fileBlob, error: dlErr } = await adminSupabase.storage
-        .from("offer-templates")
-        .download(tpl.storage_path);
-
-      if (dlErr || !fileBlob) {
-        return new NextResponse("Template file missing from storage", { status: 404 });
+      let docxBuffer: Buffer | null = null;
+      if (tpl.storage_path) {
+        const { data: fileBlob } = await adminSupabase.storage
+          .from("offer-templates")
+          .download(tpl.storage_path);
+        if (fileBlob) {
+          docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+        }
       }
 
-      const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+      let generated: Buffer | null = null;
+      if (docxBuffer) {
+        try {
+          if (body.send_as_is) {
+            generated = await convertDocxToPdf(docxBuffer, { tenantId: tpl.account_id });
+          } else {
+            const values = body.field_values || body.dynamic_variables || {};
+            const filled = fillOfferDocx(docxBuffer, values);
+            generated = await convertDocxToPdf(filled, { tenantId: tpl.account_id });
+          }
+        } catch (convErr) {
+          console.warn(
+            "[api/offers/pdf POST] LibreOffice conversion unavailable, falling back to built-in engine:",
+            convErr,
+          );
+        }
+      }
 
-      if (body.send_as_is) {
-        pdfBuffer = await convertDocxToPdf(docxBuffer, { tenantId: tpl.account_id });
+      if (generated) {
+        pdfBuffer = generated;
+      } else if (body?.rendered_text?.trim()) {
+        pdfBuffer = generateTextOfferPdf(body.rendered_text.trim());
+      } else if (tpl.raw_text?.trim()) {
+        const values = (body.field_values || body.dynamic_variables || {}) as Record<
+          string,
+          string
+        >;
+        const rendered = renderOfferTemplateText(tpl.raw_text, values);
+        pdfBuffer = generateTextOfferPdf(rendered);
       } else {
-        const values = body.field_values || body.dynamic_variables || {};
-        const filled = fillOfferDocx(docxBuffer, values);
-        pdfBuffer = await convertDocxToPdf(filled, { tenantId: tpl.account_id });
+        pdfBuffer = generateBrandedOfferPdf({
+          candidate_name: body.candidate_name || "Candidate",
+          position_title: body.position_title || "Software Engineer",
+          salary: body.salary || "1200000",
+          currency: body.currency || "INR",
+          start_date: body.start_date || new Date().toISOString().split("T")[0],
+          company_name: body.company_name || "ScalePods Technologies",
+          signatory_name: body.signatory_name || "Manish",
+          signatory_title: body.signatory_title || "Head of Talent Acquisition",
+          dynamic_variables: (body.field_values || body.dynamic_variables || {}) as Record<
+            string,
+            string
+          >,
+        });
       }
     } else if (body?.rendered_html?.trim()) {
       return new NextResponse(

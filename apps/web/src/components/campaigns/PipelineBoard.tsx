@@ -296,6 +296,16 @@ export function PipelineBoard({
     return map;
   }, [filteredCandidates, columns]);
 
+  const isCandidateDocsVerified = (cand: ViewCandidate): boolean => {
+    if (cand.documents_status === "verified") return true;
+    const docs = cand.requested_documents;
+    return Boolean(
+      Array.isArray(docs) &&
+        docs.length > 0 &&
+        docs.every((d) => (typeof d === "string" ? false : d.status === "verified")),
+    );
+  };
+
   // Action handlers
   const handleAdvance = async (cand: ViewCandidate) => {
     if (!cand.application_id) {
@@ -304,6 +314,23 @@ export function PipelineBoard({
     }
     if (isJobClosed) {
       showErrorToast("This job is closed. Reopen the job to take hiring actions.");
+      return;
+    }
+
+    const isDocStage =
+      cand.current_stage === "document_verification" ||
+      cand.current_stage === "Document Verification" ||
+      cand.status === "document_verification" ||
+      cand.status === "documents_requested" ||
+      cand.status === "documents_verified";
+
+    if (isDocStage && !isCandidateDocsVerified(cand)) {
+      const hasDocs = cand.requested_documents && cand.requested_documents.length > 0;
+      showErrorToast(
+        hasDocs
+          ? "Cannot advance candidate: Please click 'Check' on all required documents to verify them first."
+          : "Cannot advance candidate: Please request and verify required documents first.",
+      );
       return;
     }
 
@@ -1006,25 +1033,34 @@ export function PipelineBoard({
                               {cand.status !== "rejected" &&
                                 cand.status !== "on_hold" &&
                                 (isDocumentVerificationStage ? (
-                                  <Button
-                                    size="sm"
-                                    disabled={isBusy || isJobClosed}
-                                    onClick={() => handleAdvance(cand)}
-                                    className={cn(
-                                      "h-6 px-2.5 text-[10px] font-semibold gap-1 cursor-pointer shadow-2xs shrink-0 whitespace-nowrap",
-                                      cand.documents_status === "verified"
-                                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                        : "bg-primary text-primary-foreground hover:bg-primary/90",
-                                    )}
-                                    title="Advance candidate to Offers stage"
-                                  >
-                                    {isBusy ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <ArrowRight className="h-3 w-3" />
-                                    )}
-                                    Advance
-                                  </Button>
+                                  (() => {
+                                    const docsVerified = isCandidateDocsVerified(cand);
+                                    return (
+                                      <Button
+                                        size="sm"
+                                        disabled={isBusy || isJobClosed || !docsVerified}
+                                        onClick={() => handleAdvance(cand)}
+                                        className={cn(
+                                          "h-6 px-2.5 text-[10px] font-semibold gap-1 shadow-2xs shrink-0 whitespace-nowrap",
+                                          docsVerified
+                                            ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                                            : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
+                                        )}
+                                        title={
+                                          !docsVerified
+                                            ? "All required documents must be checked and verified before advancing to Offer stage"
+                                            : "Advance candidate to Offers stage"
+                                        }
+                                      >
+                                        {isBusy ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <ArrowRight className="h-3 w-3" />
+                                        )}
+                                        Advance
+                                      </Button>
+                                    );
+                                  })()
                                 ) : isOfferStage ? (
                                   !isOfferSent ? (
                                     <Button
@@ -1251,25 +1287,34 @@ export function PipelineBoard({
                                     ? "Docs"
                                     : "Request Docs"}
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  disabled={isBusy || isJobClosed}
-                                  onClick={() => handleAdvance(cand)}
-                                  className={cn(
-                                    "h-7 px-2.5 text-xs font-semibold gap-1 cursor-pointer",
-                                    cand.documents_status === "verified"
-                                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                      : "",
-                                  )}
-                                  title="Advance candidate to Offers stage"
-                                >
-                                  {isBusy ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <ArrowRight className="h-3.5 w-3.5" />
-                                  )}
-                                  Advance to Offer
-                                </Button>
+                                {(() => {
+                                  const docsVerified = isCandidateDocsVerified(cand);
+                                  return (
+                                    <Button
+                                      size="sm"
+                                      disabled={isBusy || isJobClosed || !docsVerified}
+                                      onClick={() => handleAdvance(cand)}
+                                      className={cn(
+                                        "h-7 px-2.5 text-xs font-semibold gap-1",
+                                        docsVerified
+                                          ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                                          : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
+                                      )}
+                                      title={
+                                        !docsVerified
+                                          ? "All required documents must be checked and verified before advancing to Offer stage"
+                                          : "Advance candidate to Offers stage"
+                                      }
+                                    >
+                                      {isBusy ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <ArrowRight className="h-3.5 w-3.5" />
+                                      )}
+                                      Advance to Offer
+                                    </Button>
+                                  );
+                                })()}
                               </div>
                             ) : isOfferStage ? (
                               !isOfferSent ? (

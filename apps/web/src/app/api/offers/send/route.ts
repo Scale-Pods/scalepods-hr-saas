@@ -217,7 +217,29 @@ export async function POST(req: NextRequest) {
               ? docxBuffer
               : fillOfferDocx(docxBuffer, resolvedFieldValues);
 
-            pdfBuffer = await convertDocxToPdf(filledBuffer, { tenantId: user.id });
+            try {
+              pdfBuffer = await convertDocxToPdf(filledBuffer, { tenantId: user.id });
+            } catch (convErr) {
+              console.warn(
+                "[api/offers/send] LibreOffice conversion unavailable, falling back to built-in engine:",
+                convErr,
+              );
+              if (renderedText) {
+                pdfBuffer = generateTextOfferPdf(renderedText);
+              } else {
+                pdfBuffer = generateBrandedOfferPdf({
+                  candidate_name: candidateName,
+                  position_title: positionTitle,
+                  salary,
+                  currency,
+                  start_date: startDate,
+                  company_name: companyName,
+                  signatory_name: signatoryName,
+                  signatory_title: signatoryTitle,
+                  dynamic_variables: dynamicVars,
+                });
+              }
+            }
 
             // Store filled docx and generated pdf in Supabase Storage for audit trail
             const timestamp = Date.now();
