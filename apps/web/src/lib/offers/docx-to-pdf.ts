@@ -174,7 +174,7 @@ export async function convertViaLocalLibreOffice(
 }
 
 async function convertViaGotenberg(docxBuffer: Buffer, timeoutMs: number): Promise<Buffer> {
-  const gotenbergUrl = (process.env.GOTENBERG_URL || "http://localhost:3000").replace(/\/+$/, "");
+  const gotenbergUrl = (process.env.GOTENBERG_URL || "http://localhost:3001").replace(/\/+$/, "");
   const endpoint = `${gotenbergUrl}/forms/libreoffice/convert`;
 
   const formData = new FormData();
@@ -214,7 +214,7 @@ async function convertViaGotenberg(docxBuffer: Buffer, timeoutMs: number): Promi
       );
     }
     throw new OfferPdfConversionError(
-      `Failed to reach Gotenberg at ${endpoint}: ${err instanceof Error ? err.message : String(err)}`,
+      `Failed to reach Gotenberg at ${endpoint}: ${err instanceof Error ? err.message : String(err)}. Please start Gotenberg (docker compose -f docker-compose.gotenberg.yml up -d), install LibreOffice on your system, or set PDF_CONVERTER=cloudconvert.`,
       502,
     );
   } finally {
