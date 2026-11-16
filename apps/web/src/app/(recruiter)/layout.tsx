@@ -1,6 +1,7 @@
 "use client";
 
 import Script from "next/script";
+import { ScalePodsDashboardChat } from "@/components/agent/ScalePodsDashboardChat";
 import { AppShell, type BillingStatus } from "@/components/shared/AppShell";
 import { OnboardingModal } from "@/components/shared/OnboardingModal";
 import { useAccount } from "@/features/account/hooks";
@@ -39,6 +40,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
           initialCompanyName={account?.company_name ?? ""}
           onComplete={refreshAccount}
         />
+        <ScalePodsDashboardChat />
       </AppShell>
     </>
   );
