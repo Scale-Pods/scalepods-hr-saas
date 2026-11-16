@@ -1,8 +1,9 @@
 "use client";
 
 import { type CampaignsRow, TierLimitError } from "@scalepods/core";
+import { X } from "lucide-react";
 import { useState } from "react";
-import { showErrorToast } from "@/components/shared/TierLimitToast";
+import { showErrorToast, showToast } from "@/components/shared/TierLimitToast";
 import { Button } from "@/components/ui/button";
 import { extractTextFromFile } from "@/lib/extract-text";
 import { normalizePhoneNumber, parseResumeContact } from "@/lib/parse-resume";
@@ -25,8 +26,10 @@ export function ResumeUploader({
   const [files, setFiles] = useState<DropFile[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  const patch = (i: number, p: Partial<DropFile>) =>
-    setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, ...p } : f)));
+  const patch = (file: File, p: Partial<DropFile>) =>
+    setFiles((prev) => prev.map((f) => (f.file === file ? { ...f, ...p } : f)));
+
+  const removeFile = (file: File) => setFiles((prev) => prev.filter((f) => f.file !== file));
 
   /** Read a resume, prefill name/email/phone, and leave them editable. */
   const extractContact = async (file: File) => {
@@ -77,10 +80,11 @@ export function ResumeUploader({
     }
 
     setUploading(true);
+    let successCount = 0;
     try {
       await Promise.all(
-        files.map(async (row, i) => {
-          patch(i, { status: "uploading", note: "Uploading…" });
+        files.map(async (row) => {
+          patch(row.file, { status: "uploading", note: "Uploading…" });
           try {
             const extracted = await extractTextFromFile(row.file);
             if ("error" in extracted || !extracted.text.trim()) {
@@ -149,13 +153,28 @@ export function ResumeUploader({
               throw new Error(errJson.error || errJson.message || "Failed to create application");
             }
 
-            patch(i, { status: "done", note: "Resume scored; ready for recruiter review" });
+            successCount++;
+            patch(row.file, { status: "done", note: "Added to pipeline" });
+            // Candidate is added to the Kanban board
+            onComplete();
+            // Automatically remove the candidate from upload resumes card once added
+            await new Promise((resolve) => setTimeout(resolve, 600));
+            removeFile(row.file);
           } catch (err) {
-            patch(i, { status: "error", note: err instanceof Error ? err.message : "Failed" });
+            patch(row.file, {
+              status: "error",
+              note: err instanceof Error ? err.message : "Failed",
+            });
           }
         }),
       );
-      onComplete();
+
+      if (successCount > 0) {
+        showToast(
+          `${successCount} candidate${successCount === 1 ? "" : "s"} added to hiring pipeline`,
+          { kind: "success" },
+        );
+      }
     } finally {
       setUploading(false);
     }
@@ -198,7 +217,7 @@ export function ResumeUploader({
               placeholder="Name"
               value={f.name ?? ""}
               disabled={f.status !== "idle" && f.status !== "error"}
-              onChange={(e) => patch(i, { name: e.target.value })}
+              onChange={(e) => patch(f.file, { name: e.target.value })}
             />
             <input
               className="w-full sm:w-auto sm:flex-1 rounded-lg border border-input bg-card px-2.5 py-1 text-xs"
@@ -206,17 +225,27 @@ export function ResumeUploader({
               type="email"
               value={f.email ?? ""}
               disabled={f.status !== "idle" && f.status !== "error"}
-              onChange={(e) => patch(i, { email: e.target.value })}
+              onChange={(e) => patch(f.file, { email: e.target.value })}
             />
             <input
               className="w-full sm:w-auto sm:flex-1 rounded-lg border border-input bg-card px-2.5 py-1 text-xs"
               placeholder="Phone"
               value={f.phone ?? ""}
               disabled={f.status !== "idle" && f.status !== "error"}
-              onChange={(e) => patch(i, { phone: e.target.value })}
+              onChange={(e) => patch(f.file, { phone: e.target.value })}
             />
-            <div className="w-full sm:w-auto flex justify-end">
+            <div className="w-full sm:w-auto flex items-center justify-end gap-2">
               <StatusPill f={f} />
+              {f.status !== "uploading" && (
+                <button
+                  type="button"
+                  onClick={() => removeFile(f.file)}
+                  aria-label={`Remove ${f.file.name}`}
+                  className="rounded p-1 text-label-secondary hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
         ))}
