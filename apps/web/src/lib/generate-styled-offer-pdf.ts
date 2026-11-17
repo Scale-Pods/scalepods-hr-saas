@@ -150,7 +150,7 @@ function parseOfferText(rawText: string): RenderItem[] {
         type: "metadata_card",
         leftLines: [line],
         rightLines: [lines[i + 1].trim()],
-        height: 26,
+        height: 20,
       });
       i += 2;
       continue;
@@ -166,7 +166,7 @@ function parseOfferText(rawText: string): RenderItem[] {
         type: "metadata_card",
         leftLines: [line],
         rightLines: [lines[i + 1].trim()],
-        height: 26,
+        height: 20,
       });
       i += 2;
       continue;
@@ -186,7 +186,7 @@ function parseOfferText(rawText: string): RenderItem[] {
           type: "metadata_card",
           leftLines: [cells[0]],
           rightLines: [cells[1]],
-          height: 30,
+          height: 20,
         });
         i++;
         continue;
@@ -524,56 +524,27 @@ function renderPageContent(
         ? PAGE_H - 85
         : PAGE_H - 85
       : hasBgImg
-        ? PAGE_H - 75
+        ? PAGE_H - 65
         : PAGE_H - MARGIN_T;
 
   for (const item of pageItems) {
     if (item.type === "title") {
       cursorY -= 8;
-      drawText(item.text, MARGIN_L, cursorY, 13.5, "/F2", COLOR_NAVY);
-
-      // Blue accent line under title
-      const titleWidth = approxTextWidth(item.text, 13.5, true);
-      setFill(COLOR_BRAND_BLUE);
-      drawRect(MARGIN_L, cursorY - 4, Math.min(titleWidth, USABLE_W), 2, true, false);
-      cursorY -= 15;
+      drawText(item.text, MARGIN_L, cursorY, 12.5, "/F2", COLOR_NAVY);
+      cursorY -= 16;
     } else if (item.type === "metadata_card") {
-      const cardH = item.height;
-      const cardY = cursorY - cardH;
-
-      // Card Background & Border
-      setFill(COLOR_LIGHT_BG);
-      setStroke(COLOR_CARD_BORDER);
-      setLineWidth(0.75);
-      drawRect(MARGIN_L, cardY, USABLE_W, cardH, true, true);
-
-      // Left column
+      cursorY -= 4;
+      // Clean borderless metadata row matching Word template
       if (item.leftLines.length > 0) {
-        drawText(
-          item.leftLines[0],
-          MARGIN_L + 12,
-          cardY + cardH / 2 - 3,
-          9.5,
-          "/F2",
-          [0.1, 0.15, 0.25],
-        );
+        drawText(item.leftLines[0], MARGIN_L, cursorY, 9.5, "/F2", COLOR_NAVY);
       }
-      // Right column
       if (item.rightLines.length > 0) {
-        drawText(
-          item.rightLines[0],
-          MARGIN_L + USABLE_W / 2 + 10,
-          cardY + cardH / 2 - 3,
-          9.5,
-          "/F2",
-          [0.1, 0.15, 0.25],
-        );
+        drawText(item.rightLines[0], MARGIN_L + USABLE_W / 2 + 10, cursorY, 9.5, "/F2", COLOR_NAVY);
       }
-
-      cursorY = cardY - 9;
+      cursorY -= 16;
     } else if (item.type === "heading") {
-      cursorY -= 7;
-      drawText(item.text, MARGIN_L, cursorY, 11, "/F2", COLOR_BRAND_BLUE);
+      cursorY -= 8;
+      drawText(item.text, MARGIN_L, cursorY, 10.5, "/F2", COLOR_NAVY);
       cursorY -= 14;
     } else if (item.type === "paragraph") {
       for (const line of item.lines) {
@@ -582,9 +553,20 @@ function renderPageContent(
       }
       cursorY -= 3;
     } else if (item.type === "bullet") {
-      // Draw a real vector dot (zero font encoding dependency, NO '?')
-      setFill(COLOR_BRAND_BLUE);
-      drawRect(MARGIN_L + 4, cursorY + 2.5, 3.5, 3.5, true, false);
+      // Draw a real round vector bullet dot in dark color (zero font encoding dependency)
+      setFill(COLOR_BODY_TEXT);
+      const bx = MARGIN_L + 6;
+      const by = cursorY + 3.5;
+      const br = 1.75;
+      const bk = 0.55228 * br;
+      ops.push(
+        `${bx.toFixed(2)} ${(by + br).toFixed(2)} m ` +
+          `${(bx + bk).toFixed(2)} ${(by + br).toFixed(2)} ${(bx + br).toFixed(2)} ${(by + bk).toFixed(2)} ${(bx + br).toFixed(2)} ${by.toFixed(2)} c ` +
+          `${(bx + br).toFixed(2)} ${(by - bk).toFixed(2)} ${(bx + bk).toFixed(2)} ${(by - br).toFixed(2)} ${bx.toFixed(2)} ${(by - br).toFixed(2)} c ` +
+          `${(bx - bk).toFixed(2)} ${(by - br).toFixed(2)} ${(bx - br).toFixed(2)} ${(by - bk).toFixed(2)} ${(bx - br).toFixed(2)} ${by.toFixed(2)} c ` +
+          `${(bx - br).toFixed(2)} ${(by + bk).toFixed(2)} ${(bx - br).toFixed(2)} ${(by + br).toFixed(2)} ${bx.toFixed(2)} ${(by + br).toFixed(2)} c ` +
+          `f`,
+      );
 
       for (let idx = 0; idx < item.textLines.length; idx++) {
         drawText(item.textLines[idx], MARGIN_L + 14, cursorY, 9.5, "/F1", COLOR_BODY_TEXT);
@@ -670,9 +652,6 @@ function renderPageContent(
 
       // 2. Candidate Acknowledgement
       drawText("ACKNOWLEDGEMENT", MARGIN_L, cursorY, 11, "/F2", COLOR_NAVY);
-      const ackWidth = approxTextWidth("ACKNOWLEDGEMENT", 11, true);
-      setFill(COLOR_BRAND_BLUE);
-      drawRect(MARGIN_L, cursorY - 3, ackWidth, 1.5, true, false);
       cursorY -= 15;
 
       const acceptText = `I, ${item.candidateName}, accept the above terms and agree to work with ${item.companySigner.company} as ${item.role} under the conditions stated herein.`;
@@ -686,13 +665,21 @@ function renderPageContent(
       // 3. Three-column Signature Table matching Word template: Signature | Date | Place
       const sigRowH = 24;
       const sigTableY = cursorY - sigRowH;
-      setFill(COLOR_LIGHT_BG);
-      setStroke(COLOR_CARD_BORDER);
-      setLineWidth(0.75);
-      drawRect(MARGIN_L, sigTableY, USABLE_W, sigRowH, true, true);
+      if (!hasBgImg) {
+        setFill(COLOR_LIGHT_BG);
+        setStroke(COLOR_CARD_BORDER);
+        setLineWidth(0.75);
+        drawRect(MARGIN_L, sigTableY, USABLE_W, sigRowH, true, true);
+      } else {
+        setStroke(COLOR_CARD_BORDER);
+        setLineWidth(0.5);
+        drawRect(MARGIN_L, sigTableY, USABLE_W, sigRowH, false, true);
+      }
 
       const col3W = USABLE_W / 3;
       // Column dividers
+      setStroke(COLOR_CARD_BORDER);
+      setLineWidth(0.5);
       drawLine(MARGIN_L + col3W, sigTableY, MARGIN_L + col3W, sigTableY + sigRowH);
       drawLine(MARGIN_L + 2 * col3W, sigTableY, MARGIN_L + 2 * col3W, sigTableY + sigRowH);
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { numberToWords } from "./generate-styled-offer-pdf";
-import { generateStyledOfferPdf, generateTextOfferPdf } from "./generate-text-offer-pdf";
+import {
+  generateStyledOfferPdf,
+  getDefaultLetterheadBuffer,
+  numberToWords,
+} from "./generate-styled-offer-pdf";
+import { generateTextOfferPdf } from "./generate-text-offer-pdf";
 
 describe("generateStyledOfferPdf", () => {
   it("generates a valid single-page branded PDF buffer from rendered offer text", () => {
@@ -64,6 +68,22 @@ I, Manish Gandla, accept this offer
     expect(numberToWords(10000)).toBe("Ten Thousand Rupees Only");
     expect(numberToWords(192000)).toBe("One Lakh Ninety Two Thousand Rupees Only");
     expect(numberToWords(1800000)).toBe("Eighteen Lakh Rupees Only");
+  });
+
+  it("generates styled PDF with embedded letterhead background image", () => {
+    const letterhead = getDefaultLetterheadBuffer();
+    expect(letterhead).toBeInstanceOf(Buffer);
+    expect(letterhead.length).toBeGreaterThan(1000);
+
+    const buf = generateStyledOfferPdf(
+      "| Ref: SP/2026/01 | Date: Nov 17, 2026 |\n| Dear Manish, | Starting Date: Nov 20, 2026 |\n\nINTERNSHIP APPOINTMENT LETTER\n\n• Term 1: Confidentiality agreement.",
+      { backgroundImageBuffer: letterhead },
+    );
+    const ascii = buf.toString("latin1");
+    expect(ascii).toContain("/BgImg");
+    expect(ascii).toContain("/XObject");
+    expect(ascii).toContain("Ref: SP/2026/01");
+    expect(ascii).toContain("INTERNSHIP APPOINTMENT LETTER");
   });
 
   it("paginates long multi-line letters across multiple pages with page numbers", () => {
