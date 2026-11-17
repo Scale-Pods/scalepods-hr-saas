@@ -214,6 +214,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       let filledBuffer: Buffer | null = null;
+      let textToRender: string | null = null;
       if (tplRow?.storage_path) {
         const { data: fileBlob } = await adminSupabase.storage
           .from("offer-templates")

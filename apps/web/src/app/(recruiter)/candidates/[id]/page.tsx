@@ -938,19 +938,9 @@ export default function CandidateProfilePage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={decisionBusy || (isRoundStage && !isCurrentRoundCompleted)}
+                    disabled={decisionBusy}
                     onClick={handleAdvance}
-                    className={cn(
-                      "rounded-xl text-xs gap-1.5",
-                      isRoundStage && !isCurrentRoundCompleted
-                        ? "opacity-40 cursor-not-allowed border-border text-muted-foreground"
-                        : "border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 cursor-pointer",
-                    )}
-                    title={
-                      isRoundStage && !isCurrentRoundCompleted
-                        ? "Candidate cannot be advanced without completing the round"
-                        : "Advance candidate"
-                    }
+                    className="rounded-xl text-xs gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 cursor-pointer"
                   >
                     <CheckCircle className="h-3.5 w-3.5 text-emerald-500" /> Advance
                   </Button>

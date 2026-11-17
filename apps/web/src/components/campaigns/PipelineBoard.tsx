@@ -1120,39 +1120,19 @@ export function PipelineBoard({
                                     </Button>
                                   )
                                 ) : (
-                                  (() => {
-                                    const isRound =
-                                      cand.current_round_number != null ||
-                                      Boolean(cand.round_number) ||
-                                      (cand.current_stage || "").toLowerCase().includes("round");
-                                    const roundCompleted =
-                                      !isRound || isCandidateRoundCompleted(cand);
-                                    return (
-                                      <Button
-                                        size="sm"
-                                        disabled={isBusy || isJobClosed || !roundCompleted}
-                                        onClick={() => handleAdvance(cand)}
-                                        className={cn(
-                                          "h-6 px-2.5 text-[10px] font-semibold gap-1 shrink-0 whitespace-nowrap",
-                                          roundCompleted
-                                            ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
-                                            : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
-                                        )}
-                                        title={
-                                          !roundCompleted
-                                            ? "Candidate cannot be advanced without completing the round"
-                                            : "Advance candidate to next stage"
-                                        }
-                                      >
-                                        {isBusy ? (
-                                          <Loader2 className="h-3 w-3 animate-spin" />
-                                        ) : (
-                                          <ArrowRight className="h-3 w-3" />
-                                        )}
-                                        Advance
-                                      </Button>
-                                    );
-                                  })()
+                                  <Button
+                                    size="sm"
+                                    disabled={isBusy || isJobClosed}
+                                    onClick={() => handleAdvance(cand)}
+                                    className="h-6 px-2.5 text-[10px] font-semibold gap-1 bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 whitespace-nowrap cursor-pointer"
+                                  >
+                                    {isBusy ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <ArrowRight className="h-3 w-3" />
+                                    )}
+                                    Advance
+                                  </Button>
                                 ))}
                             </div>
                           </div>
@@ -1395,38 +1375,19 @@ export function PipelineBoard({
                                 </Button>
                               )
                             ) : (
-                              (() => {
-                                const isRound =
-                                  cand.current_round_number != null ||
-                                  Boolean(cand.round_number) ||
-                                  (cand.current_stage || "").toLowerCase().includes("round");
-                                const roundCompleted = !isRound || isCandidateRoundCompleted(cand);
-                                return (
-                                  <Button
-                                    size="sm"
-                                    disabled={isBusy || isJobClosed || !roundCompleted}
-                                    onClick={() => handleAdvance(cand)}
-                                    className={cn(
-                                      "h-7 px-2.5 text-xs font-semibold gap-1",
-                                      roundCompleted
-                                        ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
-                                        : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
-                                    )}
-                                    title={
-                                      !roundCompleted
-                                        ? "Candidate cannot be advanced without completing the round"
-                                        : "Advance candidate to next stage"
-                                    }
-                                  >
-                                    {isBusy ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <ArrowRight className="h-3.5 w-3.5" />
-                                    )}
-                                    Advance
-                                  </Button>
-                                );
-                              })()
+                              <Button
+                                size="sm"
+                                disabled={isBusy || isJobClosed}
+                                onClick={() => handleAdvance(cand)}
+                                className="h-7 px-2.5 text-xs font-semibold gap-1 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                              >
+                                {isBusy ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <ArrowRight className="h-3.5 w-3.5" />
+                                )}
+                                Advance
+                              </Button>
                             ))}
                         </div>
                       </TableCell>
