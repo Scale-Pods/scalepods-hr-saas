@@ -6,6 +6,7 @@ import {
   formatOfferVarLabel,
   renderOfferTemplateText,
 } from "./offer-template-utils";
+import { pruneDocxXmlConditions } from "./offers/prune-docx-xml";
 
 describe("offer-template-utils", () => {
   it("extracts all and custom variables while keeping non-form fields like REF_NO and ISSUE_DATE", () => {
@@ -161,5 +162,68 @@ TERMS OF ENGAGEMENT`;
     expect(fulltime).not.toContain("3. Internship Status");
     expect(fulltime).toContain("30 days prior written notice");
     expect(fulltime).not.toContain("15 days prior written notice");
+  });
+
+  it("prunes DOCX OpenXML conditions and elements for intern vs fulltime without external API", () => {
+    const sampleXml = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>
+  <w:p><w:r><w:t>Ref: {{REF_NO}}</w:t></w:r></w:p>
+  <w:p><w:r><w:t>Show this section only when: LETTER_TYPE = fulltime → show 'APPOINTMENT LETTER'</w:t></w:r></w:p>
+  <w:p><w:r><w:t>APPOINTMENT LETTER</w:t></w:r></w:p>
+  <w:p><w:r><w:t>Show this section only when: LETTER_TYPE = intern → show 'INTERNSHIP APPOINTMENT LETTER'</w:t></w:r></w:p>
+  <w:p><w:r><w:t>INTERNSHIP APPOINTMENT LETTER</w:t></w:r></w:p>
+  <w:p><w:r><w:t>Show this section only when: LETTER_TYPE = fulltime</w:t></w:r></w:p>
+  <w:p><w:r><w:t>We are pleased to offer you the fulltime position.</w:t></w:r></w:p>
+  <w:p><w:r><w:t>Show this section only when: LETTER_TYPE = intern</w:t></w:r></w:p>
+  <w:p><w:r><w:t>We are pleased to offer you an internship position.</w:t></w:r></w:p>
+  <w:p><w:r><w:t>TERMS OF ENGAGEMENT</w:t></w:r></w:p>
+  <w:p><w:r><w:t>Show this section only when: LETTER_TYPE = fulltime</w:t></w:r></w:p>
+  <w:p><w:r><w:t>2. Compensation &amp; Benefits</w:t></w:r></w:p>
+  <w:tbl><w:tr><w:tc><w:p><w:t>Basic Salary</w:t></w:p></w:tc><w:tc><w:p><w:t>{{BASIC_SALARY}}</w:t></w:p></w:tc></w:tr></w:tbl>
+  <w:p><w:r><w:t>• Gross Annual CTC: INR {{GROSS_ANNUAL}}</w:t></w:r></w:p>
+  <w:p><w:r><w:t>Show this section only when: LETTER_TYPE = intern</w:t></w:r></w:p>
+  <w:p><w:r><w:t>2. Compensation</w:t></w:r></w:p>
+  <w:p><w:r><w:t>• Monthly Stipend: INR {{STIPEND_AMOUNT}}</w:t></w:r></w:p>
+  <w:p><w:r><w:t>7. Termination</w:t></w:r></w:p>
+  <w:p><w:r><w:t>Either party may terminate this engagement with 30 days notice.</w:t></w:r></w:p>
+  <w:p><w:r><w:t>Either party may terminate this internship with 15 days notice.</w:t></w:r></w:p>
+  <w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>
+</w:body>
+</w:document>`;
+
+    const internPruned = pruneDocxXmlConditions(sampleXml, {
+      ROLE: "Sales and Marketing intern",
+      LETTER_TYPE: "intern",
+      STIPEND_AMOUNT: "8000",
+    });
+
+    expect(internPruned).not.toContain("<w:t>APPOINTMENT LETTER</w:t>");
+    expect(internPruned).toContain("<w:t>INTERNSHIP APPOINTMENT LETTER</w:t>");
+    expect(internPruned).not.toContain("We are pleased to offer you the fulltime position.");
+    expect(internPruned).toContain("We are pleased to offer you an internship position.");
+    expect(internPruned).not.toContain("2. Compensation &amp; Benefits");
+    expect(internPruned).not.toContain("<w:tbl");
+    expect(internPruned).toContain("2. Compensation");
+    expect(internPruned).toContain("Monthly Stipend");
+    expect(internPruned).not.toContain("30 days notice");
+    expect(internPruned).toContain("15 days notice");
+    expect(internPruned).not.toContain("Show this section only when");
+
+    const fulltimePruned = pruneDocxXmlConditions(sampleXml, {
+      ROLE: "Software Engineer",
+      LETTER_TYPE: "fulltime",
+      BASIC_SALARY: "50000",
+    });
+
+    expect(fulltimePruned).toContain("APPOINTMENT LETTER");
+    expect(fulltimePruned).not.toContain("INTERNSHIP APPOINTMENT LETTER");
+    expect(fulltimePruned).toContain("We are pleased to offer you the fulltime position.");
+    expect(fulltimePruned).not.toContain("We are pleased to offer you an internship position.");
+    expect(fulltimePruned).toContain("2. Compensation &amp; Benefits");
+    expect(fulltimePruned).toContain("<w:tbl");
+    expect(fulltimePruned).not.toContain("Monthly Stipend");
+    expect(fulltimePruned).toContain("30 days notice");
+    expect(fulltimePruned).not.toContain("15 days notice");
+    expect(fulltimePruned).not.toContain("Show this section only when");
   });
 });

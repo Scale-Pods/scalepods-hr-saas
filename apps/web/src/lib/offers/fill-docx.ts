@@ -1,5 +1,12 @@
 import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
+import { pruneDocxXmlConditions } from "./prune-docx-xml";
+
+export {
+  extractTextFromDocxXml,
+  pruneDocxXmlConditions,
+  splitDocxBodyElements,
+} from "./prune-docx-xml";
 
 export class OfferDocxError extends Error {
   constructor(
@@ -77,6 +84,18 @@ export function fillOfferDocx(templateBuffer: Buffer, data: Record<string, unkno
     );
   }
 
+  // 1. Pre-process word/document.xml to prune conditional blocks (e.g. LETTER_TYPE = fulltime vs intern)
+  const docFile = zip.file("word/document.xml");
+  if (docFile) {
+    try {
+      const rawXml = docFile.asText();
+      const prunedXml = pruneDocxXmlConditions(rawXml, data);
+      zip.file("word/document.xml", prunedXml);
+    } catch (pruneErr) {
+      console.warn("[fillOfferDocx] Error pruning conditional XML in word/document.xml:", pruneErr);
+    }
+  }
+
   // Create a case-tolerant lookup so {{candidate_name}}, {{CANDIDATE_NAME}}, etc. resolve gracefully
   const normalizedData: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
@@ -84,6 +103,27 @@ export function fillOfferDocx(templateBuffer: Buffer, data: Record<string, unkno
     normalizedData[key.toLowerCase()] = value;
     normalizedData[key.toUpperCase()] = value;
   }
+
+  // Native boolean flags for Docxtemplater conditions {#is_intern}...{/is_intern}
+  const roleLower = String(
+    data.POSITION_TITLE || data.ROLE || data.role || data.designation || data.position_title || "",
+  ).toLowerCase();
+  const letterType = String(data.LETTER_TYPE || data.letter_type || "").toLowerCase();
+  const isIntern =
+    letterType === "intern" ||
+    roleLower.includes("intern") ||
+    Boolean(
+      data.STIPEND_AMOUNT &&
+        String(data.STIPEND_AMOUNT).trim() !== "" &&
+        String(data.STIPEND_AMOUNT).trim() !== "0",
+    );
+
+  normalizedData.is_fulltime = !isIntern;
+  normalizedData.is_intern = isIntern;
+  normalizedData.is_internship = isIntern;
+  normalizedData.has_incentive = Boolean(
+    data.INCENTIVE_NOTE && String(data.INCENTIVE_NOTE).trim() !== "",
+  );
 
   let doc: Docxtemplater;
   try {

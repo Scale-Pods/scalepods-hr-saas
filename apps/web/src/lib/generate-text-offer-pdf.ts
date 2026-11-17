@@ -58,9 +58,67 @@ type DisplayLine =
   | { kind: "text"; text: string; size: number; leading: number }
   | { kind: "blank"; leading: number };
 
+/**
+ * Format markdown table blocks (| col | col |) into aligned plain-text tables.
+ */
+function formatMarkdownTablesInText(text: string): string {
+  const lines = text.split("\n");
+  const result: string[] = [];
+  let tableBlock: string[] = [];
+
+  const flushTable = () => {
+    if (tableBlock.length === 0) return;
+    const parsed = tableBlock.map((line) =>
+      line
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1),
+    );
+
+    const colWidths: number[] = [];
+    for (const row of parsed) {
+      if (row.every((cell) => /^[-:]+$/.test(cell))) continue;
+      row.forEach((cell, i) => {
+        colWidths[i] = Math.max(colWidths[i] || 0, cell.length);
+      });
+    }
+
+    for (const row of parsed) {
+      if (row.every((cell) => /^[-:]+$/.test(cell))) continue;
+      const formatted = row.map((cell, i) => cell.padEnd(colWidths[i] || 0, " ")).join("   ");
+      result.push(formatted);
+    }
+    tableBlock = [];
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      tableBlock.push(line);
+    } else {
+      flushTable();
+      result.push(line);
+    }
+  }
+  flushTable();
+  return result.join("\n");
+}
+
+function sanitizeTextForPdf(text: string): string {
+  return text
+    .replace(/\u2022/g, "* ")
+    .replace(/â€¢/g, "* ")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/→/g, "->");
+}
+
 function buildDisplayLines(rawText: string): DisplayLine[] {
+  const sanitized = sanitizeTextForPdf(rawText);
+  const formattedTables = formatMarkdownTablesInText(sanitized);
   const output: DisplayLine[] = [];
-  for (const raw of rawText.split("\n")) {
+  for (const raw of formattedTables.split("\n")) {
     if (!raw.trim()) {
       output.push({ kind: "blank", leading: BODY_LEADING });
       continue;
