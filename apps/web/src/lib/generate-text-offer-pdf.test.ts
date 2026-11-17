@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { numberToWords } from "./generate-styled-offer-pdf";
 import { generateStyledOfferPdf, generateTextOfferPdf } from "./generate-text-offer-pdf";
 
 describe("generateStyledOfferPdf", () => {
@@ -27,6 +28,42 @@ describe("generateStyledOfferPdf", () => {
     expect(ascii).toContain("Component");
     expect(ascii).toContain("Basic Salary");
     expect(ascii).toContain("Total CTC");
+  });
+
+  it("does not render '?' for bullets, dashes, or footers", () => {
+    const sample = `INTERNSHIP APPOINTMENT LETTER
+TERMS OF ENGAGEMENT
+1. Role & Scope
+• Designation: Software Engineer - Platform
+• Working Days: Mon - Fri
+Monthly Stipend: INR 5000 /- (0)
+
+For ScalePods
+Manish
+Talent Acquisition Lead
+Signature: ______________________     Date: _______________
+
+ACKNOWLEDGEMENT
+I, Manish Gandla, accept this offer
+| Signature: __________________ | Date: __________________ | Place: __________________ |`;
+
+    const buf = generateStyledOfferPdf(sample);
+    const ascii = buf.toString("latin1");
+
+    // Must not contain any "?" representing glitched characters
+    expect(ascii).not.toContain("? Designation");
+    expect(ascii).not.toContain("? Working Days");
+    expect(ascii).not.toContain("Confidential ? ScalePods");
+    expect(ascii).toContain("Five Thousand Rupees Only"); // Auto-fixed (0)!
+    expect(ascii).toContain("Signature: __________________");
+    expect(ascii).toContain("Place: __________________");
+  });
+
+  it("converts numbers to Indian words accurately", () => {
+    expect(numberToWords(5000)).toBe("Five Thousand Rupees Only");
+    expect(numberToWords(10000)).toBe("Ten Thousand Rupees Only");
+    expect(numberToWords(192000)).toBe("One Lakh Ninety Two Thousand Rupees Only");
+    expect(numberToWords(1800000)).toBe("Eighteen Lakh Rupees Only");
   });
 
   it("paginates long multi-line letters across multiple pages with page numbers", () => {

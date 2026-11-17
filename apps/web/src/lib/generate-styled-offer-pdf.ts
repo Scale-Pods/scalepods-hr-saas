@@ -2,12 +2,12 @@
  * High-Fidelity Branded Offer Letter PDF Generator.
  *
  * Generates corporate, publication-grade PDFs matching the original Word template design:
- * - Branded top header banner with "ScalePods CONFIDENTIAL" badge
+ * - Clean corporate white-background header with "ScalePods" branding & accent line
  * - Two-column metadata card (Ref No, Issue Date, Candidate Name, Starting Date)
- * - Corporate blue section headings (#1e3a8a)
- * - Real vector-drawn Compensation Structure table (dark blue header, grid borders, zebra striping)
- * - Properly indented bullet points with hanging indent
- * - Two-column Signatory & Candidate Acknowledgement acceptance blocks
+ * - Corporate blue section headings (#1e3a8a) & numbered legal headings
+ * - Real vector-drawn Compensation Structure table (for fulltime) & stipend lines (for intern)
+ * - Real vector-drawn bullet points (zero encoding glitches, NO '?' characters)
+ * - Exact stacked Signatory & Candidate Acceptance blocks matching the Word template
  * - Running headers and footers with dynamic "Page X of Y" numbering on all pages
  *
  * 100% Native TypeScript / Node.js — ZERO external APIs, ZERO Gotenberg, ZERO cloud services.
@@ -17,12 +17,12 @@ const PAGE_W = 595.28; // A4 width (points)
 const PAGE_H = 841.89; // A4 height (points)
 const MARGIN_L = 50;
 const MARGIN_R = 50;
-const MARGIN_T = 62;
-const MARGIN_B = 54;
+const MARGIN_T = 54;
+const MARGIN_B = 50;
 const USABLE_W = PAGE_W - MARGIN_L - MARGIN_R; // ~495.28 pt
 
 // Colors (RGB components 0..1)
-const COLOR_NAVY_BANNER = [0.059, 0.09, 0.165]; // #0f172a
+const COLOR_NAVY = [0.059, 0.09, 0.165]; // #0f172a
 const COLOR_BRAND_BLUE = [0.118, 0.227, 0.541]; // #1e3a8a
 const COLOR_ACCENT_BLUE = [0.145, 0.388, 0.922]; // #2563eb
 const COLOR_BODY_TEXT = [0.118, 0.161, 0.231]; // #1e293b
@@ -32,23 +32,125 @@ const COLOR_CARD_BORDER = [0.796, 0.835, 0.882]; // #cbd5e1
 const COLOR_GRID_BORDER = [0.886, 0.91, 0.941]; // #e2e8f0
 const COLOR_WHITE = [1, 1, 1];
 
+export function numberToWords(num: number | string): string {
+  const n = parseInt(String(num).replace(/[^0-9]/g, ""), 10);
+  if (Number.isNaN(n) || n === 0) return "Zero Rupees Only";
+
+  const units = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+  const tens = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
+
+  function convertBelowThousand(val: number): string {
+    let str = "";
+    if (val >= 100) {
+      str += `${units[Math.floor(val / 100)]} Hundred `;
+      val %= 100;
+    }
+    if (val >= 20) {
+      str += `${tens[Math.floor(val / 10)]} `;
+      val %= 10;
+    }
+    if (val > 0) {
+      str += `${units[val]} `;
+    }
+    return str.trim();
+  }
+
+  let remaining = n;
+  let result = "";
+
+  const crore = Math.floor(remaining / 10000000);
+  remaining %= 10000000;
+  if (crore > 0) {
+    result += `${convertBelowThousand(crore)} Crore `;
+  }
+
+  const lakh = Math.floor(remaining / 100000);
+  remaining %= 100000;
+  if (lakh > 0) {
+    result += `${convertBelowThousand(lakh)} Lakh `;
+  }
+
+  const thousand = Math.floor(remaining / 1000);
+  remaining %= 1000;
+  if (thousand > 0) {
+    result += `${convertBelowThousand(thousand)} Thousand `;
+  }
+
+  if (remaining > 0) {
+    result += `${convertBelowThousand(remaining)} `;
+  }
+
+  return `${result.trim()} Rupees Only`.replace(/\s+/g, " ");
+}
+
+/**
+ * Escape text for PDF literal strings (...), replacing Unicode characters
+ * with standard ASCII equivalents so NO question marks '?' appear.
+ */
 function esc(s: string): string {
   return String(s || "")
-    .replace(/[^\x20-\x7E\xA0-\xFF]/g, "?")
+    .replace(/[\u2013\u2014\u2015\u2500\u2012]/g, "-")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/\u2022/g, "")
+    .replace(/\u2026/g, "...")
+    .replace(/\u20B9/g, "INR ")
+    .replace(/[^\x20-\x7E\xA0-\xFF]/g, " ")
     .replace(/\\/g, "\\\\")
     .replace(/\(/g, "\\(")
     .replace(/\)/g, "\\)");
 }
 
 function sanitizeText(text: string): string {
-  return text
-    .replace(/\u2022/g, "•")
+  let cleaned = text
     .replace(/â€¢/g, "•")
+    .replace(/\u2022/g, "•")
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/[\u2013\u2014\u2015\u2500]/g, "-")
     .replace(/→/g, "->")
+    .replace(/\u20B9/g, "INR ")
     .replace(/\r\n/g, "\n");
+
+  // Fix "(0)" in stipend or CTC if it was unpopulated: e.g. "INR 5000 /- (0)" -> "INR 5000 /- (Five Thousand Rupees Only)"
+  cleaned = cleaned.replace(/INR\s*(\d[\d,]*)\s*\/?-\s*\((?:0|\s*)\)/gi, (_, amt: string) => {
+    const words = numberToWords(amt);
+    return `INR ${amt} /- (${words})`;
+  });
+
+  return cleaned;
 }
 
 function approxTextWidth(text: string, size: number, isBold = false): number {
@@ -123,7 +225,6 @@ function parseOfferText(rawText: string): RenderItem[] {
         .map((c) => c.trim())
         .filter((c) => c.length > 0);
 
-      // Check if this is the start of a multi-row table or a 2-column metadata card
       const isNextLineTable = i + 1 < n && lines[i + 1].trim().startsWith("|");
 
       if (cells.length === 2 && !isNextLineTable) {
@@ -131,7 +232,7 @@ function parseOfferText(rawText: string): RenderItem[] {
           type: "metadata_card",
           leftLines: [cells[0]],
           rightLines: [cells[1]],
-          height: 32,
+          height: 30,
         });
         i++;
         continue;
@@ -152,7 +253,6 @@ function parseOfferText(rawText: string): RenderItem[] {
             .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1),
         );
 
-        // Filter out markdown divider rows (| --- | --- |)
         const validRows = parsedRows.filter((r) => !r.every((c) => /^[-:]+$/.test(c)));
 
         if (validRows.length >= 2) {
@@ -160,7 +260,6 @@ function parseOfferText(rawText: string): RenderItem[] {
           const dataRows = validRows.slice(1);
           const colCount = Math.max(headers.length, ...dataRows.map((r) => r.length));
 
-          // Calculate column widths
           let colWidths: number[] = [];
           if (colCount === 4 && headers[0].includes("#")) {
             // Standard Compensation Table (# | Component | Monthly | Annual)
@@ -197,7 +296,7 @@ function parseOfferText(rawText: string): RenderItem[] {
       items.push({
         type: "title",
         text: line,
-        height: 32,
+        height: 30,
       });
       i++;
       continue;
@@ -216,7 +315,7 @@ function parseOfferText(rawText: string): RenderItem[] {
       items.push({
         type: "heading",
         text: line,
-        height: 24,
+        height: 22,
       });
       i++;
       continue;
@@ -224,7 +323,6 @@ function parseOfferText(rawText: string): RenderItem[] {
 
     // 4. Signatory section detection
     if (line.startsWith("For ") || line.includes("ACKNOWLEDGEMENT")) {
-      // Gather lines for signature block
       const sigLines: string[] = [line];
       i++;
       while (i < n && !lines[i].trim().startsWith("|") && sigLines.length < 15) {
@@ -274,7 +372,7 @@ function parseOfferText(rawText: string): RenderItem[] {
         },
         candidateName,
         role,
-        height: 125,
+        height: 145,
       });
       continue;
     }
@@ -286,7 +384,7 @@ function parseOfferText(rawText: string): RenderItem[] {
       items.push({
         type: "bullet",
         textLines: wrapped,
-        height: wrapped.length * 14 + 4,
+        height: wrapped.length * 14 + 3,
       });
       i++;
       continue;
@@ -297,7 +395,7 @@ function parseOfferText(rawText: string): RenderItem[] {
     items.push({
       type: "paragraph",
       lines: wrapped,
-      height: wrapped.length * 14 + 6,
+      height: wrapped.length * 14 + 5,
     });
     i++;
   }
@@ -312,8 +410,8 @@ function paginateItems(items: RenderItem[]): RenderItem[][] {
   const pages: RenderItem[][] = [];
   let curPage: RenderItem[] = [];
 
-  // Page 1 has top banner (52pt) and extra top padding
-  const page1UsableH = PAGE_H - 120 - MARGIN_B;
+  // Page 1 has top header
+  const page1UsableH = PAGE_H - 105 - MARGIN_B;
   const subsequentUsableH = PAGE_H - MARGIN_T - MARGIN_B;
 
   let currentUsableH = page1UsableH;
@@ -348,7 +446,6 @@ function renderPageContent(
 ): Buffer {
   const ops: string[] = [];
 
-  // Helper operators
   const setFill = (rgb: number[]) => ops.push(`${rgb[0]} ${rgb[1]} ${rgb[2]} rg`);
   const setStroke = (rgb: number[]) => ops.push(`${rgb[0]} ${rgb[1]} ${rgb[2]} RG`);
   const setLineWidth = (w: number) => ops.push(`${w} w`);
@@ -382,42 +479,40 @@ function renderPageContent(
 
   // --- HEADER SECTION ---
   if (pageNum === 1) {
-    // 1. Top Branded Navy Banner
-    const bannerH = 52;
-    const bannerY = PAGE_H - bannerH;
-
-    setFill(COLOR_NAVY_BANNER);
-    drawRect(0, bannerY, PAGE_W, bannerH, true, false);
-
-    // Accent line below banner
-    setFill(COLOR_ACCENT_BLUE);
-    drawRect(0, bannerY - 3, PAGE_W, 3, true, false);
+    // Clean Corporate White Header matching Word Template
+    const headerTop = PAGE_H - 42;
 
     // Brand Name: ScalePods
-    drawText(companyName, MARGIN_L, bannerY + 26, 17, "/F2", COLOR_WHITE);
+    drawText(companyName, MARGIN_L, headerTop, 18, "/F2", COLOR_NAVY);
     // Subtitle
     drawText(
       "CONFIDENTIAL EMPLOYMENT AGREEMENT",
       MARGIN_L,
-      bannerY + 12,
-      7.5,
+      headerTop - 13,
+      8,
       "/F1",
-      [0.6, 0.7, 0.85],
+      COLOR_MUTED_GRAY,
     );
 
-    // Pill Badge on right
-    const badgeW = 95;
-    const badgeH = 20;
+    // Right pill badge
+    const badgeW = 90;
+    const badgeH = 18;
     const badgeX = PAGE_W - MARGIN_R - badgeW;
-    const badgeY = bannerY + 16;
-    setFill([0.15, 0.25, 0.45]);
-    drawRect(badgeX, badgeY, badgeW, badgeH, true, false);
-    drawText("OFFICIAL OFFER", badgeX + 11, badgeY + 6, 8, "/F2", COLOR_WHITE);
+    const badgeY = headerTop - 7;
+    setFill([0.94, 0.96, 0.98]);
+    setStroke(COLOR_CARD_BORDER);
+    setLineWidth(0.75);
+    drawRect(badgeX, badgeY, badgeW, badgeH, true, true);
+    drawText("OFFICIAL OFFER", badgeX + 11, badgeY + 5, 7.5, "/F2", COLOR_BRAND_BLUE);
+
+    // Clean blue accent divider rule underneath header
+    setFill(COLOR_ACCENT_BLUE);
+    drawRect(MARGIN_L, headerTop - 22, USABLE_W, 1.5, true, false);
   } else {
     // Running header on page 2+
     const headerY = PAGE_H - 30;
     drawText(
-      "ScalePods Partner — Private & Confidential",
+      "ScalePods Partner - Private & Confidential",
       MARGIN_L,
       headerY,
       8,
@@ -432,13 +527,13 @@ function renderPageContent(
   }
 
   // --- RUNNING FOOTER (ALL PAGES) ---
-  const footerY = 38;
+  const footerY = 36;
   setStroke(COLOR_GRID_BORDER);
   setLineWidth(0.75);
   drawLine(MARGIN_L, footerY + 12, PAGE_W - MARGIN_R, footerY + 12);
 
   drawText(
-    "Private & Confidential — ScalePods Employment Agreement",
+    "Private & Confidential - ScalePods Employment Agreement",
     MARGIN_L,
     footerY,
     8,
@@ -449,23 +544,23 @@ function renderPageContent(
   drawText(pageStr, PAGE_W - MARGIN_R - 55, footerY, 8.5, "/F2", [0.2, 0.25, 0.35]);
 
   // --- CONTENT RENDERING ---
-  let cursorY = pageNum === 1 ? PAGE_H - 78 : PAGE_H - MARGIN_T;
+  let cursorY = pageNum === 1 ? PAGE_H - 85 : PAGE_H - MARGIN_T;
 
   for (const item of pageItems) {
     if (item.type === "title") {
-      cursorY -= 12;
-      drawText(item.text, MARGIN_L, cursorY, 13.5, "/F2", COLOR_NAVY_BANNER);
+      cursorY -= 8;
+      drawText(item.text, MARGIN_L, cursorY, 13.5, "/F2", COLOR_NAVY);
 
       // Blue accent line under title
       const titleWidth = approxTextWidth(item.text, 13.5, true);
       setFill(COLOR_BRAND_BLUE);
       drawRect(MARGIN_L, cursorY - 4, Math.min(titleWidth, USABLE_W), 2, true, false);
-      cursorY -= 16;
+      cursorY -= 15;
     } else if (item.type === "metadata_card") {
       const cardH = item.height;
       const cardY = cursorY - cardH;
 
-      // Card Background
+      // Card Background & Border
       setFill(COLOR_LIGHT_BG);
       setStroke(COLOR_CARD_BORDER);
       setLineWidth(0.75);
@@ -494,20 +589,22 @@ function renderPageContent(
         );
       }
 
-      cursorY = cardY - 10;
+      cursorY = cardY - 9;
     } else if (item.type === "heading") {
-      cursorY -= 8;
+      cursorY -= 7;
       drawText(item.text, MARGIN_L, cursorY, 11, "/F2", COLOR_BRAND_BLUE);
-      cursorY -= 15;
+      cursorY -= 14;
     } else if (item.type === "paragraph") {
       for (const line of item.lines) {
         drawText(line, MARGIN_L, cursorY, 9.5, "/F1", COLOR_BODY_TEXT);
         cursorY -= 14;
       }
-      cursorY -= 4;
+      cursorY -= 3;
     } else if (item.type === "bullet") {
-      // Draw bullet point symbol
-      drawText("•", MARGIN_L + 4, cursorY, 10, "/F2", COLOR_BRAND_BLUE);
+      // Draw a real vector dot (zero font encoding dependency, NO '?')
+      setFill(COLOR_BRAND_BLUE);
+      drawRect(MARGIN_L + 4, cursorY + 2.5, 3.5, 3.5, true, false);
+
       for (let idx = 0; idx < item.textLines.length; idx++) {
         drawText(item.textLines[idx], MARGIN_L + 14, cursorY, 9.5, "/F1", COLOR_BODY_TEXT);
         cursorY -= 14;
@@ -556,7 +653,7 @@ function renderPageContent(
         for (let c = 0; c < row.length; c++) {
           const cw = item.colWidths[c] || USABLE_W / row.length;
           const font = isTotalRow ? "/F2" : "/F1";
-          const textColor = isTotalRow ? COLOR_NAVY_BANNER : COLOR_BODY_TEXT;
+          const textColor = isTotalRow ? COLOR_NAVY : COLOR_BODY_TEXT;
           drawText(row[c], colX + 6, tableY + 5, 8.5, font, textColor);
           colX += cw;
         }
@@ -570,103 +667,80 @@ function renderPageContent(
 
       cursorY = cursorY - totalTableH - 12;
     } else if (item.type === "signatory_block") {
-      const blockH = item.height;
-      const blockY = cursorY - blockH;
+      // Stacked Signatory & Acceptance layout matching original Word Template
+      cursorY -= 6;
 
-      // Two side-by-side signature cards
-      const colW = (USABLE_W - 14) / 2;
-
-      // --- Left Box: Company Signatory ---
-      setFill(COLOR_LIGHT_BG);
-      setStroke(COLOR_CARD_BORDER);
-      setLineWidth(0.75);
-      drawRect(MARGIN_L, blockY, colW, blockH, true, true);
-
-      // Header inside left box
+      // 1. Company Signer
+      drawText(`For ${item.companySigner.company}`, MARGIN_L, cursorY, 10.5, "/F2", COLOR_NAVY);
+      cursorY -= 14;
+      drawText(item.companySigner.name, MARGIN_L, cursorY, 9.5, "/F2", COLOR_BODY_TEXT);
+      cursorY -= 13;
+      drawText(item.companySigner.title, MARGIN_L, cursorY, 9, "/F1", COLOR_MUTED_GRAY);
+      cursorY -= 16;
       drawText(
-        `For ${item.companySigner.company}`,
-        MARGIN_L + 10,
-        blockY + blockH - 18,
+        "Signature: ______________________     Date: _______________",
+        MARGIN_L,
+        cursorY,
         9.5,
-        "/F2",
-        COLOR_NAVY_BANNER,
-      );
-      drawText(
-        item.companySigner.name,
-        MARGIN_L + 10,
-        blockY + blockH - 33,
-        9,
-        "/F2",
+        "/F1",
         COLOR_BODY_TEXT,
       );
-      drawText(
-        item.companySigner.title,
-        MARGIN_L + 10,
-        blockY + blockH - 46,
-        8.5,
-        "/F1",
-        COLOR_MUTED_GRAY,
-      );
+      cursorY -= 20;
 
-      // Signature line
-      setStroke(COLOR_CARD_BORDER);
-      setLineWidth(0.75);
-      drawLine(MARGIN_L + 10, blockY + 36, MARGIN_L + colW - 10, blockY + 36);
-      drawText("Authorized Signature", MARGIN_L + 10, blockY + 24, 7.5, "/F1", COLOR_MUTED_GRAY);
-      drawText(
-        "Date: ____________________",
-        MARGIN_L + 10,
-        blockY + 10,
-        8,
-        "/F1",
-        [0.3, 0.35, 0.4],
-      );
+      // 2. Candidate Acknowledgement
+      drawText("ACKNOWLEDGEMENT", MARGIN_L, cursorY, 11, "/F2", COLOR_NAVY);
+      const ackWidth = approxTextWidth("ACKNOWLEDGEMENT", 11, true);
+      setFill(COLOR_BRAND_BLUE);
+      drawRect(MARGIN_L, cursorY - 3, ackWidth, 1.5, true, false);
+      cursorY -= 15;
 
-      // --- Right Box: Candidate Acceptance ---
-      const rightX = MARGIN_L + colW + 14;
+      const acceptText = `I, ${item.candidateName}, accept the above terms and agree to work with ${item.companySigner.company} as ${item.role} under the conditions stated herein.`;
+      const ackWrapped = wrapText(acceptText, USABLE_W, 9.5);
+      for (const ackLine of ackWrapped) {
+        drawText(ackLine, MARGIN_L, cursorY, 9.5, "/F1", COLOR_BODY_TEXT);
+        cursorY -= 13;
+      }
+      cursorY -= 6;
+
+      // 3. Three-column Signature Table matching Word template: Signature | Date | Place
+      const sigRowH = 24;
+      const sigTableY = cursorY - sigRowH;
       setFill(COLOR_LIGHT_BG);
       setStroke(COLOR_CARD_BORDER);
       setLineWidth(0.75);
-      drawRect(rightX, blockY, colW, blockH, true, true);
+      drawRect(MARGIN_L, sigTableY, USABLE_W, sigRowH, true, true);
+
+      const col3W = USABLE_W / 3;
+      // Column dividers
+      drawLine(MARGIN_L + col3W, sigTableY, MARGIN_L + col3W, sigTableY + sigRowH);
+      drawLine(MARGIN_L + 2 * col3W, sigTableY, MARGIN_L + 2 * col3W, sigTableY + sigRowH);
 
       drawText(
-        "ACKNOWLEDGEMENT & ACCEPTANCE",
-        rightX + 10,
-        blockY + blockH - 18,
-        9,
-        "/F2",
-        [0.1, 0.3, 0.6],
-      );
-      drawText(
-        `I, ${item.candidateName}, accept this offer`,
-        rightX + 10,
-        blockY + blockH - 33,
+        "Signature: __________________",
+        MARGIN_L + 8,
+        sigTableY + 8,
         8.5,
         "/F1",
-        COLOR_BODY_TEXT,
+        [0.2, 0.25, 0.35],
       );
       drawText(
-        `Position: ${item.role}`,
-        rightX + 10,
-        blockY + blockH - 46,
-        8,
+        "Date: __________________",
+        MARGIN_L + col3W + 8,
+        sigTableY + 8,
+        8.5,
         "/F1",
-        COLOR_MUTED_GRAY,
+        [0.2, 0.25, 0.35],
       );
-
-      // Signature line
-      drawLine(rightX + 10, blockY + 36, rightX + colW - 10, blockY + 36);
-      drawText("Candidate Signature", rightX + 10, blockY + 24, 7.5, "/F1", COLOR_MUTED_GRAY);
       drawText(
-        "Date: ____________   Place: ____________",
-        rightX + 10,
-        blockY + 10,
-        7.5,
+        "Place: __________________",
+        MARGIN_L + 2 * col3W + 8,
+        sigTableY + 8,
+        8.5,
         "/F1",
-        [0.3, 0.35, 0.4],
+        [0.2, 0.25, 0.35],
       );
 
-      cursorY = blockY - 14;
+      cursorY = sigTableY - 14;
     }
   }
 

@@ -2,7 +2,7 @@ import { offerRequestSchema } from "@scalepods/core";
 import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { generateStyledOfferPdf } from "@/lib/generate-styled-offer-pdf";
+import { generateStyledOfferPdf, numberToWords } from "@/lib/generate-styled-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
 import { renderOfferTemplateText } from "@/lib/offer-template-utils";
 import { fillOfferDocx } from "@/lib/offers/fill-docx";
@@ -180,6 +180,18 @@ export async function POST(req: NextRequest) {
     let generatedPdfPath: string | null = null;
 
     const dynamicVars = (fieldValues.dynamic_variables || fieldValues) as Record<string, string>;
+    const stipendAmount = String(fieldValues.stipend_amount || salary || "5000");
+    const rawStipendWords = String(fieldValues.stipend_words || "").trim();
+    const stipendWords =
+      rawStipendWords && rawStipendWords !== "0" && rawStipendWords !== "(0)"
+        ? rawStipendWords
+        : numberToWords(stipendAmount);
+
+    const grossAnnual = String(fieldValues.gross_annual || salary || "60000");
+    const rawGrossWords = String(fieldValues.gross_annual_words || "").trim();
+    const grossAnnualWords =
+      rawGrossWords && rawGrossWords !== "0" ? rawGrossWords : numberToWords(grossAnnual);
+
     const resolvedFieldValues: Record<string, unknown> = {
       ...fieldValues,
       ...dynamicVars,
@@ -187,6 +199,10 @@ export async function POST(req: NextRequest) {
       position_title: positionTitle,
       role: positionTitle,
       salary,
+      stipend_amount: stipendAmount,
+      stipend_words: stipendWords,
+      gross_annual: grossAnnual,
+      gross_annual_words: grossAnnualWords,
       currency,
       start_date: startDate,
       joining_date: startDate,

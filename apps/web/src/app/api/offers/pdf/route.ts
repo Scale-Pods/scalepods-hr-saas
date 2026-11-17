@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { generateStyledOfferPdf } from "@/lib/generate-styled-offer-pdf";
+import { generateStyledOfferPdf, numberToWords } from "@/lib/generate-styled-offer-pdf";
 import { renderOfferTemplateText } from "@/lib/offer-template-utils";
 import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
 
@@ -39,7 +39,20 @@ export async function POST(req: NextRequest) {
       auth: { persistSession: false },
     });
 
-    const values = (body.field_values || body.dynamic_variables || {}) as Record<string, string>;
+    const values = { ...(body.field_values || body.dynamic_variables || {}) } as Record<
+      string,
+      string
+    >;
+    const stipendAmount = String(values.stipend_amount || values.salary || "5000");
+    const rawStipendWords = String(values.stipend_words || "").trim();
+    if (!rawStipendWords || rawStipendWords === "0" || rawStipendWords === "(0)") {
+      values.stipend_words = numberToWords(stipendAmount);
+    }
+    const grossAnnual = String(values.gross_annual || values.salary || "60000");
+    const rawGrossWords = String(values.gross_annual_words || "").trim();
+    if (!rawGrossWords || rawGrossWords === "0") {
+      values.gross_annual_words = numberToWords(grossAnnual);
+    }
     let textToRender = "";
 
     // 1. If template_id is provided, extract real text directly from the stored .docx template
