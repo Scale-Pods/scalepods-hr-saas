@@ -2,11 +2,18 @@ import { offerRequestSchema } from "@scalepods/core";
 import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { generateStyledOfferPdf, numberToWords } from "@/lib/generate-styled-offer-pdf";
+import {
+  generateStyledOfferPdf,
+  getDefaultLetterheadBuffer,
+  numberToWords,
+} from "@/lib/generate-styled-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
 import { renderOfferTemplateText } from "@/lib/offer-template-utils";
 import { fillOfferDocx } from "@/lib/offers/fill-docx";
-import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
+import {
+  extractDocumentImageFromDocxBuffer,
+  extractDocumentTextFromDocxBuffer,
+} from "@/lib/offers/prune-docx-xml";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -180,35 +187,74 @@ export async function POST(req: NextRequest) {
     let generatedPdfPath: string | null = null;
 
     const dynamicVars = (fieldValues.dynamic_variables || fieldValues) as Record<string, string>;
+
+    const isIntern =
+      String(fieldValues.letter_type || fieldValues.LETTER_TYPE || "").toLowerCase() === "intern" ||
+      positionTitle.toLowerCase().includes("intern") ||
+      Boolean(
+        (appRow?.campaigns as { name?: string } | undefined)?.name
+          ?.toLowerCase()
+          .includes("intern"),
+      );
+
+    let duration = String(
+      fieldValues.duration || fieldValues.DURATION || (isIntern ? "3 Months" : "Full-time"),
+    ).trim();
+    if (isIntern && (!duration || duration.toLowerCase().includes("full-time"))) {
+      duration = "3 Months";
+    }
+
     const stipendAmount = String(fieldValues.stipend_amount || salary || "5000");
-    const rawStipendWords = String(fieldValues.stipend_words || "").trim();
+    const rawStipendWords = String(
+      fieldValues.stipend_words || fieldValues.STIPEND_WORDS || "",
+    ).trim();
     const stipendWords =
       rawStipendWords && rawStipendWords !== "0" && rawStipendWords !== "(0)"
         ? rawStipendWords
         : numberToWords(stipendAmount);
 
     const grossAnnual = String(fieldValues.gross_annual || salary || "60000");
-    const rawGrossWords = String(fieldValues.gross_annual_words || "").trim();
+    const rawGrossWords = String(
+      fieldValues.gross_annual_words || fieldValues.GROSS_ANNUAL_WORDS || "",
+    ).trim();
     const grossAnnualWords =
       rawGrossWords && rawGrossWords !== "0" ? rawGrossWords : numberToWords(grossAnnual);
 
     const resolvedFieldValues: Record<string, unknown> = {
       ...fieldValues,
       ...dynamicVars,
+      letter_type: isIntern ? "intern" : fieldValues.letter_type || "fulltime",
+      LETTER_TYPE: isIntern ? "intern" : fieldValues.LETTER_TYPE || "fulltime",
+      duration,
+      DURATION: duration,
       candidate_name: candidateName,
+      CANDIDATE_NAME: candidateName,
       position_title: positionTitle,
+      POSITION_TITLE: positionTitle,
       role: positionTitle,
+      ROLE: positionTitle,
       salary,
+      SALARY: salary,
       stipend_amount: stipendAmount,
+      STIPEND_AMOUNT: stipendAmount,
       stipend_words: stipendWords,
+      STIPEND_WORDS: stipendWords,
       gross_annual: grossAnnual,
+      GROSS_ANNUAL: grossAnnual,
       gross_annual_words: grossAnnualWords,
+      GROSS_ANNUAL_WORDS: grossAnnualWords,
       currency,
+      CURRENCY: currency,
       start_date: startDate,
+      START_DATE: startDate,
       joining_date: startDate,
+      JOINING_DATE: startDate,
       company_name: companyName,
+      COMPANY_NAME: companyName,
       signatory_name: signatoryName,
+      SIGNATORY_NAME: signatoryName,
       signatory_title: signatoryTitle,
+      SIGNATORY_TITLE: signatoryTitle,
     };
 
     try {
@@ -231,6 +277,7 @@ export async function POST(req: NextRequest) {
 
       let filledBuffer: Buffer | null = null;
       let textToRender: string | null = null;
+      let templateBgImage: Buffer | null = null;
       if (tplRow?.storage_path) {
         const { data: fileBlob } = await adminSupabase.storage
           .from("offer-templates")
@@ -238,6 +285,7 @@ export async function POST(req: NextRequest) {
 
         if (fileBlob) {
           const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+          templateBgImage = extractDocumentImageFromDocxBuffer(docxBuffer);
           filledBuffer = sendAsIs ? docxBuffer : fillOfferDocx(docxBuffer, resolvedFieldValues);
           textToRender = await extractDocumentTextFromDocxBuffer(docxBuffer, resolvedFieldValues);
           if (textToRender && tplRow?.raw_text === "[Raw DOCX Template]") {
@@ -266,9 +314,17 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Native high-fidelity styled PDF generation — no Gotenberg or external API needed
+      // Native high-fidelity styled PDF generation — matching exact Word template branding
+      const bgToUse = templateBgImage || getDefaultLetterheadBuffer() || undefined;
       const pdfBuffer = generateStyledOfferPdf(textToRender, {
         companyName: companyName || "ScalePods Partner",
+        backgroundImageBuffer: bgToUse,
+        companyWebsite:
+          (resolvedFieldValues.company_website as string) ||
+          (resolvedFieldValues.COMPANY_WEBSITE as string),
+        companyEmail:
+          (resolvedFieldValues.company_email as string) ||
+          (resolvedFieldValues.COMPANY_EMAIL as string),
       });
 
       // Store filled docx and generated pdf in Supabase Storage for audit trail

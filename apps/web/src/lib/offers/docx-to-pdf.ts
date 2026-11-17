@@ -5,7 +5,10 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { generateStyledOfferPdf } from "../generate-styled-offer-pdf";
-import { extractDocumentTextFromDocxBuffer } from "./prune-docx-xml";
+import {
+  extractDocumentImageFromDocxBuffer,
+  extractDocumentTextFromDocxBuffer,
+} from "./prune-docx-xml";
 
 export class OfferPdfConversionError extends Error {
   constructor(
@@ -83,7 +86,8 @@ export async function convertDocxToPdf(
 
   if (provider === "native" || provider === "styled") {
     const docText = await extractDocumentTextFromDocxBuffer(docxBuffer);
-    return generateStyledOfferPdf(docText);
+    const bgImg = extractDocumentImageFromDocxBuffer(docxBuffer);
+    return generateStyledOfferPdf(docText, { backgroundImageBuffer: bgImg || undefined });
   }
 
   if (provider === "libreoffice" || provider === "soffice" || provider === "local") {
@@ -109,7 +113,8 @@ export async function convertDocxToPdf(
     }
     console.info("[docx-to-pdf] Gotenberg/LibreOffice unavailable, generating styled PDF natively");
     const docText = await extractDocumentTextFromDocxBuffer(docxBuffer);
-    return generateStyledOfferPdf(docText);
+    const bgImg = extractDocumentImageFromDocxBuffer(docxBuffer);
+    return generateStyledOfferPdf(docText, { backgroundImageBuffer: bgImg || undefined });
   }
 }
 

@@ -4,6 +4,8 @@
  * No third-party APIs or external libraries required.
  */
 
+import * as fflate from "fflate";
+
 export interface DocxBodyElement {
   raw: string;
   tag: "p" | "tbl" | "sectPr" | "other";
@@ -384,22 +386,43 @@ export function extractDocumentTextFromDocxXml(
 }
 
 /**
- * Extract structured text from a .docx Buffer directly using JSZip or PizZip.
+ * Extract structured text from a .docx Buffer directly using fflate.
  */
 export async function extractDocumentTextFromDocxBuffer(
   docxBuffer: Buffer,
   data?: Record<string, unknown>,
 ): Promise<string> {
   try {
-    const JSZip = (await import("jszip")).default;
-    const zip = await JSZip.loadAsync(docxBuffer);
-    const docFile = zip.file("word/document.xml");
-    if (docFile) {
-      const xml = await docFile.async("string");
+    const unzipped = fflate.unzipSync(new Uint8Array(docxBuffer));
+    const docBytes = unzipped["word/document.xml"];
+    if (docBytes) {
+      const xml = fflate.strFromU8(docBytes);
       return extractDocumentTextFromDocxXml(xml, data);
     }
   } catch (err) {
     console.warn("[extractDocumentTextFromDocxBuffer] Error reading docx buffer:", err);
   }
   return "";
+}
+
+/**
+ * Extract background letterhead image (e.g. word/media/image1.jpg) from a .docx Buffer.
+ */
+export function extractDocumentImageFromDocxBuffer(docxBuffer: Buffer): Buffer | null {
+  try {
+    const unzipped = fflate.unzipSync(new Uint8Array(docxBuffer));
+    const candidateFiles = Object.keys(unzipped).filter(
+      (k) => k.startsWith("word/media/") && /\.(jpe?g|png)$/i.test(k),
+    );
+    if (candidateFiles.length > 0) {
+      const preferred = candidateFiles.find((k) => k.includes("image1")) || candidateFiles[0];
+      const bytes = unzipped[preferred];
+      if (bytes && bytes.length > 0) {
+        return Buffer.from(bytes);
+      }
+    }
+  } catch (err) {
+    console.warn("[extractDocumentImageFromDocxBuffer] Error extracting image:", err);
+  }
+  return null;
 }

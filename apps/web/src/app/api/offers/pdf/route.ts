@@ -1,9 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { generateStyledOfferPdf, numberToWords } from "@/lib/generate-styled-offer-pdf";
+import {
+  generateStyledOfferPdf,
+  getDefaultLetterheadBuffer,
+  numberToWords,
+} from "@/lib/generate-styled-offer-pdf";
 import { renderOfferTemplateText } from "@/lib/offer-template-utils";
-import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
+import {
+  extractDocumentImageFromDocxBuffer,
+  extractDocumentTextFromDocxBuffer,
+} from "@/lib/offers/prune-docx-xml";
 
 export const dynamic = "force-dynamic";
 
@@ -43,17 +50,49 @@ export async function POST(req: NextRequest) {
       string,
       string
     >;
+
+    const isIntern =
+      String(values.letter_type || values.LETTER_TYPE || "").toLowerCase() === "intern" ||
+      String(body?.position_title || values.position_title || values.role || "")
+        .toLowerCase()
+        .includes("intern");
+
+    if (isIntern) {
+      values.letter_type = "intern";
+      values.LETTER_TYPE = "intern";
+      let dur = String(values.duration || values.DURATION || "3 Months").trim();
+      if (!dur || dur.toLowerCase().includes("full-time")) {
+        dur = "3 Months";
+      }
+      values.duration = dur;
+      values.DURATION = dur;
+    }
+
     const stipendAmount = String(values.stipend_amount || values.salary || "5000");
-    const rawStipendWords = String(values.stipend_words || "").trim();
+    const rawStipendWords = String(values.stipend_words || values.STIPEND_WORDS || "").trim();
     if (!rawStipendWords || rawStipendWords === "0" || rawStipendWords === "(0)") {
       values.stipend_words = numberToWords(stipendAmount);
+      values.STIPEND_WORDS = values.stipend_words;
+    } else {
+      values.STIPEND_WORDS = rawStipendWords;
+      values.stipend_words = rawStipendWords;
     }
+    values.stipend_amount = stipendAmount;
+    values.STIPEND_AMOUNT = stipendAmount;
+
     const grossAnnual = String(values.gross_annual || values.salary || "60000");
-    const rawGrossWords = String(values.gross_annual_words || "").trim();
+    const rawGrossWords = String(
+      values.gross_annual_words || values.GROSS_ANNUAL_WORDS || "",
+    ).trim();
     if (!rawGrossWords || rawGrossWords === "0") {
       values.gross_annual_words = numberToWords(grossAnnual);
+      values.GROSS_ANNUAL_WORDS = values.gross_annual_words;
+    } else {
+      values.GROSS_ANNUAL_WORDS = rawGrossWords;
+      values.gross_annual_words = rawGrossWords;
     }
     let textToRender = "";
+    let templateBgImage: Buffer | null = null;
 
     // 1. If template_id is provided, extract real text directly from the stored .docx template
     if (body.template_id) {
@@ -69,6 +108,7 @@ export async function POST(req: NextRequest) {
           .download(tpl.storage_path);
         if (fileBlob) {
           const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+          templateBgImage = extractDocumentImageFromDocxBuffer(docxBuffer);
           textToRender = await extractDocumentTextFromDocxBuffer(docxBuffer, values);
           if (textToRender && tpl?.raw_text === "[Raw DOCX Template]") {
             extractDocumentTextFromDocxBuffer(docxBuffer).then((rawBase) => {
@@ -104,7 +144,13 @@ export async function POST(req: NextRequest) {
     }
 
     const companyName = (values.company_name as string) || "ScalePods Partner";
-    const pdfBuffer = generateStyledOfferPdf(textToRender, { companyName });
+    const bgToUse = templateBgImage || getDefaultLetterheadBuffer() || undefined;
+    const pdfBuffer = generateStyledOfferPdf(textToRender, {
+      companyName,
+      backgroundImageBuffer: bgToUse,
+      companyWebsite: values.company_website || values.COMPANY_WEBSITE,
+      companyEmail: values.company_email || values.COMPANY_EMAIL,
+    });
 
     const safeName = (body?.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
     const filename = `Offer_Letter_Preview_${safeName}.pdf`;

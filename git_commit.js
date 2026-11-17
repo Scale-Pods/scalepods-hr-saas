@@ -4,7 +4,7 @@ try {
   console.log(execSync("git add .").toString());
   console.log(
     execSync(
-      'git commit -m "fix(offers): match template layout, fix bullets and words"',
+      'git commit -m "fix(offers): embed template letterhead, fix intern duration and stipend words input"',
     ).toString(),
   );
   console.log(execSync("git push origin main").toString());

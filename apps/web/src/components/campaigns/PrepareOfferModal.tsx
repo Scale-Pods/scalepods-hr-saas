@@ -37,6 +37,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccount } from "@/features/account/hooks";
 import type { ViewCandidate } from "@/features/campaigns/api";
+import { numberToWords } from "@/lib/generate-styled-offer-pdf";
 import {
   cleanOfferTemplateDirectives,
   formatOfferVarLabel,
@@ -129,10 +130,16 @@ export function PrepareOfferModal({
     });
     const year = new Date().getFullYear();
     const randRef = Math.floor(1000 + Math.random() * 9000);
+    const isInternRole = Boolean(
+      (campaign?.name && /intern/i.test(campaign.name)) ||
+        (campaign?.jd_text && /intern/i.test(campaign.jd_text)),
+    );
+    const initialStipend = campaign.salary_min ? String(campaign.salary_min) : "5000";
     return {
       DEPARTMENT: "Engineering",
       LOCATION: campaign.location || "Remote",
-      DURATION: "Full-time",
+      DURATION: isInternRole ? "3 Months" : "Full-time",
+      LETTER_TYPE: isInternRole ? "intern" : "fulltime",
       PROBATION_PERIOD: "3 Months",
       WORKING_DAYS: "Mon - Fri (5 Days/Wk)",
       REPORTING_MANAGER: "Hiring Manager",
@@ -141,6 +148,8 @@ export function PrepareOfferModal({
       ISSUE_DATE: todayFormatted,
       REF_NO: `SP/${year}/OFFER/${randRef}`,
       NOTICE_PERIOD: "15 Days",
+      STIPEND_AMOUNT: initialStipend,
+      STIPEND_WORDS: numberToWords(initialStipend),
     };
   });
 
@@ -161,14 +170,37 @@ export function PrepareOfferModal({
     setSendAsIs(false);
     setCandidateName(candidate?.name || "");
     setPositionTitle(campaign.name || "");
-    setSalary(campaign.salary_min ? String(campaign.salary_min) : "");
+    const initialSalary = campaign.salary_min ? String(campaign.salary_min) : "";
+    setSalary(initialSalary);
     setCurrency(campaign.salary_currency || "INR");
     if (account?.company_name) setCompanyName(account.company_name);
     if (account?.name) setSignatoryName(account.name);
+
+    const isInternRole = Boolean(
+      (campaign?.name && /intern/i.test(campaign.name)) ||
+        (campaign?.jd_text && /intern/i.test(campaign.jd_text)) ||
+        (candidate?.name && /intern/i.test(candidate.name)),
+    );
+    const stipend = initialSalary || "5000";
+    setDynamicValues((prev) => ({
+      ...prev,
+      DURATION: isInternRole
+        ? prev.DURATION && !prev.DURATION.toLowerCase().includes("full-time")
+          ? prev.DURATION
+          : "3 Months"
+        : prev.DURATION || "Full-time",
+      LETTER_TYPE: isInternRole ? "intern" : prev.LETTER_TYPE || "fulltime",
+      STIPEND_AMOUNT: prev.STIPEND_AMOUNT || stipend,
+      STIPEND_WORDS:
+        prev.STIPEND_WORDS && prev.STIPEND_WORDS !== "0" && prev.STIPEND_WORDS !== "(0)"
+          ? prev.STIPEND_WORDS
+          : numberToWords(stipend),
+    }));
   }, [
     open,
     candidate?.name,
     campaign.name,
+    campaign.jd_text,
     campaign.salary_min,
     campaign.salary_currency,
     account?.company_name,
@@ -242,8 +274,38 @@ export function PrepareOfferModal({
       year: "numeric",
     });
 
+    const isIntern = Boolean(
+      (campaign?.name && /intern/i.test(campaign.name)) ||
+        (campaign?.jd_text && /intern/i.test(campaign.jd_text)) ||
+        (positionTitle && /intern/i.test(positionTitle)) ||
+        (candidateName && /intern/i.test(candidateName)) ||
+        (dynamicValues.LETTER_TYPE && /intern/i.test(dynamicValues.LETTER_TYPE)),
+    );
+
+    const effectiveLetterType = isIntern ? "intern" : dynamicValues.LETTER_TYPE || "fulltime";
+    let effectiveDuration = dynamicValues.DURATION || (isIntern ? "3 Months" : "Full-time");
+    if (isIntern && effectiveDuration.toLowerCase().includes("full-time")) {
+      effectiveDuration = "3 Months";
+    }
+
+    const effectiveStipend = dynamicValues.STIPEND_AMOUNT || salary || "5000";
+    const rawStipendWords = dynamicValues.STIPEND_WORDS || "";
+    const effectiveStipendWords =
+      rawStipendWords && rawStipendWords !== "0" && rawStipendWords !== "(0)"
+        ? rawStipendWords
+        : numberToWords(effectiveStipend);
+
+    const effectiveGross = dynamicValues.GROSS_ANNUAL || salary || "60000";
+    const rawGrossWords = dynamicValues.GROSS_ANNUAL_WORDS || "";
+    const effectiveGrossWords =
+      rawGrossWords && rawGrossWords !== "0" ? rawGrossWords : numberToWords(effectiveGross);
+
     const values: Record<string, string | undefined> = {
       ...dynamicValues,
+      LETTER_TYPE: effectiveLetterType,
+      letter_type: effectiveLetterType,
+      DURATION: effectiveDuration,
+      duration: effectiveDuration,
       candidate_name: candidateName,
       recipient_name: candidateName,
       CANDIDATE_NAME: candidateName,
@@ -253,10 +315,16 @@ export function PrepareOfferModal({
       POSITION_TITLE: positionTitle,
       ROLE: positionTitle,
       salary,
-      stipend_amount: salary,
+      stipend_amount: effectiveStipend,
+      stipend_words: effectiveStipendWords,
+      STIPEND_AMOUNT: effectiveStipend,
+      STIPEND_WORDS: effectiveStipendWords,
+      gross_annual: effectiveGross,
+      GROSS_ANNUAL: effectiveGross,
+      gross_annual_words: effectiveGrossWords,
+      GROSS_ANNUAL_WORDS: effectiveGrossWords,
       compensation: salary,
       SALARY: salary,
-      STIPEND_AMOUNT: salary,
       COMPENSATION: salary,
       currency,
       CURRENCY: currency,
@@ -274,8 +342,8 @@ export function PrepareOfferModal({
         dynamicValues.SIGNATORY_TITLE || dynamicValues.signatory_title || "Talent Acquisition Lead",
       special_terms: specialTerms,
       SPECIAL_TERMS: specialTerms,
-      issue_date: todayFormatted,
-      ISSUE_DATE: todayFormatted,
+      issue_date: dynamicValues.ISSUE_DATE || todayFormatted,
+      ISSUE_DATE: dynamicValues.ISSUE_DATE || todayFormatted,
     };
 
     return values;
@@ -289,6 +357,8 @@ export function PrepareOfferModal({
     companyName,
     signatoryName,
     specialTerms,
+    campaign?.name,
+    campaign?.jd_text,
   ]);
 
   const buildRenderedText = useCallback(() => {
@@ -1000,18 +1070,21 @@ export function PrepareOfferModal({
                         lower !== "start_date" &&
                         lower !== "joining_date" &&
                         lower !== "company_name" &&
-                        lower !== "signatory_name"
+                        lower !== "signatory_name" &&
+                        lower !== "letter_type"
                       );
                     })
                     .map((v) => {
                       const lower = v.toLowerCase();
                       const isDate = lower.includes("date");
+                      const isWords = lower.includes("word") || lower.includes("in_words");
                       const isNumeric =
-                        lower.includes("amount") ||
-                        lower.includes("salary") ||
-                        lower.includes("stipend") ||
-                        lower.includes("ctc") ||
-                        lower.includes("bonus");
+                        !isWords &&
+                        (lower.includes("amount") ||
+                          lower.includes("salary") ||
+                          lower.includes("stipend") ||
+                          lower.includes("ctc") ||
+                          lower.includes("bonus"));
                       const label = formatOfferVarLabel(v);
                       const currentVal = dynamicValues[v] ?? dynamicValues[v.toUpperCase()] ?? "";
 
@@ -1038,19 +1111,29 @@ export function PrepareOfferModal({
                               id={fieldId}
                               type="number"
                               value={currentVal}
-                              onChange={(e) =>
-                                setDynamicValues((prev) => ({
-                                  ...prev,
-                                  [v]: e.target.value,
-                                  [v.toUpperCase()]: e.target.value,
-                                }))
-                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setDynamicValues((prev) => {
+                                  const updated = {
+                                    ...prev,
+                                    [v]: val,
+                                    [v.toUpperCase()]: val,
+                                  };
+                                  if (lower.includes("stipend")) {
+                                    const words = numberToWords(val);
+                                    updated.STIPEND_WORDS = words;
+                                    updated.stipend_words = words;
+                                  }
+                                  return updated;
+                                });
+                              }}
                               placeholder="0"
                               className="h-8 text-xs"
                             />
                           ) : (
                             <Input
                               id={fieldId}
+                              type="text"
                               value={currentVal}
                               onChange={(e) =>
                                 setDynamicValues((prev) => ({

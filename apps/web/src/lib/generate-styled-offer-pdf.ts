@@ -13,6 +13,32 @@
  * 100% Native TypeScript / Node.js — ZERO external APIs, ZERO Gotenberg, ZERO cloud services.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+
+let cachedDefaultBgBuffer: Buffer | null = null;
+
+export function getDefaultLetterheadBuffer(): Buffer | null {
+  if (cachedDefaultBgBuffer) return cachedDefaultBgBuffer;
+  try {
+    const candidatePaths = [
+      path.resolve(process.cwd(), "apps/web/src/lib/offers/assets/scalepods-letterhead.jpg"),
+      path.resolve(process.cwd(), "src/lib/offers/assets/scalepods-letterhead.jpg"),
+      path.join(__dirname, "offers/assets/scalepods-letterhead.jpg"),
+      path.join(__dirname, "assets/scalepods-letterhead.jpg"),
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        cachedDefaultBgBuffer = fs.readFileSync(p);
+        return cachedDefaultBgBuffer;
+      }
+    }
+  } catch {
+    // Non-fatal if fs access is restricted in edge/browser
+  }
+  return null;
+}
+
 const PAGE_W = 595.28; // A4 width (points)
 const PAGE_H = 841.89; // A4 height (points)
 const MARGIN_L = 50;
@@ -215,6 +241,38 @@ function parseOfferText(rawText: string): RenderItem[] {
 
     if (!line) {
       i++;
+      continue;
+    }
+
+    // Two-column metadata pairing: Ref: ... and Date: ...
+    if (
+      line.toLowerCase().startsWith("ref:") &&
+      i + 1 < n &&
+      lines[i + 1].trim().toLowerCase().startsWith("date:")
+    ) {
+      items.push({
+        type: "metadata_card",
+        leftLines: [line],
+        rightLines: [lines[i + 1].trim()],
+        height: 26,
+      });
+      i += 2;
+      continue;
+    }
+
+    // Two-column metadata pairing: Dear ... and Starting Date: ...
+    if (
+      line.toLowerCase().startsWith("dear ") &&
+      i + 1 < n &&
+      lines[i + 1].trim().toLowerCase().startsWith("starting date:")
+    ) {
+      items.push({
+        type: "metadata_card",
+        leftLines: [line],
+        rightLines: [lines[i + 1].trim()],
+        height: 26,
+      });
+      i += 2;
       continue;
     }
 
@@ -443,6 +501,9 @@ function renderPageContent(
   pageNum: number,
   totalPages: number,
   companyName = "ScalePods",
+  hasBgImg = false,
+  companyWebsite = "www.scalepods.com",
+  companyEmail = "contact@scalepods.com",
 ): Buffer {
   const ops: string[] = [];
 
@@ -477,74 +538,98 @@ function renderPageContent(
     ops.push("ET");
   };
 
+  if (hasBgImg) {
+    // Draw background letterhead image over full A4 page
+    ops.push(`q ${PAGE_W.toFixed(2)} 0 0 ${PAGE_H.toFixed(2)} 0 0 cm /BgImg Do Q`);
+  }
+
   // --- HEADER SECTION ---
-  if (pageNum === 1) {
-    // Clean Corporate White Header matching Word Template
-    const headerTop = PAGE_H - 42;
+  if (!hasBgImg) {
+    if (pageNum === 1) {
+      // Clean Corporate White Header matching Word Template
+      const headerTop = PAGE_H - 42;
 
-    // Brand Name: ScalePods
-    drawText(companyName, MARGIN_L, headerTop, 18, "/F2", COLOR_NAVY);
-    // Subtitle
-    drawText(
-      "CONFIDENTIAL EMPLOYMENT AGREEMENT",
-      MARGIN_L,
-      headerTop - 13,
-      8,
-      "/F1",
-      COLOR_MUTED_GRAY,
-    );
+      // Brand Name: ScalePods
+      drawText(companyName, MARGIN_L, headerTop, 18, "/F2", COLOR_NAVY);
+      // Subtitle
+      drawText(
+        "CONFIDENTIAL EMPLOYMENT AGREEMENT",
+        MARGIN_L,
+        headerTop - 13,
+        8,
+        "/F1",
+        COLOR_MUTED_GRAY,
+      );
 
-    // Right pill badge
-    const badgeW = 90;
-    const badgeH = 18;
-    const badgeX = PAGE_W - MARGIN_R - badgeW;
-    const badgeY = headerTop - 7;
-    setFill([0.94, 0.96, 0.98]);
-    setStroke(COLOR_CARD_BORDER);
-    setLineWidth(0.75);
-    drawRect(badgeX, badgeY, badgeW, badgeH, true, true);
-    drawText("OFFICIAL OFFER", badgeX + 11, badgeY + 5, 7.5, "/F2", COLOR_BRAND_BLUE);
+      // Right pill badge
+      const badgeW = 90;
+      const badgeH = 18;
+      const badgeX = PAGE_W - MARGIN_R - badgeW;
+      const badgeY = headerTop - 7;
+      setFill([0.94, 0.96, 0.98]);
+      setStroke(COLOR_CARD_BORDER);
+      setLineWidth(0.75);
+      drawRect(badgeX, badgeY, badgeW, badgeH, true, true);
+      drawText("OFFICIAL OFFER", badgeX + 11, badgeY + 5, 7.5, "/F2", COLOR_BRAND_BLUE);
 
-    // Clean blue accent divider rule underneath header
-    setFill(COLOR_ACCENT_BLUE);
-    drawRect(MARGIN_L, headerTop - 22, USABLE_W, 1.5, true, false);
-  } else {
-    // Running header on page 2+
-    const headerY = PAGE_H - 30;
-    drawText(
-      "ScalePods Partner - Private & Confidential",
-      MARGIN_L,
-      headerY,
-      8,
-      "/F1",
-      [0.45, 0.5, 0.6],
-    );
-    drawText("Official Agreement", PAGE_W - MARGIN_R - 75, headerY, 8, "/F1", [0.45, 0.5, 0.6]);
+      // Clean blue accent divider rule underneath header
+      setFill(COLOR_ACCENT_BLUE);
+      drawRect(MARGIN_L, headerTop - 22, USABLE_W, 1.5, true, false);
+    } else {
+      // Running header on page 2+
+      const headerY = PAGE_H - 30;
+      drawText(
+        "ScalePods Partner - Private & Confidential",
+        MARGIN_L,
+        headerY,
+        8,
+        "/F1",
+        [0.45, 0.5, 0.6],
+      );
+      drawText("Official Agreement", PAGE_W - MARGIN_R - 75, headerY, 8, "/F1", [0.45, 0.5, 0.6]);
 
-    setStroke(COLOR_GRID_BORDER);
-    setLineWidth(0.75);
-    drawLine(MARGIN_L, headerY - 5, PAGE_W - MARGIN_R, headerY - 5);
+      setStroke(COLOR_GRID_BORDER);
+      setLineWidth(0.75);
+      drawLine(MARGIN_L, headerY - 5, PAGE_W - MARGIN_R, headerY - 5);
+    }
   }
 
   // --- RUNNING FOOTER (ALL PAGES) ---
-  const footerY = 36;
+  const footerY = 32;
   setStroke(COLOR_GRID_BORDER);
   setLineWidth(0.75);
   drawLine(MARGIN_L, footerY + 12, PAGE_W - MARGIN_R, footerY + 12);
 
-  drawText(
-    "Private & Confidential - ScalePods Employment Agreement",
-    MARGIN_L,
-    footerY,
-    8,
-    "/F1",
-    COLOR_MUTED_GRAY,
-  );
-  const pageStr = `Page ${pageNum} of ${totalPages}`;
-  drawText(pageStr, PAGE_W - MARGIN_R - 55, footerY, 8.5, "/F2", [0.2, 0.25, 0.35]);
+  if (hasBgImg) {
+    const footerText = `${companyName}   |   ${companyWebsite || "www.scalepods.com"}   |   ${companyEmail || "contact@scalepods.com"}`;
+    const footerTextW = approxTextWidth(footerText, 7.5);
+    const footerX = Math.max(MARGIN_L, (PAGE_W - footerTextW) / 2);
+    drawText(footerText, footerX, footerY, 7.5, "/F1", [0.45, 0.45, 0.45]);
+
+    const pageStr = `Page ${pageNum} of ${totalPages}`;
+    drawText(pageStr, PAGE_W - MARGIN_R - 45, footerY, 7.5, "/F2", [0.35, 0.35, 0.35]);
+  } else {
+    drawText(
+      "Private & Confidential - ScalePods Employment Agreement",
+      MARGIN_L,
+      footerY,
+      8,
+      "/F1",
+      COLOR_MUTED_GRAY,
+    );
+    const pageStr = `Page ${pageNum} of ${totalPages}`;
+    drawText(pageStr, PAGE_W - MARGIN_R - 55, footerY, 8.5, "/F2", [0.2, 0.25, 0.35]);
+  }
 
   // --- CONTENT RENDERING ---
-  let cursorY = pageNum === 1 ? PAGE_H - 85 : PAGE_H - MARGIN_T;
+  let cursorY =
+    pageNum === 1
+      ? hasBgImg
+        ? PAGE_H - 85
+        : PAGE_H - 85
+      : hasBgImg
+        ? PAGE_H - 75
+        : PAGE_H - MARGIN_T;
 
   for (const item of pageItems) {
     if (item.type === "title") {
@@ -749,6 +834,9 @@ function renderPageContent(
 
 export interface GenerateStyledOfferPdfOptions {
   companyName?: string;
+  companyWebsite?: string;
+  companyEmail?: string;
+  backgroundImageBuffer?: Buffer | Uint8Array;
 }
 
 /**
@@ -763,6 +851,10 @@ export function generateStyledOfferPdf(
   const pages = paginateItems(items);
   const totalPages = pages.length;
   const companyName = options?.companyName || "ScalePods Partner";
+  const bgImgBuf = options?.backgroundImageBuffer
+    ? Buffer.from(options.backgroundImageBuffer)
+    : null;
+  const hasBgImg = Boolean(bgImgBuf && bgImgBuf.length > 0);
 
   // PDF Object layout:
   // 1: Catalog
@@ -771,9 +863,11 @@ export function generateStyledOfferPdf(
   // 3 + totalPages .. 3 + 2*totalPages - 1 : Content stream objects
   // Font 1: Helvetica (regular)
   // Font 2: Helvetica-Bold (bold)
+  // [Optional] Background Image XObject
   const font1Id = 3 + 2 * totalPages;
   const font2Id = font1Id + 1;
-  const totalObjs = font2Id + 1;
+  const bgImgId = hasBgImg ? font2Id + 1 : 0;
+  const totalObjs = hasBgImg ? bgImgId + 1 : font2Id + 1;
 
   const chunks: Buffer[] = [];
   const offsets: number[] = new Array(totalObjs).fill(0);
@@ -820,7 +914,9 @@ export function generateStyledOfferPdf(
       `<< /Type /Page /Parent 2 0 R` +
         ` /MediaBox [0 0 ${PAGE_W} ${PAGE_H}]` +
         ` /Contents ${contentId} 0 R` +
-        ` /Resources << /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R >> >> >>\n`,
+        ` /Resources << /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R >>` +
+        (hasBgImg ? ` /XObject << /BgImg ${bgImgId} 0 R >>` : "") +
+        ` >> >>\n`,
     );
     endObj();
   }
@@ -828,7 +924,15 @@ export function generateStyledOfferPdf(
   // Content Streams
   for (let i = 0; i < totalPages; i++) {
     const contentId = 3 + totalPages + i;
-    const pageStream = renderPageContent(pages[i], i + 1, totalPages, companyName);
+    const pageStream = renderPageContent(
+      pages[i],
+      i + 1,
+      totalPages,
+      companyName,
+      hasBgImg,
+      options?.companyWebsite,
+      options?.companyEmail,
+    );
     beginObj(contentId);
     emitStr(`<< /Length ${pageStream.length} >>\nstream\n`);
     emit(pageStream);
@@ -847,6 +951,17 @@ export function generateStyledOfferPdf(
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\n",
   );
   endObj();
+
+  // Background Image XObject
+  if (hasBgImg && bgImgBuf) {
+    beginObj(bgImgId);
+    emitStr(
+      `<< /Type /XObject /Subtype /Image /Width 2480 /Height 3508 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bgImgBuf.length} >>\nstream\n`,
+    );
+    emit(bgImgBuf);
+    emitStr("\nendstream\n");
+    endObj();
+  }
 
   // --- Cross-reference Table ---
   const xrefStart = pos;
