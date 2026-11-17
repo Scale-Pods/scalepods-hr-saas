@@ -2258,8 +2258,8 @@ function InterviewRecordingPlayerCard({
     return Math.max(chunkEst, sessionEst);
   }, [rec.totalChunks, rec.chunkUrls, rec.startedAt, rec.completedAt]);
 
-  // The effective duration never regresses below currentTime or expected duration
-  const effectiveDuration = Math.max(duration, expectedDuration, currentTime);
+  // The effective duration uses detected duration first, or expected duration from session timestamps/chunks
+  const effectiveDuration = duration > 0 ? duration : expectedDuration > 0 ? expectedDuration : 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -2604,14 +2604,18 @@ function InterviewRecordingPlayerCard({
               onPause={() => setIsPlaying(false)}
               onEnded={() => {
                 setIsPlaying(false);
-                if (effectiveDuration > 0) setCurrentTime(effectiveDuration);
+                if (videoRef.current) {
+                  const endCur = videoRef.current.currentTime;
+                  setDuration((prev) => Math.max(prev, endCur));
+                  setCurrentTime(endCur);
+                }
               }}
               onTimeUpdate={() => {
                 if (videoRef.current) {
                   const cur = videoRef.current.currentTime;
                   setCurrentTime(cur);
                   const vDur = videoRef.current.duration;
-                  if (Number.isFinite(vDur) && vDur > 0) {
+                  if (Number.isFinite(vDur) && vDur > 0 && vDur !== Infinity) {
                     if (
                       !expectedDuration ||
                       vDur >= expectedDuration * 0.75 ||
@@ -2619,41 +2623,56 @@ function InterviewRecordingPlayerCard({
                     ) {
                       setDuration((prev) => Math.max(prev, vDur));
                     }
-                  }
-                  if (cur > 0) {
-                    setDuration((prev) => Math.max(prev, cur));
+                  } else if (duration > 0 && cur > duration) {
+                    setDuration(cur);
                   }
                 }
               }}
               onLoadedMetadata={() => {
-                if (
-                  videoRef.current &&
-                  Number.isFinite(videoRef.current.duration) &&
-                  videoRef.current.duration > 0
-                ) {
-                  const vDur = videoRef.current.duration;
-                  if (
-                    !expectedDuration ||
-                    vDur >= expectedDuration * 0.75 ||
-                    expectedDuration <= 10
+                if (videoRef.current) {
+                  const v = videoRef.current;
+                  if (Number.isFinite(v.duration) && v.duration > 0 && v.duration !== Infinity) {
+                    const vDur = v.duration;
+                    if (
+                      !expectedDuration ||
+                      vDur >= expectedDuration * 0.75 ||
+                      expectedDuration <= 10
+                    ) {
+                      setDuration((prev) => Math.max(prev, vDur));
+                    }
+                  } else if (
+                    (v.duration === Infinity || !Number.isFinite(v.duration)) &&
+                    v.paused &&
+                    v.currentTime === 0
                   ) {
-                    setDuration((prev) => Math.max(prev, vDur));
+                    // Chromium WebM duration fix: seek to end to trigger duration calculation
+                    const onSeeked = () => {
+                      v.removeEventListener("seeked", onSeeked);
+                      if (
+                        Number.isFinite(v.duration) &&
+                        v.duration > 0 &&
+                        v.duration !== Infinity
+                      ) {
+                        setDuration(v.duration);
+                      }
+                      v.currentTime = 0;
+                    };
+                    v.addEventListener("seeked", onSeeked, { once: true });
+                    v.currentTime = 1e101;
                   }
                 }
               }}
               onDurationChange={() => {
-                if (
-                  videoRef.current &&
-                  Number.isFinite(videoRef.current.duration) &&
-                  videoRef.current.duration > 0
-                ) {
+                if (videoRef.current) {
                   const vDur = videoRef.current.duration;
-                  if (
-                    !expectedDuration ||
-                    vDur >= expectedDuration * 0.75 ||
-                    expectedDuration <= 10
-                  ) {
-                    setDuration((prev) => Math.max(prev, vDur));
+                  if (Number.isFinite(vDur) && vDur > 0 && vDur !== Infinity) {
+                    if (
+                      !expectedDuration ||
+                      vDur >= expectedDuration * 0.75 ||
+                      expectedDuration <= 10
+                    ) {
+                      setDuration((prev) => Math.max(prev, vDur));
+                    }
                   }
                 }
               }}
@@ -2679,29 +2698,55 @@ function InterviewRecordingPlayerCard({
               </div>
             )}
 
+            {/* Persistent slim bottom progress line visible when controls are hidden during playback */}
+            <div
+              className={cn(
+                "absolute bottom-0 inset-x-0 h-1 bg-white/10 transition-opacity duration-300 pointer-events-none z-10",
+                showControls || !isPlaying ? "opacity-0" : "opacity-100",
+              )}
+            >
+              <div
+                className="h-full bg-primary transition-all duration-75"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+
             {/* Bottom Controls Overlay */}
             <div
               className={cn(
-                "absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-4 pt-6 pb-3 transition-opacity duration-300 flex flex-col gap-2",
+                "absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-4 pt-6 pb-3 transition-opacity duration-300 flex flex-col gap-2 z-20",
                 showControls || !isPlaying
                   ? "opacity-100 pointer-events-auto"
                   : "opacity-0 pointer-events-none",
               )}
             >
               {/* Seekable Timeline Scrubber */}
-              <div className="relative flex items-center group/scrubber cursor-pointer">
+              <div className="relative w-full flex items-center group/scrubber cursor-pointer h-5 py-1.5">
+                {/* Base Track */}
+                <div className="relative w-full h-1.5 group-hover/scrubber:h-2 rounded-full bg-white/30 overflow-hidden transition-all">
+                  {/* Progress Fill */}
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-75"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+
+                {/* Scrubber Knob (Thumb) */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full bg-white shadow-md border border-black/20 transition-transform scale-0 group-hover/scrubber:scale-100 pointer-events-none -ml-1.75"
+                  style={{ left: `${progressPercent}%` }}
+                />
+
+                {/* Invisible Native Range Input for scrubbing */}
                 <input
                   type="range"
                   min={0}
                   max={effectiveDuration > 0 ? effectiveDuration : 100}
                   step={0.1}
-                  value={Math.min(currentTime, effectiveDuration > 0 ? effectiveDuration : 100)}
+                  value={effectiveDuration > 0 ? Math.min(currentTime, effectiveDuration) : 0}
                   onChange={(e) => handleSeek(Number(e.target.value))}
                   aria-label="Seek timeline"
-                  className="w-full h-1.5 hover:h-2 rounded-lg appearance-none cursor-pointer accent-primary transition-all bg-white/20"
-                  style={{
-                    background: `linear-gradient(to right, hsl(var(--primary)) ${progressPercent}%, rgba(255,255,255,0.2) ${progressPercent}%)`,
-                  }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 m-0 p-0"
                 />
               </div>
 
@@ -2772,13 +2817,14 @@ function InterviewRecordingPlayerCard({
                       value={isMuted ? 0 : volume}
                       onChange={(e) => handleVolumeChange(Number(e.target.value))}
                       aria-label="Volume slider"
-                      className="w-14 h-1 rounded-lg appearance-none cursor-pointer accent-primary bg-white/20"
+                      className="w-14 h-1.5 rounded-lg appearance-none cursor-pointer accent-primary bg-white/30"
                     />
                   </div>
 
                   {/* Timestamps */}
                   <span className="font-mono text-[11px] text-white/80 select-none ml-1">
-                    {formatPlayerTime(currentTime)} / {formatPlayerTime(effectiveDuration)}
+                    {formatPlayerTime(currentTime)} /{" "}
+                    {effectiveDuration > 0 ? formatPlayerTime(effectiveDuration) : "--:--"}
                   </span>
                 </div>
 
