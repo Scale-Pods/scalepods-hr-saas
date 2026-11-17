@@ -1,15 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { convertDocxToPdf } from "@/lib/offers/docx-to-pdf";
-import { fillOfferDocx } from "@/lib/offers/fill-docx";
+import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
+import { renderOfferTemplateText } from "@/lib/offer-template-utils";
 
 export const dynamic = "force-dynamic";
 
 /**
  * POST /api/offers/pdf?preview=true
- * Generates a live preview PDF using the exact DOCX template fill engine.
- * No generic/plain-text fallback is permitted: exact template layout or failure.
+ * Generates a live preview PDF using the built-in native PDF engine.
+ * No Gotenberg or third-party tools required.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -18,14 +18,15 @@ export async function POST(req: NextRequest) {
       field_values?: Record<string, unknown>;
       send_as_is?: boolean;
       candidate_name?: string;
+      position_title?: string;
       dynamic_variables?: Record<string, string>;
+      rendered_text?: string;
     } | null;
 
-    if (!body?.template_id) {
-      return new NextResponse(
-        "template_id is required: only exact .docx templates are supported (fallbacks disabled)",
-        { status: 400 },
-      );
+    if (!body || (!body.template_id && !body.rendered_text)) {
+      return new NextResponse("Invalid request: template_id or rendered_text required", {
+        status: 400,
+      });
     }
 
     const env = getEnv();
@@ -37,38 +38,26 @@ export async function POST(req: NextRequest) {
       auth: { persistSession: false },
     });
 
-    const { data: tpl, error: tplErr } = await adminSupabase
-      .from("offer_templates")
-      .select("id, account_id, file_name, storage_path")
-      .eq("id", body.template_id)
-      .maybeSingle();
+    const values = (body.field_values || body.dynamic_variables || {}) as Record<string, string>;
+    let textToRender = body?.rendered_text?.trim() || "";
 
-    if (tplErr || !tpl) {
-      return new NextResponse("Template not found", { status: 404 });
+    if (!textToRender && body.template_id) {
+      const { data: tpl } = await adminSupabase
+        .from("offer_templates")
+        .select("id, account_id, file_name, storage_path, raw_text")
+        .eq("id", body.template_id)
+        .maybeSingle();
+
+      if (tpl?.raw_text?.trim()) {
+        textToRender = renderOfferTemplateText(tpl.raw_text, values);
+      }
     }
 
-    if (!tpl.storage_path) {
-      return new NextResponse("Template storage path missing", { status: 404 });
+    if (!textToRender) {
+      textToRender = `Employment Offer & Agreement\n\nDear ${body.candidate_name || "Candidate"},\n\nWe are pleased to extend this offer of employment for the position of ${body.position_title || "Team Member"}.`;
     }
 
-    const { data: fileBlob, error: dlErr } = await adminSupabase.storage
-      .from("offer-templates")
-      .download(tpl.storage_path);
-
-    if (dlErr || !fileBlob) {
-      return new NextResponse("Template file missing from storage", { status: 404 });
-    }
-
-    const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
-
-    let pdfBuffer: Buffer;
-    if (body.send_as_is) {
-      pdfBuffer = await convertDocxToPdf(docxBuffer, { tenantId: tpl.account_id });
-    } else {
-      const values = body.field_values || body.dynamic_variables || {};
-      const filled = fillOfferDocx(docxBuffer, values);
-      pdfBuffer = await convertDocxToPdf(filled, { tenantId: tpl.account_id });
-    }
+    const pdfBuffer = generateTextOfferPdf(textToRender);
 
     const safeName = (body.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
     const filename = `Offer_Letter_Preview_${safeName}.pdf`;
@@ -84,8 +73,8 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[api/offers/pdf POST] Preview PDF generation error:", err);
     return new NextResponse(
-      `Failed to generate exact PDF from template: ${err instanceof Error ? err.message : String(err)}`,
-      { status: 502 },
+      `Failed to generate preview PDF: ${err instanceof Error ? err.message : String(err)}`,
+      { status: 500 },
     );
   }
 }
@@ -226,36 +215,24 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3. Fallback: regenerate PDF directly from stored filled docx or original template docx
+    // 3. Native regeneration directly from stored rendered text or template
     let candidateName = appRow?.candidate_name || "Candidate";
     let pdfBuf: Buffer | null = null;
 
-    if (offerRow?.filled_docx_path) {
-      const { data: docxBlob } = await adminSupabase.storage
-        .from("offer-templates")
-        .download(offerRow.filled_docx_path);
-      if (docxBlob) {
-        const docxBuf = Buffer.from(await docxBlob.arrayBuffer());
-        pdfBuf = await convertDocxToPdf(docxBuf, { tenantId: offerRow.account_id });
-      }
+    if (offerRow?.rendered_text) {
+      pdfBuf = generateTextOfferPdf(offerRow.rendered_text);
     } else if (offerRow?.offer_template_id) {
       const { data: tplRow } = await adminSupabase
         .from("offer_templates")
-        .select("id, account_id, storage_path")
+        .select("id, account_id, storage_path, raw_text")
         .eq("id", offerRow.offer_template_id)
         .maybeSingle();
 
-      if (tplRow?.storage_path) {
-        const { data: tplBlob } = await adminSupabase.storage
-          .from("offer-templates")
-          .download(tplRow.storage_path);
-        if (tplBlob) {
-          const tplDocx = Buffer.from(await tplBlob.arrayBuffer());
-          const fieldValues = (offerRow.field_values || {}) as Record<string, unknown>;
-          candidateName = (fieldValues.candidate_name as string) || candidateName;
-          const filled = offerRow.send_as_is ? tplDocx : fillOfferDocx(tplDocx, fieldValues);
-          pdfBuf = await convertDocxToPdf(filled, { tenantId: tplRow.account_id });
-        }
+      if (tplRow?.raw_text) {
+        const fieldValues = (offerRow.field_values || {}) as Record<string, string>;
+        candidateName = fieldValues.candidate_name || candidateName;
+        const rendered = renderOfferTemplateText(tplRow.raw_text, fieldValues);
+        pdfBuf = generateTextOfferPdf(rendered);
       }
     }
 

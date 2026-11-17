@@ -2,8 +2,9 @@ import { offerRequestSchema } from "@scalepods/core";
 import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
+import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
-import { convertDocxToPdf } from "@/lib/offers/docx-to-pdf";
+import { renderOfferTemplateText } from "@/lib/offer-template-utils";
 import { fillOfferDocx } from "@/lib/offers/fill-docx";
 import { supabaseServer } from "@/lib/supabase/server";
 
@@ -207,62 +208,66 @@ export async function POST(req: NextRequest) {
 
       const { data: tplRow } = await adminSupabase
         .from("offer_templates")
-        .select("id, account_id, file_name, storage_path")
+        .select("id, account_id, file_name, storage_path, raw_text")
         .eq("id", offerTemplateId)
         .maybeSingle();
 
-      if (!tplRow?.storage_path) {
-        return NextResponse.json(
-          { error: "Template record or storage path not found" },
-          { status: 404 },
-        );
+      let filledBuffer: Buffer | null = null;
+      if (tplRow?.storage_path) {
+        const { data: fileBlob } = await adminSupabase.storage
+          .from("offer-templates")
+          .download(tplRow.storage_path);
+
+        if (fileBlob) {
+          const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+          filledBuffer = sendAsIs ? docxBuffer : fillOfferDocx(docxBuffer, resolvedFieldValues);
+        }
       }
 
-      const { data: fileBlob } = await adminSupabase.storage
-        .from("offer-templates")
-        .download(tplRow.storage_path);
+      const textToRender =
+        renderedText?.trim() ||
+        (tplRow?.raw_text
+          ? renderOfferTemplateText(tplRow.raw_text, resolvedFieldValues as Record<string, string>)
+          : `Employment Offer & Agreement\n\nDear ${candidateName},\n\nWe are pleased to extend this offer of employment for the position of ${parsed.data.field_values?.position_title || "Team Member"}.`);
 
-      if (!fileBlob) {
-        return NextResponse.json({ error: "Template file missing from storage" }, { status: 404 });
-      }
-
-      const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
-      const filledBuffer = sendAsIs ? docxBuffer : fillOfferDocx(docxBuffer, resolvedFieldValues);
-
-      // Exact template PDF conversion only: NO fallback to text or branded
-      const pdfBuffer = await convertDocxToPdf(filledBuffer, { tenantId: user.id });
+      // Native built-in PDF generation — no Gotenberg or external API needed
+      const pdfBuffer = generateTextOfferPdf(textToRender);
 
       // Store filled docx and generated pdf in Supabase Storage for audit trail
       const timestamp = Date.now();
       const auditDocxPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_filled.docx`;
       const auditPdfPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_offer.pdf`;
 
-      await Promise.all([
-        adminSupabase.storage.from("offer-templates").upload(auditDocxPath, filledBuffer, {
-          contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          upsert: true,
-        }),
+      const uploadPromises: Promise<unknown>[] = [
         adminSupabase.storage.from("offer-templates").upload(auditPdfPath, pdfBuffer, {
           contentType: "application/pdf",
           upsert: true,
         }),
-      ]);
+      ];
 
-      filledDocxPath = auditDocxPath;
+      if (filledBuffer) {
+        uploadPromises.push(
+          adminSupabase.storage.from("offer-templates").upload(auditDocxPath, filledBuffer, {
+            contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            upsert: true,
+          }),
+        );
+        filledDocxPath = auditDocxPath;
+      }
+
+      await Promise.all(uploadPromises);
+
       generatedPdfPath = auditPdfPath;
       pdfBase64 = pdfBuffer.toString("base64");
       pdfFilename = `Offer_Letter_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
     } catch (pdfErr) {
-      console.error("[api/offers/send] Exact template PDF generation error:", pdfErr);
+      console.error("[api/offers/send] Offer PDF generation error:", pdfErr);
       return NextResponse.json(
         {
-          error: "Failed to generate exact offer PDF",
-          detail:
-            pdfErr instanceof Error
-              ? pdfErr.message
-              : "PDF conversion failed. Exact template rendering requires LibreOffice, Gotenberg, or CloudConvert.",
+          error: "Failed to generate offer PDF",
+          detail: pdfErr instanceof Error ? pdfErr.message : "PDF generation failed.",
         },
-        { status: 502 },
+        { status: 500 },
       );
     }
 
