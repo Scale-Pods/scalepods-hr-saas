@@ -130,14 +130,77 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // 2. If in round stage, normalize completed round and check if it's the final round
+        // 2. If in round stage, verify that the current round is actually completed before advancing
         if (appRow && appRow.current_stage === "round" && appRow.current_round_number != null) {
-          await adminSupabase
+          const { data: currentRound } = await adminSupabase
             .from("round_instances")
-            .update({ status: "completed" })
+            .select("id, status, round_type")
             .eq("application_id", appRow.id)
             .eq("round_number", appRow.current_round_number)
-            .in("status", ["passed", "awaiting_review", "in_progress"]);
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const roundStatus = (currentRound?.status || "").toLowerCase();
+          const isCompletedStatus =
+            roundStatus === "completed" ||
+            roundStatus === "passed" ||
+            roundStatus === "awaiting_review";
+
+          let isActuallyCompleted = isCompletedStatus;
+          if (!isActuallyCompleted && currentRound?.id) {
+            // Check if a scorecard has been generated
+            const { data: scData } = await adminSupabase
+              .from("scorecards")
+              .select("id, overall_score")
+              .eq("round_instance_id", currentRound.id)
+              .maybeSingle();
+            if (scData && scData.overall_score != null) {
+              isActuallyCompleted = true;
+            } else {
+              // Check if an interview session has been completed
+              const { data: sessData } = await adminSupabase
+                .from("interview_sessions")
+                .select("id")
+                .eq("round_instance_id", currentRound.id)
+                .eq("status", "completed")
+                .maybeSingle();
+              if (sessData) {
+                isActuallyCompleted = true;
+              } else if (currentRound.round_type === "human_interview") {
+                const { data: fbData } = await adminSupabase
+                  .from("interviewer_feedback")
+                  .select("id")
+                  .eq("round_instance_id", currentRound.id)
+                  .maybeSingle();
+                if (fbData) isActuallyCompleted = true;
+              } else if (currentRound.round_type === "assignment") {
+                const { data: subData } = await adminSupabase
+                  .from("assignment_submissions")
+                  .select("id")
+                  .eq("round_instance_id", currentRound.id)
+                  .maybeSingle();
+                if (subData) isActuallyCompleted = true;
+              }
+            }
+          }
+
+          if (!isActuallyCompleted) {
+            return NextResponse.json(
+              {
+                error: "Cannot advance candidate: The current round must be completed first.",
+                code: "ROUND_NOT_COMPLETED",
+              },
+              { status: 400 },
+            );
+          }
+
+          if (currentRound?.id && roundStatus !== "completed") {
+            await adminSupabase
+              .from("round_instances")
+              .update({ status: "completed" })
+              .eq("id", currentRound.id);
+          }
 
           const { data: campaignRow } = await adminSupabase
             .from("campaigns")

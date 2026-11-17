@@ -313,7 +313,9 @@ export default function CandidateProfilePage() {
   const application = data?.application;
   const campaign = data?.campaign;
   const assignments = data?.assignments ?? [];
+  const assignmentSubmissions = data?.assignmentSubmissions ?? [];
   const interviewerFeedback = data?.interviewerFeedback ?? [];
+  const roundInstances = data?.roundInstances ?? [];
   const offers = data?.offers ?? [];
   const campaignName = data?.campaignName;
   const candidateCampaigns = data?.candidateCampaigns ?? [];
@@ -531,16 +533,64 @@ export default function CandidateProfilePage() {
     }
   }, [application, candidate]);
 
+  const isRoundStage =
+    application?.current_stage === "round" && application?.current_round_number != null;
+
+  const currentRoundInstance = useMemo(() => {
+    if (!isRoundStage) return null;
+    return roundInstances.find((r) => r.round_number === application?.current_round_number);
+  }, [isRoundStage, roundInstances, application?.current_round_number]);
+
+  const isCurrentRoundCompleted = useMemo(() => {
+    if (!isRoundStage) return true;
+    if (!currentRoundInstance) return false;
+
+    const status = (currentRoundInstance.status || "").toLowerCase();
+    if (status === "completed" || status === "passed" || status === "awaiting_review") {
+      return true;
+    }
+
+    if (latestScorecard?.overall_score != null) {
+      return true;
+    }
+
+    if (
+      currentRoundInstance.round_type === "human_interview" &&
+      interviewerFeedback.some((f) => f.round_instance_id === currentRoundInstance.id)
+    ) {
+      return true;
+    }
+
+    if (
+      currentRoundInstance.round_type === "assignment" &&
+      assignmentSubmissions.some((s) => s.round_instance_id === currentRoundInstance.id)
+    ) {
+      return true;
+    }
+
+    return false;
+  }, [
+    isRoundStage,
+    currentRoundInstance,
+    latestScorecard?.overall_score,
+    interviewerFeedback,
+    assignmentSubmissions,
+  ]);
+
   const handleAdvance = async () => {
     if (!application?.id) return;
+    if (isRoundStage && !isCurrentRoundCompleted) {
+      showErrorToast("Cannot advance candidate: The current round must be completed first.");
+      return;
+    }
     setDecisionBusy(true);
     try {
       await decideApplication({ applicationId: application.id, action: "advance" });
       showToast("Application advanced successfully", { kind: "success" });
       refetch();
       queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
-    } catch (err: any) {
-      showErrorToast(err?.message || "Failed to advance application");
+    } catch (err) {
+      showErrorToast(err instanceof Error ? err.message : "Failed to advance application");
     } finally {
       setDecisionBusy(false);
     }
@@ -888,9 +938,19 @@ export default function CandidateProfilePage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={decisionBusy}
+                    disabled={decisionBusy || (isRoundStage && !isCurrentRoundCompleted)}
                     onClick={handleAdvance}
-                    className="rounded-xl text-xs gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
+                    className={cn(
+                      "rounded-xl text-xs gap-1.5",
+                      isRoundStage && !isCurrentRoundCompleted
+                        ? "opacity-40 cursor-not-allowed border-border text-muted-foreground"
+                        : "border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 cursor-pointer",
+                    )}
+                    title={
+                      isRoundStage && !isCurrentRoundCompleted
+                        ? "Candidate cannot be advanced without completing the round"
+                        : "Advance candidate"
+                    }
                   >
                     <CheckCircle className="h-3.5 w-3.5 text-emerald-500" /> Advance
                   </Button>
@@ -2071,6 +2131,98 @@ function formatPlayerTime(seconds: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+/**
+ * Patches the Segment Info Duration element (EBML ID 0x4489) in a WebM chunk buffer.
+ * MediaRecorder chunks default this to the first chunk's timeslice (~6s). Patching it
+ * with the total recording duration allows HTML5 video elements to accurately seek,
+ * report duration, and display proper progression.
+ */
+function patchWebmChunkDuration(chunkBuffer: ArrayBuffer, durationSeconds: number): ArrayBuffer {
+  try {
+    const bytes = new Uint8Array(chunkBuffer);
+    const view = new DataView(chunkBuffer);
+    const durationMs = durationSeconds * 1000;
+
+    // Search for EBML Duration Tag: 0x44 0x89 within the first 8KB (Segment Info header)
+    const searchLimit = Math.min(bytes.length - 10, 8192);
+    for (let i = 0; i < searchLimit; i++) {
+      if (bytes[i] === 0x44 && bytes[i + 1] === 0x89) {
+        const sizeByte = bytes[i + 2];
+        if (sizeByte === 0x84) {
+          // 4-byte Float32 (0x84 is vint for 4 bytes)
+          view.setFloat32(i + 3, durationMs, false); // big-endian
+          return chunkBuffer;
+        } else if (sizeByte === 0x88) {
+          // 8-byte Float64 (0x88 is vint for 8 bytes)
+          view.setFloat64(i + 3, durationMs, false); // big-endian
+          return chunkBuffer;
+        } else if (sizeByte === 0x40 && bytes[i + 3] === 0x04) {
+          // 2-byte VINT for 4 bytes
+          view.setFloat32(i + 4, durationMs, false);
+          return chunkBuffer;
+        } else if (sizeByte === 0x40 && bytes[i + 3] === 0x08) {
+          // 2-byte VINT for 8 bytes
+          view.setFloat64(i + 4, durationMs, false);
+          return chunkBuffer;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[patchWebmChunkDuration] Warning during header patch:", err);
+  }
+  return chunkBuffer;
+}
+
+/**
+ * Scans a WebM chunk for cluster timestamps (EBML ID 0x1F43B675 followed by 0xE7).
+ * Returns the highest cluster timestamp found in milliseconds, or null.
+ */
+function extractLastClusterTimestamp(chunkBuffer: ArrayBuffer): number | null {
+  try {
+    const bytes = new Uint8Array(chunkBuffer);
+    let maxTimestamp = 0;
+    for (let i = 0; i < bytes.length - 12; i++) {
+      if (
+        bytes[i] === 0x1f &&
+        bytes[i + 1] === 0x43 &&
+        bytes[i + 2] === 0xb6 &&
+        bytes[i + 3] === 0x75
+      ) {
+        let offset = i + 4;
+        const firstByte = bytes[offset];
+        if (!firstByte) continue;
+        let vintLen = 1;
+        let mask = 0x80;
+        while (vintLen <= 8 && (firstByte & mask) === 0) {
+          mask >>= 1;
+          vintLen++;
+        }
+        offset += vintLen;
+        const limit = Math.min(offset + 100, bytes.length - 4);
+        for (let j = offset; j < limit; j++) {
+          if (bytes[j] === 0xe7) {
+            const sizeByte = bytes[j + 1];
+            const timecodeLen = sizeByte & 0x7f;
+            if (timecodeLen >= 1 && timecodeLen <= 8 && j + 2 + timecodeLen <= bytes.length) {
+              let tc = 0;
+              for (let k = 0; k < timecodeLen; k++) {
+                tc = (tc << 8) | bytes[j + 2 + k];
+              }
+              if (tc > maxTimestamp) {
+                maxTimestamp = tc;
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+    return maxTimestamp > 0 ? maxTimestamp : null;
+  } catch {
+    return null;
+  }
+}
+
 function InterviewRecordingPlayerCard({
   rec,
 }: {
@@ -2102,6 +2254,23 @@ function InterviewRecordingPlayerCard({
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const createdBlobUrlRef = useRef<string | null>(null);
 
+  // Derive expected recording duration from chunk count and session timestamps
+  const expectedDuration = useMemo(() => {
+    const chunkCount = rec.totalChunks || rec.chunkUrls?.length || 0;
+    const chunkEst = chunkCount > 1 ? chunkCount * 6 : 0;
+    const sessionEst =
+      rec.startedAt && rec.completedAt
+        ? Math.max(
+            0,
+            (new Date(rec.completedAt).getTime() - new Date(rec.startedAt).getTime()) / 1000,
+          )
+        : 0;
+    return Math.max(chunkEst, sessionEst);
+  }, [rec.totalChunks, rec.chunkUrls, rec.startedAt, rec.completedAt]);
+
+  // The effective duration never regresses below currentTime or expected duration
+  const effectiveDuration = Math.max(duration, expectedDuration, currentTime);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -2130,29 +2299,85 @@ function InterviewRecordingPlayerCard({
       });
 
       Promise.all(promises)
-        .then((blobs) => {
+        .then(async (blobs) => {
           if (cancelled) return;
           const validBlobs = blobs.filter((b): b is Blob => Boolean(b && b.size > 0));
           if (validBlobs.length > 0) {
             cleanupBlob();
+
+            // Calculate accurate total duration across all segments
+            let totalDurationSec = validBlobs.length * 6;
+            if (validBlobs.length > 1) {
+              try {
+                const lastChunkBuf = await validBlobs[validBlobs.length - 1].arrayBuffer();
+                const lastClusterTs = extractLastClusterTimestamp(lastChunkBuf);
+                if (lastClusterTs && lastClusterTs > 0) {
+                  totalDurationSec = Math.max(totalDurationSec, (lastClusterTs + 6000) / 1000);
+                }
+              } catch {}
+            }
+            if (expectedDuration > 0) {
+              totalDurationSec = Math.max(totalDurationSec, expectedDuration);
+            }
+
+            // Patch chunk 0's EBML Duration header so HTML5 video accurately knows total duration
+            try {
+              const chunk0Buf = await validBlobs[0].arrayBuffer();
+              const patchedChunk0Buf = patchWebmChunkDuration(chunk0Buf, totalDurationSec);
+              validBlobs[0] = new Blob([patchedChunk0Buf], { type: "video/webm" });
+            } catch (patchErr) {
+              console.warn("[RecordingPlayer] Could not patch chunk 0 duration:", patchErr);
+            }
+
             const merged = new Blob(validBlobs, { type: "video/webm" });
             const blobUrl = URL.createObjectURL(merged);
             createdBlobUrlRef.current = blobUrl;
             setVideoUrl(blobUrl);
+            setDuration(totalDurationSec);
           } else if (rec.recordingSignedUrl) {
             setVideoUrl(rec.recordingSignedUrl);
+            if (expectedDuration > 0) setDuration(expectedDuration);
           }
         })
         .catch(() => {
           if (!cancelled && rec.recordingSignedUrl) {
             setVideoUrl(rec.recordingSignedUrl);
+            if (expectedDuration > 0) setDuration(expectedDuration);
           }
         })
         .finally(() => {
           if (!cancelled) setLoadingChunks(false);
         });
     } else if (rec.recordingSignedUrl) {
-      setVideoUrl(rec.recordingSignedUrl);
+      if (expectedDuration > 10) {
+        // If we expect a longer video than the default 6s patch, fetch and patch Chunk 0 header
+        fetch(rec.recordingSignedUrl)
+          .then((res) => (res.ok ? res.blob() : null))
+          .then(async (blob) => {
+            if (cancelled || !blob) return;
+            try {
+              const buf = await blob.arrayBuffer();
+              const patched = patchWebmChunkDuration(buf, expectedDuration);
+              cleanupBlob();
+              const blobUrl = URL.createObjectURL(new Blob([patched], { type: "video/webm" }));
+              createdBlobUrlRef.current = blobUrl;
+              setVideoUrl(blobUrl);
+              setDuration(expectedDuration);
+            } catch {
+              setVideoUrl(rec.recordingSignedUrl);
+              setDuration(expectedDuration);
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setVideoUrl(rec.recordingSignedUrl);
+              if (expectedDuration > 0) setDuration(expectedDuration);
+            }
+          });
+      } else {
+        setVideoUrl(rec.recordingSignedUrl);
+        if (expectedDuration > 0) setDuration(expectedDuration);
+      }
       setLoadingChunks(false);
     }
 
@@ -2160,7 +2385,7 @@ function InterviewRecordingPlayerCard({
       cancelled = true;
       cleanupBlob();
     };
-  }, [rec.chunkUrls, rec.recordingSignedUrl]);
+  }, [rec.chunkUrls, rec.recordingSignedUrl, expectedDuration]);
 
   // Sync fullscreen state
   useEffect(() => {
@@ -2201,7 +2426,7 @@ function InterviewRecordingPlayerCard({
   const handleSkip = (seconds: number) => {
     const v = videoRef.current;
     if (!v) return;
-    const maxDur = duration > 0 ? duration : Number.isFinite(v.duration) ? v.duration : 999999;
+    const maxDur = effectiveDuration > 0 ? effectiveDuration : 999999;
     v.currentTime = Math.max(0, Math.min(v.currentTime + seconds, maxDur));
   };
 
@@ -2303,7 +2528,8 @@ function InterviewRecordingPlayerCard({
   };
 
   const totalSegments = rec.totalChunks || rec.chunkUrls?.length || 0;
-  const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const progressPercent =
+    effectiveDuration > 0 ? Math.min(100, Math.max(0, (currentTime / effectiveDuration) * 100)) : 0;
 
   return (
     <div className="rounded-xl border border-border/70 bg-card p-4 space-y-3">
@@ -2386,27 +2612,59 @@ function InterviewRecordingPlayerCard({
               preload="metadata"
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
-              onEnded={() => setIsPlaying(false)}
+              onEnded={() => {
+                setIsPlaying(false);
+                if (effectiveDuration > 0) setCurrentTime(effectiveDuration);
+              }}
               onTimeUpdate={() => {
                 if (videoRef.current) {
-                  setCurrentTime(videoRef.current.currentTime);
-                  if (
-                    (!duration || !Number.isFinite(duration)) &&
-                    Number.isFinite(videoRef.current.duration) &&
-                    videoRef.current.duration > 0
-                  ) {
-                    setDuration(videoRef.current.duration);
+                  const cur = videoRef.current.currentTime;
+                  setCurrentTime(cur);
+                  const vDur = videoRef.current.duration;
+                  if (Number.isFinite(vDur) && vDur > 0) {
+                    if (
+                      !expectedDuration ||
+                      vDur >= expectedDuration * 0.75 ||
+                      expectedDuration <= 10
+                    ) {
+                      setDuration((prev) => Math.max(prev, vDur));
+                    }
+                  }
+                  if (cur > 0) {
+                    setDuration((prev) => Math.max(prev, cur));
                   }
                 }
               }}
               onLoadedMetadata={() => {
-                if (videoRef.current && Number.isFinite(videoRef.current.duration)) {
-                  setDuration(videoRef.current.duration);
+                if (
+                  videoRef.current &&
+                  Number.isFinite(videoRef.current.duration) &&
+                  videoRef.current.duration > 0
+                ) {
+                  const vDur = videoRef.current.duration;
+                  if (
+                    !expectedDuration ||
+                    vDur >= expectedDuration * 0.75 ||
+                    expectedDuration <= 10
+                  ) {
+                    setDuration((prev) => Math.max(prev, vDur));
+                  }
                 }
               }}
               onDurationChange={() => {
-                if (videoRef.current && Number.isFinite(videoRef.current.duration)) {
-                  setDuration(videoRef.current.duration);
+                if (
+                  videoRef.current &&
+                  Number.isFinite(videoRef.current.duration) &&
+                  videoRef.current.duration > 0
+                ) {
+                  const vDur = videoRef.current.duration;
+                  if (
+                    !expectedDuration ||
+                    vDur >= expectedDuration * 0.75 ||
+                    expectedDuration <= 10
+                  ) {
+                    setDuration((prev) => Math.max(prev, vDur));
+                  }
                 }
               }}
               className={cn(
@@ -2445,9 +2703,9 @@ function InterviewRecordingPlayerCard({
                 <input
                   type="range"
                   min={0}
-                  max={duration > 0 ? duration : 100}
+                  max={effectiveDuration > 0 ? effectiveDuration : 100}
                   step={0.1}
-                  value={currentTime}
+                  value={Math.min(currentTime, effectiveDuration > 0 ? effectiveDuration : 100)}
                   onChange={(e) => handleSeek(Number(e.target.value))}
                   aria-label="Seek timeline"
                   className="w-full h-1.5 hover:h-2 rounded-lg appearance-none cursor-pointer accent-primary transition-all bg-white/20"
@@ -2530,7 +2788,7 @@ function InterviewRecordingPlayerCard({
 
                   {/* Timestamps */}
                   <span className="font-mono text-[11px] text-white/80 select-none ml-1">
-                    {formatPlayerTime(currentTime)} / {formatPlayerTime(duration)}
+                    {formatPlayerTime(currentTime)} / {formatPlayerTime(effectiveDuration)}
                   </span>
                 </div>
 

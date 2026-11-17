@@ -306,6 +306,32 @@ export function PipelineBoard({
     );
   };
 
+  const isCandidateRoundCompleted = (cand: ViewCandidate): boolean => {
+    const stage = (cand.current_stage || "").toLowerCase();
+    const isRound =
+      cand.current_round_number != null || Boolean(cand.round_number) || stage.includes("round");
+
+    if (!isRound) return true;
+
+    // Check round decision / status
+    const status = (cand.decision || cand.status || "").toLowerCase();
+    if (status === "completed" || status === "passed" || status === "awaiting_review") {
+      return true;
+    }
+
+    // Check interview status
+    if (cand.interview_status === "completed" || cand.interview_status === "evaluated") {
+      return true;
+    }
+
+    // Check score evaluation for this round
+    if (cand.ai_interview_score != null) {
+      return true;
+    }
+
+    return false;
+  };
+
   // Action handlers
   const handleAdvance = async (cand: ViewCandidate) => {
     if (!cand.application_id) {
@@ -331,6 +357,16 @@ export function PipelineBoard({
           ? "Cannot advance candidate: Please click 'Check' on all required documents to verify them first."
           : "Cannot advance candidate: Please request and verify required documents first.",
       );
+      return;
+    }
+
+    const isRound =
+      cand.current_round_number != null ||
+      Boolean(cand.round_number) ||
+      (cand.current_stage || "").toLowerCase().includes("round");
+
+    if (isRound && !isCandidateRoundCompleted(cand)) {
+      showErrorToast("Cannot advance candidate: The current round must be completed first.");
       return;
     }
 
@@ -1084,19 +1120,39 @@ export function PipelineBoard({
                                     </Button>
                                   )
                                 ) : (
-                                  <Button
-                                    size="sm"
-                                    disabled={isBusy || isJobClosed}
-                                    onClick={() => handleAdvance(cand)}
-                                    className="h-6 px-2.5 text-[10px] font-semibold gap-1 bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 whitespace-nowrap"
-                                  >
-                                    {isBusy ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <ArrowRight className="h-3 w-3" />
-                                    )}
-                                    Advance
-                                  </Button>
+                                  (() => {
+                                    const isRound =
+                                      cand.current_round_number != null ||
+                                      Boolean(cand.round_number) ||
+                                      (cand.current_stage || "").toLowerCase().includes("round");
+                                    const roundCompleted =
+                                      !isRound || isCandidateRoundCompleted(cand);
+                                    return (
+                                      <Button
+                                        size="sm"
+                                        disabled={isBusy || isJobClosed || !roundCompleted}
+                                        onClick={() => handleAdvance(cand)}
+                                        className={cn(
+                                          "h-6 px-2.5 text-[10px] font-semibold gap-1 shrink-0 whitespace-nowrap",
+                                          roundCompleted
+                                            ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                                            : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
+                                        )}
+                                        title={
+                                          !roundCompleted
+                                            ? "Candidate cannot be advanced without completing the round"
+                                            : "Advance candidate to next stage"
+                                        }
+                                      >
+                                        {isBusy ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <ArrowRight className="h-3 w-3" />
+                                        )}
+                                        Advance
+                                      </Button>
+                                    );
+                                  })()
                                 ))}
                             </div>
                           </div>
@@ -1339,19 +1395,38 @@ export function PipelineBoard({
                                 </Button>
                               )
                             ) : (
-                              <Button
-                                size="sm"
-                                disabled={isBusy || isJobClosed}
-                                onClick={() => handleAdvance(cand)}
-                                className="h-7 px-2.5 text-xs font-semibold gap-1"
-                              >
-                                {isBusy ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <ArrowRight className="h-3.5 w-3.5" />
-                                )}
-                                Advance
-                              </Button>
+                              (() => {
+                                const isRound =
+                                  cand.current_round_number != null ||
+                                  Boolean(cand.round_number) ||
+                                  (cand.current_stage || "").toLowerCase().includes("round");
+                                const roundCompleted = !isRound || isCandidateRoundCompleted(cand);
+                                return (
+                                  <Button
+                                    size="sm"
+                                    disabled={isBusy || isJobClosed || !roundCompleted}
+                                    onClick={() => handleAdvance(cand)}
+                                    className={cn(
+                                      "h-7 px-2.5 text-xs font-semibold gap-1",
+                                      roundCompleted
+                                        ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                                        : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
+                                    )}
+                                    title={
+                                      !roundCompleted
+                                        ? "Candidate cannot be advanced without completing the round"
+                                        : "Advance candidate to next stage"
+                                    }
+                                  >
+                                    {isBusy ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <ArrowRight className="h-3.5 w-3.5" />
+                                    )}
+                                    Advance
+                                  </Button>
+                                );
+                              })()
                             ))}
                         </div>
                       </TableCell>
