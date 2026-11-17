@@ -2,7 +2,7 @@ import { offerRequestSchema } from "@scalepods/core";
 import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
+import { generateStyledOfferPdf } from "@/lib/generate-styled-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
 import { renderOfferTemplateText } from "@/lib/offer-template-utils";
 import { fillOfferDocx } from "@/lib/offers/fill-docx";
@@ -250,8 +250,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Native built-in PDF generation — no Gotenberg or external API needed
-      const pdfBuffer = generateTextOfferPdf(textToRender);
+      // Native high-fidelity styled PDF generation — no Gotenberg or external API needed
+      const pdfBuffer = generateStyledOfferPdf(textToRender, {
+        companyName: companyName || "ScalePods Partner",
+      });
 
       // Store filled docx and generated pdf in Supabase Storage for audit trail
       const timestamp = Date.now();

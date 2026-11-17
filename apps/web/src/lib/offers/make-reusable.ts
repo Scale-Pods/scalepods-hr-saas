@@ -1,4 +1,4 @@
-import PizZip from "pizzip";
+import * as fflate from "fflate";
 
 export interface TextMatchItem {
   id: string; // unique ID: `${xmlFile}:${paragraphIndex}:${matchIndex}`
@@ -101,21 +101,21 @@ export function findTextMatchesInDocx(
   templateBuffer: Buffer,
   targetPhrases: string[],
 ): Record<string, TextMatchItem[]> {
-  const zip = new PizZip(templateBuffer);
+  const unzipped = fflate.unzipSync(new Uint8Array(templateBuffer));
   const results: Record<string, TextMatchItem[]> = {};
 
   for (const phrase of targetPhrases) {
     results[phrase] = [];
   }
 
-  const xmlFiles = Object.keys(zip.files).filter((fileName) => {
+  const xmlFiles = Object.keys(unzipped).filter((fileName) => {
     if (!fileName.startsWith("word/") || !fileName.endsWith(".xml")) return false;
     const base = fileName.replace("word/", "");
     return base === "document.xml" || base.startsWith("header") || base.startsWith("footer");
   });
 
   for (const xmlFile of xmlFiles) {
-    const xmlContent = zip.files[xmlFile].asText();
+    const xmlContent = fflate.strFromU8(unzipped[xmlFile]);
     // Split into paragraphs <w:p>...</w:p>
     const pRegex = /<w:p(?:\s+[^>]*)?>[\s\S]*?<\/w:p>/g;
     let pMatch: RegExpExecArray | null = pRegex.exec(xmlContent);
@@ -276,7 +276,7 @@ export function applyTextReplacementsToDocx(
   replacements: ReplacementInstruction[],
   targetMatches: Record<string, TextMatchItem[]>,
 ): Buffer {
-  const zip = new PizZip(templateBuffer);
+  const unzipped = fflate.unzipSync(new Uint8Array(templateBuffer));
 
   // Group instructions by xmlFile and paragraphIndex
   // matchId format: `${xmlFile}:${paragraphIndex}:${matchIndex}`
@@ -317,8 +317,8 @@ export function applyTextReplacementsToDocx(
 
   // Process each affected XML file
   for (const [xmlFile, paragraphMap] of grouped.entries()) {
-    if (!zip.files[xmlFile]) continue;
-    const xmlContent = zip.files[xmlFile].asText();
+    if (!unzipped[xmlFile]) continue;
+    const xmlContent = fflate.strFromU8(unzipped[xmlFile]);
 
     const pRegex = /<w:p(?:\s+[^>]*)?>[\s\S]*?<\/w:p>/g;
     const pMatches: Array<{ fullMatch: string; index: number; length: number }> = [];
@@ -373,8 +373,9 @@ export function applyTextReplacementsToDocx(
         updatedXml.slice(pMatch.index + pMatch.length);
     }
 
-    zip.file(xmlFile, updatedXml);
+    unzipped[xmlFile] = fflate.strToU8(updatedXml);
   }
 
-  return zip.generate({ type: "nodebuffer", compression: "DEFLATE" }) as Buffer;
+  const zipped = fflate.zipSync(unzipped);
+  return Buffer.from(zipped);
 }

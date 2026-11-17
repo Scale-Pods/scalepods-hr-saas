@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import PizZip from "pizzip";
+import * as fflate from "fflate";
 import { describe, expect, it } from "vitest";
 import { fillOfferDocx } from "./fill-docx";
 import {
@@ -16,34 +16,34 @@ const sampleDocxPath = path.resolve(
 
 function createDocxWithCustomXml(documentBodyXml: string, headerXml?: string): Buffer {
   const content = fs.readFileSync(sampleDocxPath);
-  const zip = new PizZip(content);
+  const unzipped = fflate.unzipSync(new Uint8Array(content));
 
-  let docXml = zip.files["word/document.xml"].asText();
+  let docXml = fflate.strFromU8(unzipped["word/document.xml"]);
   // Replace the first <w:p>...</w:p> with our custom paragraphs
   docXml = docXml.replace(/<w:p(?:\s+[^>]*)?>[\s\S]*?<\/w:p>/, documentBodyXml);
-  zip.file("word/document.xml", docXml);
+  unzipped["word/document.xml"] = fflate.strToU8(docXml);
 
   if (headerXml) {
-    zip.file(
-      "word/header1.xml",
+    unzipped["word/header1.xml"] = fflate.strToU8(
       `<?xml version="1.0" encoding="UTF-8"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${headerXml}</w:hdr>`,
     );
 
-    // Register relationship so docxtemplater discovers the header
+    // Register relationship so word discovers the header
     const relsPath = "word/_rels/document.xml.rels";
-    if (zip.files[relsPath]) {
-      let relsXml = zip.files[relsPath].asText();
+    if (unzipped[relsPath]) {
+      let relsXml = fflate.strFromU8(unzipped[relsPath]);
       if (!relsXml.includes("header1.xml")) {
         relsXml = relsXml.replace(
           "</Relationships>",
           '<Relationship Id="rId999" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>',
         );
-        zip.file(relsPath, relsXml);
+        unzipped[relsPath] = fflate.strToU8(relsXml);
       }
     }
   }
 
-  return zip.generate({ type: "nodebuffer", compression: "DEFLATE" }) as Buffer;
+  const zipped = fflate.zipSync(unzipped);
+  return Buffer.from(zipped);
 }
 
 describe("make-reusable run-splitting replacement", () => {
@@ -81,8 +81,8 @@ describe("make-reusable run-splitting replacement", () => {
       matches,
     );
 
-    const zip = new PizZip(replacedDocx);
-    const xml = zip.files["word/document.xml"].asText();
+    const unzipped = fflate.unzipSync(new Uint8Array(replacedDocx));
+    const xml = fflate.strFromU8(unzipped["word/document.xml"]);
 
     // Verify tag insertion and bold styling retention
     expect(xml).toContain("{{candidate_name}}");
@@ -93,8 +93,8 @@ describe("make-reusable run-splitting replacement", () => {
     const filledDocx = fillOfferDocx(replacedDocx, {
       candidate_name: "Amit Patel",
     });
-    const filledZip = new PizZip(filledDocx);
-    const filledXml = filledZip.files["word/document.xml"].asText();
+    const filledUnzipped = fflate.unzipSync(new Uint8Array(filledDocx));
+    const filledXml = fflate.strFromU8(filledUnzipped["word/document.xml"]);
     expect(filledXml).toContain("Amit Patel");
     expect(filledXml).toContain("we are pleased to offer you the position");
   });
@@ -131,9 +131,9 @@ describe("make-reusable run-splitting replacement", () => {
 
     const replacedDocx = applyTextReplacementsToDocx(originalDocx, instructions, matches);
 
-    const zip = new PizZip(replacedDocx);
-    const docXml = zip.files["word/document.xml"].asText();
-    const hdrXml = zip.files["word/header1.xml"].asText();
+    const unzipped = fflate.unzipSync(new Uint8Array(replacedDocx));
+    const docXml = fflate.strFromU8(unzipped["word/document.xml"]);
+    const hdrXml = fflate.strFromU8(unzipped["word/header1.xml"]);
 
     expect(docXml).toContain("{{candidate_name}}");
     expect(docXml).not.toContain("Rahul Sharma");
@@ -142,9 +142,9 @@ describe("make-reusable run-splitting replacement", () => {
 
     // Dry-run fill
     const filled = fillOfferDocx(replacedDocx, { candidate_name: "Priya Nair" });
-    const filledZip = new PizZip(filled);
-    expect(filledZip.files["word/document.xml"].asText()).toContain("Priya Nair");
-    expect(filledZip.files["word/header1.xml"].asText()).toContain("Priya Nair");
+    const filledUnzipped = fflate.unzipSync(new Uint8Array(filled));
+    expect(fflate.strFromU8(filledUnzipped["word/document.xml"])).toContain("Priya Nair");
+    expect(fflate.strFromU8(filledUnzipped["word/header1.xml"])).toContain("Priya Nair");
   });
 
   it("honors unchecked matches, replacing only selected occurrences", () => {
@@ -171,8 +171,8 @@ describe("make-reusable run-splitting replacement", () => {
 
     const replacedDocx = applyTextReplacementsToDocx(originalDocx, instructions, matches);
 
-    const zip = new PizZip(replacedDocx);
-    const docXml = zip.files["word/document.xml"].asText();
+    const unzipped = fflate.unzipSync(new Uint8Array(replacedDocx));
+    const docXml = fflate.strFromU8(unzipped["word/document.xml"]);
 
     expect(docXml).toContain("Candidate: {{candidate_name}}");
     expect(docXml).toContain("CEO: Rahul Sharma"); // Remains untouched

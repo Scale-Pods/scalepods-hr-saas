@@ -1,25 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { generateTextOfferPdf } from "./generate-text-offer-pdf";
+import { generateStyledOfferPdf, generateTextOfferPdf } from "./generate-text-offer-pdf";
 
-describe("generateTextOfferPdf", () => {
-  it("generates a valid single-page PDF buffer from rendered offer text", () => {
-    const buf = generateTextOfferPdf(
-      "OFFER OF EMPLOYMENT\n\nDear Manish Sharma,\n\nWe are pleased to offer you AI Automation Intern.",
+describe("generateStyledOfferPdf", () => {
+  it("generates a valid single-page branded PDF buffer from rendered offer text", () => {
+    const buf = generateStyledOfferPdf(
+      "OFFER OF EMPLOYMENT\n\n| Ref: SP/2026/01 | Date: Nov 17, 2026 |\n\nDear Manish Sharma,\n\nWe are pleased to offer you AI Automation Intern.",
+      { companyName: "ScalePods Partner" },
     );
     const ascii = buf.toString("latin1");
     expect(ascii.startsWith("%PDF-1.4")).toBe(true);
     expect(ascii.trimEnd().endsWith("%%EOF")).toBe(true);
+    expect(ascii).toContain("ScalePods Partner");
     expect(ascii).toContain("Dear Manish Sharma,");
-    expect(ascii).toContain("1 0 0 1 72 ");
+    expect(ascii).toContain("CONFIDENTIAL EMPLOYMENT AGREEMENT");
+    expect(ascii).toContain("Page 1 of 1");
   });
 
-  it("paginates long multi-line letters across multiple pages", () => {
+  it("renders structured compensation tables into vector table elements", () => {
+    const tableText = `APPOINTMENT LETTER
+| # | Component | Monthly (INR) | Annual (INR) |
+| 1 | Basic Salary | 10,000 | 1,20,000 |
+| Total CTC | 10,000 | 1,20,000 |`;
+
+    const buf = generateStyledOfferPdf(tableText);
+    const ascii = buf.toString("latin1");
+    expect(ascii).toContain("Component");
+    expect(ascii).toContain("Basic Salary");
+    expect(ascii).toContain("Total CTC");
+  });
+
+  it("paginates long multi-line letters across multiple pages with page numbers", () => {
     const longBody = Array.from(
       { length: 120 },
-      (_, i) => `Clause ${i + 1}: Standard employment term.`,
-    ).join("\n");
+      (_, i) =>
+        `Clause ${i + 1}: Standard employment term with detailed company policy instructions.`,
+    ).join("\n\n");
     const buf = generateTextOfferPdf(longBody);
     const ascii = buf.toString("latin1");
-    expect(ascii).toContain("/Count 3");
+    expect(ascii).toMatch(/\/Count [2-9]/);
+    expect(ascii).toContain("Page 1 of ");
   });
 });

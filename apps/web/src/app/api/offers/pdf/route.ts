@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
+import { generateStyledOfferPdf } from "@/lib/generate-styled-offer-pdf";
 import { renderOfferTemplateText } from "@/lib/offer-template-utils";
 import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
 
@@ -90,7 +90,8 @@ export async function POST(req: NextRequest) {
       textToRender = `Employment Offer & Agreement\n\nDear ${body?.candidate_name || "Candidate"},\n\nWe are pleased to extend this offer of employment for the position of ${body?.position_title || "Team Member"}.`;
     }
 
-    const pdfBuffer = generateTextOfferPdf(textToRender);
+    const companyName = (values.company_name as string) || "ScalePods Partner";
+    const pdfBuffer = generateStyledOfferPdf(textToRender, { companyName });
 
     const safeName = (body?.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
     const filename = `Offer_Letter_Preview_${safeName}.pdf`;
@@ -253,7 +254,7 @@ export async function GET(req: NextRequest) {
     let pdfBuf: Buffer | null = null;
 
     if (offerRow?.rendered_text) {
-      pdfBuf = generateTextOfferPdf(offerRow.rendered_text);
+      pdfBuf = generateStyledOfferPdf(offerRow.rendered_text);
     } else if (offerRow?.offer_template_id) {
       const { data: tplRow } = await adminSupabase
         .from("offer_templates")
@@ -265,7 +266,7 @@ export async function GET(req: NextRequest) {
         const fieldValues = (offerRow.field_values || {}) as Record<string, string>;
         candidateName = fieldValues.candidate_name || candidateName;
         const rendered = renderOfferTemplateText(tplRow.raw_text, fieldValues);
-        pdfBuf = generateTextOfferPdf(rendered);
+        pdfBuf = generateStyledOfferPdf(rendered);
       }
     }
 

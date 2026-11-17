@@ -1,4 +1,4 @@
-import PizZip from "pizzip";
+import * as fflate from "fflate";
 import { z } from "zod";
 import { normalizeFieldName } from "./make-reusable";
 
@@ -37,10 +37,10 @@ function decodeXmlEntities(text: string): string {
  * Extract plain text paragraphs from the DOCX package across body, headers, and footers.
  */
 export function extractDocxParagraphs(templateBuffer: Buffer): DocumentParagraph[] {
-  const zip = new PizZip(templateBuffer);
+  const unzipped = fflate.unzipSync(new Uint8Array(templateBuffer));
   const paragraphs: DocumentParagraph[] = [];
 
-  const xmlFiles = Object.keys(zip.files).filter((fileName) => {
+  const xmlFiles = Object.keys(unzipped).filter((fileName) => {
     if (!fileName.startsWith("word/") || !fileName.endsWith(".xml")) return false;
     const base = fileName.replace("word/", "");
     return base === "document.xml" || base.startsWith("header") || base.startsWith("footer");
@@ -48,7 +48,7 @@ export function extractDocxParagraphs(templateBuffer: Buffer): DocumentParagraph
 
   let pCounter = 0;
   for (const xmlFile of xmlFiles) {
-    const xml = zip.files[xmlFile].asText();
+    const xml = fflate.strFromU8(unzipped[xmlFile]);
     const location = xmlFile.includes("header")
       ? "header"
       : xmlFile.includes("footer")

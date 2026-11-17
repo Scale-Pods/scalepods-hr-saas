@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import PizZip from "pizzip";
+import * as fflate from "fflate";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { filterAndValidateSuggestions, suggestFieldsWithAnthropic } from "./suggest-fields";
 
@@ -11,11 +11,12 @@ const sampleDocxPath = path.resolve(
 
 function createDocx(text: string): Buffer {
   const content = fs.readFileSync(sampleDocxPath);
-  const zip = new PizZip(content);
-  let docXml = zip.files["word/document.xml"].asText();
+  const unzipped = fflate.unzipSync(new Uint8Array(content));
+  let docXml = fflate.strFromU8(unzipped["word/document.xml"]);
   docXml = docXml.replace(/<w:t>.*?<\/w:t>/, `<w:t>${text}</w:t>`);
-  zip.file("word/document.xml", docXml);
-  return zip.generate({ type: "nodebuffer", compression: "DEFLATE" }) as Buffer;
+  unzipped["word/document.xml"] = fflate.strToU8(docXml);
+  const zipped = fflate.zipSync(unzipped);
+  return Buffer.from(zipped);
 }
 
 describe("suggest-fields post-processing", () => {

@@ -1,5 +1,4 @@
-import Docxtemplater from "docxtemplater";
-import PizZip from "pizzip";
+import * as fflate from "fflate";
 import { pruneDocxXmlConditions } from "./prune-docx-xml";
 
 export {
@@ -19,81 +18,101 @@ export class OfferDocxError extends Error {
 }
 
 /**
- * Format Docxtemplater error objects into clear, human-readable error messages.
+ * Validate that all `{{...}}` tags in XML are well-formed and closed.
  */
-function formatDocxtemplaterError(err: unknown): OfferDocxError {
-  if (err instanceof OfferDocxError) {
-    return err;
-  }
-
-  const anyErr = err as {
-    message?: string;
-    properties?: {
-      id?: string;
-      explanation?: string;
-      file?: string;
-      context?: string;
-      xtag?: string;
-      errors?: Array<{
-        message?: string;
-        properties?: {
-          id?: string;
-          explanation?: string;
-          file?: string;
-          context?: string;
-          xtag?: string;
-        };
-      }>;
-    };
-  };
-
-  const subErrors = anyErr.properties?.errors;
-  if (Array.isArray(subErrors) && subErrors.length > 0) {
-    const errorDetails = subErrors.map((sub) => {
-      const p = sub.properties || {};
-      const fileInfo = p.file ? ` (in ${p.file})` : "";
-      const explanation = p.explanation || sub.message || "Malformed tag";
-      return `${explanation}${fileInfo}`;
-    });
-    return new OfferDocxError(
-      `Template contains ${subErrors.length} tag error(s):\n${errorDetails.join("\n")}`,
-      errorDetails,
+function validateXmlTags(xml: string): void {
+  // Check for unclosed tag: "{{" followed by characters without a closing "}}"
+  const unclosedMatch = xml.match(/\{\{[^}]*(?:<(?!\/w:t>)[^>]+>[^}]*)*$/);
+  if (unclosedMatch) {
+    throw new OfferDocxError(
+      `Malformed or unclosed tag detected in document XML: ${unclosedMatch[0]}`,
     );
   }
 
-  if (anyErr.properties?.explanation) {
-    const fileInfo = anyErr.properties.file ? ` (in ${anyErr.properties.file})` : "";
-    return new OfferDocxError(`${anyErr.properties.explanation}${fileInfo}`);
+  // Check for "{{" followed by another "{{" before "}}"
+  const nestedMatch = xml.match(/\{\{[^}]*\{\{/);
+  if (nestedMatch) {
+    throw new OfferDocxError(`Malformed nested or unclosed tag in document XML: ${nestedMatch[0]}`);
   }
 
-  const msg = err instanceof Error ? err.message : String(err);
-  return new OfferDocxError(msg);
+  // Check single brace mismatch where an opening {{ is not closed on the line/paragraph
+  const openBraces = (xml.match(/\{\{/g) || []).length;
+  const closeBraces = (xml.match(/\}\}/g) || []).length;
+  if (openBraces !== closeBraces) {
+    throw new OfferDocxError(
+      `Tag syntax error: found ${openBraces} opening '{{' but ${closeBraces} closing '}}' tags (unclosed tag)`,
+    );
+  }
 }
 
 /**
- * Fill a .docx template buffer using docxtemplater and pizzip.
+ * Extract all placeholder keys present in an XML string (e.g. {{CANDIDATE_NAME}} -> CANDIDATE_NAME).
+ */
+function findPlaceholdersInXml(xml: string): string[] {
+  const matches = xml.match(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g) || [];
+  const keys = new Set<string>();
+  for (const m of matches) {
+    const key = m
+      .replace(/^\{\{\s*/, "")
+      .replace(/\s*\}\}$/, "")
+      .trim();
+    if (key) keys.add(key);
+  }
+  return Array.from(keys);
+}
+
+/**
+ * Replace placeholders in an XML string with resolved data values (case-tolerant).
+ */
+function substitutePlaceholdersInXml(
+  xml: string,
+  normalizedData: Record<string, unknown>,
+  validateAllResolved = false,
+): string {
+  return xml.replace(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g, (match, rawKey: string) => {
+    const key = rawKey.trim();
+    const upper = key.toUpperCase();
+    const lower = key.toLowerCase();
+
+    let val: unknown;
+    if (key in normalizedData && normalizedData[key] != null) {
+      val = normalizedData[key];
+    } else if (upper in normalizedData && normalizedData[upper] != null) {
+      val = normalizedData[upper];
+    } else if (lower in normalizedData && normalizedData[lower] != null) {
+      val = normalizedData[lower];
+    }
+
+    if (val !== undefined && val !== null) {
+      // Escape XML characters in replacement value
+      return String(val)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+    }
+
+    if (validateAllResolved) {
+      throw new OfferDocxError(`Missing value for placeholder: {{${key}}}`);
+    }
+
+    return match;
+  });
+}
+
+/**
+ * Fill a .docx template buffer synchronously using fflate.
  * Layout, fonts, tables, margins, headers, and footers from the original .docx are strictly preserved.
  */
 export function fillOfferDocx(templateBuffer: Buffer, data: Record<string, unknown>): Buffer {
-  let zip: PizZip;
+  let unzipped: Record<string, Uint8Array>;
   try {
-    zip = new PizZip(templateBuffer);
+    unzipped = fflate.unzipSync(new Uint8Array(templateBuffer));
   } catch (zipErr) {
     throw new OfferDocxError(
       `Invalid or corrupted .docx file: ${zipErr instanceof Error ? zipErr.message : String(zipErr)}`,
     );
-  }
-
-  // 1. Pre-process word/document.xml to prune conditional blocks (e.g. LETTER_TYPE = fulltime vs intern)
-  const docFile = zip.file("word/document.xml");
-  if (docFile) {
-    try {
-      const rawXml = docFile.asText();
-      const prunedXml = pruneDocxXmlConditions(rawXml, data);
-      zip.file("word/document.xml", prunedXml);
-    } catch (pruneErr) {
-      console.warn("[fillOfferDocx] Error pruning conditional XML in word/document.xml:", pruneErr);
-    }
   }
 
   // Create a case-tolerant lookup so {{candidate_name}}, {{CANDIDATE_NAME}}, etc. resolve gracefully
@@ -104,7 +123,7 @@ export function fillOfferDocx(templateBuffer: Buffer, data: Record<string, unkno
     normalizedData[key.toUpperCase()] = value;
   }
 
-  // Native boolean flags for Docxtemplater conditions {#is_intern}...{/is_intern}
+  // Native boolean flags for role / engagement type
   const roleLower = String(
     data.POSITION_TITLE || data.ROLE || data.role || data.designation || data.position_title || "",
   ).toLowerCase();
@@ -125,64 +144,58 @@ export function fillOfferDocx(templateBuffer: Buffer, data: Record<string, unkno
     data.INCENTIVE_NOTE && String(data.INCENTIVE_NOTE).trim() !== "",
   );
 
-  let doc: Docxtemplater;
-  try {
-    doc = new Docxtemplater(zip, {
-      delimiters: { start: "{{", end: "}}" },
-      paragraphLoop: true,
-      linebreaks: true,
-      nullGetter(part) {
-        const tag = part.value?.trim() || "";
-        // Check if normalized key exists with non-null value
-        if (tag in normalizedData && normalizedData[tag] != null) {
-          return normalizedData[tag];
-        }
-        const lower = tag.toLowerCase();
-        if (lower in normalizedData && normalizedData[lower] != null) {
-          return normalizedData[lower];
-        }
-        const upper = tag.toUpperCase();
-        if (upper in normalizedData && normalizedData[upper] != null) {
-          return normalizedData[upper];
-        }
-        throw new OfferDocxError(`Missing value for placeholder: {{${part.value}}}`);
-      },
-    });
+  // 1. Process word/document.xml
+  const docU8 = unzipped["word/document.xml"];
+  if (docU8) {
+    let rawXml = fflate.strFromU8(docU8);
 
-    // Precompile and compile all document, header, and footer files in the package
-    const internalDoc = doc as unknown as {
-      precompileFile?: (fileName: string) => void;
-      compileFile?: (fileName: string) => void;
-    };
+    // Validate tag syntax
+    validateXmlTags(rawXml);
 
-    const xmlFiles = Object.keys(zip.files).filter((fileName) => {
-      if (!fileName.startsWith("word/") || !fileName.endsWith(".xml")) return false;
-      const base = fileName.replace("word/", "");
-      return (
-        base === "document.xml" ||
-        base.startsWith("header") ||
-        base.startsWith("footer") ||
-        base.startsWith("footnotes") ||
-        base.startsWith("endnotes")
-      );
-    });
+    // Prune conditional clauses (e.g. intern vs fulltime)
+    try {
+      rawXml = pruneDocxXmlConditions(rawXml, normalizedData);
+    } catch (pruneErr) {
+      console.warn("[fillOfferDocx] Warning pruning conditional XML:", pruneErr);
+    }
 
-    for (const fileName of xmlFiles) {
-      try {
-        internalDoc.precompileFile?.(fileName);
-        internalDoc.compileFile?.(fileName);
-      } catch {
-        // Continue
+    // Check for any missing required placeholders in the pruned document
+    const docPlaceholders = findPlaceholdersInXml(rawXml);
+    for (const ph of docPlaceholders) {
+      const hasVal =
+        (ph in normalizedData && normalizedData[ph] != null) ||
+        (ph.toUpperCase() in normalizedData && normalizedData[ph.toUpperCase()] != null) ||
+        (ph.toLowerCase() in normalizedData && normalizedData[ph.toLowerCase()] != null);
+
+      if (!hasVal) {
+        throw new OfferDocxError(`Missing value for placeholder: {{${ph}}}`);
       }
     }
 
-    doc.render(normalizedData);
-  } catch (renderErr) {
-    throw formatDocxtemplaterError(renderErr);
+    // Substitute placeholders in body
+    const filledXml = substitutePlaceholdersInXml(rawXml, normalizedData, false);
+    unzipped["word/document.xml"] = fflate.strToU8(filledXml);
   }
 
-  return doc.getZip().generate({
-    type: "nodebuffer",
-    compression: "DEFLATE",
-  }) as Buffer;
+  // 2. Process headers and footers (word/header*.xml, word/footer*.xml)
+  for (const [filename, fileU8] of Object.entries(unzipped)) {
+    if (
+      filename.startsWith("word/") &&
+      (filename.includes("header") || filename.includes("footer")) &&
+      filename.endsWith(".xml")
+    ) {
+      try {
+        let hfXml = fflate.strFromU8(fileU8);
+        validateXmlTags(hfXml);
+        hfXml = substitutePlaceholdersInXml(hfXml, normalizedData, false);
+        unzipped[filename] = fflate.strToU8(hfXml);
+      } catch (hfErr) {
+        if (hfErr instanceof OfferDocxError) throw hfErr;
+      }
+    }
+  }
+
+  // 3. Re-zip package
+  const zippedU8 = fflate.zipSync(unzipped);
+  return Buffer.from(zippedU8);
 }
