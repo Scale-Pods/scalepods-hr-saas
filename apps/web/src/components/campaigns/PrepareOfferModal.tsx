@@ -37,7 +37,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccount } from "@/features/account/hooks";
 import type { ViewCandidate } from "@/features/campaigns/api";
-import { numberToWords } from "@/lib/generate-styled-offer-pdf";
+import { numberToWords } from "@/lib/number-to-words";
 import {
   cleanOfferTemplateDirectives,
   formatOfferVarLabel,

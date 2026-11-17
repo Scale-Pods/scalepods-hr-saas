@@ -13,31 +13,10 @@
  * 100% Native TypeScript / Node.js — ZERO external APIs, ZERO Gotenberg, ZERO cloud services.
  */
 
-import fs from "node:fs";
-import path from "node:path";
+import { numberToWords } from "./number-to-words";
 
-let cachedDefaultBgBuffer: Buffer | null = null;
-
-export function getDefaultLetterheadBuffer(): Buffer | null {
-  if (cachedDefaultBgBuffer) return cachedDefaultBgBuffer;
-  try {
-    const candidatePaths = [
-      path.resolve(process.cwd(), "apps/web/src/lib/offers/assets/scalepods-letterhead.jpg"),
-      path.resolve(process.cwd(), "src/lib/offers/assets/scalepods-letterhead.jpg"),
-      path.join(__dirname, "offers/assets/scalepods-letterhead.jpg"),
-      path.join(__dirname, "assets/scalepods-letterhead.jpg"),
-    ];
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        cachedDefaultBgBuffer = fs.readFileSync(p);
-        return cachedDefaultBgBuffer;
-      }
-    }
-  } catch {
-    // Non-fatal if fs access is restricted in edge/browser
-  }
-  return null;
-}
+export { numberToWords } from "./number-to-words";
+export { getDefaultLetterheadBuffer } from "./offers/assets/scalepods-letterhead-base64";
 
 const PAGE_W = 595.28; // A4 width (points)
 const PAGE_H = 841.89; // A4 height (points)
@@ -57,89 +36,6 @@ const COLOR_LIGHT_BG = [0.973, 0.98, 0.988]; // #f8fafc
 const COLOR_CARD_BORDER = [0.796, 0.835, 0.882]; // #cbd5e1
 const COLOR_GRID_BORDER = [0.886, 0.91, 0.941]; // #e2e8f0
 const COLOR_WHITE = [1, 1, 1];
-
-export function numberToWords(num: number | string): string {
-  const n = parseInt(String(num).replace(/[^0-9]/g, ""), 10);
-  if (Number.isNaN(n) || n === 0) return "Zero Rupees Only";
-
-  const units = [
-    "",
-    "One",
-    "Two",
-    "Three",
-    "Four",
-    "Five",
-    "Six",
-    "Seven",
-    "Eight",
-    "Nine",
-    "Ten",
-    "Eleven",
-    "Twelve",
-    "Thirteen",
-    "Fourteen",
-    "Fifteen",
-    "Sixteen",
-    "Seventeen",
-    "Eighteen",
-    "Nineteen",
-  ];
-  const tens = [
-    "",
-    "",
-    "Twenty",
-    "Thirty",
-    "Forty",
-    "Fifty",
-    "Sixty",
-    "Seventy",
-    "Eighty",
-    "Ninety",
-  ];
-
-  function convertBelowThousand(val: number): string {
-    let str = "";
-    if (val >= 100) {
-      str += `${units[Math.floor(val / 100)]} Hundred `;
-      val %= 100;
-    }
-    if (val >= 20) {
-      str += `${tens[Math.floor(val / 10)]} `;
-      val %= 10;
-    }
-    if (val > 0) {
-      str += `${units[val]} `;
-    }
-    return str.trim();
-  }
-
-  let remaining = n;
-  let result = "";
-
-  const crore = Math.floor(remaining / 10000000);
-  remaining %= 10000000;
-  if (crore > 0) {
-    result += `${convertBelowThousand(crore)} Crore `;
-  }
-
-  const lakh = Math.floor(remaining / 100000);
-  remaining %= 100000;
-  if (lakh > 0) {
-    result += `${convertBelowThousand(lakh)} Lakh `;
-  }
-
-  const thousand = Math.floor(remaining / 1000);
-  remaining %= 1000;
-  if (thousand > 0) {
-    result += `${convertBelowThousand(thousand)} Thousand `;
-  }
-
-  if (remaining > 0) {
-    result += `${convertBelowThousand(remaining)} `;
-  }
-
-  return `${result.trim()} Rupees Only`.replace(/\s+/g, " ");
-}
 
 /**
  * Escape text for PDF literal strings (...), replacing Unicode characters
