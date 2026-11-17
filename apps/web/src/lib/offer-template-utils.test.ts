@@ -6,7 +6,7 @@ import {
   formatOfferVarLabel,
   renderOfferTemplateText,
 } from "./offer-template-utils";
-import { pruneDocxXmlConditions } from "./offers/prune-docx-xml";
+import { extractDocumentTextFromDocxXml, pruneDocxXmlConditions } from "./offers/prune-docx-xml";
 
 describe("offer-template-utils", () => {
   it("extracts all and custom variables while keeping non-form fields like REF_NO and ISSUE_DATE", () => {
@@ -225,5 +225,38 @@ TERMS OF ENGAGEMENT`;
     expect(fulltimePruned).toContain("30 days notice");
     expect(fulltimePruned).not.toContain("15 days notice");
     expect(fulltimePruned).not.toContain("Show this section only when");
+  });
+
+  it("extracts real template text and tables from DOCX XML without [Raw DOCX Template]", () => {
+    const sampleXml = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>
+  <w:p><w:r><w:t>Ref: {{REF_NO}} | Date: {{ISSUE_DATE}}</w:t></w:r></w:p>
+  <w:p><w:r><w:t>INTERNSHIP APPOINTMENT LETTER</w:t></w:r></w:p>
+  <w:p><w:r><w:t>Dear {{CANDIDATE_NAME}},</w:t></w:r></w:p>
+  <w:p><w:r><w:t>We are pleased to offer you a {{DURATION}} internship as {{ROLE}}.</w:t></w:r></w:p>
+  <w:p><w:r><w:t>2. Compensation</w:t></w:r></w:p>
+  <w:tbl>
+    <w:tr><w:tc><w:p><w:t>#</w:t></w:p></w:tc><w:tc><w:p><w:t>Component</w:t></w:p></w:tc><w:tc><w:p><w:t>Monthly</w:t></w:p></w:tc></w:tr>
+    <w:tr><w:tc><w:p><w:t>1</w:t></w:p></w:tc><w:tc><w:p><w:t>Stipend</w:t></w:p></w:tc><w:tc><w:p><w:t>{{STIPEND_AMOUNT}}</w:t></w:p></w:tc></w:tr>
+  </w:tbl>
+  <w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>
+</w:body>
+</w:document>`;
+
+    const text = extractDocumentTextFromDocxXml(sampleXml, {
+      REF_NO: "SP/2026/01",
+      ISSUE_DATE: "Nov 17, 2026",
+      CANDIDATE_NAME: "Manish Gandla",
+      DURATION: "6 Months",
+      ROLE: "Sales and Marketing intern",
+      STIPEND_AMOUNT: "8000",
+    });
+
+    expect(text).not.toContain("[Raw DOCX Template]");
+    expect(text).toContain("Ref: SP/2026/01 | Date: Nov 17, 2026");
+    expect(text).toContain("Dear Manish Gandla,");
+    expect(text).toContain("6 Months internship as Sales and Marketing intern");
+    expect(text).toContain("| # | Component | Monthly |");
+    expect(text).toContain("| 1 | Stipend | 8000 |");
   });
 });

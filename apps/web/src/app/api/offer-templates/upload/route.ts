@@ -4,6 +4,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
 import { detectPlaceholders } from "@/lib/offers/detect-placeholders";
 import { fillOfferDocx, OfferDocxError } from "@/lib/offers/fill-docx";
+import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -143,12 +144,15 @@ export async function POST(req: NextRequest) {
       let templateRecord: unknown = null;
       let insertError: { message?: string } | null = null;
 
+      const extractedRawText =
+        (await extractDocumentTextFromDocxBuffer(buffer)) || "[Raw DOCX Template]";
+
       const fullTemplatePayload = {
         account_id: user.id,
         name: templateName,
         file_name: file.name,
         storage_path: storagePath,
-        raw_text: "[Raw DOCX Template]",
+        raw_text: extractedRawText,
         variables: detectedPlaceholders,
         placeholders: detectedPlaceholders,
         is_finished_letter: false,
@@ -170,7 +174,7 @@ export async function POST(req: NextRequest) {
           name: templateName,
           file_name: file.name,
           storage_path: storagePath,
-          raw_text: "[Raw DOCX Template]",
+          raw_text: extractedRawText,
           variables: detectedPlaceholders,
           is_default: isDefault,
           created_by: user.id,

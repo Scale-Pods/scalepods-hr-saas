@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
 import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
 import { renderOfferTemplateText } from "@/lib/offer-template-utils";
+import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
 
 export const dynamic = "force-dynamic";
 
@@ -39,27 +40,59 @@ export async function POST(req: NextRequest) {
     });
 
     const values = (body.field_values || body.dynamic_variables || {}) as Record<string, string>;
-    let textToRender = body?.rendered_text?.trim() || "";
+    let textToRender = "";
 
-    if (!textToRender && body.template_id) {
+    // 1. If template_id is provided, extract real text directly from the stored .docx template
+    if (body.template_id) {
       const { data: tpl } = await adminSupabase
         .from("offer_templates")
         .select("id, account_id, file_name, storage_path, raw_text")
         .eq("id", body.template_id)
         .maybeSingle();
 
-      if (tpl?.raw_text?.trim()) {
-        textToRender = renderOfferTemplateText(tpl.raw_text, values);
+      if (tpl?.storage_path) {
+        const { data: fileBlob } = await adminSupabase.storage
+          .from("offer-templates")
+          .download(tpl.storage_path);
+        if (fileBlob) {
+          const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+          textToRender = await extractDocumentTextFromDocxBuffer(docxBuffer, values);
+          if (textToRender && tpl?.raw_text === "[Raw DOCX Template]") {
+            extractDocumentTextFromDocxBuffer(docxBuffer).then((rawBase) => {
+              if (rawBase) {
+                adminSupabase
+                  .from("offer_templates")
+                  .update({ raw_text: rawBase })
+                  .eq("id", tpl.id);
+              }
+            });
+          }
+        }
+      }
+
+      if (!textToRender || textToRender === "[Raw DOCX Template]") {
+        if (tpl?.raw_text && tpl.raw_text !== "[Raw DOCX Template]") {
+          textToRender = renderOfferTemplateText(tpl.raw_text, values);
+        }
       }
     }
 
-    if (!textToRender) {
-      textToRender = `Employment Offer & Agreement\n\nDear ${body.candidate_name || "Candidate"},\n\nWe are pleased to extend this offer of employment for the position of ${body.position_title || "Team Member"}.`;
+    // 2. Fall back to client rendered_text if valid and not the placeholder
+    if (
+      (!textToRender || textToRender === "[Raw DOCX Template]") &&
+      body?.rendered_text?.trim() &&
+      body.rendered_text.trim() !== "[Raw DOCX Template]"
+    ) {
+      textToRender = body.rendered_text.trim();
+    }
+
+    if (!textToRender || textToRender === "[Raw DOCX Template]") {
+      textToRender = `Employment Offer & Agreement\n\nDear ${body?.candidate_name || "Candidate"},\n\nWe are pleased to extend this offer of employment for the position of ${body?.position_title || "Team Member"}.`;
     }
 
     const pdfBuffer = generateTextOfferPdf(textToRender);
 
-    const safeName = (body.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
+    const safeName = (body?.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
     const filename = `Offer_Letter_Preview_${safeName}.pdf`;
 
     return new NextResponse(new Uint8Array(pdfBuffer), {

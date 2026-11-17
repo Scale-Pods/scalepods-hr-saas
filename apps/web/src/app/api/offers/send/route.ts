@@ -6,6 +6,7 @@ import { generateTextOfferPdf } from "@/lib/generate-text-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
 import { renderOfferTemplateText } from "@/lib/offer-template-utils";
 import { fillOfferDocx } from "@/lib/offers/fill-docx";
+import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -221,14 +222,32 @@ export async function POST(req: NextRequest) {
         if (fileBlob) {
           const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
           filledBuffer = sendAsIs ? docxBuffer : fillOfferDocx(docxBuffer, resolvedFieldValues);
+          textToRender = await extractDocumentTextFromDocxBuffer(docxBuffer, resolvedFieldValues);
+          if (textToRender && tplRow?.raw_text === "[Raw DOCX Template]") {
+            extractDocumentTextFromDocxBuffer(docxBuffer).then((rawBase) => {
+              if (rawBase) {
+                adminSupabase
+                  .from("offer_templates")
+                  .update({ raw_text: rawBase })
+                  .eq("id", tplRow.id);
+              }
+            });
+          }
         }
       }
 
-      const textToRender =
-        renderedText?.trim() ||
-        (tplRow?.raw_text
-          ? renderOfferTemplateText(tplRow.raw_text, resolvedFieldValues as Record<string, string>)
-          : `Employment Offer & Agreement\n\nDear ${candidateName},\n\nWe are pleased to extend this offer of employment for the position of ${parsed.data.field_values?.position_title || "Team Member"}.`);
+      if (!textToRender || textToRender === "[Raw DOCX Template]") {
+        if (renderedText?.trim() && renderedText.trim() !== "[Raw DOCX Template]") {
+          textToRender = renderedText.trim();
+        } else if (tplRow?.raw_text && tplRow.raw_text !== "[Raw DOCX Template]") {
+          textToRender = renderOfferTemplateText(
+            tplRow.raw_text,
+            resolvedFieldValues as Record<string, string>,
+          );
+        } else {
+          textToRender = `Employment Offer & Agreement\n\nDear ${candidateName},\n\nWe are pleased to extend this offer of employment for the position of ${parsed.data.field_values?.position_title || "Team Member"}.`;
+        }
+      }
 
       // Native built-in PDF generation — no Gotenberg or external API needed
       const pdfBuffer = generateTextOfferPdf(textToRender);

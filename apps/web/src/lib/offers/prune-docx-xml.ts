@@ -13,9 +13,9 @@ export interface DocxBodyElement {
  * Extract plain text content from an OpenXML snippet (<w:p> or <w:tbl>).
  */
 export function extractTextFromDocxXml(xml: string): string {
-  const matches = xml.match(/<w:t(?:[\s\S]*?)>([\s\S]*?)<\/w:t>/g) || [];
+  const matches = xml.match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) || [];
   return matches
-    .map((m) => m.replace(/<w:t(?:[\s\S]*?)>/, "").replace(/<\/w:t>/, ""))
+    .map((m) => m.replace(/<w:t(?:\s[^>]*)?>/g, "").replace(/<\/w:t>/g, ""))
     .join("")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -287,7 +287,14 @@ export function pruneDocxXmlConditions(xml: string, data: Record<string, unknown
     if (hasSpecificType) {
       if (isIntern) {
         if (/^2\.\s+Compensation\s+&\s+Benefits/i.test(text)) continue;
-        if (el.tag === "tbl" && (/Basic Salary/i.test(text) || /Component/i.test(text))) continue;
+        if (
+          el.tag === "tbl" &&
+          (/Basic Salary/i.test(text) ||
+            /House Rent Allowance/i.test(text) ||
+            /Total CTC/i.test(text) ||
+            /Special Allowance/i.test(text))
+        )
+          continue;
         if (/Gross Annual CTC/i.test(text)) continue;
       } else {
         if (/^2\.\s+Compensation$/i.test(text)) continue;
@@ -315,4 +322,84 @@ export function pruneDocxXmlConditions(xml: string, data: Record<string, unknown
 
   const newBodyContent = keptElements.map((e) => e.raw).join("");
   return xml.slice(0, bodyStartIdx) + newBodyContent + xml.slice(bodyEndIdx);
+}
+
+/**
+ * Extract structured offer letter document text from OpenXML body,
+ * pruning conditional sections and formatting table rows as markdown tables.
+ */
+export function extractDocumentTextFromDocxXml(
+  bodyXml: string,
+  data?: Record<string, unknown>,
+): string {
+  const pruned = data ? pruneDocxXmlConditions(bodyXml, data) : bodyXml;
+  const bodyStartMatch = pruned.match(/<w:body(?:\s[^>]*)?>/);
+  const bodyEndIdx = pruned.indexOf("</w:body>");
+  const content =
+    bodyStartMatch && bodyEndIdx !== -1
+      ? pruned.slice((bodyStartMatch.index ?? 0) + bodyStartMatch[0].length, bodyEndIdx)
+      : pruned;
+
+  const elements = splitDocxBodyElements(content);
+  const lines: string[] = [];
+
+  for (const el of elements) {
+    if (el.tag === "sectPr" || el.tag === "other") continue;
+    if (el.tag === "p") {
+      const pText = extractTextFromDocxXml(el.raw);
+      if (pText) {
+        lines.push(pText);
+      } else {
+        lines.push("");
+      }
+    } else if (el.tag === "tbl") {
+      const trMatches = el.raw.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) || [];
+      for (const tr of trMatches) {
+        const tcMatches = tr.match(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g) || [];
+        const cells = tcMatches.map((tc) => extractTextFromDocxXml(tc));
+        if (cells.length > 0) {
+          lines.push(`| ${cells.join(" | ")} |`);
+        }
+      }
+    }
+  }
+
+  let fullText = lines.join("\n");
+  if (data) {
+    const normalized: Record<string, string> = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (v !== undefined && v !== null && String(v).trim() !== "") {
+        normalized[k.toUpperCase()] = String(v).trim();
+        normalized[k.toLowerCase()] = String(v).trim();
+        normalized[k] = String(v).trim();
+      }
+    }
+    fullText = fullText.replace(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g, (match, key: string) => {
+      const cleanKey = key.trim().toUpperCase();
+      return normalized[cleanKey] ?? normalized[key.trim()] ?? match;
+    });
+  }
+
+  return fullText.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Extract structured text from a .docx Buffer directly using JSZip or PizZip.
+ */
+export async function extractDocumentTextFromDocxBuffer(
+  docxBuffer: Buffer,
+  data?: Record<string, unknown>,
+): Promise<string> {
+  try {
+    const JSZip = (await import("jszip")).default;
+    const zip = await JSZip.loadAsync(docxBuffer);
+    const docFile = zip.file("word/document.xml");
+    if (docFile) {
+      const xml = await docFile.async("string");
+      return extractDocumentTextFromDocxXml(xml, data);
+    }
+  } catch (err) {
+    console.warn("[extractDocumentTextFromDocxBuffer] Error reading docx buffer:", err);
+  }
+  return "";
 }
