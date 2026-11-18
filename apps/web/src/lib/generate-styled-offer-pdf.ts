@@ -13,6 +13,7 @@
  * 100% Native TypeScript / Node.js — ZERO external APIs, ZERO Gotenberg, ZERO cloud services.
  */
 
+import * as zlib from "node:zlib";
 import { numberToWords } from "./number-to-words";
 
 export { numberToWords } from "./number-to-words";
@@ -216,6 +217,12 @@ type RenderItem =
   | { type: "bullet"; textLines: string[]; height: number }
   | { type: "signature_image"; height: number }
   | {
+      type: "two_column_signatures";
+      leftLines: string[];
+      rightLines: string[];
+      height: number;
+    }
+  | {
       type: "table";
       headers: string[];
       rows: string[][];
@@ -236,6 +243,21 @@ type RenderItem =
       height: number;
     }
   | { type: "spacer"; height: number };
+
+function formatSigColLines(rawLines: string[]): string[] {
+  const out: string[] = [];
+  for (const raw of rawLines) {
+    const parts = raw
+      .replace(/\\n/g, "\n")
+      .split(/\n|(?=Signature:|Full Name:|Date:|\bCC:|\b“CC:”|Authorized Signatory)/i)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const p of parts) {
+      out.push(p);
+    }
+  }
+  return out;
+}
 
 /**
  * Parse structured offer letter text into printable visual items.
@@ -265,6 +287,46 @@ function parseOfferText(
 
     if (!line) {
       i++;
+      continue;
+    }
+
+    // Two-column signature block: [SIGNATURE_COLUMNS] ... [/SIGNATURE_COLUMNS]
+    if (line.startsWith("[SIGNATURE_COLUMNS]")) {
+      const leftLines: string[] = [];
+      const rightLines: string[] = [];
+      let target: "left" | "right" = "left";
+      i++;
+      while (i < n && !lines[i].includes("[/SIGNATURE_COLUMNS]")) {
+        const curLine = lines[i].trim();
+        if (curLine.startsWith("LEFT:")) {
+          target = "left";
+          const val = curLine.replace(/^LEFT:\s*/, "").trim();
+          if (val) leftLines.push(val);
+        } else if (curLine.startsWith("RIGHT:")) {
+          target = "right";
+          const val = curLine.replace(/^RIGHT:\s*/, "").trim();
+          if (val) rightLines.push(val);
+        } else if (curLine) {
+          if (target === "left") leftLines.push(curLine);
+          else rightLines.push(curLine);
+        }
+        i++;
+      }
+      if (i < n && lines[i].includes("[/SIGNATURE_COLUMNS]")) i++;
+
+      const formattedLeft = formatSigColLines(leftLines);
+      const formattedRight = formatSigColLines(rightLines);
+      const approxH =
+        Math.max(formattedLeft.length, formattedRight.length) * 16 +
+        (extra?.signatureBase64 ? 45 : 0) +
+        25;
+
+      items.push({
+        type: "two_column_signatures",
+        leftLines: formattedLeft,
+        rightLines: formattedRight,
+        height: approxH,
+      });
       continue;
     }
 
@@ -628,6 +690,106 @@ function paginateItems(items: RenderItem[]): RenderItem[][] {
   return pages.length ? pages : [[]];
 }
 
+function parsePngForPdf(pngBuf: Buffer): {
+  width: number;
+  height: number;
+  rgbStream: Buffer;
+  alphaStream?: Buffer;
+} | null {
+  try {
+    if (
+      pngBuf.length < 24 ||
+      pngBuf[0] !== 0x89 ||
+      pngBuf[1] !== 0x50 ||
+      pngBuf[2] !== 0x4e ||
+      pngBuf[3] !== 0x47
+    ) {
+      return null;
+    }
+
+    const width = pngBuf.readUInt32BE(16);
+    const height = pngBuf.readUInt32BE(20);
+    const colorType = pngBuf.readUInt8(25);
+
+    const idatChunks: Buffer[] = [];
+    let offset = 8;
+    while (offset < pngBuf.length) {
+      const len = pngBuf.readUInt32BE(offset);
+      const type = pngBuf.toString("ascii", offset + 4, offset + 8);
+      if (type === "IDAT") {
+        idatChunks.push(pngBuf.subarray(offset + 8, offset + 8 + len));
+      }
+      offset += 12 + len;
+    }
+    if (idatChunks.length === 0) return null;
+
+    const allIdat = Buffer.concat(idatChunks);
+    const rawPixels = zlib.inflateSync(allIdat);
+
+    const bpp = colorType === 6 ? 4 : colorType === 2 ? 3 : 1;
+    const rowBytes = 1 + width * bpp;
+    const rgbRows: Buffer[] = [];
+    const alphaRows: Buffer[] = [];
+
+    let prevRow = Buffer.alloc(width * bpp);
+
+    for (let y = 0; y < height; y++) {
+      const rowStart = y * rowBytes;
+      const filterType = rawPixels[rowStart];
+      const scanline = Buffer.alloc(width * bpp);
+
+      for (let x = 0; x < width * bpp; x++) {
+        const rawVal = rawPixels[rowStart + 1 + x];
+        const left = x >= bpp ? scanline[x - bpp] : 0;
+        const up = prevRow[x];
+        const upLeft = x >= bpp ? prevRow[x - bpp] : 0;
+
+        let recon = 0;
+        if (filterType === 0) recon = rawVal;
+        else if (filterType === 1) recon = (rawVal + left) & 0xff;
+        else if (filterType === 2) recon = (rawVal + up) & 0xff;
+        else if (filterType === 3) recon = (rawVal + Math.floor((left + up) / 2)) & 0xff;
+        else if (filterType === 4) {
+          const p = left + up - upLeft;
+          const pa = Math.abs(p - left);
+          const pb = Math.abs(p - up);
+          const pc = Math.abs(p - upLeft);
+          const pr = pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft;
+          recon = (rawVal + pr) & 0xff;
+        }
+        scanline[x] = recon;
+      }
+      prevRow = scanline;
+
+      if (bpp === 4) {
+        const rgbRow = Buffer.alloc(width * 3);
+        const alphaRow = Buffer.alloc(width);
+        for (let p = 0; p < width; p++) {
+          rgbRow[p * 3] = scanline[p * 4];
+          rgbRow[p * 3 + 1] = scanline[p * 4 + 1];
+          rgbRow[p * 3 + 2] = scanline[p * 4 + 2];
+          alphaRow[p] = scanline[p * 4 + 3];
+        }
+        rgbRows.push(rgbRow);
+        alphaRows.push(alphaRow);
+      } else if (bpp === 3) {
+        rgbRows.push(scanline);
+      }
+    }
+
+    const rgbStream = zlib.deflateSync(Buffer.concat(rgbRows));
+    let alphaStream: Buffer | undefined;
+    if (alphaRows.length > 0) {
+      alphaStream = zlib.deflateSync(Buffer.concat(alphaRows));
+    }
+
+    return { width, height, rgbStream, alphaStream };
+  } catch (err) {
+    console.warn("[parsePngForPdf] Failed to parse PNG:", err);
+    return null;
+  }
+}
+
 function getJpegDimensions(buf: Buffer): { width: number; height: number } {
   let i = 2;
   while (i < buf.length) {
@@ -663,6 +825,9 @@ function renderPageContent(
   companyEmail = "contact@scalepods.com",
   hasSigImg = false,
   sigImgDims = { width: 400, height: 150 },
+  hasLogoImg = false,
+  logoDims = { width: 200, height: 50 },
+  _isDefaultTemplate = false,
 ): Buffer {
   const ops: string[] = [];
 
@@ -705,35 +870,51 @@ function renderPageContent(
   // --- HEADER SECTION ---
   if (!hasBgImg) {
     if (pageNum === 1) {
-      // Clean Corporate White Header matching Word Template
-      const headerTop = PAGE_H - 42;
+      if (hasLogoImg) {
+        // Render real company logo from template cleanly at top of Page 1
+        const aspect = logoDims.width / Math.max(1, logoDims.height);
+        const maxW = 200;
+        const maxH = 46;
+        let logoW = maxW;
+        let logoH = logoW / aspect;
+        if (logoH > maxH) {
+          logoH = maxH;
+          logoW = logoH * aspect;
+        }
+        const logoY = PAGE_H - 30 - logoH;
+        ops.push(
+          `q ${logoW.toFixed(2)} 0 0 ${logoH.toFixed(2)} ${MARGIN_L.toFixed(2)} ${logoY.toFixed(2)} cm /LogoImg Do Q`,
+        );
 
-      // Brand Name: ScalePods
-      drawText(companyName, MARGIN_L, headerTop, 18, "/F2", COLOR_NAVY);
-      // Subtitle
-      drawText(
-        "CONFIDENTIAL EMPLOYMENT AGREEMENT",
-        MARGIN_L,
-        headerTop - 13,
-        8,
-        "/F1",
-        COLOR_MUTED_GRAY,
-      );
+        // Subtle divider rule under logo
+        setFill([0.88, 0.9, 0.94]);
+        drawRect(MARGIN_L, logoY - 8, USABLE_W, 1, true, false);
+      } else {
+        // Clean Corporate Header matching Template branding
+        const headerTop = PAGE_H - 42;
+        drawText(companyName, MARGIN_L, headerTop, 18, "/F2", COLOR_NAVY);
+        drawText(
+          "CONFIDENTIAL EMPLOYMENT AGREEMENT",
+          MARGIN_L,
+          headerTop - 13,
+          8,
+          "/F1",
+          COLOR_MUTED_GRAY,
+        );
 
-      // Right pill badge
-      const badgeW = 90;
-      const badgeH = 18;
-      const badgeX = PAGE_W - MARGIN_R - badgeW;
-      const badgeY = headerTop - 7;
-      setFill([0.94, 0.96, 0.98]);
-      setStroke(COLOR_CARD_BORDER);
-      setLineWidth(0.75);
-      drawRect(badgeX, badgeY, badgeW, badgeH, true, true);
-      drawText("OFFICIAL OFFER", badgeX + 11, badgeY + 5, 7.5, "/F2", COLOR_BRAND_BLUE);
+        const badgeW = 90;
+        const badgeH = 18;
+        const badgeX = PAGE_W - MARGIN_R - badgeW;
+        const badgeY = headerTop - 7;
+        setFill([0.94, 0.96, 0.98]);
+        setStroke(COLOR_CARD_BORDER);
+        setLineWidth(0.75);
+        drawRect(badgeX, badgeY, badgeW, badgeH, true, true);
+        drawText("OFFICIAL OFFER", badgeX + 11, badgeY + 5, 7.5, "/F2", COLOR_BRAND_BLUE);
 
-      // Clean blue accent divider rule underneath header
-      setFill(COLOR_ACCENT_BLUE);
-      drawRect(MARGIN_L, headerTop - 22, USABLE_W, 1.5, true, false);
+        setFill(COLOR_ACCENT_BLUE);
+        drawRect(MARGIN_L, headerTop - 22, USABLE_W, 1.5, true, false);
+      }
     } else {
       // Running header on page 2+
       const headerY = PAGE_H - 30;
@@ -774,7 +955,9 @@ function renderPageContent(
     pageNum === 1
       ? hasBgImg
         ? PAGE_H - 85
-        : PAGE_H - 85
+        : hasLogoImg
+          ? PAGE_H - 95
+          : PAGE_H - 75
       : hasBgImg
         ? PAGE_H - 65
         : PAGE_H - MARGIN_T;
@@ -829,6 +1012,66 @@ function renderPageContent(
         );
         cursorY -= 10;
       }
+    } else if (item.type === "two_column_signatures") {
+      cursorY -= 8;
+      const col1X = MARGIN_L;
+      const col2X = MARGIN_L + USABLE_W * 0.52;
+      const startY = cursorY;
+
+      // Left Column: Candidate Acceptance
+      let leftY = startY;
+      for (const line of item.leftLines) {
+        if (/sincerely|acceptance/i.test(line)) {
+          drawText(line, col1X, leftY, 10, "/F2", COLOR_BRAND_BLUE);
+          leftY -= 15;
+        } else if (/signature:/i.test(line)) {
+          drawText(
+            line.replace(/signature:\s*/i, "Signature: __________________________"),
+            col1X,
+            leftY,
+            9,
+            "/F1",
+            COLOR_MUTED_GRAY,
+          );
+          leftY -= 16;
+        } else {
+          const isKeyVal = /^(Full Name|Date|Name):\s*/i.test(line);
+          drawText(line, col1X, leftY, 9, isKeyVal ? "/F2" : "/F1", COLOR_BODY_TEXT);
+          leftY -= 14;
+        }
+      }
+
+      // Right Column: Company Signatory
+      let rightY = startY;
+      if (hasSigImg) {
+        const maxSigW = 110;
+        const maxSigH = 38;
+        let sigW = maxSigW;
+        let sigH = (sigW * sigImgDims.height) / (sigImgDims.width || 1);
+        if (sigH > maxSigH) {
+          sigH = maxSigH;
+          sigW = (sigH * (sigImgDims.width || 1)) / (sigImgDims.height || 1);
+        }
+        rightY -= sigH;
+        ops.push(
+          `q ${sigW.toFixed(2)} 0 0 ${sigH.toFixed(2)} ${col2X.toFixed(2)} ${rightY.toFixed(2)} cm /SigImg Do Q`,
+        );
+        rightY -= 10;
+      }
+      for (const line of item.rightLines) {
+        if (/authorized signatory/i.test(line)) {
+          drawText(line, col2X, rightY, 9.5, "/F2", COLOR_NAVY);
+          rightY -= 14;
+        } else if (/“?CC:?”?/i.test(line)) {
+          drawText(line, col2X, rightY, 8.5, "/F1", COLOR_MUTED_GRAY);
+          rightY -= 13;
+        } else {
+          drawText(line, col2X, rightY, 9, "/F1", COLOR_BODY_TEXT);
+          rightY -= 14;
+        }
+      }
+
+      cursorY = Math.min(leftY, rightY) - 10;
     } else if (item.type === "bullet") {
       // Draw a real round vector bullet dot in dark color (zero font encoding dependency)
       setFill(COLOR_BODY_TEXT);
@@ -1038,6 +1281,13 @@ export interface GenerateStyledOfferPdfOptions {
   companyWebsite?: string;
   companyEmail?: string;
   backgroundImageBuffer?: Buffer | Uint8Array;
+  logoImage?: {
+    buffer: Buffer | Uint8Array;
+    format: "png" | "jpeg";
+    width: number;
+    height: number;
+  };
+  logoImageBuffer?: Buffer | Uint8Array;
   signatoryDate?: string;
   signatureBase64?: string;
   isDefaultTemplate?: boolean;
@@ -1064,18 +1314,82 @@ export function generateStyledOfferPdf(
     : null;
   const hasBgImg = Boolean(bgImgBuf && bgImgBuf.length > 0);
 
-  let sigImgBuf: Buffer | null = null;
-  let sigImgDims = { width: 400, height: 150 };
-  let hasSigImg = false;
+  interface ImageResource {
+    width: number;
+    height: number;
+    format: "jpeg" | "png";
+    rgbStream: Buffer;
+    alphaStream?: Buffer;
+    id: number;
+    maskId?: number;
+  }
 
+  let logoRes: ImageResource | null = null;
+  const rawLogoBuf = options?.logoImage?.buffer || options?.logoImageBuffer;
+  if (rawLogoBuf) {
+    const lBuf = Buffer.from(rawLogoBuf);
+    if (
+      lBuf.length > 24 &&
+      lBuf[0] === 0x89 &&
+      lBuf[1] === 0x50 &&
+      lBuf[2] === 0x4e &&
+      lBuf[3] === 0x47
+    ) {
+      const parsedPng = parsePngForPdf(lBuf);
+      if (parsedPng) {
+        logoRes = {
+          width: parsedPng.width,
+          height: parsedPng.height,
+          format: "png",
+          rgbStream: parsedPng.rgbStream,
+          alphaStream: parsedPng.alphaStream,
+          id: 0,
+        };
+      }
+    } else if (lBuf.length > 4 && lBuf[0] === 0xff && lBuf[1] === 0xd8) {
+      const dims = getJpegDimensions(lBuf);
+      logoRes = {
+        width: dims.width,
+        height: dims.height,
+        format: "jpeg",
+        rgbStream: lBuf,
+        id: 0,
+      };
+    }
+  }
+
+  let sigRes: ImageResource | null = null;
   if (options?.signatureBase64 && typeof options.signatureBase64 === "string") {
     const rawB64 = options.signatureBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
     try {
       const decoded = Buffer.from(rawB64, "base64");
-      if (decoded.length > 4 && decoded[0] === 0xff && decoded[1] === 0xd8) {
-        sigImgBuf = decoded;
-        sigImgDims = getJpegDimensions(decoded);
-        hasSigImg = true;
+      if (
+        decoded.length > 24 &&
+        decoded[0] === 0x89 &&
+        decoded[1] === 0x50 &&
+        decoded[2] === 0x4e &&
+        decoded[3] === 0x47
+      ) {
+        const parsedPng = parsePngForPdf(decoded);
+        if (parsedPng) {
+          sigRes = {
+            width: parsedPng.width,
+            height: parsedPng.height,
+            format: "png",
+            rgbStream: parsedPng.rgbStream,
+            alphaStream: parsedPng.alphaStream,
+            id: 0,
+          };
+        }
+      } else if (decoded.length > 4 && decoded[0] === 0xff && decoded[1] === 0xd8) {
+        const dims = getJpegDimensions(decoded);
+        sigRes = {
+          width: dims.width,
+          height: dims.height,
+          format: "jpeg",
+          rgbStream: decoded,
+          id: 0,
+        };
       }
     } catch (e) {
       console.warn("Failed to decode signature image:", e);
@@ -1089,13 +1403,28 @@ export function generateStyledOfferPdf(
   // 3 + totalPages .. 3 + 2*totalPages - 1 : Content stream objects
   // Font 1: Helvetica (regular)
   // Font 2: Helvetica-Bold (bold)
-  // [Optional] Background Image XObject
-  // [Optional] Signature Image XObject
+  // Dynamic allocation for image XObjects
   const font1Id = 3 + 2 * totalPages;
   const font2Id = font1Id + 1;
-  const bgImgId = hasBgImg ? font2Id + 1 : 0;
-  const sigImgId = hasSigImg ? (hasBgImg ? bgImgId + 1 : font2Id + 1) : 0;
-  const totalObjs = sigImgId ? sigImgId + 1 : hasBgImg ? bgImgId + 1 : font2Id + 1;
+  let nextObjId = font2Id + 1;
+
+  const bgImgId = hasBgImg ? nextObjId++ : 0;
+
+  if (logoRes) {
+    if (logoRes.alphaStream) {
+      logoRes.maskId = nextObjId++;
+    }
+    logoRes.id = nextObjId++;
+  }
+
+  if (sigRes) {
+    if (sigRes.alphaStream) {
+      sigRes.maskId = nextObjId++;
+    }
+    sigRes.id = nextObjId++;
+  }
+
+  const totalObjs = nextObjId;
 
   const chunks: Buffer[] = [];
   const offsets: number[] = new Array(totalObjs).fill(0);
@@ -1139,7 +1468,8 @@ export function generateStyledOfferPdf(
     const contentId = 3 + totalPages + i;
     const xObjects: string[] = [];
     if (hasBgImg) xObjects.push(`/BgImg ${bgImgId} 0 R`);
-    if (hasSigImg) xObjects.push(`/SigImg ${sigImgId} 0 R`);
+    if (logoRes) xObjects.push(`/LogoImg ${logoRes.id} 0 R`);
+    if (sigRes) xObjects.push(`/SigImg ${sigRes.id} 0 R`);
     const xObjStr = xObjects.length > 0 ? ` /XObject << ${xObjects.join(" ")} >>` : "";
 
     beginObj(pageId);
@@ -1165,8 +1495,11 @@ export function generateStyledOfferPdf(
       hasBgImg,
       options?.companyWebsite,
       options?.companyEmail,
-      hasSigImg,
-      sigImgDims,
+      Boolean(sigRes),
+      sigRes ? { width: sigRes.width, height: sigRes.height } : { width: 400, height: 150 },
+      Boolean(logoRes),
+      logoRes ? { width: logoRes.width, height: logoRes.height } : { width: 200, height: 50 },
+      Boolean(options?.isDefaultTemplate),
     );
     beginObj(contentId);
     emitStr(`<< /Length ${pageStream.length} >>\nstream\n`);
@@ -1198,13 +1531,46 @@ export function generateStyledOfferPdf(
     endObj();
   }
 
-  // Signature Image XObject
-  if (hasSigImg && sigImgBuf) {
-    beginObj(sigImgId);
+  // Logo Image XObject
+  if (logoRes) {
+    if (logoRes.maskId && logoRes.alphaStream) {
+      beginObj(logoRes.maskId);
+      emitStr(
+        `<< /Type /XObject /Subtype /Image /Width ${logoRes.width} /Height ${logoRes.height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length ${logoRes.alphaStream.length} >>\nstream\n`,
+      );
+      emit(logoRes.alphaStream);
+      emitStr("\nendstream\n");
+      endObj();
+    }
+    beginObj(logoRes.id);
+    const maskPart = logoRes.maskId ? ` /SMask ${logoRes.maskId} 0 R` : "";
+    const filterPart = logoRes.format === "png" ? "/Filter /FlateDecode" : "/Filter /DCTDecode";
     emitStr(
-      `<< /Type /XObject /Subtype /Image /Width ${sigImgDims.width} /Height ${sigImgDims.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${sigImgBuf.length} >>\nstream\n`,
+      `<< /Type /XObject /Subtype /Image /Width ${logoRes.width} /Height ${logoRes.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 ${filterPart}${maskPart} /Length ${logoRes.rgbStream.length} >>\nstream\n`,
     );
-    emit(sigImgBuf);
+    emit(logoRes.rgbStream);
+    emitStr("\nendstream\n");
+    endObj();
+  }
+
+  // Signature Image XObject
+  if (sigRes) {
+    if (sigRes.maskId && sigRes.alphaStream) {
+      beginObj(sigRes.maskId);
+      emitStr(
+        `<< /Type /XObject /Subtype /Image /Width ${sigRes.width} /Height ${sigRes.height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length ${sigRes.alphaStream.length} >>\nstream\n`,
+      );
+      emit(sigRes.alphaStream);
+      emitStr("\nendstream\n");
+      endObj();
+    }
+    beginObj(sigRes.id);
+    const maskPart = sigRes.maskId ? ` /SMask ${sigRes.maskId} 0 R` : "";
+    const filterPart = sigRes.format === "png" ? "/Filter /FlateDecode" : "/Filter /DCTDecode";
+    emitStr(
+      `<< /Type /XObject /Subtype /Image /Width ${sigRes.width} /Height ${sigRes.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 ${filterPart}${maskPart} /Length ${sigRes.rgbStream.length} >>\nstream\n`,
+    );
+    emit(sigRes.rgbStream);
     emitStr("\nendstream\n");
     endObj();
   }

@@ -165,4 +165,39 @@ Authorized Signatory For Ziegler Aerospace Private Limited`;
     expect(ascii).not.toContain("manish@scalepods.tech");
     expect(ascii).toContain("Private & Confidential - Ziegler Aerospace");
   });
+
+  it("faithfully embeds custom company logo image and formats 2-column signature block", () => {
+    const textWithCols = `REF: SP/2026/01    Date: Nov 18, 2026
+Dear Aqib Firdous Khan,
+We are pleased to offer you AI Automation Engineer.
+
+[SIGNATURE_COLUMNS]
+LEFT: Sincerely / Acceptance Signature: Full Name: Aqib Firdous Khan Date: 18-11-2026
+RIGHT: Manish Authorized Signatory For Ziegler Talent Acquisition Lead "CC:" Engineering
+[/SIGNATURE_COLUMNS]`;
+
+    // 1x1 transparent PNG buffer
+    const dummyPng = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+      "base64",
+    );
+
+    const buf = generateStyledOfferPdf(textWithCols, {
+      companyName: "Ziegler Aerospace",
+      logoImage: {
+        buffer: dummyPng,
+        format: "png",
+        width: 100,
+        height: 50,
+      },
+    });
+
+    const ascii = buf.toString("latin1");
+    expect(ascii).toContain("/LogoImg");
+    expect(ascii).toContain("/FlateDecode");
+    expect(ascii).toContain("Sincerely / Acceptance");
+    expect(ascii).toContain("Full Name: Aqib Firdous Khan");
+    expect(ascii).toContain("Authorized Signatory For Ziegler");
+    expect(ascii).toContain("Talent Acquisition Lead");
+  });
 });

@@ -8,7 +8,9 @@ import {
 } from "@/lib/generate-styled-offer-pdf";
 import { cleanOfferTemplateDirectives, renderOfferTemplateText } from "@/lib/offer-template-utils";
 import {
+  type DocumentLogoInfo,
   extractDocumentImageFromDocxBuffer,
+  extractDocumentLogoInfoFromDocxBuffer,
   extractDocumentTextFromDocxBuffer,
 } from "@/lib/offers/prune-docx-xml";
 
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest) {
       auth: { persistSession: false },
     });
 
-    const values = { ...(body.field_values || body.dynamic_variables || {}) } as Record<
+    let values = { ...(body.field_values || body.dynamic_variables || {}) } as Record<
       string,
       string
     >;
@@ -171,6 +173,39 @@ export async function POST(req: NextRequest) {
       raw_text?: string;
     } | null = null;
 
+    let templateLogoInfo: DocumentLogoInfo | null = null;
+
+    const signatoryDate = String(
+      body?.signatory_date ||
+        values.signatory_date ||
+        values.SIGNATORY_DATE ||
+        values.company_sign_date ||
+        values.COMPANY_SIGN_DATE ||
+        new Date().toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        }),
+    );
+
+    const smartDefaults: Record<string, string> = {
+      EMPLOYMENT_TYPE: isIntern ? "Internship" : "Full-Time",
+      OFFICE_LOCATION: "Headquarters",
+      DEPARTMENT: "Engineering",
+      TRAINING_DURATION: "3 Months",
+      INTERNSHIP_DURATION: "3 Months",
+      EXTENSION_PERIOD: "1 Month",
+      MIN_ATTENDANCE: "85%",
+      CANDIDATE_FULL_NAME:
+        (values.candidate_name as string) || (body?.candidate_name as string) || "Candidate",
+      ACCEPTANCE_DATE: signatoryDate,
+      SIGNATORY_TITLE: "Authorized Signatory",
+      CC_DEPARTMENT: "Engineering",
+      REF_NO: `SP/${new Date().getFullYear()}/OFFER/${Math.floor(1000 + Math.random() * 9000)}`,
+      ISSUE_DATE: signatoryDate,
+    };
+    values = { ...smartDefaults, ...values };
+
     // 1. If template_id is provided, extract real text directly from the stored .docx template
     if (body.template_id) {
       const { data } = await adminSupabase
@@ -186,6 +221,7 @@ export async function POST(req: NextRequest) {
           .download(tpl.storage_path);
         if (fileBlob) {
           const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+          templateLogoInfo = extractDocumentLogoInfoFromDocxBuffer(docxBuffer);
           templateBgImage = extractDocumentImageFromDocxBuffer(docxBuffer);
           textToRender = await extractDocumentTextFromDocxBuffer(docxBuffer, values);
           if (textToRender && tpl?.raw_text === "[Raw DOCX Template]") {
@@ -234,21 +270,9 @@ export async function POST(req: NextRequest) {
     );
     const companyName = (values.company_name as string) || "Company";
     // Full-page background letterhead is ONLY for the built-in ScalePods template.
-    // Custom uploaded templates (e.g. Ziegler Aerospace) must NEVER stretch small embedded stamps/logos to full-page A4 wallpapers.
+    // Custom uploaded templates (e.g. Ziegler Aerospace) use top logo placement instead of full-page wallpaper.
     const bgToUse = isDefaultTemplate ? templateBgImage || getDefaultLetterheadBuffer() : undefined;
-
-    const signatoryDate = String(
-      body?.signatory_date ||
-        values.signatory_date ||
-        values.SIGNATORY_DATE ||
-        values.company_sign_date ||
-        values.COMPANY_SIGN_DATE ||
-        new Date().toLocaleDateString("en-US", {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        }),
-    );
+    const logoToUse = !isDefaultTemplate && templateLogoInfo ? templateLogoInfo : undefined;
 
     const signatureBase64 = String(
       body?.signature_base64 ||
@@ -261,6 +285,7 @@ export async function POST(req: NextRequest) {
     const pdfBuffer = generateStyledOfferPdf(textToRender, {
       companyName,
       backgroundImageBuffer: bgToUse,
+      logoImage: logoToUse,
       isDefaultTemplate,
       companyWebsite: isDefaultTemplate
         ? values.company_website || values.COMPANY_WEBSITE || ""

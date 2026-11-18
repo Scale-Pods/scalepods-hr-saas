@@ -353,7 +353,9 @@ export function extractDocumentTextFromDocxXml(
   bodyXml: string,
   data?: Record<string, unknown>,
 ): string {
-  const pruned = data ? pruneDocxXmlConditions(bodyXml, data) : bodyXml;
+  // Strip mc:Fallback blocks so Word backward-compatibility duplicate tables & paragraphs are never processed
+  const dedupedXml = bodyXml.replace(/<mc:Fallback(?:\s[^>]*)?>[\s\S]*?<\/mc:Fallback>/gi, "");
+  const pruned = data ? pruneDocxXmlConditions(dedupedXml, data) : dedupedXml;
   const bodyStartMatch = pruned.match(/<w:body(?:\s[^>]*)?>/);
   const bodyEndIdx = pruned.indexOf("</w:body>");
   const content =
@@ -381,9 +383,19 @@ export function extractDocumentTextFromDocxXml(
       const trMatches = el.raw.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) || [];
       for (const tr of trMatches) {
         const tcMatches = tr.match(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g) || [];
-        const cells = tcMatches.map((tc) => extractTextFromDocxXml(tc));
-        if (cells.length > 0) {
-          lines.push(`| ${cells.join(" | ")} |`);
+        const cells = tcMatches.map((tc) => extractTextFromDocxXml(tc)).filter((c) => c.length > 0);
+        if (
+          cells.length === 2 &&
+          (/sincerely|acceptance/i.test(cells[0]) ||
+            /authorized signatory|signatory/i.test(cells[1]))
+        ) {
+          const sigBlock = `[SIGNATURE_COLUMNS]\nLEFT: ${cells[0]}\nRIGHT: ${cells[1]}\n[/SIGNATURE_COLUMNS]`;
+          if (lines.length > 0 && lines[lines.length - 1] === sigBlock) continue;
+          lines.push(sigBlock);
+        } else if (cells.length > 0) {
+          const rowText = `| ${cells.join(" | ")} |`;
+          if (lines.length > 0 && lines[lines.length - 1] === rowText) continue;
+          lines.push(rowText);
         }
       }
     }
@@ -428,24 +440,85 @@ export async function extractDocumentTextFromDocxBuffer(
   return "";
 }
 
+export interface DocumentLogoInfo {
+  buffer: Buffer;
+  format: "png" | "jpeg";
+  width: number;
+  height: number;
+}
+
 /**
- * Extract background letterhead image (e.g. word/media/image1.jpg) from a .docx Buffer.
+ * Extract primary company logo information from a .docx Buffer.
+ * Finds the highest-resolution branded image inside word/media/ (e.g. image2.png for Ziegler).
  */
-export function extractDocumentImageFromDocxBuffer(docxBuffer: Buffer): Buffer | null {
+export function extractDocumentLogoInfoFromDocxBuffer(docxBuffer: Buffer): DocumentLogoInfo | null {
   try {
     const unzipped = fflate.unzipSync(new Uint8Array(docxBuffer));
     const candidateFiles = Object.keys(unzipped).filter(
       (k) => k.startsWith("word/media/") && /\.(jpe?g|png)$/i.test(k),
     );
-    if (candidateFiles.length > 0) {
-      const preferred = candidateFiles.find((k) => k.includes("image1")) || candidateFiles[0];
-      const bytes = unzipped[preferred];
-      if (bytes && bytes.length > 0) {
-        return Buffer.from(bytes);
+    if (candidateFiles.length === 0) return null;
+
+    // Sort by byte size descending so high-res branded logos are prioritized over tiny stamps
+    const sorted = [...candidateFiles].sort((a, b) => unzipped[b].length - unzipped[a].length);
+
+    for (const fileName of sorted) {
+      const raw = unzipped[fileName];
+      if (!raw || raw.length < 500) continue;
+      const bytes = Buffer.from(raw);
+
+      // PNG check
+      if (
+        bytes.length > 24 &&
+        bytes[0] === 0x89 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x4e &&
+        bytes[3] === 0x47
+      ) {
+        const width = bytes.readUInt32BE(16);
+        const height = bytes.readUInt32BE(20);
+        if (width >= 20 && height >= 10) {
+          return { buffer: bytes, format: "png", width, height };
+        }
+      }
+
+      // JPEG check
+      if (bytes.length > 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+        let i = 2;
+        let width = 400;
+        let height = 150;
+        while (i < bytes.length) {
+          if (bytes[i] !== 0xff) {
+            i++;
+            continue;
+          }
+          while (bytes[i] === 0xff) i++;
+          const marker = bytes[i];
+          i++;
+          if (marker === 0xd9 || marker === 0xda) break;
+          const len = bytes.readUInt16BE(i);
+          if (marker >= 0xc0 && marker <= 0xc3 && marker !== 0xc4) {
+            height = bytes.readUInt16BE(i + 3);
+            width = bytes.readUInt16BE(i + 5);
+            break;
+          }
+          i += len;
+        }
+        if (width >= 20 && height >= 10) {
+          return { buffer: bytes, format: "jpeg", width, height };
+        }
       }
     }
   } catch (err) {
-    console.warn("[extractDocumentImageFromDocxBuffer] Error extracting image:", err);
+    console.warn("[extractDocumentLogoInfoFromDocxBuffer] Error extracting logo:", err);
   }
   return null;
+}
+
+/**
+ * Extract background letterhead or company logo image from a .docx Buffer.
+ */
+export function extractDocumentImageFromDocxBuffer(docxBuffer: Buffer): Buffer | null {
+  const logoInfo = extractDocumentLogoInfoFromDocxBuffer(docxBuffer);
+  return logoInfo ? logoInfo.buffer : null;
 }

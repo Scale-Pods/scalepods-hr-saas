@@ -11,7 +11,9 @@ import { callN8nGateway } from "@/lib/n8n-gateway";
 import { cleanOfferTemplateDirectives, renderOfferTemplateText } from "@/lib/offer-template-utils";
 import { fillOfferDocx } from "@/lib/offers/fill-docx";
 import {
+  type DocumentLogoInfo,
   extractDocumentImageFromDocxBuffer,
+  extractDocumentLogoInfoFromDocxBuffer,
   extractDocumentTextFromDocxBuffer,
 } from "@/lib/offers/prune-docx-xml";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -340,6 +342,7 @@ export async function POST(req: NextRequest) {
       let filledBuffer: Buffer | null = null;
       let textToRender: string | null = null;
       let templateBgImage: Buffer | null = null;
+      let templateLogoInfo: DocumentLogoInfo | null = null;
       if (tplRow?.storage_path) {
         const { data: fileBlob } = await adminSupabase.storage
           .from("offer-templates")
@@ -347,6 +350,7 @@ export async function POST(req: NextRequest) {
 
         if (fileBlob) {
           const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
+          templateLogoInfo = extractDocumentLogoInfoFromDocxBuffer(docxBuffer);
           templateBgImage = extractDocumentImageFromDocxBuffer(docxBuffer);
           filledBuffer = sendAsIs ? docxBuffer : fillOfferDocx(docxBuffer, resolvedFieldValues);
           textToRender = await extractDocumentTextFromDocxBuffer(docxBuffer, resolvedFieldValues);
@@ -389,10 +393,11 @@ export async function POST(req: NextRequest) {
           tplRow?.raw_text?.includes("ScalePods"),
       );
       // Full-page background letterhead is ONLY for the built-in ScalePods template.
-      // Custom uploaded templates (e.g. Ziegler Aerospace) must NEVER stretch small embedded stamps/logos to full-page A4 wallpapers.
+      // Custom uploaded templates (e.g. Ziegler Aerospace) use top logo placement instead of full-page wallpaper.
       const bgToUse = isDefaultTemplate
         ? templateBgImage || getDefaultLetterheadBuffer()
         : undefined;
+      const logoToUse = !isDefaultTemplate ? templateLogoInfo : undefined;
 
       const signatoryDate = String(
         resolvedFieldValues.signatory_date ||
@@ -416,6 +421,7 @@ export async function POST(req: NextRequest) {
       const pdfBuffer = generateStyledOfferPdf(textToRender, {
         companyName: companyName || "Company",
         backgroundImageBuffer: bgToUse,
+        logoImage: logoToUse,
         isDefaultTemplate,
         companyWebsite: isDefaultTemplate
           ? (resolvedFieldValues.company_website as string) ||
