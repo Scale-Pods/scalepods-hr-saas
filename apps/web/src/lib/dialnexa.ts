@@ -306,8 +306,24 @@ export async function syncDialnexaAgentConfig(
       // Ensure candidate name is a dynamic variable template placeholder, never baked with a static name
       welcomeMsg = welcomeMsg
         .replace(/\b(Gandla Manish|Alex Morgan|Shubhodeep|John Doe)\b/gi, "{{candidate_name}}")
-        .replace(/\{\{company_name\}\}/g, company)
-        .replace(/\{\{job_title\}\}/g, role);
+        .replace(/\{\{company_name\}\}/g, company);
+
+      if (welcomeMsg.includes("{{job_title}}")) {
+        welcomeMsg = welcomeMsg.replace(/\{\{job_title\}\}/g, role);
+      } else if (role && role !== "Open Position") {
+        // If welcomeMsg contains a baked old role title, replace it with the active campaign's role
+        welcomeMsg = welcomeMsg
+          .replace(
+            /(regarding your application for (?:the )?)(.+?)( (?:position|role|opening)|\.|\?)/i,
+            `$1${role}$3`,
+          )
+          .replace(
+            /(regarding your interest in (?:the )?)(.+?)( (?:position|role|opening)|\.|\?)/i,
+            `$1${role}$3`,
+          )
+          .replace(/(regarding your )(.+?)( application)/i, `$1${role}$3`);
+      }
+
       if (
         !welcomeMsg.includes("{{candidate_name}}") &&
         !welcomeMsg.toLowerCase().includes("candidate")
@@ -322,8 +338,24 @@ export async function syncDialnexaAgentConfig(
     } else {
       fullPrompt = fullPrompt
         .replace(/\b(Gandla Manish|Alex Morgan|Shubhodeep|John Doe)\b/gi, "{{candidate_name}}")
-        .replace(/\{\{company_name\}\}/g, company)
-        .replace(/\{\{job_title\}\}/g, role);
+        .replace(/\{\{company_name\}\}/g, company);
+
+      if (fullPrompt.includes("{{job_title}}")) {
+        fullPrompt = fullPrompt.replace(/\{\{job_title\}\}/g, role);
+      } else if (role && role !== "Open Position") {
+        // Update any old baked role in standard persona statements
+        fullPrompt = fullPrompt
+          .replace(/(for the position of )(.+?)([.,\n])/i, `$1${role}$3`)
+          .replace(/(for the )(.+?)( (?:position|role|job)[.,\n])/i, `$1${role}$3`)
+          .replace(
+            /(qualification interview with candidate \{\{candidate_name\}\} for (?:the )?)(.+?)( (?:position|role|job))/i,
+            `$1${role}$3`,
+          )
+          .replace(
+            /(voice screening with candidate \{\{candidate_name\}\} for (?:the )?)(.+?)( (?:position|role|job))/i,
+            `$1${role}$3`,
+          );
+      }
     }
 
     if (params.job_description || params.jd_text) {
