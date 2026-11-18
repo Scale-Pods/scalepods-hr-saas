@@ -400,6 +400,28 @@ function paginateItems(items: RenderItem[]): RenderItem[][] {
   return pages.length ? pages : [[]];
 }
 
+function getJpegDimensions(buf: Buffer): { width: number; height: number } {
+  let i = 2;
+  while (i < buf.length) {
+    if (buf[i] !== 0xff) {
+      i++;
+      continue;
+    }
+    while (buf[i] === 0xff) i++;
+    const marker = buf[i];
+    i++;
+    if (marker === 0xd9 || marker === 0xda) break;
+    const len = buf.readUInt16BE(i);
+    if (marker >= 0xc0 && marker <= 0xc3 && marker !== 0xc4) {
+      const height = buf.readUInt16BE(i + 3);
+      const width = buf.readUInt16BE(i + 5);
+      return { width, height };
+    }
+    i += len;
+  }
+  return { width: 400, height: 150 };
+}
+
 /**
  * Draw a single page content stream with high visual fidelity.
  */
@@ -411,6 +433,8 @@ function renderPageContent(
   hasBgImg = false,
   companyWebsite = "www.scalepods.com",
   companyEmail = "contact@scalepods.com",
+  hasSigImg = false,
+  sigImgDims = { width: 400, height: 150 },
 ): Buffer {
   const ops: string[] = [];
 
@@ -641,7 +665,31 @@ function renderPageContent(
       drawText(item.companySigner.title, MARGIN_L, cursorY, 9, "/F1", COLOR_MUTED_GRAY);
       cursorY -= 16;
 
-      if (item.companySigner.signatureBase64) {
+      if (hasSigImg) {
+        // Draw the uploaded recruiter signature image
+        const maxSigW = 120;
+        const maxSigH = 42;
+        let sigW = maxSigW;
+        let sigH = (sigW * sigImgDims.height) / (sigImgDims.width || 1);
+        if (sigH > maxSigH) {
+          sigH = maxSigH;
+          sigW = (sigH * (sigImgDims.width || 1)) / (sigImgDims.height || 1);
+        }
+        cursorY -= sigH;
+        ops.push(
+          `q ${sigW.toFixed(2)} 0 0 ${sigH.toFixed(2)} ${MARGIN_L.toFixed(2)} ${cursorY.toFixed(2)} cm /SigImg Do Q`,
+        );
+        cursorY -= 8;
+        drawText(
+          `Digitally Verified · ${item.companySigner.name}`,
+          MARGIN_L,
+          cursorY,
+          7.5,
+          "/F1",
+          COLOR_MUTED_GRAY,
+        );
+        cursorY -= 12;
+      } else if (item.companySigner.signatureBase64) {
         drawText(
           `[Digitally Signed: ${item.companySigner.name}]`,
           MARGIN_L,
@@ -767,6 +815,24 @@ export function generateStyledOfferPdf(
     : null;
   const hasBgImg = Boolean(bgImgBuf && bgImgBuf.length > 0);
 
+  let sigImgBuf: Buffer | null = null;
+  let sigImgDims = { width: 400, height: 150 };
+  let hasSigImg = false;
+
+  if (options?.signatureBase64 && typeof options.signatureBase64 === "string") {
+    const rawB64 = options.signatureBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+    try {
+      const decoded = Buffer.from(rawB64, "base64");
+      if (decoded.length > 4 && decoded[0] === 0xff && decoded[1] === 0xd8) {
+        sigImgBuf = decoded;
+        sigImgDims = getJpegDimensions(decoded);
+        hasSigImg = true;
+      }
+    } catch (e) {
+      console.warn("Failed to decode signature image:", e);
+    }
+  }
+
   // PDF Object layout:
   // 1: Catalog
   // 2: Pages node
@@ -775,10 +841,12 @@ export function generateStyledOfferPdf(
   // Font 1: Helvetica (regular)
   // Font 2: Helvetica-Bold (bold)
   // [Optional] Background Image XObject
+  // [Optional] Signature Image XObject
   const font1Id = 3 + 2 * totalPages;
   const font2Id = font1Id + 1;
   const bgImgId = hasBgImg ? font2Id + 1 : 0;
-  const totalObjs = hasBgImg ? bgImgId + 1 : font2Id + 1;
+  const sigImgId = hasSigImg ? (hasBgImg ? bgImgId + 1 : font2Id + 1) : 0;
+  const totalObjs = sigImgId ? sigImgId + 1 : hasBgImg ? bgImgId + 1 : font2Id + 1;
 
   const chunks: Buffer[] = [];
   const offsets: number[] = new Array(totalObjs).fill(0);
@@ -820,13 +888,18 @@ export function generateStyledOfferPdf(
   for (let i = 0; i < totalPages; i++) {
     const pageId = 3 + i;
     const contentId = 3 + totalPages + i;
+    const xObjects: string[] = [];
+    if (hasBgImg) xObjects.push(`/BgImg ${bgImgId} 0 R`);
+    if (hasSigImg) xObjects.push(`/SigImg ${sigImgId} 0 R`);
+    const xObjStr = xObjects.length > 0 ? ` /XObject << ${xObjects.join(" ")} >>` : "";
+
     beginObj(pageId);
     emitStr(
       `<< /Type /Page /Parent 2 0 R` +
         ` /MediaBox [0 0 ${PAGE_W} ${PAGE_H}]` +
         ` /Contents ${contentId} 0 R` +
         ` /Resources << /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R >>` +
-        (hasBgImg ? ` /XObject << /BgImg ${bgImgId} 0 R >>` : "") +
+        xObjStr +
         ` >> >>\n`,
     );
     endObj();
@@ -843,6 +916,8 @@ export function generateStyledOfferPdf(
       hasBgImg,
       options?.companyWebsite,
       options?.companyEmail,
+      hasSigImg,
+      sigImgDims,
     );
     beginObj(contentId);
     emitStr(`<< /Length ${pageStream.length} >>\nstream\n`);
@@ -870,6 +945,17 @@ export function generateStyledOfferPdf(
       `<< /Type /XObject /Subtype /Image /Width 2480 /Height 3508 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bgImgBuf.length} >>\nstream\n`,
     );
     emit(bgImgBuf);
+    emitStr("\nendstream\n");
+    endObj();
+  }
+
+  // Signature Image XObject
+  if (hasSigImg && sigImgBuf) {
+    beginObj(sigImgId);
+    emitStr(
+      `<< /Type /XObject /Subtype /Image /Width ${sigImgDims.width} /Height ${sigImgDims.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${sigImgBuf.length} >>\nstream\n`,
+    );
+    emit(sigImgBuf);
     emitStr("\nendstream\n");
     endObj();
   }

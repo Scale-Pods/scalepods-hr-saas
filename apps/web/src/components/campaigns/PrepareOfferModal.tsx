@@ -135,10 +135,50 @@ export function PrepareOfferModal({
     }
     const reader = new FileReader();
     reader.onload = () => {
-      setSignatureBase64(reader.result as string);
+      const rawData = reader.result as string;
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          // Fill white background for transparent PNG signatures so it renders cleanly
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          const jpegDataUrl = canvas.toDataURL("image/jpeg", 0.95);
+          setSignatureBase64(jpegDataUrl);
+        } else {
+          setSignatureBase64(rawData);
+        }
+      };
+      img.onerror = () => {
+        setSignatureBase64(rawData);
+      };
+      img.src = rawData;
     };
     reader.readAsDataURL(file);
   };
+
+  useEffect(() => {
+    if (signatureBase64?.startsWith("data:image/png")) {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          setSignatureBase64(canvas.toDataURL("image/jpeg", 0.95));
+        }
+      };
+      img.src = signatureBase64;
+    }
+  }, [signatureBase64]);
 
   const [dynamicValues, setDynamicValues] = useState<Record<string, string>>(() => {
     const todayFormatted = new Date().toLocaleDateString("en-US", {
@@ -320,6 +360,26 @@ export function PrepareOfferModal({
     const effectiveGrossWords =
       rawGrossWords && rawGrossWords !== "0" ? rawGrossWords : numberToWords(effectiveGross);
 
+    const formatDisplayDate = (dStr: string) => {
+      if (!dStr) return "";
+      try {
+        const parts = dStr.split("-");
+        if (parts.length === 3) {
+          const d = new Date(dStr);
+          if (!Number.isNaN(d.getTime())) {
+            return d.toLocaleDateString("en-US", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+            });
+          }
+        }
+      } catch {}
+      return dStr;
+    };
+    const formattedStartDate = formatDisplayDate(startDate);
+    const formattedSignDate = formatDisplayDate(signatoryDate);
+
     const values: Record<string, string | undefined> = {
       ...dynamicValues,
       LETTER_TYPE: effectiveLetterType,
@@ -348,10 +408,10 @@ export function PrepareOfferModal({
       COMPENSATION: salary,
       currency,
       CURRENCY: currency,
-      start_date: startDate,
-      joining_date: startDate,
-      START_DATE: startDate,
-      JOINING_DATE: startDate,
+      start_date: formattedStartDate,
+      joining_date: formattedStartDate,
+      START_DATE: formattedStartDate,
+      JOINING_DATE: formattedStartDate,
       company_name: companyName,
       COMPANY_NAME: companyName,
       signatory_name: signatoryName,
@@ -364,10 +424,10 @@ export function PrepareOfferModal({
       SPECIAL_TERMS: specialTerms,
       issue_date: dynamicValues.ISSUE_DATE || todayFormatted,
       ISSUE_DATE: dynamicValues.ISSUE_DATE || todayFormatted,
-      signatory_date: signatoryDate,
-      SIGNATORY_DATE: signatoryDate,
-      company_sign_date: signatoryDate,
-      COMPANY_SIGN_DATE: signatoryDate,
+      signatory_date: formattedSignDate,
+      SIGNATORY_DATE: formattedSignDate,
+      company_sign_date: formattedSignDate,
+      COMPANY_SIGN_DATE: formattedSignDate,
       signature_base64: signatureBase64 || "",
       signatory_signature: signatureBase64 || "",
       SIGNATORY_SIGNATURE: signatureBase64 || "",
@@ -514,12 +574,12 @@ export function PrepareOfferModal({
       if (data.classification === "finished_letter") {
         setSendAsIs(true);
         showToast(
-          `Finished letter "${created.name}" uploaded. You can Send As-Is or Make Reusable.`,
+          `Filled offer letter detected: "${created.name}" uploaded. You can send this document as-is directly to the candidate, or make it reusable for future candidates.`,
         );
       } else {
         setSendAsIs(false);
         showToast(
-          `Template "${created.name}" uploaded with ${data.placeholders?.length || 0} fillable field(s).`,
+          `Offer template "${created.name}" uploaded with ${data.placeholders?.length || 0} fillable variable(s) ready for candidate customization.`,
         );
       }
     } catch (err) {
