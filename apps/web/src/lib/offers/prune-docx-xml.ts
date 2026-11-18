@@ -13,11 +13,20 @@ export interface DocxBodyElement {
 
 /**
  * Extract plain text content from an OpenXML snippet (<w:p> or <w:tbl>).
+ * Handles <w:tab/> (tabs/spacing), <w:br/> (line breaks), and standard XML entities.
  */
 export function extractTextFromDocxXml(xml: string): string {
-  const matches = xml.match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) || [];
+  const withTabsAndBreaks = xml
+    .replace(/<w:tab(?:\s[^>]*)?\/>/gi, "    ")
+    .replace(/<w:br(?:\s[^>]*)?\/>/gi, "\n")
+    .replace(/<w:cr(?:\s[^>]*)?\/>/gi, "\n");
+
+  const matches = withTabsAndBreaks.match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>| {4}|\n/g) || [];
   return matches
-    .map((m) => m.replace(/<w:t(?:\s[^>]*)?>/g, "").replace(/<\/w:t>/g, ""))
+    .map((m) => {
+      if (m === "    " || m === "\n") return m;
+      return m.replace(/<w:t(?:\s[^>]*)?>/g, "").replace(/<\/w:t>/g, "");
+    })
     .join("")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -360,6 +369,10 @@ export function extractDocumentTextFromDocxXml(
     if (el.tag === "p") {
       const pText = extractTextFromDocxXml(el.raw);
       if (pText) {
+        // Skip duplicate identical paragraphs (e.g. AlternateContent choice/fallback duplication)
+        if (lines.length > 0 && lines[lines.length - 1] === pText) {
+          continue;
+        }
         lines.push(pText);
       } else {
         lines.push("");

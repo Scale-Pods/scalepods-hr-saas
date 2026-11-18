@@ -233,8 +233,9 @@ export async function POST(req: NextRequest) {
       tpl?.file_name?.toLowerCase().includes("scalepods") || tpl?.raw_text?.includes("ScalePods"),
     );
     const companyName = (values.company_name as string) || "Company";
-    const bgToUse =
-      templateBgImage || (isDefaultTemplate ? getDefaultLetterheadBuffer() : undefined);
+    // Full-page background letterhead is ONLY for the built-in ScalePods template.
+    // Custom uploaded templates (e.g. Ziegler Aerospace) must NEVER stretch small embedded stamps/logos to full-page A4 wallpapers.
+    const bgToUse = isDefaultTemplate ? templateBgImage || getDefaultLetterheadBuffer() : undefined;
 
     const signatoryDate = String(
       body?.signatory_date ||
@@ -260,8 +261,11 @@ export async function POST(req: NextRequest) {
     const pdfBuffer = generateStyledOfferPdf(textToRender, {
       companyName,
       backgroundImageBuffer: bgToUse,
-      companyWebsite: values.company_website || values.COMPANY_WEBSITE || "",
-      companyEmail: values.company_email || values.COMPANY_EMAIL || "",
+      isDefaultTemplate,
+      companyWebsite: isDefaultTemplate
+        ? values.company_website || values.COMPANY_WEBSITE || ""
+        : "",
+      companyEmail: isDefaultTemplate ? values.company_email || values.COMPANY_EMAIL || "" : "",
       signatoryDate,
       signatureBase64,
     });

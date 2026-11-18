@@ -619,7 +619,19 @@ export function PrepareOfferModal({
   const handleSelectTemplate = (id: string) => {
     setSelectedTemplateId(id);
     const tpl = templates.find((t) => t.id === id);
-    setSendAsIs(Boolean(tpl?.is_finished_letter || tpl?.raw_text === "[Finished Letter]"));
+    const isFinished = Boolean(
+      tpl?.is_finished_letter ||
+        tpl?.raw_text === "[Finished Letter]" ||
+        (tpl?.placeholders &&
+          tpl.placeholders.length === 0 &&
+          (!tpl.variables || tpl.variables.length === 0)),
+    );
+    setSendAsIs(isFinished);
+    if (isFinished && tpl) {
+      showToast(
+        `Finished offer letter: "${tpl.name}" selected. This document contains no placeholders and will be previewed and sent as-is directly to the candidate.`,
+      );
+    }
   };
 
   const handleUploadFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {

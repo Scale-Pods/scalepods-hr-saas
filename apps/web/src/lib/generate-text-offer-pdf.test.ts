@@ -114,4 +114,55 @@ I, Manish Gandla, accept this offer
     const sigMatches = ascii.match(/Signature:\s*_{3,}/g) || [];
     expect(sigMatches.length).toBe(1);
   });
+
+  it("faithfully preserves custom company template paragraphs without swallowing terms or cutting off text", () => {
+    const customLetterText = `Working with Ziegler Aerospace is an opportunity, not an obligation. Being part of this journey is earned every day by every team member.
+
+REF: SP/2026/OFFER/7613    Date: November 18, 2026
+Dear Aqib Firdous Khan,
+Congratulations and Welcome to Ziegler Family!!
+Sub: Letter of Intent- AI Engineer (Internship) "Engineering" Dept at Ziegler Bangalore.
+
+On behalf of Ziegler, we are pleased to extend this Letter of Intent (LOI) for the position of AI Engineer, effective from December 02, 2026, upon successful completion of your training at Ziegler Bangalore Office.
+
+The following outlines the terms of the agreement:
+Term of this agreement is a period of 2 Weeks, starting from your date of joining i.e. December 02, 2026 until the end of the specified period. During this tenure, you will undergo a training process in our organization. Upon satisfactory completion of the training, a formal offer for a 3 Months internship may be extended. Your training may be extended by up to 6 Months, should your performance require further improvements. The criteria for extension will be communicated to you, and you will be given feedback and support to meet these criteria.
+
+As this training is intended to provide valuable industrial insights and knowledge, no monetary compensation will be provided for this training period.
+
+A high attendance percentage (minimum 95%) is mandatory throughout the training period to ensure comprehensive learning and readiness for potential future roles within the company.
+
+The company reserves the right to offer an internship position upon satisfactory performance during training. The offer of internship will also be subjected to production of necessary documents, including educational and professional certificates. Failure to provide these documents may result in the rescission of the internship offer.
+
+It shall not be obligatory on the part of the Company to Extend Internship (or) offer a permanent position to you on expiry of this Agreement. This Extension Internship (or) offer of Employment will be subject to the satisfactory performance during Internship and subject to production of necessary documents including educational and professional certificates and may be rescinded in the event such necessary documents are not provided to the Company.
+
+Sincerely / Acceptance
+Signature:
+Full Name: Aqib Firdous Khan
+Date: 18-11-2026
+Authorized Signatory For Ziegler Aerospace Private Limited`;
+
+    const buf = generateStyledOfferPdf(customLetterText, {
+      companyName: "Ziegler Aerospace",
+      isDefaultTemplate: false,
+    });
+    const ascii = buf.toString("latin1");
+
+    // All terms and legal clauses must be 100% preserved
+    expect(ascii).toContain("Ziegler Aerospace");
+    expect(ascii).toContain("no monetary compensation will be");
+    expect(ascii).toContain("provided for this training period");
+    expect(ascii).toContain("minimum 95%");
+    expect(ascii).toContain("satisfactory performance during training");
+    expect(ascii).toContain("It shall not be obligatory");
+    expect(ascii).toContain("Sincerely / Acceptance");
+    expect(ascii).toContain("Authorized Signatory For Ziegler Aerospace");
+
+    // Must NOT contain synthetic ScalePods acknowledgement
+    expect(ascii).not.toContain("accept the above terms and agree to work with");
+
+    // Footer must NOT contain recruiter personal email
+    expect(ascii).not.toContain("manish@scalepods.tech");
+    expect(ascii).toContain("Private & Confidential - Ziegler Aerospace");
+  });
 });

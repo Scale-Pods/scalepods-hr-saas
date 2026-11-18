@@ -214,6 +214,7 @@ type RenderItem =
   | { type: "heading"; text: string; height: number }
   | { type: "paragraph"; lines: string[]; height: number }
   | { type: "bullet"; textLines: string[]; height: number }
+  | { type: "signature_image"; height: number }
   | {
       type: "table";
       headers: string[];
@@ -241,11 +242,20 @@ type RenderItem =
  */
 function parseOfferText(
   rawText: string,
-  extra?: { signatoryDate?: string; signatureBase64?: string },
+  extra?: {
+    signatoryDate?: string;
+    signatureBase64?: string;
+    isDefaultTemplate?: boolean;
+  },
 ): RenderItem[] {
   const cleaned = sanitizeText(rawText);
+  const hasAckInDoc =
+    Boolean(extra?.isDefaultTemplate) ||
+    cleaned.toUpperCase().includes("ACKNOWLEDGEMENT") ||
+    cleaned.toUpperCase().includes("CANDIDATE ACCEPTANCE");
   const lines = cleaned.split("\n");
   const items: RenderItem[] = [];
+  let insertedSigImg = false;
 
   let i = 0;
   const n = lines.length;
@@ -254,6 +264,21 @@ function parseOfferText(
     const line = lines[i].trim();
 
     if (!line) {
+      i++;
+      continue;
+    }
+
+    // Two-column metadata on single line: Ref: ... and Date: ...
+    const singleLineRefDate = line.match(
+      /^(REF:\s*[^D\n]+?)(?:\t|\s{2,}|(?=Date:))\s*(Date:\s*.+)$/i,
+    );
+    if (singleLineRefDate) {
+      items.push({
+        type: "metadata_card",
+        leftLines: [singleLineRefDate[1].trim()],
+        rightLines: [singleLineRefDate[2].trim()],
+        height: 20,
+      });
       i++;
       continue;
     }
@@ -271,6 +296,19 @@ function parseOfferText(
         height: 20,
       });
       i += 2;
+      continue;
+    }
+
+    // Two-column metadata on single line: Dear ... and Starting Date: ...
+    const singleLineDearDate = line.match(/^(Dear\s+[^,]+,)\s+(Starting Date:\s*.+)$/i);
+    if (singleLineDearDate) {
+      items.push({
+        type: "metadata_card",
+        leftLines: [singleLineDearDate[1].trim()],
+        rightLines: [singleLineDearDate[2].trim()],
+        height: 20,
+      });
+      i++;
       continue;
     }
 
@@ -359,16 +397,18 @@ function parseOfferText(
       continue;
     }
 
-    // 2. Main Title (e.g., APPOINTMENT LETTER / INTERNSHIP APPOINTMENT LETTER)
+    // 2. Main Title (e.g., APPOINTMENT LETTER / INTERNSHIP APPOINTMENT LETTER / LETTER OF INTENT)
     if (
       line.toUpperCase().includes("APPOINTMENT LETTER") ||
       line.toUpperCase().includes("OFFER OF EMPLOYMENT") ||
-      line.toUpperCase().includes("EMPLOYMENT OFFER")
+      line.toUpperCase().includes("EMPLOYMENT OFFER") ||
+      line.toUpperCase().includes("LETTER OF INTENT")
     ) {
+      const wrapped = wrapText(line, USABLE_W, 12.5, true);
       items.push({
         type: "title",
         text: line,
-        height: 30,
+        height: wrapped.length * 18 + 8,
       });
       i++;
       continue;
@@ -384,24 +424,41 @@ function parseOfferText(
       !line.includes("INR");
 
     if (isNumberedHeading || isAllCapsHeading) {
+      const wrapped = wrapText(line, USABLE_W, 10.5, true);
       items.push({
         type: "heading",
         text: line,
-        height: 22,
+        height: wrapped.length * 15 + 6,
       });
       i++;
       continue;
     }
 
     // 4. Signatory section detection
-    const isSignatoryStart =
-      line.startsWith("For ") ||
+    // Acknowledgement header check:
+    const isAckHeader =
       line.toUpperCase().includes("ACKNOWLEDGEMENT") ||
-      line.toLowerCase().startsWith("authorized signatory") ||
-      line.toLowerCase().startsWith("sincerely") ||
-      line.toLowerCase().startsWith("warm regards") ||
-      line.toLowerCase().startsWith("regards,") ||
-      line.toLowerCase().startsWith("on behalf of");
+      line.toUpperCase().includes("CANDIDATE ACCEPTANCE") ||
+      line.toUpperCase().includes("ACCEPTANCE OF OFFER");
+
+    // Short formal closing salutation (e.g. "Sincerely", "Authorized Signatory", etc.)
+    const isClosingSalutation =
+      /^(?:sincerely|yours sincerely|yours faithfully|warm regards|with warm regards|regards,|best regards|authorized signatory)/i.test(
+        line,
+      );
+
+    // "For <Company>" is only a closing signatory header if it is a SHORT heading (< 60 chars)
+    // and does NOT contain sentence verbs ("we are pleased", "we offer", "we extend", etc.)
+    const isShortForCompany =
+      /^for\s+[^,.:;\n]{2,60}$/i.test(line) &&
+      !/(?:we|are|pleased|offer|extend|delighted|hereby|training|internship|terms|letter of intent)/i.test(
+        line,
+      );
+
+    // Only generate the dedicated ScalePods signatory_block (with candidate acknowledgement box)
+    // if the template explicitly contains an ACKNOWLEDGEMENT header or is explicitly the default ScalePods template
+    const isSignatoryStart =
+      hasAckInDoc && (isAckHeader || isClosingSalutation || isShortForCompany);
 
     if (isSignatoryStart) {
       const sigLines: string[] = [line];
@@ -416,6 +473,10 @@ function parseOfferText(
         if (/^[0-9]+\.\s+[A-Za-z]/.test(next)) {
           break;
         }
+        // If we hit a normal body sentence with more than 100 characters, stop
+        if (next.length > 100 && /\.\s+[A-Z]/.test(next)) {
+          break;
+        }
         sigLines.push(next);
         i++;
       }
@@ -427,10 +488,16 @@ function parseOfferText(
       let role = "Team Member";
 
       const forLine = sigLines.find(
-        (l) => l.startsWith("For ") || l.toLowerCase().startsWith("on behalf of "),
+        (l) =>
+          (/^for\s+/i.test(l) || /^on behalf of\s+/i.test(l)) &&
+          l.length < 60 &&
+          !/(?:we|are|pleased|offer|extend|delighted|hereby)/i.test(l),
       );
       if (forLine) {
-        companyName = forLine.replace(/^(?:For|on behalf of)\s+/i, "").trim();
+        const comp = forLine.replace(/^(?:For|on behalf of)\s+/i, "").trim();
+        if (comp.length < 60 && !/(?:we|are|pleased|offer|extend)/i.test(comp)) {
+          companyName = comp;
+        }
       }
 
       const ackIdx = sigLines.findIndex(
@@ -485,6 +552,22 @@ function parseOfferText(
         height: 155,
       });
       continue;
+    }
+
+    // If the recruiter uploaded a signature image, place it gracefully right above the signature line in custom templates
+    if (
+      extra?.signatureBase64 &&
+      !insertedSigImg &&
+      (line.toLowerCase().includes("authorized signatory") ||
+        line.toLowerCase().startsWith("signature:") ||
+        line.toLowerCase() === "signature" ||
+        line.toLowerCase().startsWith("sincerely"))
+    ) {
+      insertedSigImg = true;
+      items.push({
+        type: "signature_image",
+        height: 48,
+      });
     }
 
     // 5. Bullet items
@@ -699,8 +782,11 @@ function renderPageContent(
   for (const item of pageItems) {
     if (item.type === "title") {
       cursorY -= 8;
-      drawText(item.text, MARGIN_L, cursorY, 12.5, "/F2", COLOR_NAVY);
-      cursorY -= 16;
+      const wrapped = wrapText(item.text, USABLE_W, 12.5, true);
+      for (const tLine of wrapped) {
+        drawText(tLine, MARGIN_L, cursorY, 12.5, "/F2", COLOR_NAVY);
+        cursorY -= 16;
+      }
     } else if (item.type === "metadata_card") {
       cursorY -= 4;
       // Clean borderless metadata row matching Word template with symmetric right margin
@@ -716,14 +802,33 @@ function renderPageContent(
       cursorY -= 16;
     } else if (item.type === "heading") {
       cursorY -= 8;
-      drawText(item.text, MARGIN_L, cursorY, 10.5, "/F2", COLOR_NAVY);
-      cursorY -= 14;
+      const wrapped = wrapText(item.text, USABLE_W, 10.5, true);
+      for (const hLine of wrapped) {
+        drawText(hLine, MARGIN_L, cursorY, 10.5, "/F2", COLOR_NAVY);
+        cursorY -= 14;
+      }
     } else if (item.type === "paragraph") {
       for (const line of item.lines) {
         drawText(line, MARGIN_L, cursorY, 9.5, "/F1", COLOR_BODY_TEXT);
         cursorY -= 14;
       }
       cursorY -= 3;
+    } else if (item.type === "signature_image") {
+      if (hasSigImg) {
+        const maxSigW = 120;
+        const maxSigH = 42;
+        let sigW = maxSigW;
+        let sigH = (sigW * sigImgDims.height) / (sigImgDims.width || 1);
+        if (sigH > maxSigH) {
+          sigH = maxSigH;
+          sigW = (sigH * (sigImgDims.width || 1)) / (sigImgDims.height || 1);
+        }
+        cursorY -= sigH;
+        ops.push(
+          `q ${sigW.toFixed(2)} 0 0 ${sigH.toFixed(2)} ${MARGIN_L.toFixed(2)} ${cursorY.toFixed(2)} cm /SigImg Do Q`,
+        );
+        cursorY -= 10;
+      }
     } else if (item.type === "bullet") {
       // Draw a real round vector bullet dot in dark color (zero font encoding dependency)
       setFill(COLOR_BODY_TEXT);
@@ -806,8 +911,11 @@ function renderPageContent(
       cursorY -= 6;
 
       // 1. Company Signer
-      drawText(`For ${item.companySigner.company}`, MARGIN_L, cursorY, 10.5, "/F2", COLOR_NAVY);
-      cursorY -= 14;
+      const compLines = wrapText(`For ${item.companySigner.company}`, USABLE_W, 10.5, true);
+      for (const cl of compLines) {
+        drawText(cl, MARGIN_L, cursorY, 10.5, "/F2", COLOR_NAVY);
+        cursorY -= 14;
+      }
       drawText(item.companySigner.name, MARGIN_L, cursorY, 9.5, "/F2", COLOR_BODY_TEXT);
       cursorY -= 13;
       drawText(item.companySigner.title, MARGIN_L, cursorY, 9, "/F1", COLOR_MUTED_GRAY);
@@ -932,6 +1040,7 @@ export interface GenerateStyledOfferPdfOptions {
   backgroundImageBuffer?: Buffer | Uint8Array;
   signatoryDate?: string;
   signatureBase64?: string;
+  isDefaultTemplate?: boolean;
 }
 
 /**
@@ -945,6 +1054,7 @@ export function generateStyledOfferPdf(
   const items = parseOfferText(renderedText, {
     signatoryDate: options?.signatoryDate,
     signatureBase64: options?.signatureBase64,
+    isDefaultTemplate: options?.isDefaultTemplate,
   });
   const pages = paginateItems(items);
   const totalPages = pages.length;
