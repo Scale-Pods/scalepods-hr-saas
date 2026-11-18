@@ -114,7 +114,13 @@ type RenderItem =
     }
   | {
       type: "signatory_block";
-      companySigner: { name: string; title: string; company: string };
+      companySigner: {
+        name: string;
+        title: string;
+        company: string;
+        date?: string;
+        signatureBase64?: string;
+      };
       candidateName: string;
       role: string;
       height: number;
@@ -124,7 +130,10 @@ type RenderItem =
 /**
  * Parse structured offer letter text into printable visual items.
  */
-function parseOfferText(rawText: string): RenderItem[] {
+function parseOfferText(
+  rawText: string,
+  extra?: { signatoryDate?: string; signatureBase64?: string },
+): RenderItem[] {
   const cleaned = sanitizeText(rawText);
   const lines = cleaned.split("\n");
   const items: RenderItem[] = [];
@@ -323,10 +332,12 @@ function parseOfferText(rawText: string): RenderItem[] {
           name: signerName,
           title: signerTitle,
           company: companyName,
+          date: extra?.signatoryDate,
+          signatureBase64: extra?.signatureBase64,
         },
         candidateName,
         role,
-        height: 145,
+        height: 155,
       });
       continue;
     }
@@ -474,14 +485,8 @@ function renderPageContent(
     } else {
       // Running header on page 2+
       const headerY = PAGE_H - 30;
-      drawText(
-        "ScalePods Partner - Private & Confidential",
-        MARGIN_L,
-        headerY,
-        8,
-        "/F1",
-        [0.45, 0.5, 0.6],
-      );
+      const headerTitle = `${companyName} - Private & Confidential`;
+      drawText(headerTitle, MARGIN_L, headerY, 8, "/F1", [0.45, 0.5, 0.6]);
       drawText("Official Agreement", PAGE_W - MARGIN_R - 75, headerY, 8, "/F1", [0.45, 0.5, 0.6]);
 
       setStroke(COLOR_GRID_BORDER);
@@ -497,7 +502,8 @@ function renderPageContent(
   drawLine(MARGIN_L, footerY + 12, PAGE_W - MARGIN_R, footerY + 12);
 
   if (hasBgImg) {
-    const footerText = `${companyName}   |   ${companyWebsite || "www.scalepods.com"}   |   ${companyEmail || "contact@scalepods.com"}`;
+    const contactParts = [companyName, companyWebsite, companyEmail].filter(Boolean);
+    const footerText = contactParts.length > 0 ? contactParts.join("   |   ") : companyName;
     const footerTextW = approxTextWidth(footerText, 7.5);
     const footerX = Math.max(MARGIN_L, (PAGE_W - footerTextW) / 2);
     drawText(footerText, footerX, footerY, 7.5, "/F1", [0.45, 0.45, 0.45]);
@@ -505,14 +511,8 @@ function renderPageContent(
     const pageStr = `Page ${pageNum} of ${totalPages}`;
     drawText(pageStr, PAGE_W - MARGIN_R - 45, footerY, 7.5, "/F2", [0.35, 0.35, 0.35]);
   } else {
-    drawText(
-      "Private & Confidential - ScalePods Employment Agreement",
-      MARGIN_L,
-      footerY,
-      8,
-      "/F1",
-      COLOR_MUTED_GRAY,
-    );
+    const footerTitle = `Private & Confidential - ${companyName} Employment Agreement`;
+    drawText(footerTitle, MARGIN_L, footerY, 8, "/F1", COLOR_MUTED_GRAY);
     const pageStr = `Page ${pageNum} of ${totalPages}`;
     drawText(pageStr, PAGE_W - MARGIN_R - 55, footerY, 8.5, "/F2", [0.2, 0.25, 0.35]);
   }
@@ -640,15 +640,38 @@ function renderPageContent(
       cursorY -= 13;
       drawText(item.companySigner.title, MARGIN_L, cursorY, 9, "/F1", COLOR_MUTED_GRAY);
       cursorY -= 16;
-      drawText(
-        "Signature: ______________________     Date: _______________",
-        MARGIN_L,
-        cursorY,
-        9.5,
-        "/F1",
-        COLOR_BODY_TEXT,
-      );
-      cursorY -= 20;
+
+      if (item.companySigner.signatureBase64) {
+        drawText(
+          `[Digitally Signed: ${item.companySigner.name}]`,
+          MARGIN_L,
+          cursorY,
+          9.5,
+          "/F2",
+          [0.1, 0.2, 0.45],
+        );
+        cursorY -= 14;
+      } else {
+        drawText(
+          "Signature: ______________________",
+          MARGIN_L,
+          cursorY,
+          9.5,
+          "/F1",
+          COLOR_BODY_TEXT,
+        );
+        cursorY -= 14;
+      }
+
+      // Company Signatory Date
+      const signDate = item.companySigner.date;
+      if (signDate) {
+        drawText(`Date: ${signDate}`, MARGIN_L, cursorY, 9, "/F1", COLOR_BODY_TEXT);
+        cursorY -= 18;
+      } else {
+        drawText("Date: ______________________", MARGIN_L, cursorY, 9, "/F1", COLOR_BODY_TEXT);
+        cursorY -= 18;
+      }
 
       // 2. Candidate Acknowledgement
       drawText("ACKNOWLEDGEMENT", MARGIN_L, cursorY, 11, "/F2", COLOR_NAVY);
@@ -720,6 +743,8 @@ export interface GenerateStyledOfferPdfOptions {
   companyWebsite?: string;
   companyEmail?: string;
   backgroundImageBuffer?: Buffer | Uint8Array;
+  signatoryDate?: string;
+  signatureBase64?: string;
 }
 
 /**
@@ -730,10 +755,13 @@ export function generateStyledOfferPdf(
   renderedText: string,
   options?: GenerateStyledOfferPdfOptions,
 ): Buffer {
-  const items = parseOfferText(renderedText);
+  const items = parseOfferText(renderedText, {
+    signatoryDate: options?.signatoryDate,
+    signatureBase64: options?.signatureBase64,
+  });
   const pages = paginateItems(items);
   const totalPages = pages.length;
-  const companyName = options?.companyName || "ScalePods Partner";
+  const companyName = options?.companyName || "Company";
   const bgImgBuf = options?.backgroundImageBuffer
     ? Buffer.from(options.backgroundImageBuffer)
     : null;

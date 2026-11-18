@@ -315,16 +315,45 @@ export async function POST(req: NextRequest) {
       }
 
       // Native high-fidelity styled PDF generation — matching exact Word template branding
-      const bgToUse = templateBgImage || getDefaultLetterheadBuffer() || undefined;
+      const isDefaultTemplate = Boolean(
+        tplRow?.file_name?.toLowerCase().includes("scalepods") ||
+          tplRow?.raw_text?.includes("ScalePods"),
+      );
+      const bgToUse =
+        templateBgImage || (isDefaultTemplate ? getDefaultLetterheadBuffer() : undefined);
+
+      const signatoryDate = String(
+        resolvedFieldValues.signatory_date ||
+          resolvedFieldValues.SIGNATORY_DATE ||
+          resolvedFieldValues.company_sign_date ||
+          resolvedFieldValues.COMPANY_SIGN_DATE ||
+          new Date().toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          }),
+      );
+
+      const signatureBase64 = String(
+        resolvedFieldValues.signature_base64 ||
+          resolvedFieldValues.signatory_signature ||
+          resolvedFieldValues.SIGNATORY_SIGNATURE ||
+          "",
+      );
+
       const pdfBuffer = generateStyledOfferPdf(textToRender, {
-        companyName: companyName || "ScalePods Partner",
+        companyName: companyName || "Company",
         backgroundImageBuffer: bgToUse,
         companyWebsite:
           (resolvedFieldValues.company_website as string) ||
-          (resolvedFieldValues.COMPANY_WEBSITE as string),
+          (resolvedFieldValues.COMPANY_WEBSITE as string) ||
+          "",
         companyEmail:
           (resolvedFieldValues.company_email as string) ||
-          (resolvedFieldValues.COMPANY_EMAIL as string),
+          (resolvedFieldValues.COMPANY_EMAIL as string) ||
+          "",
+        signatoryDate,
+        signatureBase64,
       });
 
       // Store filled docx and generated pdf in Supabase Storage for audit trail

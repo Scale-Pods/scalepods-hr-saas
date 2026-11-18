@@ -138,6 +138,16 @@ export function pruneDocxXmlConditions(xml: string, data: Record<string, unknown
   const bodyContent = xml.slice(bodyStartIdx, bodyEndIdx);
   const elements = splitDocxBodyElements(bodyContent);
 
+  const hasTemplateDirectives =
+    /Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD/i.test(
+      bodyContent,
+    );
+
+  // If this is a standard custom template without ScalePods conditional directives, preserve all elements intact
+  if (!hasTemplateDirectives) {
+    return xml;
+  }
+
   const roleLower = String(
     data.POSITION_TITLE || data.ROLE || data.role || data.designation || data.position_title || "",
   ).toLowerCase();

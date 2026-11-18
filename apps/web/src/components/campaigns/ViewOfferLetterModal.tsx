@@ -169,6 +169,17 @@ export function ViewOfferLetterModal({
     dynamicVars.WORKING_DAYS || dynamicVars.working_days || "Mon - Fri (5 Days/Wk)";
   const probation = dynamicVars.PROBATION_PERIOD || dynamicVars.probation_period || "3 Months";
   const noticePeriod = dynamicVars.NOTICE_PERIOD || dynamicVars.notice_period || "15 Days";
+  const signatoryDate =
+    dynamicVars.SIGNATORY_DATE ||
+    dynamicVars.signatory_date ||
+    dynamicVars.company_sign_date ||
+    dynamicVars.COMPANY_SIGN_DATE ||
+    offer?.sent_at;
+  const signatorySignature =
+    dynamicVars.signature_base64 ||
+    dynamicVars.SIGNATURE_BASE64 ||
+    dynamicVars.signatory_signature ||
+    dynamicVars.SIGNATORY_SIGNATURE;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -415,12 +426,26 @@ export function ViewOfferLetterModal({
                   <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
                     Authorized Signatory
                   </span>
-                  <div className="text-base font-bold font-serif italic text-primary">
-                    {signatoryName}
-                  </div>
+                  {signatorySignature ? (
+                    /* biome-ignore lint/performance/noImgElement: user uploaded base64 signature */
+                    <img
+                      src={signatorySignature}
+                      alt="Authorized Signature"
+                      className="h-9 max-w-[140px] object-contain my-1"
+                    />
+                  ) : (
+                    <div className="text-base font-bold font-serif italic text-primary">
+                      {signatoryName}
+                    </div>
+                  )}
                   <div className="text-xs font-semibold text-foreground">{signatoryName}</div>
                   <div className="text-[11px] text-muted-foreground">{signatoryTitle}</div>
                   <div className="text-[10px] text-muted-foreground">{companyName}</div>
+                  {signatoryDate && (
+                    <div className="text-[10px] font-medium text-foreground/80 pt-0.5">
+                      Date: {formatDate(signatoryDate)}
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-right space-y-1">

@@ -23,6 +23,9 @@ export const STANDARD_OFFER_VAR_KEYS = new Set([
   "RECIPIENT_NAME",
   "COMPANY_NAME",
   "SIGNATORY_NAME",
+  "SIGNATORY_DATE",
+  "SIGNATORY_SIGNATURE",
+  "COMPANY_SIGN_DATE",
   "VARIABLE",
   "COMPANY_LOGO_PATH",
 ]);
@@ -45,6 +48,11 @@ function cleanOfferTemplateDirectivesHtml(
   html: string,
   options?: { letterType?: string; isIntern?: boolean; incentiveNote?: string },
 ): string {
+  // If template has no ScalePods conditional directives, keep entire content untouched
+  if (!/Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD/i.test(html)) {
+    return html;
+  }
+
   // Normalize HTML block endings with newlines
   const normalized = html
     .replace(/(<\/(?:p|div|tr|h[1-6]|table|ul|ol)>)/gi, "$1\n")
@@ -258,6 +266,13 @@ function cleanOfferTemplateDirectivesText(
   content: string,
   options?: { letterType?: string; isIntern?: boolean; incentiveNote?: string },
 ): string {
+  // If template has no ScalePods conditional directives, keep entire content untouched
+  if (
+    !/Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD/i.test(content)
+  ) {
+    return content;
+  }
+
   const hasSpecificType = options?.isIntern !== undefined || Boolean(options?.letterType?.trim());
   const isIntern =
     options?.isIntern ??

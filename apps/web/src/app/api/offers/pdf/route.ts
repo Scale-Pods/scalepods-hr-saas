@@ -143,13 +143,41 @@ export async function POST(req: NextRequest) {
       textToRender = `Employment Offer & Agreement\n\nDear ${body?.candidate_name || "Candidate"},\n\nWe are pleased to extend this offer of employment for the position of ${body?.position_title || "Team Member"}.`;
     }
 
-    const companyName = (values.company_name as string) || "ScalePods Partner";
-    const bgToUse = templateBgImage || getDefaultLetterheadBuffer() || undefined;
+    const isDefaultTemplate = Boolean(
+      tpl?.file_name?.toLowerCase().includes("scalepods") || tpl?.raw_text?.includes("ScalePods"),
+    );
+    const companyName = (values.company_name as string) || "Company";
+    const bgToUse =
+      templateBgImage || (isDefaultTemplate ? getDefaultLetterheadBuffer() : undefined);
+
+    const signatoryDate = String(
+      body?.signatory_date ||
+        values.signatory_date ||
+        values.SIGNATORY_DATE ||
+        values.company_sign_date ||
+        values.COMPANY_SIGN_DATE ||
+        new Date().toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        }),
+    );
+
+    const signatureBase64 = String(
+      body?.signature_base64 ||
+        values.signature_base64 ||
+        values.signatory_signature ||
+        values.SIGNATORY_SIGNATURE ||
+        "",
+    );
+
     const pdfBuffer = generateStyledOfferPdf(textToRender, {
       companyName,
       backgroundImageBuffer: bgToUse,
-      companyWebsite: values.company_website || values.COMPANY_WEBSITE,
-      companyEmail: values.company_email || values.COMPANY_EMAIL,
+      companyWebsite: values.company_website || values.COMPANY_WEBSITE || "",
+      companyEmail: values.company_email || values.COMPANY_EMAIL || "",
+      signatoryDate,
+      signatureBase64,
     });
 
     const safeName = (body?.candidate_name || "Candidate").replace(/[^a-zA-Z0-9]/g, "_");
@@ -440,15 +468,33 @@ export async function GET(req: NextRequest) {
       JOINING_DATE: joiningDate,
     };
 
+    const signatoryDate = String(
+      fieldValues.signatory_date ||
+        fieldValues.SIGNATORY_DATE ||
+        fieldValues.company_sign_date ||
+        fieldValues.COMPANY_SIGN_DATE ||
+        todayFormatted,
+    );
+
+    const signatureBase64 = String(
+      fieldValues.signature_base64 ||
+        fieldValues.signatory_signature ||
+        fieldValues.SIGNATORY_SIGNATURE ||
+        "",
+    );
+
     let pdfBuf: Buffer | null = null;
 
     // A. Render from stored rendered text
     if (offerRow?.rendered_text && offerRow.rendered_text !== "[Raw DOCX Template]") {
+      const isDefault = offerRow.rendered_text.includes("ScalePods");
       pdfBuf = generateStyledOfferPdf(offerRow.rendered_text, {
         companyName,
-        backgroundImageBuffer: getDefaultLetterheadBuffer(),
+        backgroundImageBuffer: isDefault ? getDefaultLetterheadBuffer() : undefined,
         companyWebsite,
         companyEmail,
+        signatoryDate,
+        signatureBase64,
       });
     }
 
@@ -456,9 +502,14 @@ export async function GET(req: NextRequest) {
     if (!pdfBuf && offerRow?.offer_template_id) {
       const { data: tplRow } = await adminSupabase
         .from("offer_templates")
-        .select("id, account_id, storage_path, raw_text")
+        .select("id, account_id, storage_path, raw_text, file_name")
         .eq("id", offerRow.offer_template_id)
         .maybeSingle();
+
+      const isDefault = Boolean(
+        tplRow?.file_name?.toLowerCase().includes("scalepods") ||
+          tplRow?.raw_text?.includes("ScalePods"),
+      );
 
       if (tplRow?.storage_path) {
         const { data: fileBlob } = await adminSupabase.storage
@@ -467,7 +518,8 @@ export async function GET(req: NextRequest) {
         if (fileBlob) {
           const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
           const templateBg =
-            extractDocumentImageFromDocxBuffer(docxBuffer) || getDefaultLetterheadBuffer();
+            extractDocumentImageFromDocxBuffer(docxBuffer) ||
+            (isDefault ? getDefaultLetterheadBuffer() : undefined);
           const rendered = await extractDocumentTextFromDocxBuffer(docxBuffer, resolvedVariables);
           if (rendered) {
             pdfBuf = generateStyledOfferPdf(rendered, {
@@ -475,6 +527,8 @@ export async function GET(req: NextRequest) {
               backgroundImageBuffer: templateBg,
               companyWebsite,
               companyEmail,
+              signatoryDate,
+              signatureBase64,
             });
           }
         }
@@ -484,9 +538,11 @@ export async function GET(req: NextRequest) {
         const rendered = renderOfferTemplateText(tplRow.raw_text, resolvedVariables);
         pdfBuf = generateStyledOfferPdf(rendered, {
           companyName,
-          backgroundImageBuffer: getDefaultLetterheadBuffer(),
+          backgroundImageBuffer: isDefault ? getDefaultLetterheadBuffer() : undefined,
           companyWebsite,
           companyEmail,
+          signatoryDate,
+          signatureBase64,
         });
       }
     }
@@ -495,10 +551,15 @@ export async function GET(req: NextRequest) {
     if (!pdfBuf) {
       const { data: latestTpl } = await adminSupabase
         .from("offer_templates")
-        .select("id, account_id, storage_path, raw_text")
+        .select("id, account_id, storage_path, raw_text, file_name")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      const isDefault = Boolean(
+        latestTpl?.file_name?.toLowerCase().includes("scalepods") ||
+          latestTpl?.raw_text?.includes("ScalePods"),
+      );
 
       if (latestTpl?.storage_path) {
         const { data: fileBlob } = await adminSupabase.storage
@@ -507,7 +568,8 @@ export async function GET(req: NextRequest) {
         if (fileBlob) {
           const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
           const templateBg =
-            extractDocumentImageFromDocxBuffer(docxBuffer) || getDefaultLetterheadBuffer();
+            extractDocumentImageFromDocxBuffer(docxBuffer) ||
+            (isDefault ? getDefaultLetterheadBuffer() : undefined);
           const rendered = await extractDocumentTextFromDocxBuffer(docxBuffer, resolvedVariables);
           if (rendered) {
             pdfBuf = generateStyledOfferPdf(rendered, {
@@ -515,6 +577,8 @@ export async function GET(req: NextRequest) {
               backgroundImageBuffer: templateBg,
               companyWebsite,
               companyEmail,
+              signatoryDate,
+              signatureBase64,
             });
           }
         }
@@ -524,9 +588,11 @@ export async function GET(req: NextRequest) {
         const rendered = renderOfferTemplateText(latestTpl.raw_text, resolvedVariables);
         pdfBuf = generateStyledOfferPdf(rendered, {
           companyName,
-          backgroundImageBuffer: getDefaultLetterheadBuffer(),
+          backgroundImageBuffer: isDefault ? getDefaultLetterheadBuffer() : undefined,
           companyWebsite,
           companyEmail,
+          signatoryDate,
+          signatureBase64,
         });
       }
     }
@@ -589,6 +655,8 @@ export async function GET(req: NextRequest) {
         backgroundImageBuffer: getDefaultLetterheadBuffer(),
         companyWebsite,
         companyEmail,
+        signatoryDate,
+        signatureBase64,
       });
     }
 

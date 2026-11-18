@@ -120,7 +120,25 @@ export function PrepareOfferModal({
   });
   const [companyName, setCompanyName] = useState(account?.company_name || "ScalePods Partner");
   const [signatoryName, setSignatoryName] = useState(account?.name || "Hiring Manager");
+  const [signatoryDate, setSignatoryDate] = useState(() => {
+    return new Date().toISOString().split("T")[0];
+  });
+  const [signatureBase64, setSignatureBase64] = useState<string | null>(null);
   const [specialTerms, setSpecialTerms] = useState("");
+
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showErrorToast("Please upload an image file (PNG, JPG, JPEG).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSignatureBase64(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const [dynamicValues, setDynamicValues] = useState<Record<string, string>>(() => {
     const todayFormatted = new Date().toLocaleDateString("en-US", {
@@ -175,6 +193,8 @@ export function PrepareOfferModal({
     setCurrency(campaign.salary_currency || "INR");
     if (account?.company_name) setCompanyName(account.company_name);
     if (account?.name) setSignatoryName(account.name);
+    setSignatoryDate(new Date().toISOString().split("T")[0]);
+    setSignatureBase64(null);
 
     const isInternRole = Boolean(
       (campaign?.name && /intern/i.test(campaign.name)) ||
@@ -344,6 +364,13 @@ export function PrepareOfferModal({
       SPECIAL_TERMS: specialTerms,
       issue_date: dynamicValues.ISSUE_DATE || todayFormatted,
       ISSUE_DATE: dynamicValues.ISSUE_DATE || todayFormatted,
+      signatory_date: signatoryDate,
+      SIGNATORY_DATE: signatoryDate,
+      company_sign_date: signatoryDate,
+      COMPANY_SIGN_DATE: signatoryDate,
+      signature_base64: signatureBase64 || "",
+      signatory_signature: signatureBase64 || "",
+      SIGNATORY_SIGNATURE: signatureBase64 || "",
     };
 
     return values;
@@ -356,6 +383,8 @@ export function PrepareOfferModal({
     startDate,
     companyName,
     signatoryName,
+    signatoryDate,
+    signatureBase64,
     specialTerms,
     campaign?.name,
     campaign?.jd_text,
@@ -388,9 +417,11 @@ export function PrepareOfferModal({
           salary: salary || "1200000",
           currency: currency || "INR",
           start_date: startDate || new Date().toISOString().split("T")[0],
-          company_name: companyName || "ScalePods Technologies",
-          signatory_name: signatoryName || "Manish",
+          company_name: companyName || "Company",
+          signatory_name: signatoryName || "Approver",
           signatory_title: dynamicValues.SIGNATORY_TITLE || "Head of Talent Acquisition",
+          signatory_date: signatoryDate,
+          signature_base64: signatureBase64,
           dynamic_variables: allValues,
           rendered_text: buildRenderedText(),
         }),
@@ -424,6 +455,8 @@ export function PrepareOfferModal({
     startDate,
     companyName,
     signatoryName,
+    signatoryDate,
+    signatureBase64,
     dynamicValues,
     buildRenderedText,
   ]);
@@ -1055,6 +1088,54 @@ export function PrepareOfferModal({
                     />
                   </div>
 
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Company Signatory Date</Label>
+                    <DatePicker
+                      value={signatoryDate}
+                      onChange={(d) => setSignatoryDate(d)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Company Signatory Signature (Optional)</Label>
+                    {signatureBase64 ? (
+                      <div className="flex items-center justify-between border rounded-lg p-2 bg-muted/20 border-border/70">
+                        <div className="flex items-center gap-2">
+                          {/* biome-ignore lint/performance/noImgElement: user uploaded base64 signature */}
+                          <img
+                            src={signatureBase64}
+                            alt="Signatory Signature"
+                            className="h-8 max-w-[140px] object-contain bg-white dark:bg-slate-900 rounded p-1 border"
+                          />
+                          <span className="text-[11px] text-muted-foreground">
+                            Signature Attached
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSignatureBase64(null)}
+                          className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" /> Remove
+                        </Button>
+                      </div>
+                    ) : (
+                      <label className="flex items-center justify-center gap-2 border border-dashed rounded-lg p-2 bg-muted/10 hover:bg-muted/30 cursor-pointer transition-colors border-border/80 text-xs text-muted-foreground hover:text-foreground">
+                        <Upload className="h-3.5 w-3.5 text-primary" />
+                        <span>Upload Signature Image (PNG / JPG)</span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg"
+                          className="hidden"
+                          onChange={handleSignatureUpload}
+                        />
+                      </label>
+                    )}
+                  </div>
+
                   {/* Dynamically generated fields for non-standard placeholders */}
                   {activeVariables
                     .filter((v) => {
@@ -1071,6 +1152,10 @@ export function PrepareOfferModal({
                         lower !== "joining_date" &&
                         lower !== "company_name" &&
                         lower !== "signatory_name" &&
+                        lower !== "signatory_date" &&
+                        lower !== "company_sign_date" &&
+                        lower !== "signature_base64" &&
+                        lower !== "signatory_signature" &&
                         lower !== "letter_type"
                       );
                     })
