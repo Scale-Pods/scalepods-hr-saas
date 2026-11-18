@@ -359,12 +359,14 @@ export async function fetchCandidateProfile(
   // 6. Fetch scorecards strictly for active campaign rounds and sessions
   const scorecardByRoundId = new Map<string, ScorecardRow>();
   const scorecardBySessionId = new Map<string, ScorecardRow>();
-  if (sessionRows.length > 0) {
-    const sessionIds = sessionRows.map((s) => s.id);
-    const { data: cards } = await supabase
-      .from("scorecards")
-      .select("*")
-      .in("session_id", sessionIds);
+  const sessionIds = sessionRows.map((s) => s.id);
+  const cardFilters = [
+    roundIds.length > 0 ? `round_instance_id.in.(${roundIds.join(",")})` : null,
+    sessionIds.length > 0 ? `session_id.in.(${sessionIds.join(",")})` : null,
+  ].filter(Boolean);
+
+  if (cardFilters.length > 0) {
+    const { data: cards } = await supabase.from("scorecards").select("*").or(cardFilters.join(","));
 
     for (const raw of (cards ?? []) as any[]) {
       const criteria = raw.criteria || {};
@@ -918,8 +920,7 @@ export async function fetchCandidateProfile(
           const curr = meaningfulAnswers[i];
           const prev = cleanAnswers[cleanAnswers.length - 1];
           if (
-            prev &&
-            prev.question_id &&
+            prev?.question_id &&
             curr.question_id &&
             prev.question_id === curr.question_id &&
             prev.answer_text?.trim() &&

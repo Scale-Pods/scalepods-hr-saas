@@ -136,27 +136,51 @@ export async function POST(req: NextRequest) {
     let resolvedAppId = applicationId;
     let resolvedRiId = roundInstanceId;
     let resolvedAccountId = accountId;
+    let resolvedCandId = candidateId;
 
     if (candidateId && (!resolvedAppId || !resolvedRiId || !resolvedAccountId)) {
-      const { data: app } = await adminSupabase
+      const { data: directApp } = await adminSupabase
         .from("applications")
-        .select("id, account_id, current_round_number")
-        .eq("candidate_id", candidateId)
-        .order("created_at", { ascending: false })
-        .limit(1)
+        .select("id, candidate_id, account_id, current_round_number")
+        .eq("id", candidateId)
         .maybeSingle();
 
-      if (app) {
-        resolvedAppId = resolvedAppId || app.id;
-        resolvedAccountId = resolvedAccountId || app.account_id;
-        if (!resolvedRiId && app.current_round_number != null) {
-          const { data: ri } = await adminSupabase
-            .from("round_instances")
-            .select("id")
-            .eq("application_id", app.id)
-            .eq("round_number", app.current_round_number)
-            .maybeSingle();
-          if (ri) resolvedRiId = ri.id;
+      if (directApp) {
+        resolvedAppId = resolvedAppId || directApp.id;
+        resolvedAccountId = resolvedAccountId || directApp.account_id;
+        resolvedCandId = directApp.candidate_id;
+      } else {
+        const { data: app } = await adminSupabase
+          .from("applications")
+          .select("id, candidate_id, account_id, current_round_number")
+          .eq("candidate_id", candidateId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (app) {
+          resolvedAppId = resolvedAppId || app.id;
+          resolvedAccountId = resolvedAccountId || app.account_id;
+          resolvedCandId = app.candidate_id;
+        }
+      }
+
+      if (!resolvedRiId && resolvedAppId) {
+        const { data: ri } = await adminSupabase
+          .from("round_instances")
+          .select("id, application_id")
+          .or(`application_id.eq.${resolvedAppId},candidate_id.eq.${resolvedCandId}`)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (ri) {
+          resolvedRiId = ri.id;
+          if (!ri.application_id) {
+            await adminSupabase
+              .from("round_instances")
+              .update({ application_id: resolvedAppId })
+              .eq("id", ri.id);
+          }
         }
       }
     }
@@ -208,14 +232,17 @@ export async function POST(req: NextRequest) {
       if (resolvedRiId) {
         await adminSupabase
           .from("round_instances")
-          .update({ status: "completed" })
+          .update({
+            status: "completed",
+            ...(resolvedAppId ? { application_id: resolvedAppId } : {}),
+          })
           .eq("id", resolvedRiId);
       }
 
       await adminSupabase
         .from("outreach_log")
         .update({ delivery_state: "connected" })
-        .eq("candidate_id", candidateId)
+        .eq("candidate_id", resolvedCandId)
         .eq("channel", "voice_call");
     }
 

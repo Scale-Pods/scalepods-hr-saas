@@ -315,17 +315,34 @@ export function PipelineBoard({
 
     // Check round decision / status
     const status = (cand.decision || cand.status || "").toLowerCase();
-    if (status === "completed" || status === "passed" || status === "awaiting_review") {
+    if (
+      status === "completed" ||
+      status === "passed" ||
+      status === "awaiting_review" ||
+      status === "evaluated" ||
+      status === "reviewed" ||
+      status === "incomplete"
+    ) {
       return true;
     }
 
     // Check interview status
-    if (cand.interview_status === "completed" || cand.interview_status === "evaluated") {
+    if (
+      cand.interview_status === "completed" ||
+      cand.interview_status === "evaluated" ||
+      cand.interview_status === "reviewed" ||
+      (cand.interview_status === "incomplete" && (cand.answers_count ?? 0) > 0)
+    ) {
       return true;
     }
 
     // Check score evaluation for this round
-    if (cand.ai_interview_score != null) {
+    if (cand.ai_interview_score != null || cand.latest_score != null) {
+      return true;
+    }
+
+    // Check if answers were provided
+    if ((cand.answers_count ?? 0) > 0) {
       return true;
     }
 

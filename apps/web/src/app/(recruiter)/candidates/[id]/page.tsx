@@ -533,6 +533,30 @@ export default function CandidateProfilePage() {
     }
   }, [application, candidate]);
 
+  const [dialnexaCalls, setDialnexaCalls] = useState<
+    Array<{
+      id: string;
+      duration: number;
+      status: string;
+      called_time: string | null;
+      end_reason: string | null;
+      sentiment: string | null;
+      call_successful: string | null;
+      recording_url: string | null;
+      transcript?: string | null;
+      turns?: Array<{ speaker: "agent" | "candidate"; text: string; start: number; end: number }>;
+      scorecard?: {
+        overall_score: number;
+        recommendation: string;
+        reason: string;
+        metrics: Record<string, { score: number; weight: number; reason: string }>;
+        strengths?: string[];
+        concerns?: string[];
+      };
+    }>
+  >([]);
+  const [loadingCalls, setLoadingCalls] = useState(false);
+
   const isRoundStage =
     application?.current_stage === "round" && application?.current_round_number != null;
 
@@ -543,28 +567,74 @@ export default function CandidateProfilePage() {
 
   const isCurrentRoundCompleted = useMemo(() => {
     if (!isRoundStage) return true;
-    if (!currentRoundInstance) return false;
 
+    // 1. Check completed voice calls from DialNexa
+    const hasCompletedVoiceCall = dialnexaCalls.some(
+      (c) =>
+        c.status === "completed" || c.duration > 0 || c.scorecard != null || Boolean(c.transcript),
+    );
+    if (hasCompletedVoiceCall) {
+      return true;
+    }
+
+    // 2. If round instance entity is missing or hasn't loaded yet
+    if (!currentRoundInstance) {
+      if (latestScorecard != null) return true;
+      const hasTimelineScore = (data?.timeline || []).some(
+        (t) =>
+          t.stage === "voice_screen" ||
+          t.stage === "ai_interview" ||
+          (t.score != null && t.stage !== "resume_screening"),
+      );
+      if (hasTimelineScore) return true;
+      return false;
+    }
+
+    // 3. Status checks on the round instance
     const status = (currentRoundInstance.status || "").toLowerCase();
-    if (status === "completed" || status === "passed" || status === "awaiting_review") {
-      return true;
-    }
-
-    if (latestScorecard?.overall_score != null) {
-      return true;
-    }
-
     if (
-      currentRoundInstance.round_type === "human_interview" &&
-      interviewerFeedback.some((f) => f.round_instance_id === currentRoundInstance.id)
+      status === "completed" ||
+      status === "passed" ||
+      status === "awaiting_review" ||
+      status === "evaluated" ||
+      status === "reviewed" ||
+      status === "incomplete"
     ) {
       return true;
     }
 
+    // 4. Scorecard availability
     if (
-      currentRoundInstance.round_type === "assignment" &&
-      assignmentSubmissions.some((s) => s.round_instance_id === currentRoundInstance.id)
+      latestScorecard != null &&
+      (latestScorecard.overall_score != null || latestScorecard.recommendation != null)
     ) {
+      return true;
+    }
+
+    // 5. Human interview feedback
+    if (
+      interviewerFeedback.some(
+        (f) =>
+          f.round_instance_id === currentRoundInstance.id || f.application_id === application?.id,
+      )
+    ) {
+      return true;
+    }
+
+    // 6. Assignment submission
+    if (assignmentSubmissions.some((s) => s.round_instance_id === currentRoundInstance.id)) {
+      return true;
+    }
+
+    // 7. Timeline / Decision ledger evaluations
+    const hasTimelineScore = (data?.timeline || []).some(
+      (t) =>
+        (t.round_instance_id && t.round_instance_id === currentRoundInstance.id) ||
+        t.stage === "voice_screen" ||
+        t.stage === "ai_interview" ||
+        (t.score != null && t.stage !== "resume_screening"),
+    );
+    if (hasTimelineScore) {
       return true;
     }
 
@@ -572,9 +642,12 @@ export default function CandidateProfilePage() {
   }, [
     isRoundStage,
     currentRoundInstance,
-    latestScorecard?.overall_score,
+    dialnexaCalls,
+    latestScorecard,
     interviewerFeedback,
     assignmentSubmissions,
+    data?.timeline,
+    application?.id,
   ]);
 
   const handleAdvance = async () => {
@@ -693,30 +766,6 @@ export default function CandidateProfilePage() {
       setContactSaving(false);
     }
   };
-
-  const [dialnexaCalls, setDialnexaCalls] = useState<
-    Array<{
-      id: string;
-      duration: number;
-      status: string;
-      called_time: string | null;
-      end_reason: string | null;
-      sentiment: string | null;
-      call_successful: string | null;
-      recording_url: string | null;
-      transcript?: string | null;
-      turns?: Array<{ speaker: "agent" | "candidate"; text: string; start: number; end: number }>;
-      scorecard?: {
-        overall_score: number;
-        recommendation: string;
-        reason: string;
-        metrics: Record<string, { score: number; weight: number; reason: string }>;
-        strengths?: string[];
-        concerns?: string[];
-      };
-    }>
-  >([]);
-  const [loadingCalls, setLoadingCalls] = useState(false);
 
   const effectiveCampaignId =
     selectedCampaignId || application?.campaign_id || campaign?.id || null;

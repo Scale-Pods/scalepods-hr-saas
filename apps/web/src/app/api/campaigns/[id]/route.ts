@@ -72,7 +72,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const appIds = applicationsList.map((a) => a.id);
 
     // 2. Fetch Sessions, Answers, Scorecards, Decision Ledger strictly for this campaign
-    const [sessionsRes, answersRes, dlRes] = await Promise.all([
+    const [sessionsRes, answersRes, dlRes, outreachRes] = await Promise.all([
       roundInstanceIds.length > 0
         ? admin.from("interview_sessions").select("*").in("round_instance_id", roundInstanceIds)
         : Promise.resolve({ data: [] }),
@@ -97,6 +97,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
                 .join(","),
             )
             .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] }),
+      appIds.length > 0
+        ? admin
+            .from("outreach_log")
+            .select("id, application_id, candidate_id, channel, delivery_state, status")
+            .in("application_id", appIds)
+            .eq("channel", "voice_call")
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -141,14 +148,25 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const allAnswers = (answersRes.data ?? []) as AnswerItem[];
     const allScorecards = (scorecardsRes.data ?? []) as ScorecardItem[];
     const dlList = (dlRes.data ?? []) as DecisionLedgerItem[];
+    const allOutreach = (outreachRes.data ?? []) as Array<{
+      application_id?: string;
+      candidate_id?: string;
+      channel?: string;
+      delivery_state?: string;
+      status?: string;
+    }>;
     // 3. Map candidates
     const candidates = applicationsList.map((app) => {
-      const appRi = roundInstances.find(
-        (r) =>
-          r.application_id === app.id ||
-          (r.candidate_id === app.candidate_id &&
-            r.round_number === (app.current_round_number ?? 1)),
-      );
+      const currentRoundNum = app.current_round_number ?? 1;
+      const appRi =
+        roundInstances.find(
+          (r) =>
+            (r.application_id === app.id || r.candidate_id === app.candidate_id) &&
+            r.round_number === currentRoundNum,
+        ) ||
+        roundInstances.find(
+          (r) => r.application_id === app.id || r.candidate_id === app.candidate_id,
+        );
 
       const appResumeScoreRow = dlList.find(
         (d) =>
@@ -182,6 +200,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           (appRi && a.round_instance_id === appRi.id),
       );
 
+      const appVoiceOutreach = allOutreach.find(
+        (o) =>
+          (o.application_id === app.id || o.candidate_id === app.candidate_id) &&
+          o.channel === "voice_call" &&
+          (o.delivery_state === "connected" ||
+            o.delivery_state === "delivered" ||
+            o.status === "completed"),
+      );
+
       let interviewStatus:
         | "not_started"
         | "in_progress"
@@ -190,7 +217,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         | "evaluated" = "not_started";
       if (appRoundScoreRow || appCard?.overall_score != null) {
         interviewStatus = "evaluated";
-      } else if (appSession?.status === "completed" || appRi?.status === "completed") {
+      } else if (
+        appSession?.status === "completed" ||
+        appSession?.status === "evaluated" ||
+        appRi?.status === "completed" ||
+        appRi?.status === "passed" ||
+        appRi?.status === "awaiting_review" ||
+        appRi?.status === "evaluated" ||
+        appVoiceOutreach != null
+      ) {
         interviewStatus = "completed";
       } else if (appSession?.status === "incomplete" || appRi?.status === "incomplete") {
         interviewStatus = "incomplete";

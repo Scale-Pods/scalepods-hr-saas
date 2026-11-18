@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       try {
         const { data: appRow } = await adminSupabase
           .from("applications")
-          .select("id, campaign_id, current_stage, current_round_number")
+          .select("id, candidate_id, campaign_id, account_id, current_stage, current_round_number")
           .eq("id", payload.application_id)
           .maybeSingle();
 
@@ -132,55 +132,172 @@ export async function POST(req: NextRequest) {
 
         // 2. If in round stage, verify that the current round is actually completed before advancing
         if (appRow && appRow.current_stage === "round" && appRow.current_round_number != null) {
-          const { data: currentRound } = await adminSupabase
+          // Look up current round instance: try by application_id first, fallback to candidate_id + campaign_id
+          let { data: currentRound } = await adminSupabase
             .from("round_instances")
-            .select("id, status, round_type")
+            .select("id, status, round_type, application_id")
             .eq("application_id", appRow.id)
             .eq("round_number", appRow.current_round_number)
             .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle();
 
+          if (!currentRound && appRow.candidate_id && appRow.campaign_id) {
+            const { data: fallbackRi } = await adminSupabase
+              .from("round_instances")
+              .select("id, status, round_type, application_id")
+              .eq("candidate_id", appRow.candidate_id)
+              .eq("campaign_id", appRow.campaign_id)
+              .eq("round_number", appRow.current_round_number)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (fallbackRi) {
+              currentRound = fallbackRi;
+              // Link application_id so decide_application stored procedure can locate it
+              if (!fallbackRi.application_id) {
+                await adminSupabase
+                  .from("round_instances")
+                  .update({ application_id: appRow.id })
+                  .eq("id", fallbackRi.id);
+              }
+            }
+          }
+
           const roundStatus = (currentRound?.status || "").toLowerCase();
           const isCompletedStatus =
             roundStatus === "completed" ||
             roundStatus === "passed" ||
-            roundStatus === "awaiting_review";
+            roundStatus === "awaiting_review" ||
+            roundStatus === "evaluated" ||
+            roundStatus === "reviewed" ||
+            roundStatus === "incomplete";
 
           let isActuallyCompleted = isCompletedStatus;
-          if (!isActuallyCompleted && currentRound?.id) {
-            // Check if a scorecard has been generated
-            const { data: scData } = await adminSupabase
-              .from("scorecards")
-              .select("id, overall_score")
-              .eq("round_instance_id", currentRound.id)
-              .maybeSingle();
-            if (scData && scData.overall_score != null) {
-              isActuallyCompleted = true;
-            } else {
-              // Check if an interview session has been completed
+
+          if (!isActuallyCompleted) {
+            // Check A: Scorecards (by round_instance_id)
+            if (currentRound?.id) {
+              const { data: scData } = await adminSupabase
+                .from("scorecards")
+                .select("id, overall_score")
+                .eq("round_instance_id", currentRound.id)
+                .maybeSingle();
+              if (scData && scData.overall_score != null) {
+                isActuallyCompleted = true;
+              }
+            }
+
+            // Check B: Interview sessions (by round_instance_id)
+            if (!isActuallyCompleted && currentRound?.id) {
               const { data: sessData } = await adminSupabase
                 .from("interview_sessions")
+                .select("id, status")
+                .eq("round_instance_id", currentRound.id)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (
+                sessData &&
+                (sessData.status === "completed" ||
+                  sessData.status === "evaluated" ||
+                  sessData.status === "incomplete")
+              ) {
+                isActuallyCompleted = true;
+              } else if (sessData?.id) {
+                // Check if scorecard exists by session_id
+                const { data: scBySess } = await adminSupabase
+                  .from("scorecards")
+                  .select("id")
+                  .eq("session_id", sessData.id)
+                  .maybeSingle();
+                if (scBySess?.id) {
+                  isActuallyCompleted = true;
+                }
+              }
+            }
+
+            // Check C: Human interview feedback
+            if (
+              !isActuallyCompleted &&
+              currentRound?.round_type === "human_interview" &&
+              currentRound.id
+            ) {
+              const { data: fbData } = await adminSupabase
+                .from("interviewer_feedback")
                 .select("id")
                 .eq("round_instance_id", currentRound.id)
-                .eq("status", "completed")
                 .maybeSingle();
-              if (sessData) {
+              if (fbData) isActuallyCompleted = true;
+            }
+
+            // Check D: Assignment submissions
+            if (
+              !isActuallyCompleted &&
+              currentRound?.round_type === "assignment" &&
+              currentRound.id
+            ) {
+              const { data: subData } = await adminSupabase
+                .from("assignment_submissions")
+                .select("id")
+                .eq("round_instance_id", currentRound.id)
+                .maybeSingle();
+              if (subData) isActuallyCompleted = true;
+            }
+
+            // Check E: Decision Ledger (scores from voice screen, AI interviews, or reviews)
+            if (!isActuallyCompleted) {
+              const dlFilters = [
+                currentRound?.id ? `round_instance_id.eq.${currentRound.id}` : null,
+                `application_id.eq.${appRow.id}`,
+                appRow.candidate_id ? `candidate_id.eq.${appRow.candidate_id}` : null,
+              ].filter(Boolean);
+
+              if (dlFilters.length > 0) {
+                const { data: dlEntries } = await adminSupabase
+                  .from("decision_ledger")
+                  .select("id, stage, score, round_instance_id")
+                  .or(dlFilters.join(","))
+                  .limit(10);
+
+                if (dlEntries && dlEntries.length > 0) {
+                  const hasValidEntry = dlEntries.some(
+                    (d) =>
+                      (d.round_instance_id && d.round_instance_id === currentRound?.id) ||
+                      d.stage === "voice_screen" ||
+                      d.stage === "ai_interview" ||
+                      d.stage === "round" ||
+                      (d.score != null &&
+                        d.stage !== "resume_screening" &&
+                        !d.stage?.includes("resume")),
+                  );
+                  if (hasValidEntry) {
+                    isActuallyCompleted = true;
+                  }
+                }
+              }
+            }
+
+            // Check F: Outreach Log (connected/completed AI voice screening call)
+            if (!isActuallyCompleted) {
+              const { data: callOutreach } = await adminSupabase
+                .from("outreach_log")
+                .select("id, delivery_state, status, channel")
+                .or(
+                  `application_id.eq.${appRow.id},candidate_id.eq.${appRow.candidate_id || "none"}`,
+                )
+                .eq("channel", "voice_call")
+                .limit(5);
+
+              const hasConnectedCall = callOutreach?.some(
+                (o) =>
+                  o.delivery_state === "connected" ||
+                  o.delivery_state === "delivered" ||
+                  o.status === "completed",
+              );
+              if (hasConnectedCall) {
                 isActuallyCompleted = true;
-              } else if (currentRound.round_type === "human_interview") {
-                const { data: fbData } = await adminSupabase
-                  .from("interviewer_feedback")
-                  .select("id")
-                  .eq("round_instance_id", currentRound.id)
-                  .maybeSingle();
-                if (fbData) isActuallyCompleted = true;
-              } else if (currentRound.round_type === "assignment") {
-                const { data: subData } = await adminSupabase
-                  .from("assignment_submissions")
-                  .select("id")
-                  .eq("round_instance_id", currentRound.id)
-                  .maybeSingle();
-                if (subData) isActuallyCompleted = true;
               }
             }
           }
@@ -195,11 +312,22 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          if (currentRound?.id && roundStatus !== "completed") {
+          // Ensure round_instances row exists with application_id and status "completed"
+          // so Postgres stored procedure decide_application allows advancing without throwing round_not_ready!
+          if (currentRound?.id) {
             await adminSupabase
               .from("round_instances")
-              .update({ status: "completed" })
+              .update({ status: "completed", application_id: appRow.id })
               .eq("id", currentRound.id);
+          } else {
+            await adminSupabase.from("round_instances").insert({
+              account_id: appRow.account_id || user.id,
+              candidate_id: appRow.candidate_id,
+              campaign_id: appRow.campaign_id,
+              application_id: appRow.id,
+              round_number: appRow.current_round_number,
+              status: "completed",
+            });
           }
 
           const { data: campaignRow } = await adminSupabase

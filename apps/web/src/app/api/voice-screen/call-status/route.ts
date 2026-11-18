@@ -698,29 +698,49 @@ async function recordVoiceScreenScoreIfMissing(params: {
 
     let targetRiId = roundInstanceId;
     let appId: string | null = null;
+    let resolvedCandId = candidateId;
 
     // Resolve application & round_instance if not provided
-    const { data: appRow } = await adminSupabase
+    const { data: directApp } = await adminSupabase
       .from("applications")
-      .select("id, current_round_number")
-      .eq("candidate_id", candidateId)
-      .order("created_at", { ascending: false })
-      .limit(1)
+      .select("id, candidate_id, current_round_number")
+      .eq("id", candidateId)
       .maybeSingle();
 
-    if (appRow?.id) {
-      appId = appRow.id;
+    if (directApp) {
+      appId = directApp.id;
+      resolvedCandId = directApp.candidate_id;
+    } else {
+      const { data: appRow } = await adminSupabase
+        .from("applications")
+        .select("id, candidate_id, current_round_number")
+        .eq("candidate_id", candidateId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (appRow?.id) {
+        appId = appRow.id;
+        resolvedCandId = appRow.candidate_id;
+      }
     }
 
-    if (!targetRiId && appId && appRow?.current_round_number != null) {
+    if (!targetRiId && appId) {
       const { data: riRow } = await adminSupabase
         .from("round_instances")
-        .select("id, round_type")
-        .eq("application_id", appId)
-        .eq("round_number", appRow.current_round_number)
+        .select("id, round_type, application_id")
+        .or(`application_id.eq.${appId},candidate_id.eq.${resolvedCandId}`)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
       if (riRow?.id) {
         targetRiId = riRow.id;
+        if (!riRow.application_id) {
+          await adminSupabase
+            .from("round_instances")
+            .update({ application_id: appId })
+            .eq("id", riRow.id);
+        }
       }
     }
 
@@ -730,13 +750,13 @@ async function recordVoiceScreenScoreIfMissing(params: {
       if (targetRiId) {
         await adminSupabase
           .from("round_instances")
-          .update({ status: "completed" })
+          .update({ status: "completed", ...(appId ? { application_id: appId } : {}) })
           .eq("id", targetRiId);
       }
       await adminSupabase
         .from("outreach_log")
         .update({ delivery_state: "connected" })
-        .eq("candidate_id", candidateId)
+        .eq("candidate_id", resolvedCandId)
         .eq("channel", "voice_call");
       return;
     }
@@ -779,14 +799,14 @@ async function recordVoiceScreenScoreIfMissing(params: {
     if (targetRiId) {
       await adminSupabase
         .from("round_instances")
-        .update({ status: "completed" })
+        .update({ status: "completed", ...(appId ? { application_id: appId } : {}) })
         .eq("id", targetRiId);
     }
 
     await adminSupabase
       .from("outreach_log")
       .update({ delivery_state: "connected" })
-      .eq("candidate_id", candidateId)
+      .eq("candidate_id", resolvedCandId)
       .eq("channel", "voice_call");
   } catch (err) {
     console.warn("recordVoiceScreenScoreIfMissing failed:", err);
