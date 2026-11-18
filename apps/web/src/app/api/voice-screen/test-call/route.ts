@@ -36,10 +36,6 @@ export async function POST(req: Request) {
 
     let outboundFromNumber = DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER;
     let outboundPhoneNumberId = DEFAULT_DIALNEXA_PHONE_NUMBER_ID;
-    let publishedAgentVersion: number | undefined =
-      typeof voice_call_config?.agent_version_number === "number"
-        ? voice_call_config.agent_version_number
-        : undefined;
 
     const promptToUse = voice_call_config?.prompt || body.prompt || body.custom_prompt || "";
     const topics = body.topics || voice_call_config?.topics;
@@ -80,9 +76,6 @@ export async function POST(req: Request) {
           body.from_number,
       });
 
-      if (syncResult.version_number) {
-        publishedAgentVersion = syncResult.version_number;
-      }
       if (syncResult.outbound_from_number) {
         outboundFromNumber = syncResult.outbound_from_number;
       }
@@ -136,7 +129,6 @@ export async function POST(req: Request) {
             custom_prompt: promptToUse,
             topics,
             discussion_topics: topics,
-            agent_version_number: publishedAgentVersion,
             dynamic_variables: {
               candidate_name: candidate_name || "Recruiter Test",
               job_title: role_title || "ScalePods Voice Agent Test",
@@ -171,7 +163,7 @@ export async function POST(req: Request) {
               prompt: promptToUse,
               topics,
               agent_id: targetAgentId,
-              agent_version_number: publishedAgentVersion,
+              agent_version_number: undefined,
               outbound_from_number: outboundFromNumber,
               from_phone_number: outboundFromNumber,
               from_number: outboundFromNumber,
@@ -269,7 +261,6 @@ export async function POST(req: Request) {
         from_number: outboundFromNumber,
         caller_id: outboundFromNumber,
         prompt: populatedPrompt,
-        ...(publishedAgentVersion ? { agent_version_number: publishedAgentVersion } : {}),
         dynamic_variables: {
           candidate_name: candidate_name || "Recruiter Test",
           job_title: role_title || "ScalePods Voice Agent Test",

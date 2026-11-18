@@ -50,7 +50,6 @@ export async function POST(req: Request) {
         const supabase = await supabaseServer();
         const updatedConfig = {
           ...voice_call_config,
-          ...(syncResult.version_number ? { agent_version_number: syncResult.version_number } : {}),
           ...(syncResult.outbound_from_number
             ? { outbound_from_number: syncResult.outbound_from_number }
             : {}),

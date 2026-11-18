@@ -555,7 +555,6 @@ export default function CampaignDetailPage() {
 
       const finalConfig = {
         ...voiceConfigDraft,
-        ...(publishedVersion ? { agent_version_number: publishedVersion } : {}),
       };
 
       const supabase = supabaseBrowser();

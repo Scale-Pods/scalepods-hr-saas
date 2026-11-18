@@ -308,7 +308,6 @@ export async function POST(req: NextRequest) {
             if (syncRes.version_number) {
               const updatedConfig = {
                 ...voiceConfig,
-                agent_version_number: syncRes.version_number,
                 ...(syncRes.outbound_from_number
                   ? { outbound_from_number: syncRes.outbound_from_number }
                   : {}),
@@ -321,7 +320,6 @@ export async function POST(req: NextRequest) {
 
               payload = {
                 ...payload,
-                agent_version_number: syncRes.version_number,
                 voice_call_config: updatedConfig,
                 role_title: camp?.name || "Open Position",
               };
@@ -553,16 +551,18 @@ async function triggerImmediateVoiceCallIfEligible(
     }
 
     // Check if an outreach voice call was already dispatched or attempted for this round instance to avoid duplicate calls
+    // (Do not treat failed previous attempts as blocking deduplications so transient errors can be safely recovered)
     const { data: existingOutreach } = await adminSupabase
       .from("outreach_log")
-      .select("id")
+      .select("id, delivery_state")
       .eq("application_id", applicationId)
       .eq("round_instance_id", targetRiId)
+      .neq("delivery_state", "failed")
       .maybeSingle();
 
     if (existingOutreach) {
       console.log(
-        `[api/applications/command] Voice call already initiated for round instance ${targetRiId}. Skipping duplicate.`,
+        `[api/applications/command] Voice call already initiated for round instance ${targetRiId} (status: ${existingOutreach.delivery_state}). Skipping duplicate.`,
       );
       return;
     }
@@ -625,10 +625,6 @@ async function triggerImmediateVoiceCallIfEligible(
     const phone = formatE164PhoneNumber(candidatePhone, "91");
     let outboundFromNumber = DEFAULT_DIALNEXA_OUTBOUND_FROM_NUMBER;
     let outboundPhoneNumberId = DEFAULT_DIALNEXA_PHONE_NUMBER_ID;
-    let publishedAgentVersion: number | undefined =
-      typeof voiceConfig?.agent_version_number === "number"
-        ? voiceConfig.agent_version_number
-        : undefined;
 
     // 1. Sync agent config to DialNexa with is_published: true
     if (voiceConfig) {
@@ -658,12 +654,10 @@ async function triggerImmediateVoiceCallIfEligible(
             voiceConfig?.from_number,
         });
         if (syncRes.version_number) {
-          publishedAgentVersion = syncRes.version_number;
           if (app.campaign_id) {
             try {
               const updatedConfig = {
                 ...voiceConfig,
-                agent_version_number: syncRes.version_number,
                 ...(syncRes.outbound_from_number
                   ? { outbound_from_number: syncRes.outbound_from_number }
                   : {}),
@@ -724,7 +718,6 @@ async function triggerImmediateVoiceCallIfEligible(
         candidate_id: app.candidate_id,
         candidate_name: app.candidate_name || "Candidate",
         candidate_phone: phone,
-        agent_version_number: publishedAgentVersion,
         dynamic_variables: {
           candidate_name: app.candidate_name || "Candidate",
           job_title: roleTitle || "Open Position",
@@ -741,7 +734,7 @@ async function triggerImmediateVoiceCallIfEligible(
         voice_call_config: voiceConfig
           ? {
               ...voiceConfig,
-              agent_version_number: publishedAgentVersion,
+              agent_version_number: undefined,
               outbound_from_number: outboundFromNumber,
               from_phone_number: outboundFromNumber,
               from_number: outboundFromNumber,
@@ -799,7 +792,6 @@ async function triggerImmediateVoiceCallIfEligible(
           phone_number: phone,
           agent_id: agentId,
           phone_number_id: outboundPhoneNumberId,
-          ...(publishedAgentVersion ? { agent_version_number: publishedAgentVersion } : {}),
           dynamic_variables: {
             candidate_name: app.candidate_name || "Candidate",
             job_title: roleTitle || "Open Position",
