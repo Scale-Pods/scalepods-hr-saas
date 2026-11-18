@@ -128,6 +128,12 @@ export function PrepareOfferModal({
   const [signatureBase64, setSignatureBase64] = useState<string | null>(null);
   const [specialTerms, setSpecialTerms] = useState("");
 
+  const todayDate = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
   const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -759,6 +765,10 @@ export function PrepareOfferModal({
       showErrorToast("Target start / joining date cannot be in the past.");
       return;
     }
+    if (signatoryDate && signatoryDate < today) {
+      showErrorToast("Company signatory date cannot be in the past.");
+      return;
+    }
     const rendered = buildRenderedText();
     setFinalRenderedText(rendered);
     setStep(3);
@@ -1289,6 +1299,7 @@ export function PrepareOfferModal({
                     <DatePicker
                       value={startDate}
                       onChange={(d) => setStartDate(d)}
+                      minDate={todayDate}
                       className="h-8 text-xs"
                     />
                   </div>
@@ -1316,6 +1327,7 @@ export function PrepareOfferModal({
                     <DatePicker
                       value={signatoryDate}
                       onChange={(d) => setSignatoryDate(d)}
+                      minDate={todayDate}
                       className="h-8 text-xs"
                     />
                   </div>
@@ -1417,6 +1429,7 @@ export function PrepareOfferModal({
                                   [v.toUpperCase()]: d,
                                 }))
                               }
+                              minDate={todayDate}
                               className="h-8 text-xs"
                             />
                           ) : isNumeric ? (
