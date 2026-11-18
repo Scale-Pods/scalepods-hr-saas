@@ -67,10 +67,18 @@ function cleanOfferTemplateDirectivesHtml(
 
   if (blocks.length === 0) return html;
 
-  const hasSpecificType = options?.isIntern !== undefined || Boolean(options?.letterType?.trim());
-  const isIntern =
-    options?.isIntern ??
-    (options?.letterType ? options.letterType.toLowerCase().includes("intern") : false);
+  const rawLetterType = String(options?.letterType || "")
+    .toLowerCase()
+    .trim();
+  let isIntern = false;
+  if (rawLetterType === "intern") {
+    isIntern = true;
+  } else if (rawLetterType === "fulltime") {
+    isIntern = false;
+  } else if (options?.isIntern !== undefined) {
+    isIntern = Boolean(options.isIntern);
+  }
+  const hasSpecificType = Boolean(rawLetterType || options?.isIntern !== undefined);
 
   const out: string[] = [];
   let activeCondition: "any" | "fulltime" | "intern" = "any";
@@ -273,10 +281,18 @@ function cleanOfferTemplateDirectivesText(
     return content;
   }
 
-  const hasSpecificType = options?.isIntern !== undefined || Boolean(options?.letterType?.trim());
-  const isIntern =
-    options?.isIntern ??
-    (options?.letterType ? options.letterType.toLowerCase().includes("intern") : false);
+  const rawLetterType = String(options?.letterType || "")
+    .toLowerCase()
+    .trim();
+  let isIntern = false;
+  if (rawLetterType === "intern") {
+    isIntern = true;
+  } else if (rawLetterType === "fulltime") {
+    isIntern = false;
+  } else if (options?.isIntern !== undefined) {
+    isIntern = Boolean(options.isIntern);
+  }
+  const hasSpecificType = Boolean(rawLetterType || options?.isIntern !== undefined);
 
   let preprocessed = content;
   if (/APPOINTMENT LETTER\s*\/\s*INTERNSHIP APPOINTMENT LETTER/i.test(preprocessed)) {

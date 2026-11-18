@@ -148,23 +148,23 @@ export function pruneDocxXmlConditions(xml: string, data: Record<string, unknown
     return xml;
   }
 
+  const letterType = String(data.LETTER_TYPE || data.letter_type || "")
+    .toLowerCase()
+    .trim();
   const roleLower = String(
     data.POSITION_TITLE || data.ROLE || data.role || data.designation || data.position_title || "",
   ).toLowerCase();
-  const letterType = String(data.LETTER_TYPE || data.letter_type || "").toLowerCase();
-  const isIntern =
-    letterType === "intern" ||
-    roleLower.includes("intern") ||
-    Boolean(
-      data.STIPEND_AMOUNT &&
-        String(data.STIPEND_AMOUNT).trim() !== "" &&
-        String(data.STIPEND_AMOUNT).trim() !== "0",
-    );
-  const hasSpecificType =
-    letterType === "fulltime" ||
-    letterType === "intern" ||
-    roleLower.includes("intern") ||
-    Boolean(data.STIPEND_AMOUNT);
+
+  let isIntern = false;
+  if (letterType === "intern") {
+    isIntern = true;
+  } else if (letterType === "fulltime") {
+    isIntern = false;
+  } else {
+    // Only infer from role name if letterType was not explicitly provided:
+    isIntern = /\bintern(?:ship)?\b/i.test(roleLower);
+  }
+  const hasSpecificType = true;
   const incentiveNote = String(data.INCENTIVE_NOTE || data.incentive_note || "").trim();
 
   let currentCondition: "any" | "fulltime" | "intern" = "any";

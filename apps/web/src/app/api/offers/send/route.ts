@@ -8,7 +8,7 @@ import {
   numberToWords,
 } from "@/lib/generate-styled-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
-import { renderOfferTemplateText } from "@/lib/offer-template-utils";
+import { cleanOfferTemplateDirectives, renderOfferTemplateText } from "@/lib/offer-template-utils";
 import { fillOfferDocx } from "@/lib/offers/fill-docx";
 import {
   extractDocumentImageFromDocxBuffer,
@@ -188,14 +188,26 @@ export async function POST(req: NextRequest) {
 
     const dynamicVars = (fieldValues.dynamic_variables || fieldValues) as Record<string, string>;
 
-    const isIntern =
-      String(fieldValues.letter_type || fieldValues.LETTER_TYPE || "").toLowerCase() === "intern" ||
-      positionTitle.toLowerCase().includes("intern") ||
-      Boolean(
-        (appRow?.campaigns as { name?: string } | undefined)?.name
-          ?.toLowerCase()
-          .includes("intern"),
-      );
+    const rawLetterType = String(
+      fieldValues.letter_type ||
+        fieldValues.LETTER_TYPE ||
+        dynamicVars.letter_type ||
+        dynamicVars.LETTER_TYPE ||
+        "",
+    )
+      .toLowerCase()
+      .trim();
+
+    const campaignName = (appRow?.campaigns as { name?: string } | undefined)?.name || "";
+    let isIntern = false;
+    if (rawLetterType === "intern") {
+      isIntern = true;
+    } else if (rawLetterType === "fulltime") {
+      isIntern = false;
+    } else {
+      isIntern =
+        /\bintern(?:ship)?\b/i.test(positionTitle) || /\bintern(?:ship)?\b/i.test(campaignName);
+    }
 
     let duration = String(
       fieldValues.duration || fieldValues.DURATION || (isIntern ? "3 Months" : "Full-time"),
@@ -204,27 +216,11 @@ export async function POST(req: NextRequest) {
       duration = "3 Months";
     }
 
-    const stipendAmount = String(fieldValues.stipend_amount || salary || "5000");
-    const rawStipendWords = String(
-      fieldValues.stipend_words || fieldValues.STIPEND_WORDS || "",
-    ).trim();
-    const stipendWords =
-      rawStipendWords && rawStipendWords !== "0" && rawStipendWords !== "(0)"
-        ? rawStipendWords
-        : numberToWords(stipendAmount);
-
-    const grossAnnual = String(fieldValues.gross_annual || salary || "60000");
-    const rawGrossWords = String(
-      fieldValues.gross_annual_words || fieldValues.GROSS_ANNUAL_WORDS || "",
-    ).trim();
-    const grossAnnualWords =
-      rawGrossWords && rawGrossWords !== "0" ? rawGrossWords : numberToWords(grossAnnual);
-
     const resolvedFieldValues: Record<string, unknown> = {
       ...fieldValues,
       ...dynamicVars,
-      letter_type: isIntern ? "intern" : fieldValues.letter_type || "fulltime",
-      LETTER_TYPE: isIntern ? "intern" : fieldValues.LETTER_TYPE || "fulltime",
+      letter_type: isIntern ? "intern" : "fulltime",
+      LETTER_TYPE: isIntern ? "intern" : "fulltime",
       duration,
       DURATION: duration,
       candidate_name: candidateName,
@@ -235,14 +231,6 @@ export async function POST(req: NextRequest) {
       ROLE: positionTitle,
       salary,
       SALARY: salary,
-      stipend_amount: stipendAmount,
-      STIPEND_AMOUNT: stipendAmount,
-      stipend_words: stipendWords,
-      STIPEND_WORDS: stipendWords,
-      gross_annual: grossAnnual,
-      GROSS_ANNUAL: grossAnnual,
-      gross_annual_words: grossAnnualWords,
-      GROSS_ANNUAL_WORDS: grossAnnualWords,
       currency,
       CURRENCY: currency,
       start_date: startDate,
@@ -256,6 +244,80 @@ export async function POST(req: NextRequest) {
       signatory_title: signatoryTitle,
       SIGNATORY_TITLE: signatoryTitle,
     };
+
+    if (isIntern) {
+      const stipendAmount = String(fieldValues.stipend_amount || salary || "5000");
+      const rawStipendWords = String(
+        fieldValues.stipend_words || fieldValues.STIPEND_WORDS || "",
+      ).trim();
+      const stipendWords =
+        rawStipendWords && rawStipendWords !== "0" && rawStipendWords !== "(0)"
+          ? rawStipendWords
+          : numberToWords(stipendAmount);
+
+      resolvedFieldValues.stipend_amount = stipendAmount;
+      resolvedFieldValues.STIPEND_AMOUNT = stipendAmount;
+      resolvedFieldValues.stipend_words = stipendWords;
+      resolvedFieldValues.STIPEND_WORDS = stipendWords;
+
+      delete resolvedFieldValues.gross_annual;
+      delete resolvedFieldValues.GROSS_ANNUAL;
+      delete resolvedFieldValues.gross_annual_words;
+      delete resolvedFieldValues.GROSS_ANNUAL_WORDS;
+      delete resolvedFieldValues.basic_salary;
+      delete resolvedFieldValues.BASIC_SALARY;
+      delete resolvedFieldValues.hra;
+      delete resolvedFieldValues.HRA;
+      delete resolvedFieldValues.special_allowance;
+      delete resolvedFieldValues.SPECIAL_ALLOWANCE;
+    } else {
+      const grossAnnual = String(fieldValues.gross_annual || salary || "600000");
+      const rawGrossWords = String(
+        fieldValues.gross_annual_words || fieldValues.GROSS_ANNUAL_WORDS || "",
+      ).trim();
+      const grossAnnualWords =
+        rawGrossWords && rawGrossWords !== "0" ? rawGrossWords : numberToWords(grossAnnual);
+
+      const grossNum = Number(grossAnnual.replace(/,/g, "")) || 0;
+      const grossMonthly = grossNum > 0 ? Math.round(grossNum / 12) : 0;
+      const basicMonthly = grossMonthly > 0 ? Math.round(grossMonthly * 0.5) : 0;
+      const basicAnnual = basicMonthly * 12;
+      const hraMonthly = grossMonthly > 0 ? Math.round(grossMonthly * 0.3) : 0;
+      const hraAnnual = hraMonthly * 12;
+      const specialMonthly =
+        grossMonthly > 0 ? Math.max(0, grossMonthly - basicMonthly - hraMonthly) : 0;
+      const specialAnnual = specialMonthly * 12;
+
+      resolvedFieldValues.gross_annual = grossAnnual;
+      resolvedFieldValues.GROSS_ANNUAL = grossAnnual;
+      resolvedFieldValues.gross_annual_words = grossAnnualWords;
+      resolvedFieldValues.GROSS_ANNUAL_WORDS = grossAnnualWords;
+      resolvedFieldValues.gross_monthly = resolvedFieldValues.gross_monthly || String(grossMonthly);
+      resolvedFieldValues.GROSS_MONTHLY = resolvedFieldValues.GROSS_MONTHLY || String(grossMonthly);
+      resolvedFieldValues.basic_salary = resolvedFieldValues.basic_salary || String(basicMonthly);
+      resolvedFieldValues.BASIC_SALARY = resolvedFieldValues.BASIC_SALARY || String(basicMonthly);
+      resolvedFieldValues.basic_salary_annual =
+        resolvedFieldValues.basic_salary_annual || String(basicAnnual);
+      resolvedFieldValues.BASIC_SALARY_ANNUAL =
+        resolvedFieldValues.BASIC_SALARY_ANNUAL || String(basicAnnual);
+      resolvedFieldValues.hra = resolvedFieldValues.hra || String(hraMonthly);
+      resolvedFieldValues.HRA = resolvedFieldValues.HRA || String(hraMonthly);
+      resolvedFieldValues.hra_annual = resolvedFieldValues.hra_annual || String(hraAnnual);
+      resolvedFieldValues.HRA_ANNUAL = resolvedFieldValues.HRA_ANNUAL || String(hraAnnual);
+      resolvedFieldValues.special_allowance =
+        resolvedFieldValues.special_allowance || String(specialMonthly);
+      resolvedFieldValues.SPECIAL_ALLOWANCE =
+        resolvedFieldValues.SPECIAL_ALLOWANCE || String(specialMonthly);
+      resolvedFieldValues.special_allowance_annual =
+        resolvedFieldValues.special_allowance_annual || String(specialAnnual);
+      resolvedFieldValues.SPECIAL_ALLOWANCE_ANNUAL =
+        resolvedFieldValues.SPECIAL_ALLOWANCE_ANNUAL || String(specialAnnual);
+
+      delete resolvedFieldValues.stipend_amount;
+      delete resolvedFieldValues.STIPEND_AMOUNT;
+      delete resolvedFieldValues.stipend_words;
+      delete resolvedFieldValues.STIPEND_WORDS;
+    }
 
     try {
       if (!offerTemplateId) {
@@ -303,10 +365,17 @@ export async function POST(req: NextRequest) {
 
       if (!textToRender || textToRender === "[Raw DOCX Template]") {
         if (renderedText?.trim() && renderedText.trim() !== "[Raw DOCX Template]") {
-          textToRender = renderedText.trim();
+          textToRender = cleanOfferTemplateDirectives(renderedText.trim(), {
+            letterType: isIntern ? "intern" : "fulltime",
+            isIntern,
+          });
         } else if (tplRow?.raw_text && tplRow.raw_text !== "[Raw DOCX Template]") {
+          const cleanedTpl = cleanOfferTemplateDirectives(tplRow.raw_text, {
+            letterType: isIntern ? "intern" : "fulltime",
+            isIntern,
+          });
           textToRender = renderOfferTemplateText(
-            tplRow.raw_text,
+            cleanedTpl,
             resolvedFieldValues as Record<string, string>,
           );
         } else {

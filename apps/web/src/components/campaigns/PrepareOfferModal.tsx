@@ -182,6 +182,8 @@ export function PrepareOfferModal({
     }
   }, [signatureBase64]);
 
+  const [offerType, setOfferType] = useState<"fulltime" | "intern">("fulltime");
+
   const [dynamicValues, setDynamicValues] = useState<Record<string, string>>(() => {
     const todayFormatted = new Date().toLocaleDateString("en-US", {
       month: "long",
@@ -191,8 +193,8 @@ export function PrepareOfferModal({
     const year = new Date().getFullYear();
     const randRef = Math.floor(1000 + Math.random() * 9000);
     const isInternRole = Boolean(
-      (campaign?.name && /intern/i.test(campaign.name)) ||
-        (campaign?.jd_text && /intern/i.test(campaign.jd_text)),
+      (campaign?.name && /\bintern(?:ship)?\b/i.test(campaign.name)) ||
+        (candidate?.name && /\bintern\b/i.test(candidate.name)),
     );
     const initialStipend = campaign.salary_min ? String(campaign.salary_min) : "5000";
     return {
@@ -208,8 +210,8 @@ export function PrepareOfferModal({
       ISSUE_DATE: todayFormatted,
       REF_NO: `SP/${year}/OFFER/${randRef}`,
       NOTICE_PERIOD: "15 Days",
-      STIPEND_AMOUNT: initialStipend,
-      STIPEND_WORDS: numberToWords(initialStipend),
+      STIPEND_AMOUNT: isInternRole ? initialStipend : "",
+      STIPEND_WORDS: isInternRole ? numberToWords(initialStipend) : "",
     };
   });
 
@@ -239,35 +241,46 @@ export function PrepareOfferModal({
     setSignatureBase64(null);
 
     const isInternRole = Boolean(
-      (campaign?.name && /intern/i.test(campaign.name)) ||
-        (campaign?.jd_text && /intern/i.test(campaign.jd_text)) ||
-        (candidate?.name && /intern/i.test(candidate.name)),
+      (campaign?.name && /\bintern(?:ship)?\b/i.test(campaign.name)) ||
+        (candidate?.name && /\bintern\b/i.test(candidate.name)),
     );
+    const detectedType: "fulltime" | "intern" = isInternRole ? "intern" : "fulltime";
+    setOfferType(detectedType);
+
     const stipend = initialSalary || "5000";
     setDynamicValues((prev) => ({
       ...prev,
-      DURATION: isInternRole
-        ? prev.DURATION && !prev.DURATION.toLowerCase().includes("full-time")
-          ? prev.DURATION
-          : "3 Months"
-        : prev.DURATION || "Full-time",
-      LETTER_TYPE: isInternRole ? "intern" : prev.LETTER_TYPE || "fulltime",
-      STIPEND_AMOUNT: prev.STIPEND_AMOUNT || stipend,
-      STIPEND_WORDS:
-        prev.STIPEND_WORDS && prev.STIPEND_WORDS !== "0" && prev.STIPEND_WORDS !== "(0)"
-          ? prev.STIPEND_WORDS
-          : numberToWords(stipend),
+      DURATION: isInternRole ? "3 Months" : "Full-time",
+      duration: isInternRole ? "3 Months" : "Full-time",
+      LETTER_TYPE: detectedType,
+      letter_type: detectedType,
+      STIPEND_AMOUNT: isInternRole ? stipend : "",
+      STIPEND_WORDS: isInternRole ? numberToWords(stipend) : "",
     }));
   }, [
     open,
     candidate?.name,
     campaign.name,
-    campaign.jd_text,
     campaign.salary_min,
     campaign.salary_currency,
     account?.company_name,
     account?.name,
   ]);
+
+  const handleOfferTypeChange = (newType: "fulltime" | "intern") => {
+    setOfferType(newType);
+    const isIntern = newType === "intern";
+    const currentSalary = salary.trim() || (isIntern ? "5000" : "600000");
+    setDynamicValues((prev) => ({
+      ...prev,
+      LETTER_TYPE: newType,
+      letter_type: newType,
+      DURATION: isIntern ? "3 Months" : "Full-time",
+      duration: isIntern ? "3 Months" : "Full-time",
+      STIPEND_AMOUNT: isIntern ? currentSalary : "",
+      STIPEND_WORDS: isIntern ? numberToWords(currentSalary) : "",
+    }));
+  };
 
   const loadTemplates = useCallback(async () => {
     setLoadingTemplates(true);
@@ -336,31 +349,58 @@ export function PrepareOfferModal({
       year: "numeric",
     });
 
-    const isIntern = Boolean(
-      (campaign?.name && /intern/i.test(campaign.name)) ||
-        (campaign?.jd_text && /intern/i.test(campaign.jd_text)) ||
-        (positionTitle && /intern/i.test(positionTitle)) ||
-        (candidateName && /intern/i.test(candidateName)) ||
-        (dynamicValues.LETTER_TYPE && /intern/i.test(dynamicValues.LETTER_TYPE)),
-    );
+    const isIntern = offerType === "intern";
+    const effectiveLetterType = isIntern ? "intern" : "fulltime";
+    const effectiveDuration = isIntern
+      ? dynamicValues.DURATION && !dynamicValues.DURATION.toLowerCase().includes("full-time")
+        ? dynamicValues.DURATION
+        : "3 Months"
+      : "Full-time";
 
-    const effectiveLetterType = isIntern ? "intern" : dynamicValues.LETTER_TYPE || "fulltime";
-    let effectiveDuration = dynamicValues.DURATION || (isIntern ? "3 Months" : "Full-time");
-    if (isIntern && effectiveDuration.toLowerCase().includes("full-time")) {
-      effectiveDuration = "3 Months";
+    const effectiveSalary = salary.trim() || (isIntern ? "5000" : "600000");
+
+    let stipendAmount = "";
+    let stipendWords = "";
+    let grossAnnual = "";
+    let grossAnnualWords = "";
+    let grossMonthly = "";
+    let basicMonthly = "";
+    let basicAnnual = "";
+    let hraMonthly = "";
+    let hraAnnual = "";
+    let specialMonthly = "";
+    let specialAnnual = "";
+
+    if (isIntern) {
+      stipendAmount = effectiveSalary;
+      const rawStipendWords = dynamicValues.STIPEND_WORDS || "";
+      stipendWords =
+        rawStipendWords && rawStipendWords !== "0" && rawStipendWords !== "(0)"
+          ? rawStipendWords
+          : numberToWords(stipendAmount);
+    } else {
+      grossAnnual = dynamicValues.GROSS_ANNUAL || effectiveSalary;
+      const rawGrossWords = dynamicValues.GROSS_ANNUAL_WORDS || "";
+      grossAnnualWords =
+        rawGrossWords && rawGrossWords !== "0" ? rawGrossWords : numberToWords(grossAnnual);
+
+      const grossNum = Number(grossAnnual.replace(/,/g, "")) || 0;
+      const gMonthly = grossNum > 0 ? Math.round(grossNum / 12) : 0;
+      const bMonthly = gMonthly > 0 ? Math.round(gMonthly * 0.5) : 0;
+      const bAnnual = bMonthly * 12;
+      const hMonthly = gMonthly > 0 ? Math.round(gMonthly * 0.3) : 0;
+      const hAnnual = hMonthly * 12;
+      const sMonthly = gMonthly > 0 ? Math.max(0, gMonthly - bMonthly - hMonthly) : 0;
+      const sAnnual = sMonthly * 12;
+
+      grossMonthly = dynamicValues.GROSS_MONTHLY || String(gMonthly);
+      basicMonthly = dynamicValues.BASIC_SALARY || String(bMonthly);
+      basicAnnual = dynamicValues.BASIC_SALARY_ANNUAL || String(bAnnual);
+      hraMonthly = dynamicValues.HRA || String(hMonthly);
+      hraAnnual = dynamicValues.HRA_ANNUAL || String(hAnnual);
+      specialMonthly = dynamicValues.SPECIAL_ALLOWANCE || String(sMonthly);
+      specialAnnual = dynamicValues.SPECIAL_ALLOWANCE_ANNUAL || String(sAnnual);
     }
-
-    const effectiveStipend = dynamicValues.STIPEND_AMOUNT || salary || "5000";
-    const rawStipendWords = dynamicValues.STIPEND_WORDS || "";
-    const effectiveStipendWords =
-      rawStipendWords && rawStipendWords !== "0" && rawStipendWords !== "(0)"
-        ? rawStipendWords
-        : numberToWords(effectiveStipend);
-
-    const effectiveGross = dynamicValues.GROSS_ANNUAL || salary || "60000";
-    const rawGrossWords = dynamicValues.GROSS_ANNUAL_WORDS || "";
-    const effectiveGrossWords =
-      rawGrossWords && rawGrossWords !== "0" ? rawGrossWords : numberToWords(effectiveGross);
 
     const formatDisplayDate = (dStr: string) => {
       if (!dStr) return "";
@@ -397,14 +437,6 @@ export function PrepareOfferModal({
       POSITION_TITLE: positionTitle,
       ROLE: positionTitle,
       salary,
-      stipend_amount: effectiveStipend,
-      stipend_words: effectiveStipendWords,
-      STIPEND_AMOUNT: effectiveStipend,
-      STIPEND_WORDS: effectiveStipendWords,
-      gross_annual: effectiveGross,
-      GROSS_ANNUAL: effectiveGross,
-      gross_annual_words: effectiveGrossWords,
-      GROSS_ANNUAL_WORDS: effectiveGrossWords,
       compensation: salary,
       SALARY: salary,
       COMPENSATION: salary,
@@ -435,8 +467,59 @@ export function PrepareOfferModal({
       SIGNATORY_SIGNATURE: signatureBase64 || "",
     };
 
+    if (isIntern) {
+      values.stipend_amount = stipendAmount;
+      values.STIPEND_AMOUNT = stipendAmount;
+      values.stipend_words = stipendWords;
+      values.STIPEND_WORDS = stipendWords;
+
+      delete values.gross_annual;
+      delete values.GROSS_ANNUAL;
+      delete values.gross_annual_words;
+      delete values.GROSS_ANNUAL_WORDS;
+      delete values.gross_monthly;
+      delete values.GROSS_MONTHLY;
+      delete values.basic_salary;
+      delete values.BASIC_SALARY;
+      delete values.basic_salary_annual;
+      delete values.BASIC_SALARY_ANNUAL;
+      delete values.hra;
+      delete values.HRA;
+      delete values.hra_annual;
+      delete values.HRA_ANNUAL;
+      delete values.special_allowance;
+      delete values.SPECIAL_ALLOWANCE;
+      delete values.special_allowance_annual;
+      delete values.SPECIAL_ALLOWANCE_ANNUAL;
+    } else {
+      values.gross_annual = grossAnnual;
+      values.GROSS_ANNUAL = grossAnnual;
+      values.gross_annual_words = grossAnnualWords;
+      values.GROSS_ANNUAL_WORDS = grossAnnualWords;
+      values.gross_monthly = grossMonthly;
+      values.GROSS_MONTHLY = grossMonthly;
+      values.basic_salary = basicMonthly;
+      values.BASIC_SALARY = basicMonthly;
+      values.basic_salary_annual = basicAnnual;
+      values.BASIC_SALARY_ANNUAL = basicAnnual;
+      values.hra = hraMonthly;
+      values.HRA = hraMonthly;
+      values.hra_annual = hraAnnual;
+      values.HRA_ANNUAL = hraAnnual;
+      values.special_allowance = specialMonthly;
+      values.SPECIAL_ALLOWANCE = specialMonthly;
+      values.special_allowance_annual = specialAnnual;
+      values.SPECIAL_ALLOWANCE_ANNUAL = specialAnnual;
+
+      delete values.stipend_amount;
+      delete values.STIPEND_AMOUNT;
+      delete values.stipend_words;
+      delete values.STIPEND_WORDS;
+    }
+
     return values;
   }, [
+    offerType,
     dynamicValues,
     candidateName,
     positionTitle,
@@ -448,16 +531,18 @@ export function PrepareOfferModal({
     signatoryDate,
     signatureBase64,
     specialTerms,
-    campaign?.name,
-    campaign?.jd_text,
   ]);
 
   const buildRenderedText = useCallback(() => {
     if (!hasSelectedTemplate) return "";
     const source = selectedTemplate?.raw_text || "";
-    const cleaned = cleanOfferTemplateDirectives(source);
+    const isIntern = offerType === "intern";
+    const cleaned = cleanOfferTemplateDirectives(source, {
+      letterType: isIntern ? "intern" : "fulltime",
+      isIntern,
+    });
     return renderOfferTemplateText(cleaned, buildAllOfferValues());
-  }, [hasSelectedTemplate, selectedTemplate, buildAllOfferValues]);
+  }, [hasSelectedTemplate, selectedTemplate, offerType, buildAllOfferValues]);
 
   // Load PDF preview via generic DOCX engine
   const loadPdfPreview = useCallback(async () => {
@@ -474,6 +559,7 @@ export function PrepareOfferModal({
           template_id: selectedTemplate.id,
           field_values: allValues,
           send_as_is: sendAsIs,
+          letter_type: offerType,
           candidate_name: candidateName || "Candidate",
           position_title: positionTitle || "Software Engineer",
           salary: salary || "1200000",
@@ -521,6 +607,7 @@ export function PrepareOfferModal({
     signatureBase64,
     dynamicValues,
     buildRenderedText,
+    offerType,
   ]);
 
   const handleSelectTemplate = (id: string) => {
@@ -718,8 +805,10 @@ export function PrepareOfferModal({
           application_id: candidate.application_id,
           offer_template_id: selectedTemplateId,
           send_as_is: sendAsIs,
+          letter_type: offerType,
           rendered_text: finalRenderedText.trim(),
           field_values: {
+            letter_type: offerType,
             candidate_name: candidateName.trim() || candidate.name,
             position_title: positionTitle,
             salary,
@@ -1084,6 +1173,40 @@ export function PrepareOfferModal({
                   pre-filled automatically.
                 </div>
 
+                {/* Offer Type Selector (Full-Time vs Internship) */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-muted/30 border border-border rounded-xl">
+                  <div>
+                    <Label className="text-xs font-semibold">Offer Type</Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Select employment type to configure matching compensation and legal clauses
+                    </p>
+                  </div>
+                  <div className="inline-flex bg-muted/60 p-1 rounded-lg border border-border/60 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => handleOfferTypeChange("fulltime")}
+                      className={`px-3.5 py-1 text-xs font-medium rounded-md transition-all ${
+                        offerType === "fulltime"
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Full-Time
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOfferTypeChange("intern")}
+                      className={`px-3.5 py-1 text-xs font-medium rounded-md transition-all ${
+                        offerType === "intern"
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Internship
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Candidate Name</Label>
@@ -1106,13 +1229,17 @@ export function PrepareOfferModal({
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Compensation Amount</Label>
+                    <Label className="text-xs">
+                      {offerType === "intern"
+                        ? "Monthly Stipend Amount"
+                        : "Annual CTC / Compensation"}
+                    </Label>
                     <div className="flex gap-2">
                       <Input
                         type="number"
                         value={salary}
                         onChange={(e) => setSalary(e.target.value)}
-                        placeholder="e.g. 1500000"
+                        placeholder={offerType === "intern" ? "e.g. 15000" : "e.g. 1200000"}
                         className="h-8 text-xs flex-1"
                       />
                       <Input
@@ -1122,6 +1249,40 @@ export function PrepareOfferModal({
                       />
                     </div>
                   </div>
+
+                  {offerType === "intern" ? (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Internship Duration</Label>
+                      <Input
+                        value={dynamicValues.DURATION || "3 Months"}
+                        onChange={(e) =>
+                          setDynamicValues((prev) => ({
+                            ...prev,
+                            DURATION: e.target.value,
+                            duration: e.target.value,
+                          }))
+                        }
+                        placeholder="e.g. 3 Months, 6 Months"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Probation Period</Label>
+                      <Input
+                        value={dynamicValues.PROBATION_PERIOD || "3 Months"}
+                        onChange={(e) =>
+                          setDynamicValues((prev) => ({
+                            ...prev,
+                            PROBATION_PERIOD: e.target.value,
+                            probation_period: e.target.value,
+                          }))
+                        }
+                        placeholder="e.g. 3 Months"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  )}
 
                   <div className="space-y-1.5">
                     <Label className="text-xs">Target Joining Date</Label>
@@ -1202,7 +1363,29 @@ export function PrepareOfferModal({
                   {activeVariables
                     .filter((v) => {
                       const norm = normalizeVarKey(v);
-                      return !STANDARD_OFFER_VAR_KEYS.has(norm);
+                      if (STANDARD_OFFER_VAR_KEYS.has(norm)) return false;
+                      const lower = v.toLowerCase();
+                      if (offerType === "fulltime") {
+                        if (
+                          lower.includes("stipend") ||
+                          lower === "duration" ||
+                          lower.includes("intern")
+                        ) {
+                          return false;
+                        }
+                      } else {
+                        if (
+                          lower.includes("basic_salary") ||
+                          lower.includes("hra") ||
+                          lower.includes("special_allowance") ||
+                          lower.includes("gross_annual") ||
+                          lower.includes("gross_monthly") ||
+                          lower.includes("probation")
+                        ) {
+                          return false;
+                        }
+                      }
+                      return true;
                     })
                     .map((v) => {
                       const lower = v.toLowerCase();
