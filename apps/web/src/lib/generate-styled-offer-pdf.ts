@@ -828,6 +828,7 @@ function renderPageContent(
   hasLogoImg = false,
   logoDims = { width: 200, height: 50 },
   _isDefaultTemplate = false,
+  logoAlignment: "left" | "center" | "right" = "left",
 ): Buffer {
   const ops: string[] = [];
 
@@ -882,8 +883,14 @@ function renderPageContent(
           logoW = logoH * aspect;
         }
         const logoY = PAGE_H - 30 - logoH;
+        let logoX = MARGIN_L;
+        if (logoAlignment === "right") {
+          logoX = PAGE_W - MARGIN_R - logoW;
+        } else if (logoAlignment === "center") {
+          logoX = MARGIN_L + (USABLE_W - logoW) / 2;
+        }
         ops.push(
-          `q ${logoW.toFixed(2)} 0 0 ${logoH.toFixed(2)} ${MARGIN_L.toFixed(2)} ${logoY.toFixed(2)} cm /LogoImg Do Q`,
+          `q ${logoW.toFixed(2)} 0 0 ${logoH.toFixed(2)} ${logoX.toFixed(2)} ${logoY.toFixed(2)} cm /LogoImg Do Q`,
         );
 
         // Subtle divider rule under logo
@@ -1280,14 +1287,16 @@ export interface GenerateStyledOfferPdfOptions {
   companyName?: string;
   companyWebsite?: string;
   companyEmail?: string;
-  backgroundImageBuffer?: Buffer | Uint8Array;
+  backgroundImageBuffer?: Buffer | Uint8Array | null;
   logoImage?: {
     buffer: Buffer | Uint8Array;
     format: "png" | "jpeg";
     width: number;
     height: number;
-  };
-  logoImageBuffer?: Buffer | Uint8Array;
+    alignment?: "left" | "center" | "right";
+  } | null;
+  logoAlignment?: "left" | "center" | "right";
+  logoImageBuffer?: Buffer | Uint8Array | null;
   signatoryDate?: string;
   signatureBase64?: string;
   isDefaultTemplate?: boolean;
@@ -1309,6 +1318,7 @@ export function generateStyledOfferPdf(
   const pages = paginateItems(items);
   const totalPages = pages.length;
   const companyName = options?.companyName || "Company";
+  const logoAlignment = options?.logoAlignment || options?.logoImage?.alignment || "left";
   const bgImgBuf = options?.backgroundImageBuffer
     ? Buffer.from(options.backgroundImageBuffer)
     : null;
@@ -1500,6 +1510,7 @@ export function generateStyledOfferPdf(
       Boolean(logoRes),
       logoRes ? { width: logoRes.width, height: logoRes.height } : { width: 200, height: 50 },
       Boolean(options?.isDefaultTemplate),
+      logoAlignment,
     );
     beginObj(contentId);
     emitStr(`<< /Length ${pageStream.length} >>\nstream\n`);

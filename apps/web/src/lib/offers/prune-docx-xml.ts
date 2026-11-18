@@ -445,11 +445,117 @@ export interface DocumentLogoInfo {
   format: "png" | "jpeg";
   width: number;
   height: number;
+  alignment?: "left" | "center" | "right";
+}
+
+/**
+ * Detect horizontal alignment (left, center, right) of an image inside a docx package.
+ * Inspects drawing paragraph justification (<w:jc w:val="right"/>) and drawing positioning (<wp:align>right</wp:align>).
+ */
+function detectImageAlignment(
+  unzipped: Record<string, Uint8Array>,
+  targetFileName: string,
+): "left" | "center" | "right" {
+  try {
+    const baseName = targetFileName.split("/").pop();
+    if (!baseName) return "left";
+
+    // 1. Find relationship IDs that map to this media file
+    const relIdsByXmlFile = new Map<string, string[]>();
+    for (const [path, data] of Object.entries(unzipped)) {
+      if (path.includes("_rels") && path.endsWith(".rels")) {
+        const relXml = Buffer.from(data).toString("utf-8");
+        if (relXml.includes(baseName)) {
+          const targetXml = path.replace("/_rels/", "/").replace(/\.rels$/, "");
+          const rIdRegex = /<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g;
+          while (true) {
+            const m = rIdRegex.exec(relXml);
+            if (!m) break;
+            if (m[2].includes(baseName)) {
+              const list = relIdsByXmlFile.get(targetXml) || [];
+              list.push(m[1]);
+              relIdsByXmlFile.set(targetXml, list);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Search associated XML files for paragraphs containing these rIds or drawing tags
+    for (const [xmlPath, relIds] of relIdsByXmlFile.entries()) {
+      const xmlData = unzipped[xmlPath];
+      if (!xmlData) continue;
+      const xmlStr = Buffer.from(xmlData).toString("utf-8");
+      const pMatches = xmlStr.match(/<w:p[\s>][\s\S]*?<\/w:p>/g);
+      if (!pMatches) continue;
+
+      for (const p of pMatches) {
+        const hasRel = relIds.some((rId) => p.includes(rId) || p.includes(`"${rId}"`));
+        if (hasRel || (p.includes("drawing") && p.includes("pic:pic"))) {
+          const jcMatch = p.match(/<w:jc\s+[^>]*w:val="([^"]+)"/);
+          if (jcMatch) {
+            const val = jcMatch[1].toLowerCase();
+            if (val === "right" || val === "end") return "right";
+            if (val === "center") return "center";
+            if (val === "left" || val === "start") return "left";
+          }
+
+          const alignMatch = p.match(/<wp:align>([^<]+)<\/wp:align>/);
+          if (alignMatch) {
+            const val = alignMatch[1].toLowerCase().trim();
+            if (val === "right") return "right";
+            if (val === "center") return "center";
+            if (val === "left") return "left";
+          }
+
+          const posHMatch = p.match(/<wp:positionH[^>]*>[\s\S]*?<\/wp:positionH>/);
+          if (posHMatch) {
+            const offsetMatch = posHMatch[0].match(/<wp:posOffset>(\d+)<\/wp:posOffset>/);
+            if (offsetMatch) {
+              const emus = Number(offsetMatch[1]);
+              if (emus > 4000000) return "right";
+              if (emus > 2000000) return "center";
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Fallback scan across document.xml and headers for drawing alignment
+    for (const [path, data] of Object.entries(unzipped)) {
+      if (path.startsWith("word/") && (path.endsWith("document.xml") || path.includes("header"))) {
+        const xmlStr = Buffer.from(data).toString("utf-8");
+        const pMatches = xmlStr.match(/<w:p[\s>][\s\S]*?<\/w:p>/g);
+        if (!pMatches) continue;
+        for (const p of pMatches) {
+          if (p.includes("drawing") || p.includes("blip")) {
+            const jcMatch = p.match(/<w:jc\s+[^>]*w:val="([^"]+)"/);
+            if (jcMatch) {
+              const val = jcMatch[1].toLowerCase();
+              if (val === "right" || val === "end") return "right";
+              if (val === "center") return "center";
+            }
+            const alignMatch = p.match(/<wp:align>([^<]+)<\/wp:align>/);
+            if (alignMatch) {
+              const val = alignMatch[1].toLowerCase().trim();
+              if (val === "right") return "right";
+              if (val === "center") return "center";
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[detectImageAlignment] Error detecting alignment:", err);
+  }
+
+  return "left";
 }
 
 /**
  * Extract primary company logo information from a .docx Buffer.
  * Finds the highest-resolution branded image inside word/media/ (e.g. image2.png for Ziegler).
+ * Detects whether the logo is aligned left, center, or right in the original template.
  */
 export function extractDocumentLogoInfoFromDocxBuffer(docxBuffer: Buffer): DocumentLogoInfo | null {
   try {
@@ -466,6 +572,7 @@ export function extractDocumentLogoInfoFromDocxBuffer(docxBuffer: Buffer): Docum
       const raw = unzipped[fileName];
       if (!raw || raw.length < 500) continue;
       const bytes = Buffer.from(raw);
+      const alignment = detectImageAlignment(unzipped, fileName);
 
       // PNG check
       if (
@@ -478,7 +585,7 @@ export function extractDocumentLogoInfoFromDocxBuffer(docxBuffer: Buffer): Docum
         const width = bytes.readUInt32BE(16);
         const height = bytes.readUInt32BE(20);
         if (width >= 20 && height >= 10) {
-          return { buffer: bytes, format: "png", width, height };
+          return { buffer: bytes, format: "png", width, height, alignment };
         }
       }
 
@@ -505,7 +612,7 @@ export function extractDocumentLogoInfoFromDocxBuffer(docxBuffer: Buffer): Docum
           i += len;
         }
         if (width >= 20 && height >= 10) {
-          return { buffer: bytes, format: "jpeg", width, height };
+          return { buffer: bytes, format: "jpeg", width, height, alignment };
         }
       }
     }

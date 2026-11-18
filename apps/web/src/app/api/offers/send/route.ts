@@ -422,6 +422,7 @@ export async function POST(req: NextRequest) {
         companyName: companyName || "Company",
         backgroundImageBuffer: bgToUse,
         logoImage: logoToUse,
+        logoAlignment: logoToUse?.alignment,
         isDefaultTemplate,
         companyWebsite: isDefaultTemplate
           ? (resolvedFieldValues.company_website as string) ||
