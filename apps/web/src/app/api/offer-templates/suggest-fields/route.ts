@@ -1,12 +1,18 @@
 import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { suggestFieldsWithAnthropic } from "@/lib/offers/suggest-fields";
+import { callN8nGateway } from "@/lib/n8n-gateway";
+import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
+import {
+  filterAndValidateSuggestions,
+  suggestFieldsWithAnthropic,
+  type ValidatedSuggestion,
+} from "@/lib/offers/suggest-fields";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-async function authenticateUser(req: NextRequest): Promise<User | null> {
+async function authenticateUser(req: NextRequest): Promise<{ user: User | null; token: string }> {
   const env = getEnv();
   const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (bearer) {
@@ -21,17 +27,17 @@ async function authenticateUser(req: NextRequest): Promise<User | null> {
     const {
       data: { user },
     } = await authClient.auth.getUser(bearer);
-    return user;
+    return { user, token: bearer };
   }
 
   try {
     const serverClient = await supabaseServer();
     const {
-      data: { user },
-    } = await serverClient.auth.getUser();
-    return user;
+      data: { session },
+    } = await serverClient.auth.getSession();
+    return { user: session?.user ?? null, token: session?.access_token || "" };
   } catch {
-    return null;
+    return { user: null, token: "" };
   }
 }
 
@@ -49,12 +55,13 @@ function getAdminClient() {
 /**
  * POST /api/offer-templates/suggest-fields
  *
- * Uses Anthropic Claude API to analyze finished letter text and suggest dynamic placeholders.
- * Note: Zero document text is logged to server output to protect candidate personal data.
+ * Suggests dynamic placeholders for finished offer letters.
+ * Prioritizes n8n workflow ("hiring/offer-template-parse") which uses the
+ * recruiter's predefined credentials in n8n, with fallback to direct Anthropic API.
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await authenticateUser(req);
+    const { user, token } = await authenticateUser(req);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = (await req.json().catch(() => null)) as { template_id?: string } | null;
@@ -64,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     const admin = getAdminClient();
 
-    // Verify tenant settings (feature toggle)
+    // Verify tenant settings
     const { data: accountRow } = await admin
       .from("accounts")
       .select("id")
@@ -77,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     const { data: tpl, error: tplErr } = await admin
       .from("offer_templates")
-      .select("id, account_id, storage_path")
+      .select("id, account_id, storage_path, file_name, raw_text")
       .eq("id", body.template_id)
       .maybeSingle();
 
@@ -94,7 +101,67 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await fileBlob.arrayBuffer());
-    const suggestions = await suggestFieldsWithAnthropic(buffer);
+    const rawDocText =
+      tpl.raw_text && tpl.raw_text !== "[Raw DOCX Template]"
+        ? tpl.raw_text
+        : await extractDocumentTextFromDocxBuffer(buffer);
+
+    let suggestions: ValidatedSuggestion[] = [];
+    let n8nSuccess = false;
+
+    // 1. Primary: Use n8n with predefined Anthropic Claude credentials
+    try {
+      const { response, payload } = await callN8nGateway("hiring/offer-template-parse", token, {
+        raw_text: rawDocText,
+        file_name: tpl.file_name || "document.docx",
+        recruiter_id: user.id,
+        recruiter_email: user.email,
+      });
+
+      if (response.ok && payload && typeof payload === "object") {
+        const resObj = payload as Record<string, unknown>;
+        if (Array.isArray(resObj.variables) && resObj.variables.length > 0) {
+          const mapped = resObj.variables
+            .map((v) => {
+              const obj = typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
+              const targetVal = String(
+                obj.detected_value || obj.original_value || obj.value || "",
+              ).trim();
+              const fieldKey = String(obj.key || obj.name || "").trim();
+              const label = String(obj.label || obj.category || "Detected dynamic field").trim();
+              return {
+                text: targetVal,
+                suggested_field: fieldKey,
+                reason: label,
+              };
+            })
+            .filter((s) => s.text && s.suggested_field);
+
+          const validated = filterAndValidateSuggestions({ suggestions: mapped }, rawDocText);
+          if (validated.length > 0) {
+            suggestions = validated;
+            n8nSuccess = true;
+          }
+        }
+      }
+    } catch (n8nErr) {
+      console.warn(
+        "[api/offer-templates/suggest-fields] n8n parser call failed or timed out:",
+        n8nErr,
+      );
+    }
+
+    // 2. Secondary fallback: direct Anthropic API if n8n was unreachable and key is present in env
+    if (!n8nSuccess && process.env.ANTHROPIC_API_KEY?.trim()) {
+      try {
+        suggestions = await suggestFieldsWithAnthropic(buffer);
+      } catch (anthropicErr) {
+        console.warn(
+          "[api/offer-templates/suggest-fields] Direct Anthropic fallback error:",
+          anthropicErr,
+        );
+      }
+    }
 
     return NextResponse.json({ suggestions });
   } catch (err) {
