@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
       position_title?: string;
       dynamic_variables?: Record<string, string>;
       rendered_text?: string;
+      signatory_date?: string;
+      signature_base64?: string;
     } | null;
 
     if (!body || (!body.template_id && !body.rendered_text)) {
@@ -119,12 +121,13 @@ export async function POST(req: NextRequest) {
           templateBgImage = extractDocumentImageFromDocxBuffer(docxBuffer);
           textToRender = await extractDocumentTextFromDocxBuffer(docxBuffer, values);
           if (textToRender && tpl?.raw_text === "[Raw DOCX Template]") {
+            const currentTplId = tpl.id;
             extractDocumentTextFromDocxBuffer(docxBuffer).then((rawBase) => {
-              if (rawBase) {
+              if (rawBase && currentTplId) {
                 adminSupabase
                   .from("offer_templates")
                   .update({ raw_text: rawBase })
-                  .eq("id", tpl.id);
+                  .eq("id", currentTplId);
               }
             });
           }
