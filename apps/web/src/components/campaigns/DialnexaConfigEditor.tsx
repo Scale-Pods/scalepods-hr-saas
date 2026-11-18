@@ -5,6 +5,9 @@ import {
   DIALNEXA_VOICES,
   type DialnexaFunctionConfig,
   type DialnexaVoiceConfig,
+  getDialnexaVoiceName,
+  updateAgentNameInGreeting,
+  updateAgentNameInPrompt,
   VOICE_CALL_TYPES,
   type VoiceCallTopic,
   type VoiceCallTypeId,
@@ -269,8 +272,9 @@ export function DialnexaConfigEditor({
       const callType =
         VOICE_CALL_TYPES.find((t) => t.id === selectedCallTypeId) || VOICE_CALL_TYPES[0];
       const topics = callTypeTopics.length > 0 ? callTypeTopics : callType.defaultTopics;
-      let prompt = callType.buildPrompt(topics);
-      let firstMessage = callType.buildFirstMessage();
+      const currentAgentName = getDialnexaVoiceName(value.voice || value.voice_id);
+      let prompt = callType.buildPrompt(topics, currentAgentName);
+      let firstMessage = callType.buildFirstMessage(currentAgentName);
       prompt = prompt.replace(/\{\{job_title\}\}/g, current);
       firstMessage = firstMessage.replace(/\{\{job_title\}\}/g, current);
       onChange({
@@ -290,8 +294,9 @@ export function DialnexaConfigEditor({
     setEditingTopicId(null);
     setNewTopicText("");
 
-    let prompt = callType.buildPrompt(topics);
-    let firstMessage = callType.buildFirstMessage();
+    const currentAgentName = getDialnexaVoiceName(value.voice || value.voice_id);
+    let prompt = callType.buildPrompt(topics, currentAgentName);
+    let firstMessage = callType.buildFirstMessage(currentAgentName);
     if (jobTitle?.trim()) {
       prompt = prompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
       firstMessage = firstMessage.replace(/\{\{job_title\}\}/g, jobTitle.trim());
@@ -322,8 +327,9 @@ export function DialnexaConfigEditor({
     setCallTypeTopics(newTopics);
     const callType = VOICE_CALL_TYPES.find((t) => t.id === selectedCallTypeId);
     if (!callType) return;
-    let prompt = callType.buildPrompt(newTopics);
-    let firstMessage = callType.buildFirstMessage();
+    const currentAgentName = getDialnexaVoiceName(value.voice || value.voice_id);
+    let prompt = callType.buildPrompt(newTopics, currentAgentName);
+    let firstMessage = callType.buildFirstMessage(currentAgentName);
     if (jobTitle?.trim()) {
       prompt = prompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
       firstMessage = firstMessage.replace(/\{\{job_title\}\}/g, jobTitle.trim());
@@ -403,14 +409,15 @@ export function DialnexaConfigEditor({
     try {
       const callType =
         VOICE_CALL_TYPES.find((t) => t.id === selectedCallTypeId) || VOICE_CALL_TYPES[1];
+      const currentAgentName = getDialnexaVoiceName(value.voice || value.voice_id);
       let activePrompt = value.prompt;
       if (callType && callTypeTopics.length > 0) {
-        activePrompt = callType.buildPrompt(callTypeTopics);
+        activePrompt = callType.buildPrompt(callTypeTopics, currentAgentName);
         if (jobTitle?.trim()) {
           activePrompt = activePrompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
         }
       }
-      let activeFirstMessage = value.first_message || callType?.buildFirstMessage();
+      let activeFirstMessage = value.first_message || callType?.buildFirstMessage(currentAgentName);
       if (jobTitle?.trim() && activeFirstMessage) {
         activeFirstMessage = activeFirstMessage.replace(/\{\{job_title\}\}/g, jobTitle.trim());
       }
@@ -720,10 +727,24 @@ export function DialnexaConfigEditor({
                       type="button"
                       onClick={() => {
                         const resolvedId = resolveDialnexaVoiceId(voice.id);
+                        const newAgentName = voice.label || getDialnexaVoiceName(voice.id);
+                        let updatedPrompt = value.prompt;
+                        let updatedFirstMessage = value.first_message;
+                        if (updatedPrompt) {
+                          updatedPrompt = updateAgentNameInPrompt(updatedPrompt, newAgentName);
+                        }
+                        if (updatedFirstMessage) {
+                          updatedFirstMessage = updateAgentNameInGreeting(
+                            updatedFirstMessage,
+                            newAgentName,
+                          );
+                        }
                         onChange({
                           ...value,
                           voice: voice.id,
                           voice_id: resolvedId,
+                          prompt: updatedPrompt,
+                          first_message: updatedFirstMessage,
                         });
                       }}
                       className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"

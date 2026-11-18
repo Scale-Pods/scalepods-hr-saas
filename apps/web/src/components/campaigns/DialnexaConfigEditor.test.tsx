@@ -248,4 +248,28 @@ describe("DialnexaConfigEditor", () => {
 
     vi.unstubAllGlobals();
   }, 15000);
+
+  it("updates agent name in prompt and greeting when a voice is selected", () => {
+    const onChange = vi.fn();
+    render(
+      <DialnexaConfigEditor
+        value={{
+          ...DEFAULT_DIALNEXA_CONFIG,
+          prompt: "You are Jordan, a Senior Technical Talent Screener representing ScalePods...",
+          first_message: "Hello {{candidate_name}}! This is Jordan from engineering talent...",
+        }}
+        onChange={onChange}
+        jobTitle="AI Engineer"
+      />,
+    );
+
+    const rohanBtn = screen.getByTitle("Select Rohan");
+    fireEvent.click(rohanBtn);
+
+    expect(onChange).toHaveBeenCalled();
+    const updated = onChange.mock.calls[0][0];
+    expect(updated.voice).toBe("rohan");
+    expect(updated.prompt).toContain("You are Rohan, a Senior Technical Talent Screener");
+    expect(updated.first_message).toContain("This is Rohan from engineering talent");
+  });
 });

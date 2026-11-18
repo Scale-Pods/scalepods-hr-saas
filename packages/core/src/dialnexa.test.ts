@@ -5,6 +5,9 @@ import {
   DIALNEXA_MODELS,
   DIALNEXA_VOICES,
   dialnexaVoiceConfigSchema,
+  getDialnexaVoiceName,
+  updateAgentNameInGreeting,
+  updateAgentNameInPrompt,
   VOICE_CALL_TYPES,
 } from "./index";
 
@@ -153,5 +156,42 @@ describe("DialNexa voice configurations & schema", () => {
       const sampleFirstMsg = callType.buildFirstMessage();
       expect(sampleFirstMsg).toContain("{{candidate_name}}");
     }
+  });
+
+  it("resolves the agent persona name from voice key and voice ID", () => {
+    expect(getDialnexaVoiceName("adam")).toBe("Adam");
+    expect(getDialnexaVoiceName("rohan")).toBe("Rohan");
+    expect(getDialnexaVoiceName("sarah")).toBe("Sarah");
+    expect(getDialnexaVoiceName("aditi")).toBe("Aditi");
+    expect(getDialnexaVoiceName("voice_mfl4leg14bh4of")).toBe("Adam");
+    expect(getDialnexaVoiceName("voice_4897321fb9ef4e")).toBe("Rohan");
+    expect(getDialnexaVoiceName("voice_a929651acdc742")).toBe("Sarah");
+    expect(getDialnexaVoiceName("voice_94226a7ff47a43")).toBe("Aditi");
+  });
+
+  it("updates agent name in prompt and greeting to match the selected voice", () => {
+    const originalPrompt =
+      "You are Jordan, a Senior Technical Talent Screener representing ScalePods...\n- do NOT say 'I am Alex/Jordan/Morgan'";
+    const updatedPrompt = updateAgentNameInPrompt(originalPrompt, "Adam");
+    expect(updatedPrompt).toContain("You are Adam, a Senior Technical Talent Screener");
+    expect(updatedPrompt).toContain("do NOT say 'I am Adam'");
+
+    const originalGreeting =
+      "Hello {{candidate_name}}! This is Jordan from engineering talent at ScalePods...";
+    const updatedGreeting = updateAgentNameInGreeting(originalGreeting, "Adam");
+    expect(updatedGreeting).toContain("This is Adam from engineering talent");
+
+    const alexGreeting = "Hi {{candidate_name}}, this is Alex from the talent team at ScalePods...";
+    const rohanGreeting = updateAgentNameInGreeting(alexGreeting, "Rohan");
+    expect(rohanGreeting).toContain("this is Rohan from the talent team");
+  });
+
+  it("builds prompt and first message with custom agent name matching voice", () => {
+    const techType = VOICE_CALL_TYPES[0];
+    const prompt = techType.buildPrompt(techType.defaultTopics, "Adam");
+    expect(prompt).toContain("You are Adam, a Senior Technical Talent Screener");
+
+    const greeting = techType.buildFirstMessage("Adam");
+    expect(greeting).toContain("This is Adam from engineering talent");
   });
 });

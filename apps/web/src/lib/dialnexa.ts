@@ -1,3 +1,9 @@
+import {
+  getDialnexaVoiceName,
+  updateAgentNameInGreeting,
+  updateAgentNameInPrompt,
+} from "@scalepods/core";
+
 export const DEFAULT_DIALNEXA_API_KEY =
   "rb0665oacdbt33:7f1d56728f43ab2e3274e928785d840e08457909852df246ae2cae0a8e2350c0";
 export const DEFAULT_DIALNEXA_AGENT_ID = "agent_Lg812J59k27OXl";
@@ -306,11 +312,14 @@ export async function syncDialnexaAgentConfig(
     // 2. Prepare dynamic variable-preserving greeting and prompt
     const company = params.company_name?.trim() || "ScalePods";
     const role = params.role_title?.trim() || "Open Position";
+    const selectedVoiceKey = params.voice || params.voice_id;
+    const agentName = getDialnexaVoiceName(selectedVoiceKey);
 
     let welcomeMsg = params.first_message?.trim() || "";
     if (!welcomeMsg) {
-      welcomeMsg = `Hi {{candidate_name}}, this is Alex from ${company} calling regarding your application for the ${role} position. Do you have a few minutes for a brief screening conversation?`;
+      welcomeMsg = `Hi {{candidate_name}}, this is ${agentName} from ${company} calling regarding your application for the ${role} position. Do you have a few minutes for a brief screening conversation?`;
     } else {
+      welcomeMsg = updateAgentNameInGreeting(welcomeMsg, agentName);
       // Ensure candidate name is a dynamic variable template placeholder, never baked with a static name
       welcomeMsg = welcomeMsg
         .replace(/\b(Gandla Manish|Alex Morgan|Shubhodeep|John Doe)\b/gi, "{{candidate_name}}")
@@ -349,8 +358,9 @@ export async function syncDialnexaAgentConfig(
 
     let fullPrompt = params.prompt?.trim() || "";
     if (!fullPrompt) {
-      fullPrompt = `You are Alex, an AI Talent Screener representing ${company} conducting a preliminary voice screening phone call with candidate {{candidate_name}} for the ${role} position.`;
+      fullPrompt = `You are ${agentName}, an AI Talent Screener representing ${company} conducting a preliminary voice screening phone call with candidate {{candidate_name}} for the ${role} position.`;
     } else {
+      fullPrompt = updateAgentNameInPrompt(fullPrompt, agentName);
       fullPrompt = fullPrompt
         .replace(/\b(Gandla Manish|Alex Morgan|Shubhodeep|John Doe)\b/gi, "{{candidate_name}}")
         .replace(/\{\{company_name\}\}/g, company);
@@ -414,6 +424,8 @@ export async function syncDialnexaAgentConfig(
     const buildPatchBody = (vNum: number): Record<string, unknown> => {
       const body: Record<string, unknown> = {
         version_number: vNum,
+        version_title: `${agentName} - ${role}`,
+        title: `${agentName} (${role})`,
         is_published: true, // Must be published for DialNexa outbound calls to execute this prompt and voice
         voice_id: resolvedVoiceId,
         voice_model_id: "mfl4be3m9z3xd4", // Eleven Flash v2.5 model is required for DialNexa outbound telephony SIP audio streams

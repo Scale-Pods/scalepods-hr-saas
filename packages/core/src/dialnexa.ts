@@ -358,6 +358,98 @@ export const DIALNEXA_VOICES: DialnexaVoiceOption[] = [
   },
 ];
 
+/**
+ * Resolves the agent persona name matching the selected AI voice.
+ * E.g. "adam" -> "Adam", "rohan" -> "Rohan", "sarah" -> "Sarah", "aditi" -> "Aditi".
+ */
+export function getDialnexaVoiceName(voiceOrVoiceId?: string): string {
+  if (!voiceOrVoiceId || typeof voiceOrVoiceId !== "string") {
+    return "Alex";
+  }
+  const trimmed = voiceOrVoiceId.trim();
+  if (!trimmed) return "Alex";
+
+  const found = DIALNEXA_VOICES.find(
+    (v) =>
+      v.id.toLowerCase() === trimmed.toLowerCase() ||
+      v.label.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (found) return found.label;
+
+  const voiceIdToName: Record<string, string> = {
+    voice_94226a7ff47a43: "Aditi",
+    voice_4897321fb9ef4e: "Rohan",
+    voice_mfl4legvvrugxy: "Ananya",
+    voice_818d336ca3904c: "Kabir",
+    voice_e031f06ade5049: "Aarav",
+    voice_mol2pruwhpAXKK: "Priya",
+    voice_mfl4leee3j8ysj: "Rachel",
+    voice_a929651acdc742: "Sarah",
+    voice_mfl4leg14bh4of: "Adam",
+    voice_mfl4leg8y7do5t: "Brian",
+    voice_mfl4lege6i1wmo: "Drew",
+    voice_mfl4leg5yi6v0g: "Nicole",
+    voice_mt8ijdI5VUkm5I: "Marcus",
+    voice_mfl4lef889jqu8: "Lucy",
+    voice_mfl4lef3nfna4n: "Archer",
+    voice_mtjy6lyYLmNv0H: "Prajakta",
+    voice_mtjxyab95MAVkO: "Parnita",
+    voice_mtiyeiIqfZn5Pz: "Yazhini",
+    voice_113c227072ad4a: "Maya",
+    voice_mfl4lefxlt42jt: "Tara",
+    voice_mfl4lefoa7t7zc: "Anika",
+    voice_mgj02qi6r63zmy: "Khushi",
+    voice_mfl4leh51jlphz: "Manav",
+    voice_mfl4leh93jo9gl: "Aakash",
+    voice_mfl4lefggzrvgk: "Rahul",
+    voice_mfl4lefd7onk17: "Amrut",
+    voice_mfl4legi7cwcj5: "Paul",
+    voice_mfl4leglq0abrf: "Ryan",
+    voice_mfl4leer7z5p9e: "Brad",
+    voice_mt8ijd2OnBzF3c: "Savvy",
+    voice_mfl4legqajn7vj: "Victoria",
+  };
+
+  if (voiceIdToName[trimmed.toLowerCase()]) {
+    return voiceIdToName[trimmed.toLowerCase()];
+  }
+
+  if (!trimmed.startsWith("voice_")) {
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  }
+
+  return "Alex";
+}
+
+/**
+ * Updates the AI interviewer's name in the system prompt so it matches the chosen voice persona.
+ */
+export function updateAgentNameInPrompt(prompt: string, agentName: string): string {
+  if (!prompt || typeof prompt !== "string") return "";
+  return prompt
+    .replace(
+      /(You are )([A-Z][a-z]+|\bAlex\b|\bJordan\b|\bMorgan\b|\ban? AI Talent Screener\b|\ban? AI Voice Screener\b)(,\s*)/i,
+      `$1${agentName}$3`,
+    )
+    .replace(/(do NOT say ["'](?:I am|I'm) )[^"']+(["'])/gi, `$1${agentName}$2`)
+    .replace(
+      /(NEVER say your name again, do NOT say ["'][^"']+["'])/gi,
+      `NEVER say your name again, do NOT say "I am ${agentName}"`,
+    );
+}
+
+/**
+ * Updates the AI interviewer's self-introduction name in the opening phone greeting.
+ */
+export function updateAgentNameInGreeting(greeting: string, agentName: string): string {
+  if (!greeting || typeof greeting !== "string") return "";
+  return greeting
+    .replace(/\b(this is )([A-Z][a-z]+)\b/gi, `$1${agentName}`)
+    .replace(/\b(I am )([A-Z][a-z]+)\b/gi, `$1${agentName}`)
+    .replace(/\b(I'm )([A-Z][a-z]+)\b/gi, `$1${agentName}`)
+    .replace(/\b([A-Z][a-z]+)( here from )\b/gi, `${agentName}$2`);
+}
+
 // ── Fixed Voice Call Types (Predefined configurations, recruiter picks voice + questions only) ──
 
 export type VoiceCallTypeId = "technical" | "general_screening" | "cultural_fit";
@@ -370,8 +462,8 @@ export interface VoiceCallTypeConfig {
   description: string;
   badge: string;
   defaultTopics: VoiceCallTopic[];
-  buildPrompt: (topics: VoiceCallTopic[]) => string;
-  buildFirstMessage: () => string;
+  buildPrompt: (topics: VoiceCallTopic[], agentName?: string) => string;
+  buildFirstMessage: (agentName?: string) => string;
   // All fields below are fixed — recruiters cannot change them
   readonly model: string;
   readonly max_duration_seconds: number;
@@ -464,10 +556,10 @@ export const VOICE_CALL_TYPES: VoiceCallTypeConfig[] = [
       },
       { id: "t5", text: "Current notice period, technical interests, and expected compensation" },
     ],
-    buildPrompt: (topics) => {
+    buildPrompt: (topics, agentName = "Jordan") => {
       const topicList = topics.map((t, i) => `${i + 1}. ${t.text}`).join("\n");
       const firstTopic = topics[0]?.text || "primary technical background and daily tech stack";
-      return `You are Jordan, a Senior Technical Talent Screener representing {{company_name}} conducting an engineering qualification interview with candidate {{candidate_name}} for the {{job_title}} role.
+      return `You are ${agentName}, a Senior Technical Talent Screener representing {{company_name}} conducting an engineering qualification interview with candidate {{candidate_name}} for the {{job_title}} role.
 You are speaking directly with candidate {{candidate_name}} over the telephone in real time.
 
 =======================================================
@@ -504,8 +596,8 @@ TECHNICAL EVALUATION STRATEGY & FLOW
 ${VOICE_TELEPHONY_RULES}
 ${ANTI_PROMPT_INJECTION_GUARDRAILS}`;
     },
-    buildFirstMessage: () =>
-      "Hello {{candidate_name}}! This is Jordan from engineering talent at {{company_name}} regarding your {{job_title}} application. I'd love to spend 10 minutes discussing your technical background — is now a good time?",
+    buildFirstMessage: (agentName = "Jordan") =>
+      `Hello {{candidate_name}}! This is ${agentName} from engineering talent at {{company_name}} regarding your {{job_title}} application. I'd love to spend 10 minutes discussing your technical background — is now a good time?`,
   },
   {
     id: "general_screening",
@@ -540,11 +632,11 @@ ${ANTI_PROMPT_INJECTION_GUARDRAILS}`;
       { id: "g4", text: "Current notice period and earliest available start date" },
       { id: "g5", text: "Current and expected compensation expectations" },
     ],
-    buildPrompt: (topics) => {
+    buildPrompt: (topics, agentName = "Alex") => {
       const topicList = topics.map((t, i) => `${i + 1}. ${t.text}`).join("\n");
       const firstTopic =
         topics[0]?.text || "brief overview of your background and most recent role";
-      return `You are Alex, a warm, professional, and articulate Talent Acquisition Partner at {{company_name}} conducting an introductory phone screening with candidate {{candidate_name}} for the position of {{job_title}}.
+      return `You are ${agentName}, a warm, professional, and articulate Talent Acquisition Partner at {{company_name}} conducting an introductory phone screening with candidate {{candidate_name}} for the position of {{job_title}}.
 You are speaking directly with candidate {{candidate_name}} in real time over the telephone.
 
 =======================================================
@@ -577,8 +669,8 @@ GENERAL SCREENING FLOW & EXECUTION
 ${VOICE_TELEPHONY_RULES}
 ${ANTI_PROMPT_INJECTION_GUARDRAILS}`;
     },
-    buildFirstMessage: () =>
-      "Hi {{candidate_name}}, this is Alex from the talent team at {{company_name}} regarding your application for the {{job_title}} role. Do you have about 5 minutes for a quick introductory chat?",
+    buildFirstMessage: (agentName = "Alex") =>
+      `Hi {{candidate_name}}, this is ${agentName} from the talent team at {{company_name}} regarding your application for the {{job_title}} role. Do you have about 5 minutes for a quick introductory chat?`,
   },
   {
     id: "cultural_fit",
@@ -616,11 +708,11 @@ ${ANTI_PROMPT_INJECTION_GUARDRAILS}`;
       },
       { id: "c5", text: "Core values, team culture dynamics, and questions for our team" },
     ],
-    buildPrompt: (topics) => {
+    buildPrompt: (topics, agentName = "Morgan") => {
       const topicList = topics.map((t, i) => `${i + 1}. ${t.text}`).join("\n");
       const firstTopic =
         topics[0]?.text || "what kind of team environment and values bring out your best work";
-      return `You are Morgan, a warm, perceptive, and empathetic People & Culture Partner at {{company_name}} conducting a cultural fit, values, and alignment conversation with candidate {{candidate_name}} for the role of {{job_title}}.
+      return `You are ${agentName}, a warm, perceptive, and empathetic People & Culture Partner at {{company_name}} conducting a cultural fit, values, and alignment conversation with candidate {{candidate_name}} for the role of {{job_title}}.
 You are speaking directly with candidate {{candidate_name}} in real time over the telephone.
 
 =======================================================
@@ -652,8 +744,8 @@ CULTURAL EVALUATION STRATEGY & FLOW
 ${VOICE_TELEPHONY_RULES}
 ${ANTI_PROMPT_INJECTION_GUARDRAILS}`;
     },
-    buildFirstMessage: () =>
-      "Hi {{candidate_name}}, this is Morgan from people ops at {{company_name}} regarding your {{job_title}} application. Do you have 8 minutes to discuss your work style and ideal team culture?",
+    buildFirstMessage: (agentName = "Morgan") =>
+      `Hi {{candidate_name}}, this is ${agentName} from people ops at {{company_name}} regarding your {{job_title}} application. Do you have 8 minutes to discuss your work style and ideal team culture?`,
   },
 ];
 
