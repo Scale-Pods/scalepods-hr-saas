@@ -174,5 +174,54 @@ describe("DialNexa Integration Lib", () => {
 
       vi.unstubAllGlobals();
     });
+
+    it("replaces old campaign role with new campaign role in prompt and welcome_message", async () => {
+      let capturedBody: Record<string, unknown> | null = null;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+          if (init?.method === "PATCH") {
+            capturedBody = JSON.parse(init.body as string);
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                success: true,
+                statusCode: 200,
+                data: { current_version_number: "58" },
+              }),
+            });
+          }
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: {
+                current_version_number: "57",
+                versions: [{ version_number: "57", is_published: true }],
+              },
+            }),
+          });
+        }),
+      );
+
+      const res = await syncDialnexaAgentConfig({
+        agent_id: DEFAULT_DIALNEXA_AGENT_ID,
+        role_title: "AI Engineer",
+        prompt:
+          "You are an AI screener conducting a qualification interview with candidate {{candidate_name}} for the Sales and Marketing intern position. Assess technical fit for the position of Sales and Marketing intern.",
+        first_message:
+          "Hi {{candidate_name}}, I'm calling from ScalePods regarding your application for the Sales and Marketing intern position. Is now a good time?",
+      });
+
+      expect(res.success).toBe(true);
+      expect(capturedBody).not.toBeNull();
+      const body = capturedBody as unknown as { prompt_text: string; welcome_message: string };
+      expect(body.welcome_message).toContain("AI Engineer");
+      expect(body.welcome_message).not.toContain("Sales and Marketing intern");
+      expect(body.prompt_text).toContain("AI Engineer");
+      expect(body.prompt_text).not.toContain("Sales and Marketing intern");
+
+      vi.unstubAllGlobals();
+    });
   });
 });

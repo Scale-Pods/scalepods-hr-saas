@@ -774,7 +774,40 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           updateFields.salary_period = salaryPeriod;
         }
         if (hasVoiceRound) {
-          updateFields.voice_call_config = dialnexaConfig as unknown as Json;
+          let updatedVoiceConfig = dialnexaConfig;
+          try {
+            const syncRes = await fetch("/api/voice-screen/sync-agent", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({
+                campaign_id: createdId,
+                voice_call_config: dialnexaConfig,
+                role_title: name,
+                job_description: jdText,
+              }),
+            });
+            if (syncRes.ok) {
+              const syncJson = await syncRes.json();
+              if (syncJson?.version_number) {
+                updatedVoiceConfig = {
+                  ...dialnexaConfig,
+                  agent_version_number: syncJson.version_number,
+                  ...(syncJson.outbound_from_number
+                    ? { outbound_from_number: syncJson.outbound_from_number }
+                    : {}),
+                  ...(syncJson.phone_number_id
+                    ? { phone_number_id: syncJson.phone_number_id }
+                    : {}),
+                };
+              }
+            }
+          } catch (syncErr) {
+            console.warn("Failed to sync DialNexa agent on campaign creation:", syncErr);
+          }
+          updateFields.voice_call_config = updatedVoiceConfig as unknown as Json;
         }
         if (payload.cadence_config) {
           updateFields.cadence_config = payload.cadence_config as unknown as Json;

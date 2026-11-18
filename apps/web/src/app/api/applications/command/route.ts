@@ -559,6 +559,27 @@ async function triggerImmediateVoiceCallIfEligible(
         });
         if (syncRes.version_number) {
           publishedAgentVersion = syncRes.version_number;
+          if (app.campaign_id) {
+            try {
+              const updatedConfig = {
+                ...voiceConfig,
+                agent_version_number: syncRes.version_number,
+                ...(syncRes.outbound_from_number
+                  ? { outbound_from_number: syncRes.outbound_from_number }
+                  : {}),
+                ...(syncRes.phone_number_id ? { phone_number_id: syncRes.phone_number_id } : {}),
+              };
+              await adminSupabase
+                .from("campaigns")
+                .update({ voice_call_config: updatedConfig })
+                .eq("id", app.campaign_id);
+            } catch (dbErr) {
+              console.warn(
+                "[api/applications/command] Failed to update campaign agent_version_number:",
+                dbErr,
+              );
+            }
+          }
         }
         if (syncRes.outbound_from_number) {
           outboundFromNumber = syncRes.outbound_from_number;

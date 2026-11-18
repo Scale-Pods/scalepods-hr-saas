@@ -259,6 +259,27 @@ export function DialnexaConfigEditor({
     };
   }, [stopAudio]);
 
+  const prevJobTitleRef = useRef<string | undefined>(jobTitle);
+  useEffect(() => {
+    const current = jobTitle?.trim();
+    const prev = prevJobTitleRef.current?.trim();
+    if (current && current !== prev) {
+      prevJobTitleRef.current = jobTitle;
+      const callType =
+        VOICE_CALL_TYPES.find((t) => t.id === selectedCallTypeId) || VOICE_CALL_TYPES[0];
+      const topics = callTypeTopics.length > 0 ? callTypeTopics : callType.defaultTopics;
+      let prompt = callType.buildPrompt(topics);
+      let firstMessage = callType.buildFirstMessage();
+      prompt = prompt.replace(/\{\{job_title\}\}/g, current);
+      firstMessage = firstMessage.replace(/\{\{job_title\}\}/g, current);
+      onChange({
+        ...value,
+        prompt,
+        first_message: firstMessage,
+      });
+    }
+  }, [jobTitle, selectedCallTypeId, callTypeTopics, value, onChange]);
+
   const applyCallType = (typeId: VoiceCallTypeId) => {
     const callType = VOICE_CALL_TYPES.find((t) => t.id === typeId);
     if (!callType) return;
@@ -301,12 +322,15 @@ export function DialnexaConfigEditor({
     const callType = VOICE_CALL_TYPES.find((t) => t.id === selectedCallTypeId);
     if (!callType) return;
     let prompt = callType.buildPrompt(newTopics);
+    let firstMessage = callType.buildFirstMessage();
     if (jobTitle?.trim()) {
       prompt = prompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
+      firstMessage = firstMessage.replace(/\{\{job_title\}\}/g, jobTitle.trim());
     }
     onChange({
       ...value,
       prompt,
+      first_message: firstMessage,
       topics: newTopics,
       call_type_id: selectedCallTypeId,
     });

@@ -33,6 +33,7 @@ export async function POST(req: Request) {
     let roundCriteria: string[] = [];
     let candidateResumeText = body.candidate_resume || body.resume_text || "";
     let campaignJdText = body.job_description || body.jd_text || "";
+    let resolvedCampaignId: string | undefined = body.campaign_id;
 
     if (body.candidate_id || roundInstanceId) {
       try {
@@ -48,9 +49,11 @@ export async function POST(req: Request) {
         if (roundInstanceId) {
           riQuery = riQuery.eq("id", roundInstanceId);
         } else if (body.candidate_id) {
-          riQuery = riQuery
-            .eq("candidate_id", body.candidate_id)
-            .order("created_at", { ascending: false });
+          riQuery = riQuery.eq("candidate_id", body.candidate_id);
+          if (body.campaign_id) {
+            riQuery = riQuery.eq("campaign_id", body.campaign_id);
+          }
+          riQuery = riQuery.order("created_at", { ascending: false });
         }
 
         const { data: ri } = await riQuery.limit(1).maybeSingle();
@@ -60,6 +63,9 @@ export async function POST(req: Request) {
         }
         if (ri?.account_id) {
           accountId = accountId || ri.account_id;
+        }
+        if (ri?.campaign_id) {
+          resolvedCampaignId = ri.campaign_id;
         }
 
         if (ri?.campaigns) {
@@ -84,6 +90,29 @@ export async function POST(req: Request) {
           }
           if (!campaignJdText && camp?.jd_text) {
             campaignJdText = camp.jd_text;
+          }
+        }
+
+        if (resolvedCampaignId && (!voiceCallConfig || !roleTitle || !campaignJdText)) {
+          const { data: fallbackCamp } = await supabase
+            .from("campaigns")
+            .select("id, name, jd_text, voice_call_config, account_id")
+            .eq("id", resolvedCampaignId)
+            .maybeSingle();
+
+          if (fallbackCamp) {
+            if (!voiceCallConfig && fallbackCamp.voice_call_config) {
+              voiceCallConfig = fallbackCamp.voice_call_config;
+            }
+            if (!roleTitle && fallbackCamp.name) {
+              roleTitle = fallbackCamp.name;
+            }
+            if (!campaignJdText && fallbackCamp.jd_text) {
+              campaignJdText = fallbackCamp.jd_text;
+            }
+            if (!accountId && fallbackCamp.account_id) {
+              accountId = fallbackCamp.account_id;
+            }
           }
         }
 
@@ -196,6 +225,32 @@ export async function POST(req: Request) {
 
         if (syncResult.version_number) {
           publishedAgentVersion = syncResult.version_number;
+          const targetCampaignId = resolvedCampaignId;
+          if (targetCampaignId) {
+            try {
+              const { supabaseServer } = await import("@/lib/supabase/server");
+              const supabase = await supabaseServer();
+              const updatedConfig = {
+                ...voiceCallConfig,
+                agent_version_number: syncResult.version_number,
+                ...(syncResult.outbound_from_number
+                  ? { outbound_from_number: syncResult.outbound_from_number }
+                  : {}),
+                ...(syncResult.phone_number_id
+                  ? { phone_number_id: syncResult.phone_number_id }
+                  : {}),
+              };
+              await supabase
+                .from("campaigns")
+                .update({ voice_call_config: updatedConfig })
+                .eq("id", targetCampaignId);
+            } catch (dbErr) {
+              console.warn(
+                "[api/voice-screen] Failed to persist published agent_version_number:",
+                dbErr,
+              );
+            }
+          }
         }
         if (syncResult.outbound_from_number) {
           outboundFromNumber = syncResult.outbound_from_number;
