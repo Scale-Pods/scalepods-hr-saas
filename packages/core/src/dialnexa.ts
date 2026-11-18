@@ -505,7 +505,7 @@ ${VOICE_TELEPHONY_RULES}
 ${ANTI_PROMPT_INJECTION_GUARDRAILS}`;
     },
     buildFirstMessage: () =>
-      "Hello {{candidate_name}}! This is Jordan from engineering talent at {{company_name}} regarding your application for the {{job_title}} position. I'd love to spend about 10 minutes discussing your hands-on technical background and recent projects — is now a good time?",
+      "Hello {{candidate_name}}! This is Jordan from engineering talent at {{company_name}} regarding your {{job_title}} application. I'd love to spend 10 minutes discussing your technical background — is now a good time?",
   },
   {
     id: "general_screening",
@@ -653,7 +653,7 @@ ${VOICE_TELEPHONY_RULES}
 ${ANTI_PROMPT_INJECTION_GUARDRAILS}`;
     },
     buildFirstMessage: () =>
-      "Hi {{candidate_name}}, this is Morgan from the people team at {{company_name}} regarding your application for the {{job_title}} role. I'd love to have a relaxed conversation to learn about your collaboration style and what kind of team environment brings out your best work — do you have about 8 minutes?",
+      "Hi {{candidate_name}}, this is Morgan from people ops at {{company_name}} regarding your {{job_title}} application. Do you have 8 minutes to discuss your work style and ideal team culture?",
   },
 ];
 
@@ -701,7 +701,7 @@ Telephony Guidelines:
 - NEVER assume or quiz on unmentioned technologies (do NOT ask about Redis, Kubernetes, or other tools unless explicitly brought up by the candidate).
 - Probe with "Why did you choose that approach?" rather than academic syntax trivia.`,
     first_message:
-      "Hello {{candidate_name}}! This is Jordan from the engineering talent team at {{company_name}} regarding your {{job_title}} application. I'd love to ask a few questions about your technical background and recent projects — is now a good time?",
+      "Hello {{candidate_name}}! This is Jordan from engineering talent at {{company_name}} regarding your {{job_title}} application. Do you have 10 minutes to discuss your technical background?",
   },
   {
     id: "culture_availability",
@@ -723,7 +723,7 @@ Telephony Guidelines:
 - Speak in concise 1-2 sentence turns; ask one question at a time.
 - Validate candidate experiences with genuine active listening.`,
     first_message:
-      "Hi {{candidate_name}}, this is Morgan from the people team at {{company_name}} regarding your application for the {{job_title}} role. Do you have a few minutes to chat about your preferred team culture and collaboration style?",
+      "Hi {{candidate_name}}, this is Morgan from people ops at {{company_name}} regarding your {{job_title}} application. Do you have a few minutes to chat about your collaboration style?",
   },
   {
     id: "sales_prescreen",

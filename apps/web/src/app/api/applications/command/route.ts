@@ -233,6 +233,106 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Pre-sync DialNexa agent configuration BEFORE calling n8n automation gateway.
+    // When an application advances into an ai_voice_call round, n8n immediately triggers the DialNexa call.
+    // Syncing beforehand guarantees DialNexa is ALREADY published with the active campaign's prompt,
+    // questions, role title, and discussion topics before n8n places the outbound phone call.
+    if (
+      payload.operation === "decision" &&
+      payload.action === "advance" &&
+      payload.application_id
+    ) {
+      try {
+        const { data: advanceApp } = await adminSupabase
+          .from("applications")
+          .select(
+            "id, campaign_id, current_round_number, current_stage, candidate_name, candidate_phone, campaigns(id, name, jd_text, voice_call_config, number_of_rounds)",
+          )
+          .eq("id", payload.application_id as string)
+          .maybeSingle();
+
+        if (advanceApp?.campaign_id) {
+          const camp = Array.isArray(advanceApp.campaigns)
+            ? advanceApp.campaigns[0]
+            : advanceApp.campaigns;
+          const nextRoundNum =
+            advanceApp.current_stage === "needs_review"
+              ? 1
+              : (advanceApp.current_round_number || 0) + 1;
+
+          // Check if the next round is an ai_voice_call
+          const { data: nextRoundDef } = await adminSupabase
+            .from("campaign_rounds")
+            .select("round_type, questions, evaluation_criteria")
+            .eq("campaign_id", advanceApp.campaign_id)
+            .eq("round_number", nextRoundNum)
+            .maybeSingle();
+
+          const isVoiceRound =
+            nextRoundDef?.round_type === "ai_voice_call" ||
+            (!nextRoundDef && Boolean(camp?.voice_call_config));
+
+          const voiceConfig = camp?.voice_call_config as Record<string, unknown> | null;
+          if (isVoiceRound && voiceConfig) {
+            const { syncDialnexaAgentConfig } = await import("@/lib/dialnexa");
+            const syncRes = await syncDialnexaAgentConfig({
+              agent_id: (voiceConfig.agent_id as string) || undefined,
+              voice: voiceConfig.voice as string,
+              voice_speed: voiceConfig.voice_speed as number,
+              voice_pitch: voiceConfig.voice_pitch as number,
+              voice_temperature: voiceConfig.voice_temperature as number,
+              prompt: voiceConfig.prompt as string,
+              first_message: voiceConfig.first_message as string,
+              response_eagerness: voiceConfig.response_eagerness as number,
+              responsiveness: voiceConfig.responsiveness as number,
+              interruption_sensitivity: voiceConfig.interruption_sensitivity as number,
+              max_duration_seconds: voiceConfig.max_duration_seconds as number,
+              end_call_on_silence_sec: voiceConfig.end_call_on_silence_sec as number,
+              ambient_noise: voiceConfig.ambient_noise as boolean,
+              candidate_name: advanceApp.candidate_name || undefined,
+              role_title: camp?.name || "Open Position",
+              company_name: "ScalePods",
+              job_description: camp?.jd_text || undefined,
+              questions: Array.isArray(nextRoundDef?.questions)
+                ? (nextRoundDef.questions as string[])
+                : undefined,
+              evaluation_criteria: Array.isArray(nextRoundDef?.evaluation_criteria)
+                ? (nextRoundDef.evaluation_criteria as string[])
+                : undefined,
+              outbound_from_number:
+                (voiceConfig.outbound_from_number as string) ||
+                (voiceConfig.from_phone_number as string) ||
+                (voiceConfig.from_number as string),
+            });
+
+            if (syncRes.version_number) {
+              const updatedConfig = {
+                ...voiceConfig,
+                agent_version_number: syncRes.version_number,
+                ...(syncRes.outbound_from_number
+                  ? { outbound_from_number: syncRes.outbound_from_number }
+                  : {}),
+                ...(syncRes.phone_number_id ? { phone_number_id: syncRes.phone_number_id } : {}),
+              };
+              await adminSupabase
+                .from("campaigns")
+                .update({ voice_call_config: updatedConfig })
+                .eq("id", advanceApp.campaign_id);
+
+              payload = {
+                ...payload,
+                agent_version_number: syncRes.version_number,
+                voice_call_config: updatedConfig,
+                role_title: camp?.name || "Open Position",
+              };
+            }
+          }
+        }
+      } catch (preSyncErr) {
+        console.warn("[api/applications/command] Pre-sync DialNexa agent warning:", preSyncErr);
+      }
+    }
+
     // 1. Attempt dispatch to n8n automation gateway
     let n8nSuccess = false;
     let n8nResult: unknown = null;

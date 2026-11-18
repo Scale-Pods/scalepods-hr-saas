@@ -237,6 +237,7 @@ export async function syncDialnexaAgentConfig(
   try {
     // 1. Fetch current agent version number and published state
     let targetVersion = 13;
+    let currentVersionNum = 13;
     try {
       const getRes = await fetch(`https://api.dialnexa.com/v1/agents/${agentId}`, {
         headers: {
@@ -256,7 +257,7 @@ export async function syncDialnexaAgentConfig(
             }>;
           };
         };
-        const currentVersionNum = Number(
+        currentVersionNum = Number(
           getData.data?.current_version_number ||
             getData.data?.current_version?.version_number ||
             13,
@@ -269,11 +270,9 @@ export async function syncDialnexaAgentConfig(
         if (unpublishedVersion?.version_number) {
           targetVersion = Number(unpublishedVersion.version_number);
         } else {
-          const maxVersion =
-            versions.length > 0
-              ? Math.max(...versions.map((v) => Number(v.version_number) || 0))
-              : currentVersionNum;
-          targetVersion = Math.max(currentVersionNum, maxVersion + 1);
+          // DialNexa's PATCH endpoint expects an existing version number to update or branch from.
+          // When patching the active published version, DialNexa branches it and creates a new published version.
+          targetVersion = currentVersionNum;
         }
 
         const agentNumbers = getData.data?.outbound_phone_numbers;
@@ -330,6 +329,13 @@ export async function syncDialnexaAgentConfig(
       ) {
         welcomeMsg = `Hi {{candidate_name}}, ${welcomeMsg.replace(/^Hi\s*,?\s*/i, "")}`;
       }
+    }
+
+    // DialNexa's PostgreSQL backend enforces a strict VARCHAR(255) column limit on welcome_message.
+    // Clamp to 240 characters max to prevent HTTP 500 crashes during agent version publish.
+    if (welcomeMsg.length > 240) {
+      const trimmed = welcomeMsg.slice(0, 235).replace(/[,;:\s]+[^\s]*$/, "");
+      welcomeMsg = `${trimmed}...`;
     }
 
     let fullPrompt = params.prompt?.trim() || "";
@@ -469,14 +475,17 @@ export async function syncDialnexaAgentConfig(
     };
     patchData = await parseRes(patchRes);
 
-    // If 403 "cannot patch an already published agent version", bump version and retry
+    // If 403 "cannot patch an already published agent version" or 404, retry
     let retries = 0;
     while (
       !patchRes.ok &&
       retries < 2 &&
-      (patchRes.status === 403 || String(patchData.message).toLowerCase().includes("published"))
+      (patchRes.status === 403 ||
+        patchRes.status === 404 ||
+        String(patchData.message).toLowerCase().includes("published") ||
+        String(patchData.message).toLowerCase().includes("not found"))
     ) {
-      targetVersion += 1;
+      targetVersion = retries === 0 ? currentVersionNum : targetVersion + 1;
       retries += 1;
       patchRes = await fetch(`https://api.dialnexa.com/v1/agents/${agentId}`, {
         method: "PATCH",
@@ -503,9 +512,17 @@ export async function syncDialnexaAgentConfig(
       };
     }
 
+    const finalVersionNumber = Number(
+      (
+        patchData as {
+          data?: { current_version_number?: string | number };
+        }
+      )?.data?.current_version_number || targetVersion,
+    );
+
     return {
       success: true,
-      version_number: targetVersion,
+      version_number: finalVersionNumber,
       outbound_from_number: outboundFromNumber,
       phone_number_id: outboundPhoneNumberId,
     };

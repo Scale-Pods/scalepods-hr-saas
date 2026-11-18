@@ -223,5 +223,53 @@ describe("DialNexa Integration Lib", () => {
 
       vi.unstubAllGlobals();
     });
+
+    it("clamps welcome_message to 240 characters or less to respect DialNexa VARCHAR(255) constraint", async () => {
+      let capturedBody: Record<string, unknown> | null = null;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+          if (init?.method === "PATCH") {
+            capturedBody = JSON.parse(init.body as string);
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                success: true,
+                statusCode: 200,
+                data: { current_version_number: "60" },
+              }),
+            });
+          }
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: {
+                current_version_number: "59",
+                versions: [{ version_number: "59", is_published: true }],
+              },
+            }),
+          });
+        }),
+      );
+
+      const longGreeting =
+        "Hello {{candidate_name}}! This is Jordan from engineering talent at ScalePods regarding your application for the Principal Full Stack Artificial Intelligence and Deep Learning Cloud Systems Engineer position. We would love to spend about 15 minutes discussing your background and deep learning projects — is now a good time for a call?";
+
+      const res = await syncDialnexaAgentConfig({
+        agent_id: DEFAULT_DIALNEXA_AGENT_ID,
+        role_title:
+          "Principal Full Stack Artificial Intelligence and Deep Learning Cloud Systems Engineer",
+        first_message: longGreeting,
+      });
+
+      expect(res.success).toBe(true);
+      expect(capturedBody).not.toBeNull();
+      const body = capturedBody as unknown as { welcome_message: string };
+      expect(body.welcome_message.length).toBeLessThanOrEqual(240);
+      expect(body.welcome_message.endsWith("...")).toBe(true);
+
+      vi.unstubAllGlobals();
+    });
   });
 });
