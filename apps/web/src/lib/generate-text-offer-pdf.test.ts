@@ -97,4 +97,21 @@ I, Manish Gandla, accept this offer
     expect(ascii).toMatch(/\/Count [2-9]/);
     expect(ascii).toContain("Page 1 of ");
   });
+
+  it("embeds signature image and renders it on page without duplicate verification text", () => {
+    const letterhead = getDefaultLetterheadBuffer();
+    const sigBase64 = `data:image/jpeg;base64,${letterhead.toString("base64")}`;
+    const buf = generateStyledOfferPdf(
+      "For ScalePods\nAqib\nTalent Acquisition Lead\nSignature: ______________________     Date: _______________\nACKNOWLEDGEMENT\nI, Aqib, accept\n| Signature: ___ | Date: ___ | Place: ___ |",
+      { signatureBase64: sigBase64, backgroundImageBuffer: letterhead },
+    );
+    const ascii = buf.toString("latin1");
+    expect(ascii).toContain("/SigImg");
+    expect(ascii).toContain("/SigImg Do");
+    // Ensure redundant "Digitally Verified" is suppressed when real signature graphic is embedded
+    expect(ascii).not.toContain("Digitally Verified");
+    // Ensure signature line is rendered only once for candidate acceptance
+    const sigMatches = ascii.match(/Signature:\s*_{3,}/g) || [];
+    expect(sigMatches.length).toBe(1);
+  });
 });

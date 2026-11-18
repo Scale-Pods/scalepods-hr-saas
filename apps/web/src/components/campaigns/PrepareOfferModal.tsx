@@ -41,7 +41,9 @@ import { numberToWords } from "@/lib/number-to-words";
 import {
   cleanOfferTemplateDirectives,
   formatOfferVarLabel,
+  normalizeVarKey,
   renderOfferTemplateText,
+  STANDARD_OFFER_VAR_KEYS,
 } from "@/lib/offer-template-utils";
 import { accessToken as getAccessToken } from "@/lib/supabase/client";
 
@@ -1199,25 +1201,8 @@ export function PrepareOfferModal({
                   {/* Dynamically generated fields for non-standard placeholders */}
                   {activeVariables
                     .filter((v) => {
-                      const lower = v.toLowerCase();
-                      return (
-                        lower !== "candidate_name" &&
-                        lower !== "recipient_name" &&
-                        lower !== "position_title" &&
-                        lower !== "role" &&
-                        lower !== "salary" &&
-                        lower !== "compensation" &&
-                        lower !== "currency" &&
-                        lower !== "start_date" &&
-                        lower !== "joining_date" &&
-                        lower !== "company_name" &&
-                        lower !== "signatory_name" &&
-                        lower !== "signatory_date" &&
-                        lower !== "company_sign_date" &&
-                        lower !== "signature_base64" &&
-                        lower !== "signatory_signature" &&
-                        lower !== "letter_type"
-                      );
+                      const norm = normalizeVarKey(v);
+                      return !STANDARD_OFFER_VAR_KEYS.has(norm);
                     })
                     .map((v) => {
                       const lower = v.toLowerCase();

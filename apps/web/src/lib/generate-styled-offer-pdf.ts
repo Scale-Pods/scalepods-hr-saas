@@ -75,9 +75,118 @@ function sanitizeText(text: string): string {
   return cleaned;
 }
 
+const HELVETICA_GLYPH_WIDTHS: Record<string, number> = {
+  " ": 278,
+  "!": 278,
+  '"': 355,
+  "#": 556,
+  $: 556,
+  "%": 889,
+  "&": 667,
+  "'": 191,
+  "(": 333,
+  ")": 333,
+  "*": 389,
+  "+": 584,
+  ",": 278,
+  "-": 333,
+  ".": 278,
+  "/": 278,
+  "0": 556,
+  "1": 556,
+  "2": 556,
+  "3": 556,
+  "4": 556,
+  "5": 556,
+  "6": 556,
+  "7": 556,
+  "8": 556,
+  "9": 556,
+  ":": 278,
+  ";": 278,
+  "<": 584,
+  "=": 584,
+  ">": 584,
+  "?": 556,
+  "@": 1015,
+  A: 667,
+  B: 667,
+  C: 722,
+  D: 722,
+  E: 667,
+  F: 611,
+  G: 778,
+  H: 722,
+  I: 278,
+  J: 500,
+  K: 667,
+  L: 556,
+  M: 833,
+  N: 722,
+  O: 778,
+  P: 667,
+  Q: 778,
+  R: 722,
+  S: 667,
+  T: 611,
+  U: 722,
+  V: 667,
+  W: 944,
+  X: 667,
+  Y: 667,
+  Z: 611,
+  "[": 278,
+  "\\": 278,
+  "]": 278,
+  "^": 469,
+  _: 556,
+  "`": 222,
+  a: 556,
+  b: 556,
+  c: 500,
+  d: 556,
+  e: 556,
+  f: 278,
+  g: 556,
+  h: 556,
+  i: 222,
+  j: 222,
+  k: 500,
+  l: 222,
+  m: 833,
+  n: 556,
+  o: 556,
+  p: 556,
+  q: 556,
+  r: 333,
+  s: 500,
+  t: 278,
+  u: 556,
+  v: 500,
+  w: 722,
+  x: 500,
+  y: 500,
+  z: 500,
+  "{": 334,
+  "|": 260,
+  "}": 334,
+  "~": 584,
+  "•": 400,
+  "–": 556,
+  "—": 1000,
+  "’": 191,
+  "“": 355,
+  "”": 355,
+};
+
 function approxTextWidth(text: string, size: number, isBold = false): number {
-  const avgFactor = isBold ? 0.57 : 0.52;
-  return text.length * size * avgFactor;
+  let total1000 = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const w = HELVETICA_GLYPH_WIDTHS[ch] ?? 500;
+    total1000 += isBold ? Math.round(w * 1.06) : w;
+  }
+  return (total1000 / 1000) * size;
 }
 
 function wrapText(text: string, maxWidth: number, size: number, isBold = false): string[] {
@@ -285,13 +394,29 @@ function parseOfferText(
     }
 
     // 4. Signatory section detection
-    if (line.startsWith("For ") || line.includes("ACKNOWLEDGEMENT")) {
+    const isSignatoryStart =
+      line.startsWith("For ") ||
+      line.toUpperCase().includes("ACKNOWLEDGEMENT") ||
+      line.toLowerCase().startsWith("authorized signatory") ||
+      line.toLowerCase().startsWith("sincerely") ||
+      line.toLowerCase().startsWith("warm regards") ||
+      line.toLowerCase().startsWith("regards,") ||
+      line.toLowerCase().startsWith("on behalf of");
+
+    if (isSignatoryStart) {
       const sigLines: string[] = [line];
       i++;
-      while (i < n && !lines[i].trim().startsWith("|") && sigLines.length < 15) {
-        if (lines[i].trim()) {
-          sigLines.push(lines[i].trim());
+      while (i < n && sigLines.length < 25) {
+        const next = lines[i].trim();
+        if (!next) {
+          i++;
+          continue;
         }
+        // If we hit a new numbered legal section, stop
+        if (/^[0-9]+\.\s+[A-Za-z]/.test(next)) {
+          break;
+        }
+        sigLines.push(next);
         i++;
       }
 
@@ -301,28 +426,48 @@ function parseOfferText(
       let candidateName = "Candidate";
       let role = "Team Member";
 
-      const forLine = sigLines.find((l) => l.startsWith("For "));
+      const forLine = sigLines.find(
+        (l) => l.startsWith("For ") || l.toLowerCase().startsWith("on behalf of "),
+      );
       if (forLine) {
-        companyName = forLine.replace(/^For\s+/, "").trim();
+        companyName = forLine.replace(/^(?:For|on behalf of)\s+/i, "").trim();
       }
 
-      const ackIdx = sigLines.findIndex((l) => l.includes("ACKNOWLEDGEMENT"));
-      if (ackIdx !== -1 && ackIdx + 1 < sigLines.length) {
-        const acceptLine = sigLines[ackIdx + 1];
-        const match = acceptLine.match(/I,\s*([^,]+),\s*accept.*as\s*([^u]+)\s*under/i);
-        if (match) {
-          candidateName = match[1].trim();
-          role = match[2].trim();
+      const ackIdx = sigLines.findIndex(
+        (l) =>
+          l.toUpperCase().includes("ACKNOWLEDGEMENT") || l.toLowerCase().includes("accept the"),
+      );
+      if (ackIdx !== -1) {
+        for (let s = ackIdx; s < sigLines.length; s++) {
+          const acceptLine = sigLines[s];
+          const match = acceptLine.match(/I,\s*([^,]+),\s*accept.*as\s*([^u]+?)\s*under/i);
+          if (match) {
+            candidateName = match[1].trim();
+            role = match[2].trim();
+            break;
+          }
         }
       }
 
       if (forLine) {
         const forIdx = sigLines.indexOf(forLine);
-        if (forIdx + 1 < sigLines.length && !sigLines[forIdx + 1].includes("ACKNOWLEDGEMENT")) {
-          signerName = sigLines[forIdx + 1];
+        if (
+          forIdx + 1 < sigLines.length &&
+          !sigLines[forIdx + 1].toUpperCase().includes("ACKNOWLEDGEMENT")
+        ) {
+          const l1 = sigLines[forIdx + 1];
+          if (!l1.toLowerCase().startsWith("signature") && !l1.toLowerCase().startsWith("date")) {
+            signerName = l1;
+          }
         }
-        if (forIdx + 2 < sigLines.length && !sigLines[forIdx + 2].includes("ACKNOWLEDGEMENT")) {
-          signerTitle = sigLines[forIdx + 2];
+        if (
+          forIdx + 2 < sigLines.length &&
+          !sigLines[forIdx + 2].toUpperCase().includes("ACKNOWLEDGEMENT")
+        ) {
+          const l2 = sigLines[forIdx + 2];
+          if (!l2.toLowerCase().startsWith("signature") && !l2.toLowerCase().startsWith("date")) {
+            signerTitle = l2;
+          }
         }
       }
 
@@ -356,7 +501,7 @@ function parseOfferText(
     }
 
     // 6. Regular Body Paragraph
-    const wrapped = wrapText(line, USABLE_W, 10);
+    const wrapped = wrapText(line, USABLE_W, 9.5);
     items.push({
       type: "paragraph",
       lines: wrapped,
@@ -558,12 +703,15 @@ function renderPageContent(
       cursorY -= 16;
     } else if (item.type === "metadata_card") {
       cursorY -= 4;
-      // Clean borderless metadata row matching Word template
+      // Clean borderless metadata row matching Word template with symmetric right margin
       if (item.leftLines.length > 0) {
         drawText(item.leftLines[0], MARGIN_L, cursorY, 9.5, "/F2", COLOR_NAVY);
       }
       if (item.rightLines.length > 0) {
-        drawText(item.rightLines[0], MARGIN_L + USABLE_W / 2 + 10, cursorY, 9.5, "/F2", COLOR_NAVY);
+        const rightText = item.rightLines[0];
+        const rightW = approxTextWidth(rightText, 9.5, true);
+        const rightX = PAGE_W - MARGIN_R - rightW;
+        drawText(rightText, rightX, cursorY, 9.5, "/F2", COLOR_NAVY);
       }
       cursorY -= 16;
     } else if (item.type === "heading") {
@@ -666,7 +814,7 @@ function renderPageContent(
       cursorY -= 16;
 
       if (hasSigImg) {
-        // Draw the uploaded recruiter signature image
+        // Draw the uploaded recruiter signature image cleanly with no redundant text below
         const maxSigW = 120;
         const maxSigH = 42;
         let sigW = maxSigW;
@@ -678,15 +826,6 @@ function renderPageContent(
         cursorY -= sigH;
         ops.push(
           `q ${sigW.toFixed(2)} 0 0 ${sigH.toFixed(2)} ${MARGIN_L.toFixed(2)} ${cursorY.toFixed(2)} cm /SigImg Do Q`,
-        );
-        cursorY -= 8;
-        drawText(
-          `Digitally Verified · ${item.companySigner.name}`,
-          MARGIN_L,
-          cursorY,
-          7.5,
-          "/F1",
-          COLOR_MUTED_GRAY,
         );
         cursorY -= 12;
       } else if (item.companySigner.signatureBase64) {
