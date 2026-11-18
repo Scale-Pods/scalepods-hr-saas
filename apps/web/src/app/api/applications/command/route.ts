@@ -277,7 +277,8 @@ export async function POST(req: NextRequest) {
             const { syncDialnexaAgentConfig } = await import("@/lib/dialnexa");
             const syncRes = await syncDialnexaAgentConfig({
               agent_id: (voiceConfig.agent_id as string) || undefined,
-              voice: voiceConfig.voice as string,
+              voice: (voiceConfig.voice as string) || (voiceConfig.voice_id as string),
+              voice_id: (voiceConfig.voice_id as string) || undefined,
               voice_speed: voiceConfig.voice_speed as number,
               voice_pitch: voiceConfig.voice_pitch as number,
               voice_temperature: voiceConfig.voice_temperature as number,
@@ -631,7 +632,8 @@ async function triggerImmediateVoiceCallIfEligible(
       try {
         const syncRes = await syncDialnexaAgentConfig({
           agent_id: voiceConfig.agent_id || DEFAULT_DIALNEXA_AGENT_ID,
-          voice: voiceConfig.voice,
+          voice: (voiceConfig.voice as string) || (voiceConfig.voice_id as string),
+          voice_id: (voiceConfig.voice_id as string) || undefined,
           voice_speed: voiceConfig.voice_speed,
           voice_pitch: voiceConfig.voice_pitch,
           voice_temperature: voiceConfig.voice_temperature,

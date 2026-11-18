@@ -86,8 +86,8 @@ export const DIALNEXA_VOICE_ID_MAP: Record<string, string> = {
   maya: "voice_113c227072ad4a", // Maya (ElevenLabs, female, Indian)
   neha: "voice_mtjy6lyYLmNv0H", // Prajakta/Neha (ElevenLabs, female, Indian)
   kavya: "voice_mtjxyab95MAVkO", // Parnita/Kavya (ElevenLabs, female, Indian)
-  manav: "voice_818d336ca3904c", // Viraj/Manav (ElevenLabs, male, Indian)
-  dev: "voice_4897321fb9ef4e", // Vikram/Dev (ElevenLabs, male, Indian)
+  manav: "voice_mfl4leh51jlphz", // Manav (ElevenLabs, male, Indian)
+  dev: "voice_4897321fb9ef4e", // Amit Gupta/Dev (ElevenLabs, male, Indian)
   nisha: "voice_94226a7ff47a43", // Apsara/Nisha (ElevenLabs, female, Indian)
   shalini: "voice_mol2pruwhpAXKK", // Noor/Shalini (ElevenLabs, female, Indian)
   prajakta: "voice_mtjy6lyYLmNv0H", // Prajakta (ElevenLabs, female, Indian)
@@ -98,10 +98,18 @@ export const DIALNEXA_VOICE_ID_MAP: Record<string, string> = {
   viraj: "voice_818d336ca3904c", // Viraj (ElevenLabs, male)
   raju: "voice_e031f06ade5049", // Raju (ElevenLabs, male, Indian)
   khushi: "voice_mgj02qi6r63zmy", // Khushi (ElevenLabs, female, Indian)
+  aakash: "voice_mfl4leh93jo9gl", // Aakash Aryan (ElevenLabs, male, Indian)
+  rahul: "voice_mfl4lefggzrvgk", // Rahul Bharadwaj (ElevenLabs, male, Indian)
+  amrut: "voice_mfl4lefd7onk17", // Amrut Deshmukh (ElevenLabs, male, Indian)
+  monika: "voice_mfl4lehnnqhcfb", // Monika Sogam (ElevenLabs, female, Indian)
+  meesha: "voice_mfl4lehi8hglf9", // Meesha (ElevenLabs, female, Indian)
+  sia: "voice_mfl4leh1uu69ld", // Sia (ElevenLabs, female, Indian)
+  tia: "voice_mfl4lefs0lbijo", // Tia Mirza (ElevenLabs, female, Indian)
+  tripti: "voice_mfl4lefk7xlm82", // Tripti (ElevenLabs, female, Indian)
 
   // American English
   rachel: "voice_mfl4leee3j8ysj", // Chelsea/Rachel (ElevenLabs, female, American)
-  sarah: "voice_mfl4leg5yi6v0g", // Hope/Sarah (ElevenLabs, female, American)
+  sarah: "voice_a929651acdc742", // Sarah (ElevenLabs, female, American)
   adam: "voice_mfl4leg14bh4of", // Adam (ElevenLabs, male, American)
   brian: "voice_mfl4leg8y7do5t", // Brian (ElevenLabs, male, American)
   paul: "voice_mfl4legi7cwcj5", // Paul (ElevenLabs, male, American)
@@ -187,6 +195,7 @@ export interface SyncDialnexaAgentParams {
 export interface SyncDialnexaAgentResult {
   success: boolean;
   version_number?: number;
+  voice_id?: string;
   outbound_from_number?: string;
   phone_number_id?: string;
   error?: string;
@@ -393,10 +402,12 @@ export async function syncDialnexaAgentConfig(
 
     fullPrompt += `\n\nInstructions for Telephony Call:\n- NEVER RE-INTRODUCE YOURSELF: Your opening greeting and self-introduction were ALREADY spoken to the candidate when the call connected. Do NOT introduce yourself again. NEVER say your name again, do NOT repeat your company name, and NEVER ask "do you have a few minutes?" or "is now a good time?" again. Acknowledge the candidate's confirmation in 2-4 words and immediately proceed to the first question.\n- CRISP CALL CONCLUSION (NO FADING OR CUTOFF): When concluding the call, speak a short, confident, and audible farewell sentence (under 15-20 words) ending with a firm period or exclamation mark (e.g. "Thank you for your time today, {{candidate_name}}! Our recruiting team will review our notes and reach out via email. Have a great day, goodbye!"). NEVER trail off with ellipsis ("..."), trailing dashes, or quiet murmurs. Ensure speech remains clear, audible, and complete through the word "goodbye!".\n- Address the candidate warmly by their dynamic variable name {{candidate_name}}.\n- Keep all responses conversational, concise (1-2 sentences), and ask one question at a time.\n- Under no circumstances address the candidate as Gandla Manish unless their name is explicitly Gandla Manish.`;
 
-    // 3. Resolve Voice ID
+    // 3. Resolve Voice ID (prioritize recruiter-selected voice over stale voice_id)
     const resolvedVoiceId =
-      params.voice_id ||
-      resolveDialnexaVoiceId(params.voice) ||
+      (params.voice ? resolveDialnexaVoiceId(params.voice) : undefined) ||
+      (params.voice_id ? resolveDialnexaVoiceId(params.voice_id) : undefined) ||
+      (params.voice_id?.startsWith("voice_") ? params.voice_id : undefined) ||
+      (params.voice?.startsWith("voice_") ? params.voice : undefined) ||
       DIALNEXA_VOICE_ID_MAP.aditi ||
       "voice_94226a7ff47a43";
 
@@ -523,6 +534,7 @@ export async function syncDialnexaAgentConfig(
     return {
       success: true,
       version_number: finalVersionNumber,
+      voice_id: resolvedVoiceId,
       outbound_from_number: outboundFromNumber,
       phone_number_id: outboundPhoneNumberId,
     };

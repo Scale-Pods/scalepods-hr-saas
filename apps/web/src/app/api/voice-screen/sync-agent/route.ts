@@ -21,7 +21,8 @@ export async function POST(req: Request) {
 
     const syncResult = await syncDialnexaAgentConfig({
       agent_id: voice_call_config.agent_id,
-      voice: voice_call_config.voice,
+      voice: voice_call_config.voice || voice_call_config.voice_id,
+      voice_id: voice_call_config.voice_id,
       voice_speed: voice_call_config.voice_speed,
       voice_pitch: voice_call_config.voice_pitch,
       voice_temperature: voice_call_config.voice_temperature,
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
         const supabase = await supabaseServer();
         const updatedConfig = {
           ...voice_call_config,
+          ...(syncResult.voice_id ? { voice_id: syncResult.voice_id } : {}),
           ...(syncResult.outbound_from_number
             ? { outbound_from_number: syncResult.outbound_from_number }
             : {}),
@@ -67,6 +69,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: syncResult.success,
       version_number: syncResult.version_number,
+      voice_id: syncResult.voice_id,
       outbound_from_number: syncResult.outbound_from_number,
       phone_number_id: syncResult.phone_number_id,
       error: syncResult.error,

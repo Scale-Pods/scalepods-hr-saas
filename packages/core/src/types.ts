@@ -38,6 +38,7 @@ export interface VoiceCallTopic {
 export interface DialnexaVoiceConfig {
   prompt: string;
   voice: string;
+  voice_id?: string;
   model?: string;
   first_message?: string;
   language?: string;

@@ -48,8 +48,12 @@ function cleanOfferTemplateDirectivesHtml(
   html: string,
   options?: { letterType?: string; isIntern?: boolean; incentiveNote?: string },
 ): string {
-  // If template has no ScalePods conditional directives, keep entire content untouched
-  if (!/Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD/i.test(html)) {
+  const hasSpecificType = Boolean(options?.letterType?.trim() || options?.isIntern !== undefined);
+  // If template has no ScalePods conditional directives and no specific letter type requested, keep entire content untouched
+  if (
+    !hasSpecificType &&
+    !/Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD/i.test(html)
+  ) {
     return html;
   }
 
@@ -78,7 +82,6 @@ function cleanOfferTemplateDirectivesHtml(
   } else if (options?.isIntern !== undefined) {
     isIntern = Boolean(options.isIntern);
   }
-  const hasSpecificType = Boolean(rawLetterType || options?.isIntern !== undefined);
 
   const out: string[] = [];
   let activeCondition: "any" | "fulltime" | "intern" = "any";
@@ -274,13 +277,6 @@ function cleanOfferTemplateDirectivesText(
   content: string,
   options?: { letterType?: string; isIntern?: boolean; incentiveNote?: string },
 ): string {
-  // If template has no ScalePods conditional directives, keep entire content untouched
-  if (
-    !/Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD/i.test(content)
-  ) {
-    return content;
-  }
-
   const rawLetterType = String(options?.letterType || "")
     .toLowerCase()
     .trim();
@@ -293,6 +289,14 @@ function cleanOfferTemplateDirectivesText(
     isIntern = Boolean(options.isIntern);
   }
   const hasSpecificType = Boolean(rawLetterType || options?.isIntern !== undefined);
+
+  // If template has no ScalePods conditional directives and no specific letter type requested, keep entire content untouched
+  if (
+    !hasSpecificType &&
+    !/Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD/i.test(content)
+  ) {
+    return content;
+  }
 
   let preprocessed = content;
   if (/APPOINTMENT LETTER\s*\/\s*INTERNSHIP APPOINTMENT LETTER/i.test(preprocessed)) {

@@ -794,6 +794,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
               if (syncJson?.version_number) {
                 updatedVoiceConfig = {
                   ...dialnexaConfig,
+                  ...(syncJson.voice_id ? { voice_id: syncJson.voice_id } : {}),
                   ...(syncJson.outbound_from_number
                     ? { outbound_from_number: syncJson.outbound_from_number }
                     : {}),

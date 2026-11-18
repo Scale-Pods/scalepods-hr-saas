@@ -526,11 +526,16 @@ export default function CampaignDetailPage() {
     }
   };
 
-  const handleSaveVoiceConfig = async () => {
+  const handleSaveVoiceConfig = async (configToSave?: DialnexaVoiceConfig) => {
     if (!id || !campaign) return;
     setIsSavingVoiceConfig(true);
+    const targetConfig = configToSave || voiceConfigDraft;
     try {
       let publishedVersion: number | undefined;
+      let syncedVoiceId: string | undefined;
+      let syncedFromNumber: string | undefined;
+      let syncedPhoneNumberId: string | undefined;
+
       try {
         const syncRes = await fetch("/api/voice-screen/sync-agent", {
           method: "POST",
@@ -540,7 +545,7 @@ export default function CampaignDetailPage() {
           },
           body: JSON.stringify({
             campaign_id: id,
-            voice_call_config: voiceConfigDraft,
+            voice_call_config: targetConfig,
             role_title: campaign.name,
             job_description: campaign.jd_text,
           }),
@@ -549,12 +554,24 @@ export default function CampaignDetailPage() {
         if (syncData?.version_number) {
           publishedVersion = syncData.version_number;
         }
+        if (syncData?.voice_id) {
+          syncedVoiceId = syncData.voice_id;
+        }
+        if (syncData?.outbound_from_number) {
+          syncedFromNumber = syncData.outbound_from_number;
+        }
+        if (syncData?.phone_number_id) {
+          syncedPhoneNumberId = syncData.phone_number_id;
+        }
       } catch (syncErr) {
         console.warn("DialNexa agent direct sync warning:", syncErr);
       }
 
-      const finalConfig = {
-        ...voiceConfigDraft,
+      const finalConfig: DialnexaVoiceConfig = {
+        ...targetConfig,
+        ...(syncedVoiceId ? { voice_id: syncedVoiceId } : {}),
+        ...(syncedFromNumber ? { outbound_from_number: syncedFromNumber } : {}),
+        ...(syncedPhoneNumberId ? { phone_number_id: syncedPhoneNumberId } : {}),
       };
 
       const supabase = supabaseBrowser();
@@ -563,6 +580,8 @@ export default function CampaignDetailPage() {
         .update({ voice_call_config: finalConfig as unknown as Json })
         .eq("id", id);
       if (error) throw error;
+
+      setVoiceConfigDraft(finalConfig);
 
       if (account?.id) {
         callWorkflow("campaigns", {
@@ -905,7 +924,7 @@ export default function CampaignDetailPage() {
                   size="sm"
                   className="gap-1.5 text-xs font-semibold"
                   disabled={isSavingVoiceConfig}
-                  onClick={handleSaveVoiceConfig}
+                  onClick={() => handleSaveVoiceConfig()}
                 >
                   {isSavingVoiceConfig ? "Saving..." : "Save Configuration"}
                 </Button>

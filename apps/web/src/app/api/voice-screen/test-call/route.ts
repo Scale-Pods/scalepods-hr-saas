@@ -45,7 +45,8 @@ export async function POST(req: Request) {
     try {
       const syncResult = await syncDialnexaAgentConfig({
         agent_id: targetAgentId,
-        voice: voice_call_config?.voice,
+        voice: voice_call_config?.voice || voice_call_config?.voice_id,
+        voice_id: voice_call_config?.voice_id,
         voice_speed: voice_call_config?.voice_speed,
         voice_pitch: voice_call_config?.voice_pitch,
         voice_temperature: voice_call_config?.voice_temperature,

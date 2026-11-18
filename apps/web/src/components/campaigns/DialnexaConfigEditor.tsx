@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { resolveDialnexaVoiceId } from "@/lib/dialnexa";
 import { cn } from "@/lib/utils";
 
 function InfoTooltip({ title, content, tip }: { title?: string; content: string; tip?: string }) {
@@ -695,7 +696,15 @@ export function DialnexaConfigEditor({
 
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 max-h-72 overflow-y-auto pr-1">
               {filteredVoices.map((voice) => {
-                const isActive = value.voice === voice.id;
+                const resolvedSelectedVoiceId =
+                  value.voice_id || resolveDialnexaVoiceId(value.voice);
+                const thisVoiceResolvedId = resolveDialnexaVoiceId(voice.id);
+                const isActive =
+                  value.voice === voice.id ||
+                  value.voice_id === voice.id ||
+                  (Boolean(resolvedSelectedVoiceId) &&
+                    Boolean(thisVoiceResolvedId) &&
+                    resolvedSelectedVoiceId === thisVoiceResolvedId);
                 const isPlaying = playingVoiceId === voice.id;
                 return (
                   <div
@@ -709,7 +718,14 @@ export function DialnexaConfigEditor({
                   >
                     <button
                       type="button"
-                      onClick={() => onChange({ ...value, voice: voice.id })}
+                      onClick={() => {
+                        const resolvedId = resolveDialnexaVoiceId(voice.id);
+                        onChange({
+                          ...value,
+                          voice: voice.id,
+                          voice_id: resolvedId,
+                        });
+                      }}
                       className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
                       title={`Select ${voice.label}`}
                     >
