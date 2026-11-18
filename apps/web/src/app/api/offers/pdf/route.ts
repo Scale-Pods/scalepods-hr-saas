@@ -93,14 +93,22 @@ export async function POST(req: NextRequest) {
     }
     let textToRender = "";
     let templateBgImage: Buffer | null = null;
+    let tpl: {
+      id: string;
+      account_id?: string;
+      file_name?: string;
+      storage_path?: string;
+      raw_text?: string;
+    } | null = null;
 
     // 1. If template_id is provided, extract real text directly from the stored .docx template
     if (body.template_id) {
-      const { data: tpl } = await adminSupabase
+      const { data } = await adminSupabase
         .from("offer_templates")
         .select("id, account_id, file_name, storage_path, raw_text")
         .eq("id", body.template_id)
         .maybeSingle();
+      tpl = data;
 
       if (tpl?.storage_path) {
         const { data: fileBlob } = await adminSupabase.storage
