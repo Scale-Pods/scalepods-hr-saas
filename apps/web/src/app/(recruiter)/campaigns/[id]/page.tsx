@@ -747,6 +747,7 @@ export default function CampaignDetailPage() {
           campaign={campaign}
           accountId={account?.id}
           accessToken={session?.access_token}
+          hasVoiceRound={rounds.some((r) => r.round_type === "ai_voice_call")}
           onComplete={() =>
             queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] })
           }

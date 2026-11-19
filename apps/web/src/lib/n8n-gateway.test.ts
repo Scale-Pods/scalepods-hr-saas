@@ -57,6 +57,47 @@ describe("callN8nGateway", () => {
     });
   });
 
+  it("translates phone_required error to clear meaningful message", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      status: 400,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            message:
+              "Workflow was started, but an error occurred in node 'Supabase RPC - Create Screened Application': phone_required",
+            errorMessage: "phone_required",
+          }),
+        ),
+    } as unknown as Response);
+
+    const { payload } = await callN8nGateway("hiring/application-intake", "mock-token", {});
+    expect(payload).toEqual({
+      message: "Phone number is required for campaigns with AI voice screening rounds",
+      error: "Phone number is required for campaigns with AI voice screening rounds",
+      code: "phone_required",
+      errorMessage: "phone_required",
+    });
+  });
+
+  it("translates campaign_closed error to meaningful message", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      status: 400,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            message: "There was an error in the workflow: campaign_closed",
+          }),
+        ),
+    } as unknown as Response);
+
+    const { payload } = await callN8nGateway("hiring/application-intake", "mock-token", {});
+    expect(payload).toEqual({
+      message: "This campaign is closed and cannot accept new candidates",
+      error: "This campaign is closed and cannot accept new candidates",
+      code: "campaign_closed",
+    });
+  });
+
   it("translates generic error in the workflow to user friendly message", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       status: 500,

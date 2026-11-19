@@ -16,13 +16,16 @@ export function ResumeUploader({
   campaign,
   accountId,
   accessToken,
+  hasVoiceRound: propHasVoiceRound,
   onComplete,
 }: {
   campaign: CampaignsRow;
   accountId: string | undefined;
   accessToken: string | undefined;
+  hasVoiceRound?: boolean;
   onComplete: () => void;
 }) {
+  const hasVoiceRound = propHasVoiceRound ?? Boolean(campaign.voice_call_config);
   const [files, setFiles] = useState<DropFile[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -69,6 +72,19 @@ export function ResumeUploader({
         `File "${missing.file.name}" is missing a candidate email. Please enter an email before scoring.`,
       );
       return;
+    }
+    if (hasVoiceRound) {
+      const missingPhone = files.find((f) => !f.phone?.trim());
+      if (missingPhone) {
+        showErrorToast(
+          `Candidate "${missingPhone.name || missingPhone.file.name}" requires a phone number because this campaign includes an AI voice call round.`,
+        );
+        patch(missingPhone.file, {
+          status: "error",
+          note: "Phone number required for AI voice screening",
+        });
+        return;
+      }
     }
     const emailList = files.map((f) => f.email?.trim().toLowerCase());
     const uniqueEmails = new Set(emailList);
@@ -150,6 +166,32 @@ export function ResumeUploader({
               ) {
                 throw new Error("Candidate already added to this campaign");
               }
+              if (
+                errJson.code === "phone_required" ||
+                /phone_required|phone.*required/i.test(errJson.error || errJson.message || "")
+              ) {
+                throw new Error("Phone number is required for AI voice screening");
+              }
+              if (
+                errJson.code === "campaign_has_no_rounds" ||
+                /campaign_has_no_rounds/i.test(errJson.error || errJson.message || "")
+              ) {
+                throw new Error("Campaign has no interview rounds configured");
+              }
+              if (
+                errJson.code === "campaign_closed" ||
+                /campaign_closed/i.test(errJson.error || errJson.message || "")
+              ) {
+                throw new Error("This campaign is closed and cannot accept new candidates");
+              }
+              if (
+                errJson.code === "quota_exceeded" ||
+                /quota_exceeded|insufficient_quota|rate_limit/i.test(
+                  errJson.error || errJson.message || "",
+                )
+              ) {
+                throw new Error("AI screening quota exceeded. Please try again later");
+              }
               throw new Error(errJson.error || errJson.message || "Failed to create application");
             }
 
@@ -229,7 +271,7 @@ export function ResumeUploader({
             />
             <input
               className="w-full sm:w-auto sm:flex-1 rounded-lg border border-input bg-card px-2.5 py-1 text-xs"
-              placeholder="Phone"
+              placeholder={hasVoiceRound ? "Phone (Required for Voice Call)" : "Phone"}
               value={f.phone ?? ""}
               disabled={f.status !== "idle" && f.status !== "error"}
               onChange={(e) => patch(f.file, { phone: e.target.value })}
