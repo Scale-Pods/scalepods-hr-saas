@@ -208,6 +208,8 @@ export function PrepareOfferModal({
     return {
       DEPARTMENT: "Engineering",
       LOCATION: campaign.location || "Remote",
+      CANDIDATE_LOCATION: campaign.location || "Remote",
+      CANDIDATE_EMAIL: candidate?.email || "",
       DURATION: isInternRole ? "3 Months" : "Full-time",
       LETTER_TYPE: isInternRole ? "intern" : "fulltime",
       PROBATION_PERIOD: "3 Months",
@@ -264,10 +266,16 @@ export function PrepareOfferModal({
       letter_type: detectedType,
       STIPEND_AMOUNT: isInternRole ? stipend : "",
       STIPEND_WORDS: isInternRole ? numberToWords(stipend) : "",
+      CANDIDATE_EMAIL: candidate?.email || prev.CANDIDATE_EMAIL || "",
+      candidate_email: candidate?.email || prev.candidate_email || "",
+      CANDIDATE_LOCATION: campaign.location || prev.CANDIDATE_LOCATION || "Remote",
+      candidate_location: campaign.location || prev.candidate_location || "Remote",
     }));
   }, [
     open,
     candidate?.name,
+    candidate?.email,
+    campaign.location,
     campaign.name,
     campaign.salary_min,
     campaign.salary_currency,
@@ -1452,7 +1460,13 @@ export function PrepareOfferModal({
                     })
                     .map((v) => {
                       const lower = v.toLowerCase();
-                      const isDate = lower.includes("date");
+                      const stripped = lower.replace(/candidate/g, "");
+                      const isDate =
+                        /(?:^|[_\s-])date(?:[_\s-]|$)/.test(stripped) ||
+                        stripped.endsWith("_date") ||
+                        stripped.startsWith("date_") ||
+                        stripped === "date";
+                      const isEmail = lower.includes("email");
                       const isWords = lower.includes("word") || lower.includes("in_words");
                       const isNumeric =
                         !isWords &&
@@ -1510,7 +1524,7 @@ export function PrepareOfferModal({
                           ) : (
                             <Input
                               id={fieldId}
-                              type="text"
+                              type={isEmail ? "email" : "text"}
                               value={currentVal}
                               onChange={(e) =>
                                 setDynamicValues((prev) => ({
@@ -1519,7 +1533,7 @@ export function PrepareOfferModal({
                                   [v.toUpperCase()]: e.target.value,
                                 }))
                               }
-                              placeholder={label}
+                              placeholder={isEmail ? "name@example.com" : label}
                               className="h-8 text-xs"
                             />
                           )}
