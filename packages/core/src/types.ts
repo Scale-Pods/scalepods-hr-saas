@@ -99,6 +99,7 @@ export interface DialnexaVoiceConfig {
 
 export type Tables = Database["public"]["Tables"];
 export type AccountsRow = Tables["accounts"]["Row"];
+export type CompanyDomainsRow = Tables["company_domains"]["Row"];
 export type CandidatesRow = Tables["candidates"]["Row"];
 export type CampaignsRow = Tables["campaigns"]["Row"];
 export type CampaignRoundsRow = Tables["campaign_rounds"]["Row"];

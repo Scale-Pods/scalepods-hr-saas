@@ -1,8 +1,24 @@
 "use client";
 
-import { limitLabel, TIER_LIMITS, type Tier, type TierLimits, tierAtLeast } from "@scalepods/core";
+import {
+  isDomainExempt,
+  limitLabel,
+  TIER_LIMITS,
+  type Tier,
+  type TierLimits,
+  tierAtLeast,
+} from "@scalepods/core";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ExternalLink, Info, Loader2, Receipt, Zap } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+  Info,
+  Loader2,
+  Receipt,
+  Zap,
+} from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { RazorpayInvoiceItem } from "@/app/api/razorpay/invoices/route";
@@ -12,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { useAccount } from "@/features/account/hooks";
+import { useAccount, useCompanyDomain } from "@/features/account/hooks";
 import { useSession } from "@/features/auth/hooks";
 import { useReports } from "@/features/dashboard/hooks";
 import { reconcileUsage } from "@/features/dashboard/usage";
@@ -93,11 +109,21 @@ function getInvoiceStatusMeta(status: string) {
 }
 
 export default function BillingPage() {
+  const searchParams = useSearchParams();
+  const isDomainLockedParam = searchParams.get("domain_locked") === "1";
   const { account, refreshAccount } = useAccount();
   const { data: session } = useSession();
   const { data: reports } = useReports(account?.id);
+  const { data: domainData } = useCompanyDomain(account?.company_domain);
   const tier = (account?.tier ?? "free") as Tier;
   const billingStatus = account?.billing_status ?? "active";
+
+  const isDomainExhausted =
+    Boolean(domainData?.is_free_tier_exhausted) &&
+    tier === "free" &&
+    !isDomainExempt(account?.company_domain || "");
+
+  const showDomainLockBanner = isDomainLockedParam || isDomainExhausted;
 
   const [compareOpen, setCompareOpen] = useState(false);
 
@@ -187,6 +213,22 @@ export default function BillingPage() {
           </div>
         }
       />
+
+      {showDomainLockBanner && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-destructive flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-destructive" />
+          <div className="space-y-1">
+            <h3 className="font-semibold text-sm">
+              Free Tier Trial Ended for @{account?.company_domain || "your company"}
+            </h3>
+            <p className="text-xs text-destructive/90 leading-relaxed">
+              Your organization has consumed its free tier quota. All recruiter accounts, campaigns,
+              and candidate pipelines under this company domain are paused. Please choose an
+              upgraded plan below to immediately restore full access.
+            </p>
+          </div>
+        </div>
+      )}
 
       <SectionCard title="Your usage" subtitle="Used vs. granted this month · red past 90%">
         <div className="space-y-4">

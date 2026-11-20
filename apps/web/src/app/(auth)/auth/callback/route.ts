@@ -1,3 +1,4 @@
+import { extractDomain, isBlockedConsumerDomain, isDomainExempt } from "@scalepods/core";
 import { createServerClient } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
@@ -64,6 +65,8 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      const gateRedirect = await validateUserDomainAccess(supabase, requestUrl.origin);
+      if (gateRedirect) return gateRedirect;
       return response;
     }
     errorMessage = error.message;
@@ -73,6 +76,8 @@ export async function GET(request: NextRequest) {
       type: type as EmailOtpType,
     });
     if (!error) {
+      const gateRedirect = await validateUserDomainAccess(supabase, requestUrl.origin);
+      if (gateRedirect) return gateRedirect;
       return response;
     }
     errorMessage = error.message;
@@ -85,4 +90,80 @@ export async function GET(request: NextRequest) {
       requestUrl.origin,
     ),
   );
+}
+
+async function validateUserDomainAccess(
+  supabase: ReturnType<typeof createServerClient>,
+  origin: string,
+) {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user?.email) return null;
+
+    const email = user.email;
+    const domain = extractDomain(email);
+
+    // 1. scalepods.co is permanently exempt
+    if (isDomainExempt(domain)) {
+      return null;
+    }
+
+    // 2. Block consumer email providers
+    if (isBlockedConsumerDomain(domain)) {
+      await supabase.auth.signOut().catch(() => {});
+      return NextResponse.redirect(
+        new URL(
+          "/auth?error=domain_restricted&message=" +
+            encodeURIComponent(
+              "Personal email domains like Gmail and Yahoo are not permitted for recruiter accounts. Please use your official company work email.",
+            ),
+          origin,
+        ),
+      );
+    }
+
+    // 3. Query company_domains
+    const { data: domainRow } = await supabase
+      .from("company_domains")
+      .select("domain, tier, is_free_tier_exhausted, primary_account_id")
+      .eq("domain", domain)
+      .maybeSingle();
+
+    if (domainRow) {
+      if (domainRow.is_free_tier_exhausted && domainRow.tier === "free") {
+        await supabase.auth.signOut().catch(() => {});
+        return NextResponse.redirect(
+          new URL(
+            "/auth?error=free_tier_exhausted&message=" +
+              encodeURIComponent(
+                `Your organization (${domain}) has exhausted its free tier trial. Upgrade is required to restore access.`,
+              ),
+            origin,
+          ),
+        );
+      }
+      if (
+        domainRow.tier === "free" &&
+        domainRow.primary_account_id &&
+        domainRow.primary_account_id !== user.id
+      ) {
+        await supabase.auth.signOut().catch(() => {});
+        return NextResponse.redirect(
+          new URL(
+            "/auth?error=domain_exists_free&message=" +
+              encodeURIComponent(
+                `An account for ${domain} already exists on the Free tier. Only one recruiter account is allowed per company.`,
+              ),
+            origin,
+          ),
+        );
+      }
+    }
+  } catch (err) {
+    console.error("[auth/callback] Error checking domain access:", err);
+  }
+
+  return null;
 }

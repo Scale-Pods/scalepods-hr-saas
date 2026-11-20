@@ -10,7 +10,8 @@
     "verbatimModuleSyntax": false,
     "esModuleInterop": true,
     "isolatedModules": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "types": []
   },
   "include": ["src"]
 }

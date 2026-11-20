@@ -25,6 +25,7 @@ export type Database = {
           razorpay_subscription_id?: string | null;
           next_billing_date?: string | null;
           subscription_currency?: string | null;
+          company_domain?: string | null;
         };
         Insert: {
           id: string;
@@ -42,6 +43,7 @@ export type Database = {
           razorpay_subscription_id?: string | null;
           next_billing_date?: string | null;
           subscription_currency?: string | null;
+          company_domain?: string | null;
         };
         Update: {
           tier?: string;
@@ -58,7 +60,32 @@ export type Database = {
           razorpay_subscription_id?: string | null;
           next_billing_date?: string | null;
           subscription_currency?: string | null;
+          company_domain?: string | null;
         };
+        Relationships: [];
+      };
+      company_domains: {
+        Row: {
+          domain: string;
+          primary_account_id: string | null;
+          tier: "free" | "basic" | "growth" | "enterprise";
+          is_free_tier_exhausted: boolean;
+          exhausted_at: string | null;
+          is_exempt: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          domain: string;
+          primary_account_id?: string | null;
+          tier?: "free" | "basic" | "growth" | "enterprise";
+          is_free_tier_exhausted?: boolean;
+          exhausted_at?: string | null;
+          is_exempt?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["company_domains"]["Insert"]>;
         Relationships: [];
       };
       candidates: {
