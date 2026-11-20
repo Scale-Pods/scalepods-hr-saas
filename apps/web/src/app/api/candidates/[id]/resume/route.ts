@@ -76,18 +76,35 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Candidate ID is required" }, { status: 400 });
     }
 
-    const user = await authenticateUser(req);
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const url = new URL(req.url);
     const campaignId = url.searchParams.get("campaignId");
+    const roundInstanceId = url.searchParams.get("roundInstanceId");
     const wantsJson =
       url.searchParams.get("format") === "json" ||
       req.headers.get("accept")?.includes("application/json");
 
     const admin = getAdminClient();
+
+    // Verify authorized access via booking round_instance if interviewer is opening link from email
+    let isRoundAuthorized = false;
+    let roundCampaignId: string | null = null;
+    if (roundInstanceId) {
+      const { data: ri } = await admin
+        .from("round_instances")
+        .select("id, candidate_id, campaign_id")
+        .eq("id", roundInstanceId)
+        .maybeSingle();
+
+      if (ri && (ri.candidate_id === lookupId || lookupId === "current")) {
+        isRoundAuthorized = true;
+        roundCampaignId = ri.campaign_id;
+      }
+    }
+
+    const user = await authenticateUser(req);
+    if (!user && !isRoundAuthorized) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     // 1. Fetch candidate by ID, or check if lookupId is an application ID
     let { data: cand } = await admin
@@ -123,8 +140,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
     }
 
-    // Verify tenant ownership or team membership
-    if (cand.account_id && cand.account_id !== user.id) {
+    // Verify tenant ownership or team membership (skipped if authorized via booking round_instance)
+    if (!isRoundAuthorized && cand.account_id && user && cand.account_id !== user.id) {
       const { data: member } = await admin
         .from("team_members")
         .select("id")
@@ -139,13 +156,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // 2. Resolve resume storage path
     let resumePath: string | null = directResumePath;
+    const effectiveCampaignId = campaignId || roundCampaignId;
 
-    if (!resumePath && campaignId) {
+    if (!resumePath && effectiveCampaignId) {
       const { data: app } = await admin
         .from("applications")
         .select("id, resume_path")
         .eq("candidate_id", resolvedCandidateId)
-        .eq("campaign_id", campaignId)
+        .eq("campaign_id", effectiveCampaignId)
         .maybeSingle();
       if (app?.resume_path) {
         resumePath = app.resume_path;
