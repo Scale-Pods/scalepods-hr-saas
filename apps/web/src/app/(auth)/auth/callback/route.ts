@@ -1,4 +1,9 @@
-import { extractDomain, isBlockedConsumerDomain, isDomainExempt } from "@scalepods/core";
+import {
+  extractDomain,
+  getMaxAccountsForTier,
+  isBlockedConsumerDomain,
+  isDomainExempt,
+} from "@scalepods/core";
 import { createServerClient } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
@@ -144,17 +149,26 @@ async function validateUserDomainAccess(
           ),
         );
       }
-      if (
-        domainRow.tier === "free" &&
-        domainRow.primary_account_id &&
-        domainRow.primary_account_id !== user.id
-      ) {
+      const maxAccounts = getMaxAccountsForTier(domainRow.tier);
+      const { count } = await supabase
+        .from("accounts")
+        .select("id", { count: "exact", head: true })
+        .eq("company_domain", domain);
+
+      // If user doesn't already have an account in this workspace and limit is reached
+      const { data: existingUserAccount } = await supabase
+        .from("accounts")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!existingUserAccount && (count ?? 0) >= maxAccounts) {
         await supabase.auth.signOut().catch(() => {});
         return NextResponse.redirect(
           new URL(
-            "/auth?error=domain_exists_free&message=" +
+            "/auth?error=domain_limit_reached&message=" +
               encodeURIComponent(
-                `An account for ${domain} already exists on the Free tier. Only one recruiter account is allowed per company.`,
+                `Your organization (${domain}) has reached its limit of ${maxAccounts} accounts for the ${domainRow.tier.toUpperCase()} plan. Upgrade is required to add more accounts.`,
               ),
             origin,
           ),

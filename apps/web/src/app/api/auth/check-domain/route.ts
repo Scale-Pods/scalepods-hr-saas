@@ -1,4 +1,9 @@
-import { extractDomain, isBlockedConsumerDomain, isDomainExempt } from "@scalepods/core";
+import {
+  extractDomain,
+  getMaxAccountsForTier,
+  isBlockedConsumerDomain,
+  isDomainExempt,
+} from "@scalepods/core";
 import { type NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 
@@ -103,26 +108,38 @@ async function handleDomainCheck(email?: string | null, domainParam?: string | n
         });
       }
 
-      // If free tier and company already registered
-      if (domainRow.tier === "free") {
+      // Check account limit per company domain based on plan tier:
+      // Free: 3, Basic: 3, Growth: 5, Enterprise: 10
+      const maxAccounts = getMaxAccountsForTier(domainRow.tier);
+      const { count } = await supabase
+        .from("accounts")
+        .select("id", { count: "exact", head: true })
+        .eq("company_domain", domain);
+
+      const currentCount = count ?? 0;
+      if (currentCount >= maxAccounts) {
         return NextResponse.json({
           allowed: false,
           domain,
           isExempt: false,
-          isExhausted: false,
-          tier: "free",
-          code: "DOMAIN_EXISTS_FREE",
-          reason: `An account for ${domain} already exists. On the Free tier, only one recruiter account is allowed per company. Please sign in with the primary registered email.`,
+          isExhausted: domainRow.is_free_tier_exhausted,
+          tier: domainRow.tier,
+          currentCount,
+          maxAccounts,
+          code: "DOMAIN_ACCOUNT_LIMIT_REACHED",
+          reason: `Your organization (${domain}) has reached its limit of ${maxAccounts} accounts for the ${domainRow.tier.toUpperCase()} plan. Please upgrade your plan to add more team members.`,
         });
       }
 
-      // Paid tier
+      // Allowed under domain quota
       return NextResponse.json({
         allowed: true,
         domain,
         isExempt: false,
         isExhausted: false,
         tier: domainRow.tier,
+        currentCount,
+        maxAccounts,
       });
     }
 

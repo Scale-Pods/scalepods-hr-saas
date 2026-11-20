@@ -11,7 +11,32 @@
  *    under that domain are locked until an upgrade is completed.
  */
 
+import type { Tier } from "./types";
+
 export const EXEMPT_DOMAINS = new Set(["scalepods.co"]);
+
+/**
+ * Maximum allowed accounts per company domain based on the plan/tier:
+ * - Free: 3 accounts
+ * - Basic: 3 accounts
+ * - Growth: 5 accounts
+ * - Enterprise: 10 accounts
+ */
+export const DOMAIN_TIER_ACCOUNT_LIMITS: Record<Tier, number> = {
+  free: 3,
+  basic: 3,
+  growth: 5,
+  enterprise: 10,
+};
+
+/**
+ * Returns the maximum accounts permitted for a given tier.
+ */
+export function getMaxAccountsForTier(tier: Tier | string | null | undefined): number {
+  if (!tier) return 3;
+  const normalized = tier.toLowerCase().trim() as Tier;
+  return DOMAIN_TIER_ACCOUNT_LIMITS[normalized] ?? 3;
+}
 
 export const BLOCKED_CONSUMER_DOMAINS = new Set([
   // Google

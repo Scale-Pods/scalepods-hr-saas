@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractDomain,
+  getMaxAccountsForTier,
   isBlockedConsumerDomain,
   isDomainExempt,
   validateRecruiterEmail,
@@ -67,6 +68,30 @@ describe("Domain restrictions & anti-abuse policies", () => {
     it("rejects malformed email strings", () => {
       expect(validateRecruiterEmail("not-an-email").allowed).toBe(false);
       expect(validateRecruiterEmail("").allowed).toBe(false);
+    });
+  });
+
+  describe("getMaxAccountsForTier", () => {
+    it("returns 3 accounts for Free and Basic plans", () => {
+      expect(getMaxAccountsForTier("free")).toBe(3);
+      expect(getMaxAccountsForTier("basic")).toBe(3);
+      expect(getMaxAccountsForTier("FREE")).toBe(3);
+    });
+
+    it("returns 5 accounts for Growth plan", () => {
+      expect(getMaxAccountsForTier("growth")).toBe(5);
+      expect(getMaxAccountsForTier("GROWTH")).toBe(5);
+    });
+
+    it("returns 10 accounts for Enterprise plan", () => {
+      expect(getMaxAccountsForTier("enterprise")).toBe(10);
+      expect(getMaxAccountsForTier("ENTERPRISE")).toBe(10);
+    });
+
+    it("defaults to 3 accounts for unknown or null tiers", () => {
+      expect(getMaxAccountsForTier(null)).toBe(3);
+      expect(getMaxAccountsForTier(undefined)).toBe(3);
+      expect(getMaxAccountsForTier("unknown")).toBe(3);
     });
   });
 });
