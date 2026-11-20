@@ -560,100 +560,110 @@ export default function CandidateProfilePage() {
   const isRoundStage =
     application?.current_stage === "round" && application?.current_round_number != null;
 
+  const isDocStage =
+    application?.current_stage === "document_verification" ||
+    application?.status === "document_verification" ||
+    application?.status === "documents_requested" ||
+    application?.status === "documents_verified";
+
   const currentRoundInstance = useMemo(() => {
     if (!isRoundStage) return null;
     return roundInstances.find((r) => r.round_number === application?.current_round_number);
   }, [isRoundStage, roundInstances, application?.current_round_number]);
 
   const isCurrentRoundCompleted = useMemo(() => {
-    if (!isRoundStage) return true;
-
-    // 1. Check completed voice calls from DialNexa
-    const hasCompletedVoiceCall = dialnexaCalls.some(
-      (c) =>
-        c.status === "completed" || c.duration > 0 || c.scorecard != null || Boolean(c.transcript),
-    );
-    if (hasCompletedVoiceCall) {
-      return true;
+    // 1. If in Document Verification stage: all docs must be verified
+    if (isDocStage) {
+      if (application?.documents_status === "verified") return true;
+      const docs = application?.requested_documents;
+      return Boolean(
+        Array.isArray(docs) &&
+          docs.length > 0 &&
+          docs.every((d) => (typeof d === "string" ? false : d.status === "verified")),
+      );
     }
 
-    // 2. If round instance entity is missing or hasn't loaded yet
-    if (!currentRoundInstance) {
-      if (latestScorecard != null) return true;
-      const hasTimelineScore = (data?.timeline || []).some(
+    // 2. If in Resume Screening stage: candidate MUST have a resume screening score!
+    if (!isRoundStage) {
+      const hasResumeScore = (data?.timeline || []).some(
         (t) =>
-          t.stage === "voice_screen" ||
-          t.stage === "ai_interview" ||
-          (t.score != null && t.stage !== "resume_screening"),
+          (t.stage === "resume_screening" || t.stage === "needs_review") && t.score != null,
       );
-      if (hasTimelineScore) return true;
+      if (hasResumeScore) return true;
+      if (latestScorecard?.stage === "resume_screening" && latestScorecard.overall_score != null) {
+        return true;
+      }
       return false;
     }
 
-    // 3. Status checks on the round instance
-    const status = (currentRoundInstance.status || "").toLowerCase();
-    if (
-      status === "completed" ||
-      status === "passed" ||
-      status === "awaiting_review" ||
-      status === "evaluated" ||
-      status === "reviewed" ||
-      status === "incomplete"
-    ) {
-      return true;
-    }
+    // 3. If in an assessment / interview Round: candidate MUST have an evaluated score specifically for this round!
+    // Check DialNexa voice call scorecard
+    const hasVoiceScorecard = dialnexaCalls.some(
+      (c) =>
+        c.scorecard != null &&
+        (c.scorecard.overall_score != null ||
+          ("score" in c.scorecard && c.scorecard.score != null)),
+    );
+    if (hasVoiceScorecard) return true;
 
-    // 4. Scorecard availability
+    // Check scorecard specifically for current round instance
     if (
       latestScorecard != null &&
-      (latestScorecard.overall_score != null || latestScorecard.recommendation != null)
+      latestScorecard.overall_score != null &&
+      (currentRoundInstance
+        ? latestScorecard.round_instance_id === currentRoundInstance.id
+        : latestScorecard.stage !== "resume_screening")
     ) {
       return true;
     }
 
-    // 5. Human interview feedback
+    // Check timeline entry specifically for current round with a non-null score
+    const hasCurrentRoundTimelineScore = (data?.timeline || []).some(
+      (t) =>
+        t.score != null &&
+        t.stage !== "resume_screening" &&
+        t.stage !== "needs_review" &&
+        (currentRoundInstance
+          ? t.round_instance_id === currentRoundInstance.id
+          : t.stage?.includes("round") || t.stage === "ai_interview"),
+    );
+    if (hasCurrentRoundTimelineScore) return true;
+
+    // Check interviewer feedback with score
     if (
       interviewerFeedback.some(
         (f) =>
-          f.round_instance_id === currentRoundInstance.id || f.application_id === application?.id,
+          (currentRoundInstance ? f.round_instance_id === currentRoundInstance.id : true) &&
+          ("overall_score" in f ? f.overall_score != null : false),
       )
     ) {
       return true;
     }
 
-    // 6. Assignment submission
-    if (assignmentSubmissions.some((s) => s.round_instance_id === currentRoundInstance.id)) {
-      return true;
-    }
-
-    // 7. Timeline / Decision ledger evaluations
-    const hasTimelineScore = (data?.timeline || []).some(
-      (t) =>
-        (t.round_instance_id && t.round_instance_id === currentRoundInstance.id) ||
-        t.stage === "voice_screen" ||
-        t.stage === "ai_interview" ||
-        (t.score != null && t.stage !== "resume_screening"),
-    );
-    if (hasTimelineScore) {
-      return true;
-    }
-
+    // Unscored or still evaluating: CANNOT advance
     return false;
   }, [
+    isDocStage,
     isRoundStage,
     currentRoundInstance,
     dialnexaCalls,
     latestScorecard,
     interviewerFeedback,
-    assignmentSubmissions,
     data?.timeline,
-    application?.id,
+    application?.documents_status,
+    application?.requested_documents,
   ]);
 
   const handleAdvance = async () => {
     if (!application?.id) return;
-    if (isRoundStage && !isCurrentRoundCompleted) {
-      showErrorToast("Cannot advance candidate: The current round must be completed first.");
+    if (!isCurrentRoundCompleted) {
+      showErrorToast(
+        isDocStage
+          ? "Cannot advance candidate: Please verify all required documents first."
+          : isRoundStage
+            ? "Cannot advance candidate: Round evaluation score is required before moving to the next stage."
+            : "Cannot advance candidate: AI resume screening score is required before moving to Round 1.",
+      );
       return;
     }
     setDecisionBusy(true);
@@ -987,9 +997,23 @@ export default function CandidateProfilePage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={decisionBusy}
+                    disabled={decisionBusy || !isCurrentRoundCompleted}
                     onClick={handleAdvance}
-                    className="rounded-xl text-xs gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 cursor-pointer"
+                    className={cn(
+                      "rounded-xl text-xs gap-1.5",
+                      isCurrentRoundCompleted
+                        ? "border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 cursor-pointer"
+                        : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
+                    )}
+                    title={
+                      !isCurrentRoundCompleted
+                        ? isDocStage
+                          ? "Required documents must be verified before advancing"
+                          : isRoundStage
+                            ? "Round evaluation score is required before advancing"
+                            : "Resume screening score is required before advancing"
+                        : "Advance candidate to next stage"
+                    }
                   >
                     <CheckCircle className="h-3.5 w-3.5 text-emerald-500" /> Advance
                   </Button>

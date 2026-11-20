@@ -313,11 +313,11 @@ export function PipelineBoard({
 
     if (!isRound) {
       // In Resume Screening: must have an evaluated resume score
-      return cand.resume_score != null || cand.latest_score != null;
+      return cand.resume_score != null;
     }
 
-    // In an assessment/interview round: must have an evaluated score
-    return cand.ai_interview_score != null || cand.latest_score != null;
+    // In an assessment/interview round: must have an evaluated score specifically for this round
+    return cand.ai_interview_score != null;
   };
 
   const isCandidateRoundCompleted = (cand: ViewCandidate): boolean => {

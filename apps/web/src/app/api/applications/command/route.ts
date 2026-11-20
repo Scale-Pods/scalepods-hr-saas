@@ -198,10 +198,8 @@ export async function POST(req: NextRequest) {
           const isCompletedStatus =
             roundStatus === "completed" ||
             roundStatus === "passed" ||
-            roundStatus === "awaiting_review" ||
             roundStatus === "evaluated" ||
-            roundStatus === "reviewed" ||
-            roundStatus === "incomplete";
+            roundStatus === "reviewed";
 
           let isActuallyCompleted = isCompletedStatus;
 
@@ -342,37 +340,55 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          // Check that round evaluation score exists before advancing
-          const { data: roundScorecard } = await adminSupabase
-            .from("scorecards")
-            .select("id, overall_score")
-            .or(
-              currentRound?.id
-                ? `round_instance_id.eq.${currentRound.id},application_id.eq.${appRow.id}`
-                : `application_id.eq.${appRow.id}`,
-            )
-            .not("overall_score", "is", null)
-            .limit(1)
-            .maybeSingle();
+          // Check that an evaluation score specifically exists for this current round before advancing
+          let roundScorecard = null;
+          if (currentRound?.id) {
+            const { data } = await adminSupabase
+              .from("scorecards")
+              .select("id, overall_score")
+              .eq("round_instance_id", currentRound.id)
+              .not("overall_score", "is", null)
+              .limit(1)
+              .maybeSingle();
+            roundScorecard = data;
+          }
 
-          const { data: roundDl } = await adminSupabase
-            .from("decision_ledger")
-            .select("id, score")
-            .eq("application_id", appRow.id)
-            .not("score", "is", null)
-            .limit(1)
-            .maybeSingle();
+          let roundDl = null;
+          if (currentRound?.id) {
+            const { data } = await adminSupabase
+              .from("decision_ledger")
+              .select("id, score")
+              .eq("round_instance_id", currentRound.id)
+              .not("score", "is", null)
+              .limit(1)
+              .maybeSingle();
+            roundDl = data;
+          }
 
-          const hasScore =
+          if (!roundDl && appRow.current_round_number != null) {
+            const { data } = await adminSupabase
+              .from("decision_ledger")
+              .select("id, score")
+              .eq("application_id", appRow.id)
+              .neq("stage", "resume_screening")
+              .neq("stage", "needs_review")
+              .neq("score_type", "resume")
+              .not("score", "is", null)
+              .limit(1)
+              .maybeSingle();
+            roundDl = data;
+          }
+
+          const hasRoundScore =
             (roundScorecard && roundScorecard.overall_score != null) ||
             (roundDl && roundDl.score != null);
 
-          if (!hasScore) {
+          if (!hasRoundScore) {
             return NextResponse.json(
               {
                 error:
                   "Cannot advance candidate: Round evaluation score is required before moving to the next stage.",
-                code: "SCORE_REQUIRED",
+                code: "ROUND_SCORE_REQUIRED",
               },
               { status: 400 },
             );
