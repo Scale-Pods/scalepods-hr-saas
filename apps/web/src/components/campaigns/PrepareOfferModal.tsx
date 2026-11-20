@@ -906,7 +906,10 @@ export function PrepareOfferModal({
           );
           return;
         }
-        throw new Error(data.error || "Failed to send offer letter");
+        const errorMsg = data.detail
+          ? `${data.error}: ${data.detail}`
+          : data.error || "Failed to send offer letter";
+        throw new Error(errorMsg);
       }
 
       showToast(`Offer letter dispatched to ${candidate.name}!`);

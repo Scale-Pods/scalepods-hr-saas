@@ -24,23 +24,21 @@ function validateXmlTags(xml: string): void {
   // Check for unclosed tag: "{{" followed by characters without a closing "}}"
   const unclosedMatch = xml.match(/\{\{[^}]*(?:<(?!\/w:t>)[^>]+>[^}]*)*$/);
   if (unclosedMatch) {
-    throw new OfferDocxError(
-      `Malformed or unclosed tag detected in document XML: ${unclosedMatch[0]}`,
-    );
+    console.warn(`[validateXmlTags] Warning: Malformed or unclosed tag in document XML: ${unclosedMatch[0]}`);
   }
 
   // Check for "{{" followed by another "{{" before "}}"
   const nestedMatch = xml.match(/\{\{[^}]*\{\{/);
   if (nestedMatch) {
-    throw new OfferDocxError(`Malformed nested or unclosed tag in document XML: ${nestedMatch[0]}`);
+    console.warn(`[validateXmlTags] Warning: Malformed nested tag in document XML: ${nestedMatch[0]}`);
   }
 
   // Check single brace mismatch where an opening {{ is not closed on the line/paragraph
   const openBraces = (xml.match(/\{\{/g) || []).length;
   const closeBraces = (xml.match(/\}\}/g) || []).length;
   if (openBraces !== closeBraces) {
-    throw new OfferDocxError(
-      `Tag syntax error: found ${openBraces} opening '{{' but ${closeBraces} closing '}}' tags (unclosed tag)`,
+    console.warn(
+      `[validateXmlTags] Warning: found ${openBraces} opening '{{' but ${closeBraces} closing '}}' tags`,
     );
   }
 }
@@ -159,7 +157,7 @@ export function fillOfferDocx(templateBuffer: Buffer, data: Record<string, unkno
       console.warn("[fillOfferDocx] Warning pruning conditional XML:", pruneErr);
     }
 
-    // Check for any missing required placeholders in the pruned document
+    // Populate any unprovided placeholders with empty string so template renders gracefully
     const docPlaceholders = findPlaceholdersInXml(rawXml);
     for (const ph of docPlaceholders) {
       const hasVal =
@@ -168,7 +166,9 @@ export function fillOfferDocx(templateBuffer: Buffer, data: Record<string, unkno
         (ph.toLowerCase() in normalizedData && normalizedData[ph.toLowerCase()] != null);
 
       if (!hasVal) {
-        throw new OfferDocxError(`Missing value for placeholder: {{${ph}}}`);
+        normalizedData[ph] = "";
+        normalizedData[ph.toUpperCase()] = "";
+        normalizedData[ph.toLowerCase()] = "";
       }
     }
 

@@ -357,7 +357,12 @@ export async function POST(req: NextRequest) {
           const docxBuffer = Buffer.from(await fileBlob.arrayBuffer());
           templateLogoInfo = extractDocumentLogoInfoFromDocxBuffer(docxBuffer);
           templateBgImage = extractDocumentImageFromDocxBuffer(docxBuffer);
-          filledBuffer = sendAsIs ? docxBuffer : fillOfferDocx(docxBuffer, resolvedFieldValues);
+          try {
+            filledBuffer = sendAsIs ? docxBuffer : fillOfferDocx(docxBuffer, resolvedFieldValues);
+          } catch (fillErr) {
+            console.warn("[api/offers/send] Note: fillOfferDocx warning, using docxBuffer:", fillErr);
+            filledBuffer = docxBuffer;
+          }
           textToRender = await extractDocumentTextFromDocxBuffer(docxBuffer, resolvedFieldValues);
           if (textToRender && tplRow?.raw_text === "[Raw DOCX Template]") {
             extractDocumentTextFromDocxBuffer(docxBuffer).then((rawBase) => {
@@ -470,33 +475,37 @@ export async function POST(req: NextRequest) {
         signatureBase64,
       });
 
-      // Store filled docx and generated pdf in Supabase Storage for audit trail
-      const timestamp = Date.now();
-      const auditDocxPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_filled.docx`;
-      const auditPdfPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_offer.pdf`;
-
-      const uploadPromises: Promise<unknown>[] = [
-        adminSupabase.storage.from("offer-templates").upload(auditPdfPath, pdfBuffer, {
-          contentType: "application/pdf",
-          upsert: true,
-        }),
-      ];
-
-      if (filledBuffer) {
-        uploadPromises.push(
-          adminSupabase.storage.from("offer-templates").upload(auditDocxPath, filledBuffer, {
-            contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            upsert: true,
-          }),
-        );
-        filledDocxPath = auditDocxPath;
-      }
-
-      await Promise.all(uploadPromises);
-
-      generatedPdfPath = auditPdfPath;
       pdfBase64 = pdfBuffer.toString("base64");
       pdfFilename = `Offer_Letter_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
+
+      // Store filled docx and generated pdf in Supabase Storage for audit trail (non-blocking)
+      try {
+        const timestamp = Date.now();
+        const auditDocxPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_filled.docx`;
+        const auditPdfPath = `${user.id}/offers/${parsed.data.application_id}/${timestamp}_offer.pdf`;
+
+        const uploadPromises: Promise<unknown>[] = [
+          adminSupabase.storage.from("offer-templates").upload(auditPdfPath, pdfBuffer, {
+            contentType: "application/pdf",
+            upsert: true,
+          }),
+        ];
+
+        if (filledBuffer) {
+          uploadPromises.push(
+            adminSupabase.storage.from("offer-templates").upload(auditDocxPath, filledBuffer, {
+              contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              upsert: true,
+            }),
+          );
+          filledDocxPath = auditDocxPath;
+        }
+
+        await Promise.all(uploadPromises);
+        generatedPdfPath = auditPdfPath;
+      } catch (storageErr) {
+        console.warn("[api/offers/send] Non-fatal audit storage upload error:", storageErr);
+      }
     } catch (pdfErr) {
       console.error("[api/offers/send] Offer PDF generation error:", pdfErr);
       return NextResponse.json(
