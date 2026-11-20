@@ -1,5 +1,6 @@
 import { describeError } from "@scalepods/core";
 import { render, screen } from "@testing-library/react";
+import type * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { isHardStop, TierLimitToast } from "./TierLimitToast";
 

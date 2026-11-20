@@ -340,9 +340,9 @@ export function MakeReusableModal({
           <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-lg text-xs text-slate-300 space-y-1">
             <p className="font-semibold text-slate-200">Privacy & Data Handling Notice:</p>
             <p>
-              When you click "Suggest Fields with AI", document text is processed by Anthropic
-              Claude solely to detect candidate values. No letter text is stored or logged on our
-              servers, and suggestions only pre-fill this wizard for your manual review.
+              When you click "Suggest Fields with AI", document text is processed by ScalePods AI
+              solely to detect candidate values. No letter text is stored or logged on our servers,
+              and suggestions only pre-fill this wizard for your manual review.
             </p>
           </div>
         )}

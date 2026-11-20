@@ -195,7 +195,7 @@ export function OfferTemplateEditor({
       <div className="rounded-lg border border-primary/25 bg-primary/5 p-2.5 space-y-1.5">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
           <Wand2 className="h-3.5 w-3.5 text-primary" />
-          Edit Template with Claude AI (via n8n)
+          Edit Template with AI
         </div>
         <div className="flex items-center gap-2">
           <Input

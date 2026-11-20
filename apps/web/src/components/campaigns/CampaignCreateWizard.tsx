@@ -1378,13 +1378,13 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
               </div>
 
               {/* Meta Environment Messaging Limits Disclaimer */}
-              <div className="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5 text-xs text-amber-200/90 text-left">
-                <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200/90 text-left">
+                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-0.5">
-                  <span className="font-semibold text-amber-300">
+                  <span className="font-semibold text-amber-950 dark:text-amber-300">
                     Meta Environment Messaging Limit:
                   </span>{" "}
-                  <span className="text-amber-200/80">
+                  <span className="text-amber-900/90 dark:text-amber-200/80">
                     Due to Meta environment rules and WhatsApp Business messaging limits, campaigns
                     cannot send more than <strong>3 messages</strong> to a candidate. Any additional
                     reminder stages beyond 3 touches will not be delivered to maintain compliance.

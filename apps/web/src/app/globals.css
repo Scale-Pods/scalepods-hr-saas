@@ -1560,13 +1560,35 @@
 input,
 textarea,
 select {
-  color: var(--foreground) !important;
+  color: var(--foreground);
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--muted-foreground) !important;
+  color: var(--muted-foreground);
   opacity: 0.75;
+}
+
+/* Browser autofill styling to preserve contrast in dark inputs */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: inherit;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus,
+.dark input:-webkit-autofill:active,
+input.text-white:-webkit-autofill,
+input.text-white:-webkit-autofill:hover,
+input.text-white:-webkit-autofill:focus,
+input.text-white:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0px 1000px #0f172a inset !important;
+  caret-color: #ffffff !important;
 }
 
 select option {

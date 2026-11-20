@@ -132,7 +132,7 @@ export function OfferTemplateManager() {
           ? data.variables.map((v: { key: string }) => v.key)
           : extractCustomOfferVariables(data.cleaned_html || data.cleaned_text);
         setUploadVars(keys);
-        showToast("Claude AI parsed document & extracted dynamic variables.");
+        showToast("ScalePods AI parsed document & extracted dynamic variables.");
       } else {
         setUploadVars(extractCustomOfferVariables(result.html || result.text));
       }
@@ -267,7 +267,7 @@ export function OfferTemplateManager() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Upload your company offer letter or agreement (.docx). Claude AI auto-detects dynamic
+          Upload your company offer letter or agreement (.docx). ScalePods AI auto-detects dynamic
           variables and standardizes the document.
         </p>
         <Button
@@ -321,7 +321,7 @@ export function OfferTemplateManager() {
           {parsingWithAi && (
             <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 p-2.5 text-xs text-primary">
               <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-              <span>Claude AI is analyzing template & extracting dynamic variables via n8n...</span>
+              <span>ScalePods AI is analyzing template & extracting dynamic variables...</span>
             </div>
           )}
 

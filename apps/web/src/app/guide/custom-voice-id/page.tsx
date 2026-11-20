@@ -188,10 +188,11 @@ export default function CustomVoiceGuidePage() {
                 </ul>
 
                 {step.tip && (
-                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3 flex items-start gap-2.5 text-xs text-amber-200/90">
-                    <Lightbulb className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200/90">
+                    <Lightbulb className="h-4 w-4 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
                     <span>
-                      <strong className="text-amber-300">Pro-Tip:</strong> {step.tip}
+                      <strong className="text-amber-950 dark:text-amber-300">Pro-Tip:</strong>{" "}
+                      {step.tip}
                     </span>
                   </div>
                 )}

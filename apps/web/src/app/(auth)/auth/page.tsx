@@ -253,7 +253,7 @@ function AuthInner() {
   };
 
   return (
-    <div className="min-h-screen bg-[#080D1A] flex flex-col justify-between selection:bg-blue-500 selection:text-white relative overflow-hidden">
+    <div className="dark min-h-screen bg-[#080D1A] flex flex-col justify-between selection:bg-blue-500 selection:text-white relative overflow-hidden">
       {/* Ambient modern SaaS Grid & Glow */}
       <div
         aria-hidden="true"
@@ -456,7 +456,7 @@ function AuthInner() {
                           placeholder="e.g. Alex Morgan"
                           value={userName}
                           onChange={(e) => setUserName(e.target.value)}
-                          className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 px-3.5 py-2 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20"
+                          className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 px-3.5 py-2 text-sm !text-white text-white !placeholder-slate-400 placeholder:text-slate-400 outline-none transition focus:border-blue-500 focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20"
                         />
                       </div>
 
@@ -475,7 +475,7 @@ function AuthInner() {
                           placeholder="e.g. Acme Corp"
                           value={companyName}
                           onChange={(e) => setCompanyName(e.target.value)}
-                          className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 px-3.5 py-2 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20"
+                          className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 px-3.5 py-2 text-sm !text-white text-white !placeholder-slate-400 placeholder:text-slate-400 outline-none transition focus:border-blue-500 focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20"
                         />
                       </div>
                     </>
@@ -501,7 +501,7 @@ function AuthInner() {
                         if (errorMsg) setErrorMsg(null);
                       }}
                       onBlur={handleEmailBlur}
-                      className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 px-3.5 py-2 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20"
+                      className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 px-3.5 py-2 text-sm !text-white text-white !placeholder-slate-400 placeholder:text-slate-400 outline-none transition focus:border-blue-500 focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20"
                     />
                   </div>
 
@@ -523,7 +523,7 @@ function AuthInner() {
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 py-2 pl-3.5 pr-10 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20"
+                        className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 py-2 pl-3.5 pr-10 text-sm !text-white text-white !placeholder-slate-400 placeholder:text-slate-400 outline-none transition focus:border-blue-500 focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20"
                       />
                       <button
                         type="button"

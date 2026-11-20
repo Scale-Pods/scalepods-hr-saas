@@ -1,4 +1,8 @@
 import "@testing-library/jest-dom/vitest";
+import "@testing-library/jest-dom";
+import * as React from "react";
+
+(globalThis as unknown as { React: typeof React }).React = React;
 
 // Public env required by getEnv() during tests. Set before first use so the
 // cached value is valid; values are arbitrary and never hit the network.
