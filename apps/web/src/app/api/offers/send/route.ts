@@ -378,7 +378,16 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (!textToRender || isOfferTemplatePlaceholder(textToRender)) {
+      if (tplRow?.raw_text && !isOfferTemplatePlaceholder(tplRow.raw_text) && tplRow.raw_text.includes("{{")) {
+        const cleanedTpl = cleanOfferTemplateDirectives(tplRow.raw_text, {
+          letterType: isIntern ? "intern" : "fulltime",
+          isIntern,
+        });
+        textToRender = renderOfferTemplateText(
+          cleanedTpl,
+          resolvedFieldValues as Record<string, string>,
+        );
+      } else if (!textToRender || isOfferTemplatePlaceholder(textToRender)) {
         if (renderedText?.trim() && !isOfferTemplatePlaceholder(renderedText)) {
           textToRender = cleanOfferTemplateDirectives(renderedText.trim(), {
             letterType: isIntern ? "intern" : "fulltime",
@@ -423,6 +432,11 @@ export async function POST(req: NextRequest) {
             signatoryTitle,
           });
         }
+      } else {
+        textToRender = renderOfferTemplateText(
+          textToRender,
+          resolvedFieldValues as Record<string, string>,
+        );
       }
 
       // Native high-fidelity styled PDF generation — matching exact Word template branding

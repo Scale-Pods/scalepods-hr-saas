@@ -243,7 +243,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (!textToRender || isOfferTemplatePlaceholder(textToRender)) {
+      if (tpl?.raw_text && !isOfferTemplatePlaceholder(tpl.raw_text) && tpl.raw_text.includes("{{")) {
+        const cleanedTpl = cleanOfferTemplateDirectives(tpl.raw_text, {
+          letterType: isIntern ? "intern" : "fulltime",
+          isIntern,
+        });
+        textToRender = renderOfferTemplateText(cleanedTpl, values);
+      } else if (!textToRender || isOfferTemplatePlaceholder(textToRender)) {
         if (tpl?.raw_text && !isOfferTemplatePlaceholder(tpl.raw_text)) {
           const cleanedTpl = cleanOfferTemplateDirectives(tpl.raw_text, {
             letterType: isIntern ? "intern" : "fulltime",
@@ -251,6 +257,8 @@ export async function POST(req: NextRequest) {
           });
           textToRender = renderOfferTemplateText(cleanedTpl, values);
         }
+      } else {
+        textToRender = renderOfferTemplateText(textToRender, values);
       }
     }
 

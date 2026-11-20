@@ -315,4 +315,36 @@ TERMS OF ENGAGEMENT`;
     expect(fulltimeLetter).toContain("I, Adepu Harika, accept the above terms");
     expect(fulltimeLetter).toContain("| Signature: __________________ | Date: __________________ | Place: __________________ |");
   });
+
+  it("replaces square-bracketed placeholders like [COMPANY NAME], [Company Website], and [HR Email Address]", () => {
+    const rawTemplate = `[COMPANY NAME]
+[Company Address]
+[Company Website] | [HR Email Address]
+Dear [Candidate Name],
+We offer you [Role] with salary [Salary].
+Sincerely,
+[HR Manager Name]
+[Company Name]`;
+
+    const rendered = renderOfferTemplateText(rawTemplate, {
+      COMPANY_NAME: "ScalePods",
+      COMPANY_WEBSITE: "https://www.scalepods.co",
+      HR_EMAIL_ADDRESS: "aqib@scalepods.tech",
+      CANDIDATE_NAME: "Harika Adepu",
+      ROLE: "Frontend Developer",
+      SALARY: "₹4,00,000",
+      HR_MANAGER_NAME: "Aqib Firdous Khan",
+    });
+
+    expect(rendered).toContain("ScalePods");
+    expect(rendered).toContain("https://www.scalepods.co");
+    expect(rendered).toContain("aqib@scalepods.tech");
+    expect(rendered).toContain("Harika Adepu");
+    expect(rendered).toContain("Frontend Developer");
+    expect(rendered).toContain("₹4,00,000");
+    expect(rendered).toContain("Aqib Firdous Khan");
+    expect(rendered).not.toContain("[COMPANY NAME]");
+    expect(rendered).not.toContain("[Company Website]");
+    expect(rendered).not.toContain("[HR Email Address]");
+  });
 });
