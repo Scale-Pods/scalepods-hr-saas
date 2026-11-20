@@ -193,6 +193,7 @@ export async function POST(req: NextRequest) {
     let pdfFilename: string | undefined;
     let filledDocxPath: string | null = null;
     let generatedPdfPath: string | null = null;
+    let textToRender: string | null = null;
 
     const dynamicVars = (fieldValues.dynamic_variables || fieldValues) as Record<string, string>;
 
@@ -346,7 +347,6 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       let filledBuffer: Buffer | null = null;
-      let textToRender: string | null = null;
       let templateBgImage: Buffer | null = null;
       let templateLogoInfo: DocumentLogoInfo | null = null;
       if (tplRow?.storage_path) {
