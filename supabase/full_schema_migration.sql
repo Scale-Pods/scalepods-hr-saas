@@ -2599,8 +2599,8 @@ begin
       and round_number = v_application.current_round_number
     order by created_at desc
     limit 1;
-    if not found or v_current_round.status not in ('completed','passed','awaiting_review','evaluated','reviewed') then
-      raise exception 'round_not_ready' using detail = 'The current round must be completed before advancing.';
+    if not found or v_current_round.status not in ('completed','incomplete') then
+      raise exception 'round_not_ready' using detail = 'The current round must be completed or marked Incomplete before advancing.';
     end if;
     if v_current_round.status = 'no_show' then
       raise exception 'no_show_rejection_only' using detail = 'A no-show can only be rejected after recruiter confirmation.';
@@ -5765,3 +5765,2184 @@ end;
 $$;
 
 grant execute on function public.get_interviewer_feedback_context(text) to anon, authenticated, service_role;
+
+-- =========================================================================
+-- FILE: 0052_backfill_and_fix_feedback_decision_ledger.sql
+-- =========================================================================
+
+-- 0052_backfill_and_fix_feedback_decision_ledger.sql
+-- Fix submit_interviewer_feedback to ensure decision_ledger has a descriptive rationale,
+-- and backfill existing human feedback ledger records that had null rationales.
+
+create or replace function public.submit_interviewer_feedback(
+  p_token text,
+  p_criteria_scores jsonb,
+  p_overall_score numeric,
+  p_notes text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_link public.interviewer_feedback_links%rowtype;
+  v_round public.round_instances%rowtype;
+  v_application public.applications%rowtype;
+  v_item jsonb;
+  v_score numeric;
+  v_id uuid;
+  v_rationale text;
+begin
+  select * into v_link
+  from public.interviewer_feedback_links
+  where token_hash = encode(sha256(p_token::bytea), 'hex')
+    and used_at is null and no_show_at is null and revoked_at is null
+    and expires_at > now();
+  if not found then
+    raise exception 'feedback_link_invalid' using detail = 'This feedback link is invalid or expired.';
+  end if;
+  if p_criteria_scores is null
+     or jsonb_typeof(p_criteria_scores) is distinct from 'array'
+     or jsonb_array_length(p_criteria_scores) = 0 then
+    raise exception 'feedback_required' using detail = 'Submit a score for each required criterion.';
+  end if;
+  if p_overall_score is null or p_overall_score < 1 or p_overall_score > 100 then
+    raise exception 'feedback_score_invalid' using detail = 'Scores must be between 1 and 100.';
+  end if;
+  for v_item in select value from jsonb_array_elements(p_criteria_scores) loop
+    begin
+      v_score := (v_item->>'score')::numeric;
+    exception when others then
+      raise exception 'feedback_score_invalid' using detail = 'Each criterion needs a numeric score from 1 to 100.';
+    end;
+    if v_score < 1 or v_score > 100 then
+      raise exception 'feedback_score_invalid' using detail = 'Each criterion score must be between 1 and 100.';
+    end if;
+  end loop;
+
+  select * into v_round from public.round_instances where id = v_link.round_instance_id;
+  select * into v_application from public.applications where id = v_link.application_id;
+  if v_round.status <> 'scheduled' or v_application.status in ('rejected','offer_sent') then
+    raise exception 'feedback_not_available' using detail = 'Feedback is no longer available for this interview.';
+  end if;
+  if not exists (
+    select 1 from public.campaigns c
+    where c.id = v_round.campaign_id and c.account_id = v_link.account_id and c.status = 'open'
+  ) then
+    raise exception 'job_closed' using detail = 'Feedback cannot be submitted for a closed job.';
+  end if;
+
+  insert into public.interviewer_feedback (
+    account_id, application_id, round_instance_id, team_member_id,
+    criteria_scores, overall_score, notes
+  ) values (
+    v_link.account_id, v_link.application_id, v_link.round_instance_id,
+    v_link.team_member_id, p_criteria_scores, p_overall_score, p_notes
+  ) returning id into v_id;
+
+  insert into public.application_evaluations (
+    account_id, application_id, round_instance_id, score_type,
+    score, criteria_scores, evidence, notes
+  ) values (
+    v_link.account_id, v_link.application_id, v_link.round_instance_id, 'human_feedback',
+    p_overall_score, p_criteria_scores, '[]'::jsonb, p_notes
+  );
+
+  v_rationale := coalesce(
+    nullif(trim(p_notes), ''),
+    'Human interview evaluation completed with score of ' || round(p_overall_score)::text || '/100.'
+  );
+
+  insert into public.decision_ledger (
+    account_id, candidate_id, application_id, round_instance_id,
+    stage, score, score_type, rationale, source
+  ) values (
+    v_link.account_id, v_application.candidate_id, v_link.application_id, v_link.round_instance_id,
+    'round', p_overall_score, 'human_feedback', v_rationale, 'manual'
+  );
+
+  update public.interviewer_feedback_links set used_at = now() where id = v_link.id;
+  update public.round_instances set status = 'completed' where id = v_round.id;
+  return v_id;
+end;
+$$;
+
+-- Backfill any existing human_feedback decision_ledger records that have NULL or empty rationale
+update public.decision_ledger
+set rationale = 'Human interview evaluation completed with score of ' || round(coalesce(score, 0))::text || '/100.'
+where score_type = 'human_feedback'
+  and (rationale is null or trim(rationale) = '');
+
+grant execute on function public.submit_interviewer_feedback(text, jsonb, numeric, text) to anon, authenticated, service_role;
+
+-- =========================================================================
+-- FILE: 0053_outreach_messages_and_booking_race_guard.sql
+-- =========================================================================
+
+-- Migration 0053: Outreach messages persistence, WhatsApp delivery states,
+-- booking race-condition reservation guard, and teammate calendar invite tokens.
+
+-- =========================================================================
+-- 1. OUTREACH LOG PERSISTENCE (Subject, Body, Provider Message ID, Recipient)
+-- =========================================================================
+alter table public.outreach_log
+  add column if not exists subject text,
+  add column if not exists message_body text,
+  add column if not exists provider_message_id text,
+  add column if not exists recipient text,
+  add column if not exists metadata jsonb default '{}'::jsonb;
+
+-- Ensure delivery_state check allows 'accepted', 'delivered', 'read', 'sent', etc.
+alter table public.outreach_log
+  drop constraint if exists outreach_log_delivery_state_check;
+
+alter table public.outreach_log
+  add constraint outreach_log_delivery_state_check check
+    (delivery_state in (
+      'queued',
+      'sent',
+      'accepted',
+      'delivered',
+      'read',
+      'failed',
+      'bounced',
+      'suppressed',
+      'held_for_window',
+      'held_for_cap',
+      'attempted',
+      'connected'
+    ));
+
+create index if not exists outreach_log_provider_msg_idx
+  on public.outreach_log (provider_message_id)
+  where provider_message_id is not null;
+
+create index if not exists outreach_log_candidate_channel_idx
+  on public.outreach_log (candidate_id, channel, sent_at desc);
+
+create index if not exists outreach_log_recipient_idx
+  on public.outreach_log (recipient)
+  where recipient is not null;
+
+-- =========================================================================
+-- 2. TEAM MEMBER CALENDAR INVITE TOKENS
+-- =========================================================================
+create table if not exists public.team_member_invites (
+  id uuid primary key default gen_random_uuid(),
+  team_member_id uuid not null references public.team_members(id) on delete cascade,
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  token text not null unique,
+  expires_at timestamptz not null default (now() + interval '7 days'),
+  created_at timestamptz not null default now()
+);
+
+alter table public.team_member_invites enable row level security;
+
+-- Policy: Account owners can view and manage invites
+drop policy if exists team_member_invites_account_policy on public.team_member_invites;
+create policy team_member_invites_account_policy on public.team_member_invites
+  for all using (account_id = auth.uid())
+  with check (account_id = auth.uid());
+
+grant select, insert, update, delete on public.team_member_invites to authenticated;
+grant all on public.team_member_invites to service_role;
+
+create index if not exists team_member_invites_token_idx on public.team_member_invites(token);
+create index if not exists team_member_invites_member_idx on public.team_member_invites(team_member_id);
+
+-- =========================================================================
+-- 3. CALENDAR ATOMIC RESERVATION GUARD (Double-booking / Race condition prevention)
+-- =========================================================================
+-- Pre-reserve a slot atomically in the database BEFORE Google Calendar event is created.
+-- If another candidate attempts to book the same slot at the same millisecond,
+-- the second candidate fails here, preventing duplicate calendar events and emails.
+create or replace function public.reserve_interview_slot(
+  p_round_instance_id uuid,
+  p_token text,
+  p_slot_start timestamptz,
+  p_slot_end timestamptz,
+  p_is_reschedule boolean default false
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_round public.round_instances%rowtype;
+  v_cr public.campaign_rounds%rowtype;
+  v_job public.campaigns%rowtype;
+  v_app public.applications%rowtype;
+  v_interviewer_email text;
+  v_resched_count int;
+  v_reservation_id text;
+begin
+  if coalesce(auth.role(),'') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+
+  if not public.candidate_token_valid(p_token, 'booking', p_round_instance_id) then
+    raise exception 'booking_token_invalid' using errcode='28000';
+  end if;
+
+  select * into v_round
+  from public.round_instances
+  where id = p_round_instance_id
+  for update;
+
+  if not found or v_round.round_type <> 'human_interview' then
+    raise exception 'round_not_bookable';
+  end if;
+
+  select * into v_job
+  from public.campaigns
+  where id = v_round.campaign_id and account_id = v_round.account_id;
+
+  if not found or v_job.status <> 'open' then
+    raise exception 'job_closed';
+  end if;
+
+  select * into v_app
+  from public.applications
+  where id = v_round.application_id and account_id = v_round.account_id;
+
+  if not found or v_app.status in ('rejected', 'on_hold', 'offer_sent') then
+    raise exception 'application_not_bookable';
+  end if;
+
+  select * into v_cr
+  from public.campaign_rounds
+  where campaign_id = v_round.campaign_id and round_number = v_round.round_number;
+
+  v_interviewer_email := coalesce(
+    v_cr.interviewer_email,
+    (select tm.email from public.team_members tm where tm.id = v_cr.assigned_team_member_id),
+    ''
+  );
+
+  -- Concurrency Control: Advisory transaction lock on the interviewer's calendar
+  perform pg_advisory_xact_lock(hashtext('booking_interviewer:' || coalesce(nullif(v_interviewer_email, ''), v_round.account_id::text)));
+
+  v_resched_count := coalesce(v_round.reschedule_count, 0);
+
+  if p_slot_start is null or p_slot_end is null or p_slot_start <= now() or p_slot_end <= p_slot_start
+     or v_cr.duration_minutes is null
+     or extract(epoch from (p_slot_end - p_slot_start)) / 60 <> v_cr.duration_minutes then
+    raise exception 'invalid_interview_slot';
+  end if;
+
+  -- Verify slot is not already booked or reserved by another candidate
+  if exists (
+    select 1 from public.calendar_events e
+    where e.round_instance_id <> v_round.id
+      and e.interviewer_email = v_interviewer_email
+      and e.slot_start < p_slot_end
+      and e.slot_end > p_slot_start
+  ) then
+    raise exception 'interview_slot_unavailable' using errcode='45000';
+  end if;
+
+  v_reservation_id := 'pending_reservation_' || gen_random_uuid()::text;
+
+  if (p_is_reschedule or v_round.status = 'scheduled') then
+    if v_resched_count >= 3 then
+      raise exception 'max_reschedules_exceeded' using errcode='55001';
+    end if;
+
+    update public.calendar_events
+    set slot_start = p_slot_start,
+        slot_end = p_slot_end,
+        event_id = v_reservation_id
+    where round_instance_id = v_round.id;
+
+    if not found then
+      insert into public.calendar_events(account_id, round_instance_id, interviewer_email, event_id, slot_start, slot_end)
+      values(v_round.account_id, v_round.id, v_interviewer_email, v_reservation_id, p_slot_start, p_slot_end);
+    end if;
+  else
+    if v_round.status <> 'pending' then
+      raise exception 'booking_state_conflict' using errcode='55000';
+    end if;
+
+    delete from public.calendar_events
+    where round_instance_id = v_round.id and event_id like 'pending_reservation_%';
+
+    insert into public.calendar_events(account_id, round_instance_id, interviewer_email, event_id, slot_start, slot_end)
+    values(v_round.account_id, v_round.id, v_interviewer_email, v_reservation_id, p_slot_start, p_slot_end);
+  end if;
+
+  return jsonb_build_object(
+    'success', true,
+    'reservation_id', v_reservation_id,
+    'interviewer_email', v_interviewer_email,
+    'account_id', v_round.account_id,
+    'campaign_id', v_round.campaign_id,
+    'round_number', v_round.round_number
+  );
+end;
+$$;
+
+revoke all on function public.reserve_interview_slot(uuid,text,timestamptz,timestamptz,boolean) from public,anon,authenticated;
+grant execute on function public.reserve_interview_slot(uuid,text,timestamptz,timestamptz,boolean) to service_role;
+
+-- Rollback / cancel pending reservation if Google Calendar event creation fails
+create or replace function public.release_interview_reservation(
+  p_round_instance_id uuid,
+  p_reservation_id text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce(auth.role(),'') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+
+  if p_reservation_id is not null then
+    delete from public.calendar_events
+    where round_instance_id = p_round_instance_id and event_id = p_reservation_id;
+  else
+    delete from public.calendar_events
+    where round_instance_id = p_round_instance_id and event_id like 'pending_reservation_%';
+  end if;
+end;
+$$;
+
+revoke all on function public.release_interview_reservation(uuid,text) from public,anon,authenticated;
+grant execute on function public.release_interview_reservation(uuid,text) to service_role;
+
+-- Update book_interview_slot to finalize any pending reservation cleanly
+create or replace function public.book_interview_slot(
+  p_round_instance_id uuid,
+  p_token text,
+  p_slot_start timestamptz,
+  p_slot_end timestamptz,
+  p_event_id text,
+  p_meet_link text,
+  p_is_reschedule boolean default false
+) returns void language plpgsql security definer set search_path=public
+as $$
+declare
+  v_round public.round_instances%rowtype;
+  v_cr public.campaign_rounds%rowtype;
+  v_job public.campaigns%rowtype;
+  v_interviewer_email text;
+  v_resched_count int;
+begin
+  if coalesce(auth.role(),'') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+
+  if not public.candidate_token_valid(p_token, 'booking', p_round_instance_id) then
+    raise exception 'booking_token_invalid' using errcode='28000';
+  end if;
+
+  select * into v_round
+  from public.round_instances
+  where id = p_round_instance_id
+  for update;
+
+  if not found or v_round.round_type <> 'human_interview' then
+    raise exception 'round_not_bookable';
+  end if;
+
+  select * into v_job
+  from public.campaigns
+  where id = v_round.campaign_id and account_id = v_round.account_id;
+
+  if not found or v_job.status <> 'open' then
+    raise exception 'job_closed';
+  end if;
+
+  select * into v_cr
+  from public.campaign_rounds
+  where campaign_id = v_round.campaign_id and round_number = v_round.round_number;
+
+  v_interviewer_email := coalesce(
+    v_cr.interviewer_email,
+    (select tm.email from public.team_members tm where tm.id = v_cr.assigned_team_member_id),
+    ''
+  );
+
+  -- Transaction advisory lock on interviewer
+  perform pg_advisory_xact_lock(hashtext('booking_interviewer:' || coalesce(nullif(v_interviewer_email, ''), v_round.account_id::text)));
+
+  v_resched_count := coalesce(v_round.reschedule_count, 0);
+
+  -- Reschedule Branch
+  if (p_is_reschedule or v_round.status = 'scheduled') and (v_round.event_id is not null or p_event_id is not null) then
+    if v_resched_count >= 3 then
+      raise exception 'max_reschedules_exceeded' using errcode='55001';
+    end if;
+
+    -- Verify slot is not already booked by another candidate
+    if exists (
+      select 1 from public.calendar_events e
+      where e.round_instance_id <> v_round.id
+        and e.interviewer_email = v_interviewer_email
+        and e.slot_start < p_slot_end
+        and e.slot_end > p_slot_start
+    ) then
+      raise exception 'interview_slot_unavailable' using errcode='45000';
+    end if;
+
+    update public.calendar_events
+    set slot_start = p_slot_start,
+        slot_end = p_slot_end,
+        event_id = coalesce(p_event_id, event_id)
+    where round_instance_id = v_round.id;
+
+    if not found then
+      insert into public.calendar_events(account_id, round_instance_id, interviewer_email, event_id, slot_start, slot_end)
+      values(v_round.account_id, v_round.id, v_interviewer_email, coalesce(p_event_id, v_round.event_id, ''), p_slot_start, p_slot_end);
+    end if;
+
+    update public.round_instances
+    set scheduled_at = p_slot_start,
+        event_id = coalesce(p_event_id, event_id),
+        meet_link = coalesce(p_meet_link, meet_link),
+        conferencing_link = coalesce(p_meet_link, conferencing_link),
+        reschedule_count = v_resched_count + 1
+    where id = v_round.id;
+
+    return;
+
+  -- Initial Booking Branch
+  elsif v_round.status = 'pending' and not p_is_reschedule then
+    -- Verify slot is not booked by another candidate
+    if exists (
+      select 1 from public.calendar_events e
+      where e.round_instance_id <> v_round.id
+        and e.interviewer_email = v_interviewer_email
+        and e.slot_start < p_slot_end
+        and e.slot_end > p_slot_start
+    ) then
+      raise exception 'interview_slot_unavailable' using errcode='45000';
+    end if;
+
+    -- Update or insert calendar_events record
+    update public.calendar_events
+    set slot_start = p_slot_start,
+        slot_end = p_slot_end,
+        event_id = p_event_id
+    where round_instance_id = v_round.id;
+
+    if not found then
+      insert into public.calendar_events(account_id, round_instance_id, interviewer_email, event_id, slot_start, slot_end)
+      values(v_round.account_id, v_round.id, v_interviewer_email, p_event_id, p_slot_start, p_slot_end);
+    end if;
+
+    update public.round_instances
+    set status = 'scheduled',
+        scheduled_at = p_slot_start,
+        event_id = p_event_id,
+        meet_link = p_meet_link,
+        conferencing_link = p_meet_link,
+        reschedule_count = 0
+    where id = v_round.id;
+
+    return;
+
+  else
+    raise exception 'booking_state_conflict' using errcode='55000';
+  end if;
+end;
+$$;
+
+revoke all on function public.book_interview_slot(uuid,text,timestamptz,timestamptz,text,text,boolean) from public,anon,authenticated;
+grant execute on function public.book_interview_slot(uuid,text,timestamptz,timestamptz,text,text,boolean) to service_role;
+
+-- =========================================================================
+-- FILE: 0054_assignment_notification_templates.sql
+-- =========================================================================
+
+-- Migration 0054: Practical Take-Home Assignment Templates & Links
+-- Ensures candidates invited to assignment rounds receive the direct link and button to their assignment portal.
+
+-- 1. Update / Insert email template for assignment_issued with prominent View & Submit button
+insert into public.notification_templates (stage, channel, approval_state, subject, body_html, meta_template_name, locale)
+values (
+  'assignment_issued',
+  'email',
+  'approved',
+  'Assignment Round: {{job_title}} - {{candidate_name}} | {{company_name}}',
+  '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://inkfjgmnxkfitnegpiej.supabase.co/storage/v1/object/public/Logo/scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">Practical Take-Home Assignment</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Congratulations on moving to the <strong>practical take-home assignment</strong> round for the <strong>{{job_title}}</strong> role at <strong>{{company_name}}</strong>!</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Please review the assignment brief, requirements, and submit your solution before the deadline using the button below:</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{assignment_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">View &amp; Submit Assignment</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">If you face any issues accessing the assignment or have any questions, please reply directly to this email.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>',
+  null,
+  'en'
+)
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
+  body_html = excluded.body_html,
+  subject = excluded.subject,
+  updated_at = now();
+
+-- 2. Update / Insert email template for assignment_checkin (Cadence Midpoint Reminder) with button
+insert into public.notification_templates (stage, channel, approval_state, subject, body_html, meta_template_name, locale)
+values (
+  'assignment_checkin',
+  'email',
+  'approved',
+  'Assignment Check-in: {{job_title}} - {{candidate_name}} | {{company_name}}',
+  '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://inkfjgmnxkfitnegpiej.supabase.co/storage/v1/object/public/Logo/scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">Assignment Check-in</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Just checking in on your take-home assignment for the <strong>{{job_title}}</strong> role!</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">You are <strong>halfway</strong> to the deadline. Use the button below to review requirements or continue your submission:</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{assignment_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Continue Assignment</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">If you face any issues or have questions, please feel free to reach out.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>',
+  null,
+  'en'
+)
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
+  body_html = excluded.body_html,
+  subject = excluded.subject,
+  updated_at = now();
+
+-- 3. Update / Insert email template for assignment_reminder_24h (Cadence 24h Deadline Reminder) with button
+insert into public.notification_templates (stage, channel, approval_state, subject, body_html, meta_template_name, locale)
+values (
+  'assignment_reminder_24h',
+  'email',
+  'approved',
+  'Assignment Due in 24 Hours: {{job_title}} - {{candidate_name}} | {{company_name}}',
+  '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://inkfjgmnxkfitnegpiej.supabase.co/storage/v1/object/public/Logo/scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">Assignment Due in 24 Hours</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Just a friendly reminder that your take-home assignment for the <strong>{{job_title}}</strong> role is due in <strong>24 hours</strong>.</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{assignment_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Submit Assignment</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">Please ensure your files or solution text are submitted before the deadline.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>',
+  null,
+  'en'
+)
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
+  body_html = excluded.body_html,
+  subject = excluded.subject,
+  updated_at = now();
+
+-- 4. Register WhatsApp template for assignment_issued (assignment_invite_v1)
+insert into public.notification_templates (stage, channel, approval_state, subject, body_html, meta_template_name, locale)
+values (
+  'assignment_issued',
+  'whatsapp',
+  'approved',
+  null,
+  'Hi {{1}}, congratulations on moving forward to the practical assignment round for the {{2}} role at {{3}}! Please review your assignment details and submit it here: {{4}}. Good luck!',
+  'assignment_invite_v1',
+  'en'
+)
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
+  body_html = excluded.body_html,
+  meta_template_name = excluded.meta_template_name,
+  subject = excluded.subject,
+  updated_at = now();
+
+-- 5. Register WhatsApp template for assignment_reminder_24h (assignment_reminder_24h)
+insert into public.notification_templates (stage, channel, approval_state, subject, body_html, meta_template_name, locale)
+values (
+  'assignment_reminder_24h',
+  'whatsapp',
+  'approved',
+  null,
+  'Hi {{1}}, a reminder that your assignment for the {{2}} role at {{3}} is due in 24 hours. Submit it here: {{4}}. Good luck!',
+  'assignment_reminder_24h',
+  'en'
+)
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
+  body_html = excluded.body_html,
+  meta_template_name = excluded.meta_template_name,
+  subject = excluded.subject,
+  updated_at = now();
+
+-- 6. Reload PostgREST schema cache
+notify pgrst, 'reload schema';
+
+-- =========================================================================
+-- FILE: 0055_fix_assignment_cascade_delete.sql
+-- =========================================================================
+
+-- Migration 0055: Fix assignment cascade deletion and assignment context RPC
+--
+-- 1. Allow DELETE on public.assignments (cascading deletes when an application, round, or campaign is removed).
+-- 2. Update get_assignment_context RPC to return campaign.number_of_rounds and round.brief_text.
+
+create or replace function public.guard_assignment_immutable_fields()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  -- Allow DELETE (e.g. cascading deletes when an application, round, or campaign is removed)
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+
+  if row(old.application_id, old.round_instance_id, old.brief_text, old.deadline_at)
+     is distinct from row(new.application_id, new.round_instance_id, new.brief_text, new.deadline_at) then
+    raise exception 'assignment_immutable' using detail = 'Assignment instructions and deadlines cannot be changed or reopened.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists assignments_immutable_fields on public.assignments;
+create trigger assignments_immutable_fields
+before update or delete on public.assignments
+for each row execute function public.guard_assignment_immutable_fields();
+
+-- Update get_assignment_context RPC
+create or replace function public.get_assignment_context(
+  p_round_instance_id uuid,
+  p_token text,
+  p_tz_offset_minutes int default 0
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_ri round_instances%rowtype;
+declare v_camp campaigns%rowtype;
+declare v_cr campaign_rounds%rowtype;
+declare v_assign assignments%rowtype;
+declare v_sub jsonb;
+begin
+  if not public.candidate_token_valid(p_token, 'assignment', p_round_instance_id) then
+    raise exception 'invalid_link' using detail = 'This assignment link is invalid or has expired.';
+  end if;
+  select * into v_ri from round_instances where id = p_round_instance_id;
+  if not found then raise exception 'invalid_link' using detail = 'Round not found.'; end if;
+  select * into v_camp from campaigns where id = v_ri.campaign_id;
+  select * into v_cr from campaign_rounds
+    where campaign_id = v_ri.campaign_id and round_number = v_ri.round_number;
+  select * into v_assign from assignments
+    where round_instance_id = v_ri.id;
+
+  select jsonb_build_object(
+    'id', s.id, 'text_response', s.text_response, 'file_paths', s.file_paths, 'submitted_at', s.submitted_at
+  ) into v_sub
+  from assignment_submissions s
+  where s.round_instance_id = v_ri.id
+  order by s.submitted_at desc
+  limit 1;
+
+  return jsonb_build_object(
+    'round_instance', jsonb_build_object(
+      'id', v_ri.id, 'round_type', v_ri.round_type,
+      'status', v_ri.status, 'deadline_at', coalesce(v_assign.deadline_at, v_ri.deadline_at)
+    ),
+    'campaign', jsonb_build_object(
+      'id', v_camp.id, 'name', v_camp.name, 'jd_text', v_camp.jd_text,
+      'number_of_rounds', coalesce(v_camp.number_of_rounds, 1)
+    ),
+    'round', jsonb_build_object(
+      'round_number', v_cr.round_number, 'round_type', v_cr.round_type,
+      'cutoff_score', v_cr.cutoff_score,
+      'brief_text', coalesce(v_assign.brief_text, v_cr.brief_text)
+    ),
+    'submission', v_sub
+  );
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- =========================================================================
+-- FILE: 0056_fix_proctoring_events_rpc.sql
+-- =========================================================================
+
+-- Restore proctoring_events insert_proctoring_event RPC to match the actual
+-- proctoring_events table schema (session_id, event_type, severity, detail).
+create or replace function public.insert_proctoring_event(
+  p_session_id uuid,
+  p_token text,
+  p_event_type text,
+  p_detail text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1 from public.interview_sessions
+    where id = p_session_id and (expires_at is null or expires_at > now())
+  ) then
+    raise exception 'invalid_link' using detail = 'Invalid or expired session link.';
+  end if;
+  insert into public.proctoring_events (session_id, event_type, severity, detail)
+  values (p_session_id, p_event_type, 'warning', p_detail);
+end $$;
+
+-- =========================================================================
+-- FILE: 0056_offer_acceptance_and_rejection.sql
+-- =========================================================================
+
+-- Migration 0056: Support offer acceptance and rejection states
+-- Allows candidate offer decisions (accepted / rejected) from email workflows & candidate responses
+
+-- 1. Expand applications.status check constraint
+alter table public.applications drop constraint if exists applications_status_check;
+alter table public.applications add constraint applications_status_check
+  check (status in ('active','on_hold','incomplete','rejected','offer_ready','offer_sent','offer_accepted','offer_rejected','offer_declined'));
+
+-- 2. Expand offers.status check constraint
+alter table public.offers drop constraint if exists offers_status_check;
+alter table public.offers add constraint offers_status_check
+  check (status in ('awaiting_company_signature','sent_to_candidate','void','accepted','rejected','declined'));
+
+-- 3. Add offer decision timestamps and response details to offers table
+alter table public.offers
+  add column if not exists accepted_at timestamptz,
+  add column if not exists rejected_at timestamptz,
+  add column if not exists signed_document_url text,
+  add column if not exists candidate_response_notes text;
+
+-- 4. Add comments
+comment on column public.offers.accepted_at is 'Timestamp when candidate accepted the offer via email or signing';
+comment on column public.offers.rejected_at is 'Timestamp when candidate declined or rejected the offer';
+comment on column public.offers.signed_document_url is 'URL to signed offer letter or NDA attachment';
+comment on column public.offers.candidate_response_notes is 'AI-extracted summary notes from candidate reply email';
+
+-- =========================================================================
+-- FILE: 0057_document_verification_stage.sql
+-- =========================================================================
+
+-- Migration 0057: Support Document Verification Stage
+-- Inserts customizable Document Verification stage before Offers across campaigns
+
+-- 1. Expand applications.current_stage check constraint to allow 'document_verification'
+alter table public.applications drop constraint if exists applications_current_stage_check;
+alter table public.applications add constraint applications_current_stage_check
+  check (current_stage in ('needs_review', 'round', 'document_verification', 'offer'));
+
+-- 2. Add document verification tracking columns to applications table
+alter table public.applications
+  add column if not exists requested_documents jsonb default '[]'::jsonb,
+  add column if not exists documents_status text default 'not_requested'
+    check (documents_status in ('not_requested', 'requested', 'partially_verified', 'verified', 'rejected')),
+  add column if not exists documents_requested_at timestamptz,
+  add column if not exists documents_verified_at timestamptz;
+
+comment on column public.applications.requested_documents is 'Array of requested verification documents with status, e.g. [{"id": "doc_1", "name": "Govt Photo ID", "status": "pending"}]';
+comment on column public.applications.documents_status is 'Overall document verification status: not_requested, requested, partially_verified, verified, rejected';
+comment on column public.applications.documents_requested_at is 'Timestamp when document verification request email was dispatched';
+comment on column public.applications.documents_verified_at is 'Timestamp when all documents were manually marked as verified';
+
+-- 3. Drop existing decide_application overloads to prevent ambiguity
+drop function if exists public.decide_application(uuid, text, text, boolean);
+drop function if exists public.decide_application(uuid, text, text);
+
+-- 4. Re-create decide_application with complete account_id, outbox, and document_verification handling
+create or replace function public.decide_application(
+  p_application_id uuid,
+  p_action text,
+  p_rejection_reason text default null,
+  p_confirm_rejection boolean default false
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_application public.applications%rowtype;
+  v_campaign public.campaigns%rowtype;
+  v_current_round public.round_instances%rowtype;
+  v_round public.campaign_rounds%rowtype;
+  v_next_number integer;
+  v_next_round public.campaign_rounds%rowtype;
+  v_new_round_id uuid;
+  v_deadline timestamptz;
+  v_event_type text;
+  v_key text;
+begin
+  if p_action not in ('advance','reject','hold','resume') then
+    raise exception 'invalid_application_action' using detail = 'Choose Advance, Reject, Hold, or Resume.';
+  end if;
+
+  select * into v_application
+  from public.applications
+  where id = p_application_id
+  for update;
+  if not found then
+    raise exception 'application_not_found' using detail = 'The application was not found.';
+  end if;
+
+  if coalesce(auth.role(), '') <> 'service_role' and auth.uid() is distinct from v_application.account_id then
+    raise exception 'not_authorized' using detail = 'The application is outside this workspace.';
+  end if;
+
+  select * into v_campaign
+  from public.campaigns
+  where id = v_application.campaign_id;
+  if not found then
+    raise exception 'campaign_not_found';
+  end if;
+
+  if v_campaign.status not in ('open', 'on') then
+    raise exception 'job_closed' using detail = 'A closed job does not allow hiring actions.';
+  end if;
+
+  if p_action = 'hold' then
+    if v_application.status = 'on_hold' then
+      raise exception 'application_already_on_hold' using detail = 'This application is already on hold.';
+    end if;
+    update public.applications
+    set status_before_hold = status, status = 'on_hold'
+    where id = v_application.id;
+    return jsonb_build_object('application_id', v_application.id, 'status', 'on_hold');
+  elsif p_action = 'resume' then
+    if v_application.status <> 'on_hold' then
+      raise exception 'application_not_on_hold' using detail = 'This application is not on hold.';
+    end if;
+    update public.applications
+    set status = coalesce(status_before_hold, 'active'), status_before_hold = null
+    where id = v_application.id;
+    return jsonb_build_object('application_id', v_application.id, 'status', coalesce(v_application.status_before_hold, 'active'));
+  end if;
+
+  if v_application.status = 'on_hold' then
+    raise exception 'application_on_hold' using detail = 'Resume this application before advancing or rejecting it.';
+  end if;
+
+  if p_action = 'reject' then
+    if v_application.current_stage = 'round' and v_application.current_round_number is not null then
+      select * into v_current_round
+      from public.round_instances
+      where application_id = v_application.id
+        and round_number = v_application.current_round_number
+      order by created_at desc
+      limit 1;
+      if found and v_current_round.status = 'no_show' then
+        null;
+      elsif found and v_current_round.round_type = 'human_interview'
+            and v_current_round.status = 'completed'
+            and not exists (
+              select 1 from public.interviewer_feedback f
+              where f.round_instance_id = v_current_round.id
+            ) then
+        raise exception 'feedback_required' using detail = 'Submit interviewer feedback before deciding this round.';
+      end if;
+    end if;
+
+    update public.applications
+    set status = 'rejected', status_before_hold = null,
+        rejection_reason = nullif(btrim(p_rejection_reason), '')
+    where id = v_application.id;
+
+    insert into public.workflow_outbox (
+      account_id, application_id, event_type, idempotency_key, payload
+    ) values (
+      coalesce(v_application.account_id, v_campaign.account_id), v_application.id, 'candidate_rejected',
+      'application:' || v_application.id::text || ':rejected',
+      jsonb_build_object('campaign_id', v_application.campaign_id, 'reason', nullif(btrim(p_rejection_reason), ''))
+    ) on conflict (idempotency_key) do nothing;
+
+    return jsonb_build_object('application_id', v_application.id, 'status', 'rejected');
+  end if;
+
+  if v_application.status = 'rejected' then
+    raise exception 'application_rejected' using detail = 'A rejected application is final.';
+  end if;
+
+  if v_application.current_stage = 'offer' or v_application.status in ('offer_sent', 'offer_accepted', 'offer_rejected', 'offer_declined') then
+    raise exception 'offer_stage_reached' using detail = 'This application has already reached the offer stage.';
+  end if;
+
+  -- Advance action logic
+  if p_action = 'advance' then
+    -- Handle transition from document_verification stage to offer stage
+    if v_application.current_stage = 'document_verification' then
+      update public.applications
+      set current_stage = 'offer', current_round_number = null, status = 'offer_ready'
+      where id = v_application.id;
+      return jsonb_build_object('application_id', v_application.id, 'status', 'offer_ready', 'stage', 'offer');
+    end if;
+
+    if v_application.current_stage = 'needs_review' then
+      v_next_number := 1;
+    else
+      select * into v_current_round
+      from public.round_instances
+      where application_id = v_application.id
+        and round_number = v_application.current_round_number
+      order by created_at desc
+      limit 1;
+      if not found or v_current_round.status not in ('completed','incomplete','passed','awaiting_review') then
+        raise exception 'round_not_ready' using detail = 'The current round must be completed before advancing.';
+      end if;
+      if v_current_round.status = 'no_show' then
+        raise exception 'no_show_rejection_only' using detail = 'A no-show can only be rejected after recruiter confirmation.';
+      end if;
+      v_next_number := coalesce(v_application.current_round_number, 0) + 1;
+    end if;
+
+    -- If past final configured round, advance into document_verification stage
+    if v_next_number > coalesce(v_campaign.number_of_rounds, 1) then
+      update public.applications
+      set current_stage = 'document_verification', current_round_number = null, status = 'active'
+      where id = v_application.id;
+      return jsonb_build_object('application_id', v_application.id, 'status', 'active', 'stage', 'document_verification');
+    end if;
+
+    select * into v_next_round
+    from public.campaign_rounds
+    where campaign_id = v_application.campaign_id and round_number = v_next_number;
+    if not found then
+      -- Fallback to document_verification if next round is missing
+      update public.applications
+      set current_stage = 'document_verification', current_round_number = null, status = 'active'
+      where id = v_application.id;
+      return jsonb_build_object('application_id', v_application.id, 'status', 'active', 'stage', 'document_verification');
+    end if;
+
+    v_deadline := null;
+    if v_next_round.round_type = 'assignment' then
+      v_deadline := now() + make_interval(hours => coalesce(v_next_round.assignment_deadline_hours, 48));
+    end if;
+
+    insert into public.round_instances (
+      account_id, candidate_id, campaign_id, application_id,
+      round_number, round_type, status, deadline_at
+    ) values (
+      coalesce(v_application.account_id, v_campaign.account_id),
+      v_application.candidate_id,
+      v_application.campaign_id,
+      v_application.id,
+      v_next_number,
+      v_next_round.round_type,
+      'pending',
+      v_deadline
+    ) returning id into v_new_round_id;
+
+    if v_next_round.round_type = 'assignment' then
+      insert into public.assignments (
+        account_id, application_id, round_instance_id, brief_text, deadline_at
+      ) values (
+        coalesce(v_application.account_id, v_campaign.account_id),
+        v_application.id,
+        v_new_round_id,
+        v_next_round.brief_text,
+        v_deadline
+      );
+    end if;
+
+    update public.applications
+    set current_stage = 'round', current_round_number = v_next_number, status = 'active'
+    where id = v_application.id;
+
+    v_event_type := case when v_next_round.round_type = 'ai_voice_call'
+      then 'voice_call_ready' else 'round_invitation' end;
+    v_key := 'application:' || v_application.id::text || ':round:' || v_next_number::text || ':' || v_event_type;
+    insert into public.workflow_outbox (
+      account_id, application_id, round_instance_id, event_type, idempotency_key, payload
+    ) values (
+      coalesce(v_application.account_id, v_campaign.account_id),
+      v_application.id,
+      v_new_round_id,
+      v_event_type,
+      v_key,
+      jsonb_build_object('campaign_id', v_application.campaign_id, 'round_number', v_next_number, 'round_type', v_next_round.round_type)
+    ) on conflict (idempotency_key) do nothing;
+
+    return jsonb_build_object(
+      'application_id', v_application.id,
+      'status', 'active',
+      'stage', 'round',
+      'round_number', v_next_number,
+      'round_instance_id', v_new_round_id,
+      'event_type', v_event_type
+    );
+  end if;
+
+  raise exception 'unsupported_action';
+end;
+$$;
+
+revoke all on function public.decide_application(uuid, text, text, boolean) from public, anon;
+grant execute on function public.decide_application(uuid, text, text, boolean) to authenticated, service_role;
+
+-- =========================================================================
+-- FILE: 0058_ai_interview_whatsapp_template.sql
+-- =========================================================================
+
+-- Migration 0058: Register AI Interview WhatsApp Notification Template
+-- Ensures candidates invited to AI video/audio interviews receive their direct interview link via WhatsApp.
+
+insert into public.notification_templates (
+  stage,
+  channel,
+  approval_state,
+  subject,
+  body_html,
+  meta_template_name,
+  locale
+)
+values (
+  'ai_interview_invite',
+  'whatsapp',
+  'approved',
+  null,
+  'Hi {{1}}, congratulations on moving forward for the {{2}} role at {{3}}! You have been invited to complete your AI-powered interview. Please access your interview room and start using the link below: {{4}}',
+  'ai_interview_invite_v1',
+  'en'
+)
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
+  body_html = excluded.body_html,
+  meta_template_name = excluded.meta_template_name,
+  updated_at = now();
+
+-- Reload PostgREST schema cache
+notify pgrst, 'reload schema';
+
+-- =========================================================================
+-- FILE: 0058_offer_templates.sql
+-- =========================================================================
+
+-- Migration 0058: Company-Wide Offer Letter Templates
+-- Adds a reusable offer_templates table (account-scoped) and links it to the offers table.
+-- Template files are stored in Supabase Storage bucket "offer-templates".
+
+-- 1. Create offer_templates table (idempotent)
+create table if not exists public.offer_templates (
+  id              uuid primary key default gen_random_uuid(),
+  account_id      uuid not null references public.accounts(id) on delete cascade,
+  name            text not null,
+  file_name       text not null,
+  storage_path    text not null,         -- path in "offer-templates" bucket
+  raw_text        text not null,         -- extracted plain text (used for variable detection + preview)
+  html_content    text,                  -- structured HTML extracted from DOCX (tables, headings, lists)
+  variables       text[] not null default '{}',  -- detected {{VAR_NAME}} placeholders
+  is_default      boolean not null default false,
+  created_by      uuid references auth.users(id) on delete set null,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+-- Ensure columns exist if an older offer_templates table was already present
+alter table public.offer_templates
+  add column if not exists file_name    text,
+  add column if not exists storage_path text,
+  add column if not exists raw_text     text,
+  add column if not exists html_content text,
+  add column if not exists variables    text[] not null default '{}',
+  add column if not exists is_default   boolean not null default false,
+  add column if not exists created_by   uuid references auth.users(id) on delete set null,
+  add column if not exists created_at   timestamptz not null default now(),
+  add column if not exists updated_at   timestamptz not null default now();
+
+comment on table  public.offer_templates                    is 'Company-wide reusable offer letter templates, one per upload.';
+comment on column public.offer_templates.storage_path       is 'Path inside the "offer-templates" Supabase Storage bucket.';
+comment on column public.offer_templates.raw_text           is 'Extracted text with {{VAR_NAME}} placeholders intact, used for preview rendering and variable detection.';
+comment on column public.offer_templates.variables          is 'Non-standard {{VAR_NAME}} placeholders found in the template text, e.g. DEPARTMENT, LOCATION.';
+comment on column public.offer_templates.is_default         is 'At most one template per account should have is_default=true (enforced by application logic).';
+
+-- 2. Enable RLS (account_id = auth.uid(), matching accounts.id)
+alter table public.offer_templates enable row level security;
+
+drop policy if exists "offer_templates_account_read" on public.offer_templates;
+create policy "offer_templates_account_read" on public.offer_templates
+  for select
+  using (account_id = auth.uid());
+
+drop policy if exists "offer_templates_admin_write" on public.offer_templates;
+create policy "offer_templates_admin_write" on public.offer_templates
+  for all
+  using (account_id = auth.uid())
+  with check (account_id = auth.uid());
+
+-- 2b. Ensure "offer-templates" Supabase Storage bucket exists (private)
+insert into storage.buckets (id, name, public)
+values ('offer-templates', 'offer-templates', false)
+on conflict (id) do nothing;
+
+drop policy if exists "offer_templates_storage_owner" on storage.objects;
+create policy "offer_templates_storage_owner" on storage.objects
+  for all
+  using (bucket_id = 'offer-templates' and auth.uid()::text = (storage.foldername(name))[1])
+  with check (bucket_id = 'offer-templates' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- 3. Add offer_template_id + rendered_text + rendered_html to offers table
+alter table public.offers
+  add column if not exists offer_template_id uuid references public.offer_templates(id) on delete set null,
+  add column if not exists rendered_text     text,
+  add column if not exists rendered_html     text;
+
+comment on column public.offers.offer_template_id is 'Which offer_templates row was used to generate this offer (nullable for legacy offers using branded template).';
+comment on column public.offers.rendered_text     is 'Snapshot of the fully rendered offer letter text at time of sending (variables already substituted).';
+
+-- 4. updated_at trigger for offer_templates
+create or replace function public.set_offer_templates_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists offer_templates_updated_at on public.offer_templates;
+create trigger offer_templates_updated_at
+  before update on public.offer_templates
+  for each row execute function public.set_offer_templates_updated_at();
+
+-- =========================================================================
+-- FILE: 0059_ai_interview_reminders.sql
+-- =========================================================================
+
+-- Migration 0059: Register AI Interview Reminder Notification Templates
+-- Adds Day 1, Day 3, and Day 5 (Final Notice) reminders for AI Interviews across WhatsApp and Email.
+
+-- 1. WhatsApp Templates
+insert into public.notification_templates (
+  stage,
+  channel,
+  approval_state,
+  subject,
+  body_html,
+  meta_template_name,
+  locale
+)
+values
+(
+  'ai_interview_reminder_day1',
+  'whatsapp',
+  'approved',
+  null,
+  'Hi {{1}}, a quick reminder to complete your AI-powered interview for the {{2}} role at {{3}}. You can start whenever you''re ready using this link: {{4}}',
+  'ai_interview_reminder_day1',
+  'en'
+),
+(
+  'ai_interview_reminder_day3',
+  'whatsapp',
+  'approved',
+  null,
+  'Hi {{1}}, we are still waiting for you to complete your AI interview for the {{2}} role at {{3}}. Please access your interview session here: {{4}}. We recommend completing it soon so we can review your application.',
+  'ai_interview_reminder_day3',
+  'en'
+),
+(
+  'ai_interview_final_notice',
+  'whatsapp',
+  'approved',
+  null,
+  'Hi {{1}}, this is your final reminder to complete your AI interview for the {{2}} role at {{3}}. Your access link will expire soon: {{4}}. Please complete it now to keep your application active.',
+  'ai_interview_final_notice',
+  'en'
+)
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
+  body_html = excluded.body_html,
+  meta_template_name = excluded.meta_template_name,
+  updated_at = now();
+
+-- 2. Email Templates
+insert into public.notification_templates (
+  stage,
+  channel,
+  approval_state,
+  subject,
+  body_html,
+  meta_template_name,
+  locale
+)
+values
+(
+  'ai_interview_reminder_day1',
+  'email',
+  'approved',
+  'Reminder: Complete your AI Interview for {{job_title}} - {{candidate_name}} | {{company_name}}',
+  '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://fvjsaourhzzyvvzrgwan.supabase.co/storage/v1/object/public/Logo''s/2125980a-scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">AI Interview Reminder</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">This is a quick reminder that your <strong>AI-powered interview</strong> for the position of <strong>{{job_title}}</strong> at <strong>{{company_name}}</strong> is waiting for you.</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">You can complete it at your convenience using the link below:</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{interview_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Start AI Interview</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">Please ensure you are in a quiet environment with a working camera and microphone.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>',
+  null,
+  'en'
+),
+(
+  'ai_interview_reminder_day3',
+  'email',
+  'approved',
+  'Action Required: Complete your AI Interview for {{job_title}} - {{candidate_name}} | {{company_name}}',
+  '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://fvjsaourhzzyvvzrgwan.supabase.co/storage/v1/object/public/Logo''s/2125980a-scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">AI Interview Waiting</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">We noticed you haven''t started your <strong>AI interview</strong> for the <strong>{{job_title}}</strong> role at <strong>{{company_name}}</strong> yet.</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Our hiring team is actively reviewing applications. Please use the button below to complete your session:</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{interview_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Begin Your Interview</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">The session takes approximately 10-15 minutes.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>',
+  null,
+  'en'
+),
+(
+  'ai_interview_final_notice',
+  'email',
+  'approved',
+  'Final Notice: AI Interview link expiring soon for {{job_title}} - {{candidate_name}} | {{company_name}}',
+  '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://fvjsaourhzzyvvzrgwan.supabase.co/storage/v1/object/public/Logo''s/2125980a-scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">Final Notice: AI Interview</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">This is your <strong>final reminder</strong> to complete your AI-powered interview for the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong>.</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Your secure access link will expire shortly. Please click below to complete it now and keep your candidacy active:</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{interview_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Complete Interview Now</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #ef4444;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">Once expired, the interview cannot be restarted without recruiter approval.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>',
+  null,
+  'en'
+)
+on conflict (stage, channel, approval_state) where account_id is null
+do update set
+  subject = excluded.subject,
+  body_html = excluded.body_html,
+  updated_at = now();
+
+-- Reload PostgREST schema cache
+notify pgrst, 'reload schema';
+
+-- =========================================================================
+-- FILE: 0059_docx_offer_engine.sql
+-- =========================================================================
+
+-- Migration 0059: Generic Multi-Tenant DOCX Offer Letter Template Engine
+-- Adds support for raw .docx template storage, source template linkages,
+-- finished-letter classification, and audit paths for filled .docx & generated PDFs.
+
+-- 1. Extend offer_templates table
+alter table public.offer_templates
+  add column if not exists source_template_id uuid references public.offer_templates(id) on delete set null,
+  add column if not exists is_finished_letter boolean not null default false,
+  add column if not exists placeholders       text[] not null default '{}';
+
+comment on column public.offer_templates.source_template_id is 'If created via Make Reusable wizard, points to the original uploaded letter.';
+comment on column public.offer_templates.is_finished_letter is 'True if uploaded document had 0 detected placeholders (a finished letter).';
+comment on column public.offer_templates.placeholders       is 'List of fillable {{placeholder}} names detected in the .docx file.';
+
+-- 2. Extend offers table with audit trail paths
+alter table public.offers
+  add column if not exists filled_docx_path    text,
+  add column if not exists generated_pdf_path  text,
+  add column if not exists send_as_is          boolean not null default false;
+
+comment on column public.offers.filled_docx_path   is 'Path inside offer-templates bucket for the filled .docx binary.';
+comment on column public.offers.generated_pdf_path is 'Path inside offer-templates bucket for the final candidate PDF.';
+comment on column public.offers.send_as_is         is 'True if offer was sent using an un-filled finished letter.';
+
+-- =========================================================================
+-- FILE: 0060_company_domain_restrictions.sql
+-- =========================================================================
+
+-- 0060_company_domain_restrictions.sql
+-- Enforce company domain restrictions and anti-abuse policies:
+-- 1. scalepods.co (and *.scalepods.co) is permanently exempt: unlimited accounts,
+--    never blocked by free-tier exhaustion or single-account limits.
+-- 2. Consumer/public email providers (Gmail, Yahoo, Outlook, etc.) are prohibited for recruiter signups.
+-- 3. Corporate domains: Exactly 1 recruiter account permitted per company on Free tier.
+-- 4. Free tier exhaustion: If a company domain exhausts its free tier, all logins and
+--    further registrations for that domain are blocked until upgraded to a paid plan.
+
+-- =========================================================================
+-- 1. COMPANY DOMAINS REGISTRY TABLE
+-- =========================================================================
+create table if not exists public.company_domains (
+  domain text primary key,
+  primary_account_id uuid references public.accounts(id) on delete set null,
+  tier text not null default 'free' check (tier in ('free','basic','growth','enterprise')),
+  is_free_tier_exhausted boolean not null default false,
+  exhausted_at timestamptz,
+  is_exempt boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Seed scalepods.co as an exempt domain
+insert into public.company_domains (domain, primary_account_id, tier, is_free_tier_exhausted, is_exempt)
+values ('scalepods.co', null, 'enterprise', false, true)
+on conflict (domain) do update set is_exempt = true;
+
+-- Add company_domain reference to accounts
+alter table public.accounts
+  add column if not exists company_domain text references public.company_domains(domain);
+
+create index if not exists idx_accounts_company_domain on public.accounts(company_domain);
+create index if not exists idx_company_domains_primary_account on public.company_domains(primary_account_id);
+
+-- Enable RLS
+alter table public.company_domains enable row level security;
+
+-- Allow read access for authenticated and anonymous users to check domain state
+drop policy if exists "company_domains_select" on public.company_domains;
+create policy "company_domains_select"
+  on public.company_domains for select
+  using (true);
+
+grant select on public.company_domains to authenticated, anon;
+
+-- =========================================================================
+-- 2. DOMAIN RECOGNITION HELPERS
+-- =========================================================================
+create or replace function public.is_domain_exempt(p_domain text)
+returns boolean
+language plpgsql
+immutable
+as $$
+declare
+  v_norm text;
+begin
+  if p_domain is null then
+    return false;
+  end if;
+  v_norm := lower(trim(p_domain));
+  if v_norm = 'scalepods.co' or v_norm like '%.scalepods.co' then
+    return true;
+  end if;
+  return false;
+end;
+$$;
+
+create or replace function public.is_blocked_consumer_domain(p_domain text)
+returns boolean
+language plpgsql
+immutable
+as $$
+declare
+  v_norm text;
+begin
+  if p_domain is null then
+    return false;
+  end if;
+  v_norm := lower(trim(p_domain));
+  if v_norm in (
+    'gmail.com', 'googlemail.com',
+    'outlook.com', 'hotmail.com', 'live.com', 'msn.com', 'passport.com',
+    'yahoo.com', 'yahoo.co.uk', 'yahoo.co.in', 'yahoo.ca', 'ymail.com', 'rocketmail.com',
+    'icloud.com', 'me.com', 'mac.com',
+    'aol.com', 'zoho.com', 'zohomail.com', 'proton.me', 'protonmail.com',
+    'mail.com', 'gmx.com', 'gmx.net', 'yandex.com', 'yandex.ru',
+    'tutanota.com', 'tuta.io', 'fastmail.com', 'rediffmail.com',
+    'tempmail.com', '10minutemail.com', 'guerrillamail.com', 'mailinator.com',
+    'trashmail.com', 'throwawaymail.com', 'sharklasers.com', 'dispostable.com'
+  ) then
+    return true;
+  end if;
+  return false;
+end;
+$$;
+
+-- Pre-check function exposed for signup forms and API route
+create or replace function public.check_domain_admissibility(
+  p_email text,
+  p_account_id uuid default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_domain text;
+  v_domain_row public.company_domains%rowtype;
+begin
+  if p_email is null or position('@' in p_email) <= 1 then
+    return jsonb_build_object(
+      'allowed', false,
+      'code', 'INVALID_EMAIL',
+      'reason', 'Please provide a valid email address.'
+    );
+  end if;
+
+  v_domain := lower(split_part(trim(p_email), '@', 2));
+
+  -- 1. scalepods.co exemption
+  if public.is_domain_exempt(v_domain) then
+    return jsonb_build_object(
+      'allowed', true,
+      'domain', v_domain,
+      'is_exempt', true,
+      'is_exhausted', false,
+      'tier', 'enterprise'
+    );
+  end if;
+
+  -- 2. Consumer domain check
+  if public.is_blocked_consumer_domain(v_domain) then
+    return jsonb_build_object(
+      'allowed', false,
+      'domain', v_domain,
+      'is_exempt', false,
+      'code', 'BLOCKED_CONSUMER',
+      'reason', 'Personal email providers like Gmail and Yahoo are not permitted for recruiter accounts. Please use your official company work email.'
+    );
+  end if;
+
+  -- 3. Check existing company domain status
+  select * into v_domain_row
+  from public.company_domains
+  where domain = v_domain;
+
+  if found then
+    -- If free tier is exhausted and still on free tier
+    if v_domain_row.is_free_tier_exhausted and v_domain_row.tier = 'free' then
+      return jsonb_build_object(
+        'allowed', false,
+        'domain', v_domain,
+        'is_exempt', false,
+        'is_exhausted', true,
+        'tier', v_domain_row.tier,
+        'code', 'FREE_TIER_EXHAUSTED',
+        'reason', 'Your organization (' || v_domain || ') has exhausted its free tier trial. No new accounts can be created under this domain. Please upgrade to a paid plan.'
+      );
+    end if;
+
+    -- If on free tier and an account already exists
+    if v_domain_row.tier = 'free' and (p_account_id is null or v_domain_row.primary_account_id <> p_account_id) then
+      return jsonb_build_object(
+        'allowed', false,
+        'domain', v_domain,
+        'is_exempt', false,
+        'is_exhausted', false,
+        'tier', 'free',
+        'code', 'DOMAIN_EXISTS_FREE',
+        'reason', 'An account for ' || v_domain || ' already exists. On the Free tier, only one recruiter account is allowed per company. Please sign in with the registered email or ask your admin to invite you.'
+      );
+    end if;
+
+    -- Domain is on a paid plan
+    return jsonb_build_object(
+      'allowed', true,
+      'domain', v_domain,
+      'is_exempt', false,
+      'is_exhausted', false,
+      'tier', v_domain_row.tier
+    );
+  end if;
+
+  -- Brand new company domain on free tier
+  return jsonb_build_object(
+    'allowed', true,
+    'domain', v_domain,
+    'is_exempt', false,
+    'is_exhausted', false,
+    'tier', 'free'
+  );
+end;
+$$;
+
+grant execute on function public.check_domain_admissibility(text, uuid) to authenticated, anon, service_role;
+
+-- =========================================================================
+-- 3. UPDATE HANDLE_NEW_USER TRIGGER (SUPABASE AUTH)
+-- =========================================================================
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_email text;
+  v_domain text;
+  v_domain_row public.company_domains%rowtype;
+  v_is_exempt boolean := false;
+begin
+  v_email := coalesce(new.email, '');
+  if position('@' in v_email) > 1 then
+    v_domain := lower(split_part(trim(v_email), '@', 2));
+    v_is_exempt := public.is_domain_exempt(v_domain);
+
+    if not v_is_exempt then
+      -- Reject consumer webmail
+      if public.is_blocked_consumer_domain(v_domain) then
+        raise exception 'Consumer email domains are not permitted for recruiter signups. Please use your company work email.' using errcode = '22023';
+      end if;
+
+      -- Check existing domain entry
+      select * into v_domain_row
+      from public.company_domains
+      where domain = v_domain;
+
+      if found then
+        -- Reject if domain exhausted free tier
+        if v_domain_row.is_free_tier_exhausted and v_domain_row.tier = 'free' then
+          raise exception 'Your company domain (%) has exhausted its free tier trial. Upgrade is required.', v_domain using errcode = '22023';
+        end if;
+
+        -- Reject if free tier and another account exists
+        if v_domain_row.tier = 'free' and v_domain_row.primary_account_id is not null and v_domain_row.primary_account_id <> new.id then
+          raise exception 'An account for domain % already exists. Only one recruiter account per company is allowed on the Free tier.', v_domain using errcode = '22023';
+        end if;
+      else
+        -- Register new company domain
+        insert into public.company_domains (domain, primary_account_id, tier, is_free_tier_exhausted, is_exempt)
+        values (v_domain, new.id, 'free', false, false)
+        on conflict (domain) do nothing;
+      end if;
+    else
+      -- scalepods.co exemption: ensure domain row exists
+      insert into public.company_domains (domain, primary_account_id, tier, is_free_tier_exhausted, is_exempt)
+      values ('scalepods.co', null, 'enterprise', false, true)
+      on conflict (domain) do update set is_exempt = true;
+    end if;
+  end if;
+
+  -- Create accounts row
+  insert into public.accounts (id, billing_anchor_date, name, company_name, email, company_domain)
+  values (
+    new.id,
+    current_date,
+    coalesce(
+      new.raw_user_meta_data->>'name',
+      new.raw_user_meta_data->>'full_name',
+      new.raw_user_meta_data->>'user_name'
+    ),
+    new.raw_user_meta_data->>'company_name',
+    v_email,
+    case when v_is_exempt then 'scalepods.co' else v_domain end
+  )
+  on conflict (id) do update set
+    name = coalesce(accounts.name, excluded.name),
+    company_name = coalesce(accounts.company_name, excluded.company_name),
+    email = coalesce(excluded.email, accounts.email),
+    company_domain = coalesce(accounts.company_domain, excluded.company_domain);
+
+  return new;
+end $$;
+
+-- =========================================================================
+-- 4. SYNC TIER CHANGES ON PAYMENT UPGRADE
+-- =========================================================================
+create or replace function public.sync_domain_tier_on_account_update()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  if new.tier is distinct from old.tier or new.billing_status is distinct from old.billing_status then
+    update public.company_domains
+    set tier = new.tier,
+        -- When upgraded from free to paid, reset exhausted flag
+        is_free_tier_exhausted = case when new.tier <> 'free' then false else is_free_tier_exhausted end,
+        updated_at = now()
+    where (primary_account_id = new.id or domain = new.company_domain)
+      and is_exempt = false;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_account_tier_changed on public.accounts;
+create trigger on_account_tier_changed
+  after update of tier, billing_status on public.accounts
+  for each row execute function public.sync_domain_tier_on_account_update();
+
+-- =========================================================================
+-- 5. UPDATE CHECK_TIER_LIMIT TO TRIP DOMAIN EXHAUSTION
+-- =========================================================================
+create or replace function public.check_tier_limit(
+  p_account_id uuid,
+  p_limit_key text,
+  p_current_count integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_tier text;
+  v_limit integer;
+  v_overage_behavior text;
+  v_domain text;
+  v_is_exempt boolean := false;
+  v_is_domain_exhausted boolean := false;
+begin
+  if p_account_id is null or p_current_count is null or p_current_count < 0 then
+    raise exception 'invalid_tier_limit_request' using errcode = '22023';
+  end if;
+  if p_limit_key is null or p_limit_key not in (
+    'active_campaigns', 'scheduled_rounds_per_month', 'rounds_per_campaign',
+    'resumes_screened', 'ai_interview', 'ai_voice_screening', 'offers_per_month'
+  ) then
+    raise exception 'unsupported_tier_limit_key' using errcode = '22023';
+  end if;
+
+  if auth.uid() is distinct from p_account_id
+     and coalesce(auth.role(), '') <> 'service_role' then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+
+  select a.tier,
+         case p_limit_key
+           when 'active_campaigns' then tl.active_campaigns
+           when 'scheduled_rounds_per_month' then tl.scheduled_round
+           when 'rounds_per_campaign' then tl.max_rounds
+           when 'resumes_screened' then tl.resumes_screened
+           when 'ai_interview' then tl.ai_interview
+           when 'ai_voice_screening' then tl.ai_voice_screening
+           when 'offers_per_month' then tl.offers_per_month
+           else null
+         end,
+         tl.overage_behavior,
+         a.company_domain
+    into v_tier, v_limit, v_overage_behavior, v_domain
+  from public.accounts a
+  join public.tier_limits tl on tl.id = a.tier
+  where a.id = p_account_id;
+
+  if not found then
+    raise exception 'account_or_tier_limit_not_found' using errcode = 'P0002';
+  end if;
+
+  -- Check domain exemption
+  if v_domain is not null then
+    select is_exempt, is_free_tier_exhausted into v_is_exempt, v_is_domain_exhausted
+    from public.company_domains
+    where domain = v_domain;
+  end if;
+
+  -- If free tier limit is reached or exceeded, trip the domain exhaustion flag
+  if v_tier = 'free' and not coalesce(v_is_exempt, false) and v_limit is not null and p_current_count >= v_limit then
+    update public.company_domains
+    set is_free_tier_exhausted = true,
+        exhausted_at = coalesce(exhausted_at, now()),
+        updated_at = now()
+    where domain = v_domain
+      and is_exempt = false;
+    v_is_domain_exhausted := true;
+  end if;
+
+  return jsonb_build_object(
+    'allowed', v_limit is null or (p_current_count < v_limit and not v_is_domain_exhausted),
+    'tier', v_tier,
+    'limit_value', v_limit,
+    'current_count', p_current_count,
+    'overage_behavior', v_overage_behavior,
+    'domain', v_domain,
+    'is_free_tier_exhausted', v_is_domain_exhausted
+  );
+end;
+$$;
+
+revoke all on function public.check_tier_limit(uuid, text, integer) from public, anon;
+grant execute on function public.check_tier_limit(uuid, text, integer) to authenticated, service_role;
+
+-- Helper to mark a company domain exhausted directly
+create or replace function public.mark_company_domain_exhausted(
+  p_account_id uuid,
+  p_reason text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_domain text;
+begin
+  select company_domain into v_domain
+  from public.accounts
+  where id = p_account_id;
+
+  if v_domain is null then
+    return jsonb_build_object('success', false, 'reason', 'domain_not_found');
+  end if;
+
+  if public.is_domain_exempt(v_domain) then
+    return jsonb_build_object('success', true, 'is_exempt', true);
+  end if;
+
+  update public.company_domains
+  set is_free_tier_exhausted = true,
+      exhausted_at = now(),
+      updated_at = now()
+  where domain = v_domain
+    and is_exempt = false;
+
+  return jsonb_build_object('success', true, 'domain', v_domain, 'exhausted', true);
+end;
+$$;
+
+grant execute on function public.mark_company_domain_exhausted(uuid, text) to authenticated, service_role;
+
+-- Backfill company_domains and accounts.company_domain for existing records
+do $$
+declare
+  r record;
+  v_dom text;
+begin
+  for r in select id, email, tier from public.accounts where email is not null and email like '%@%' loop
+    v_dom := lower(split_part(trim(r.email), '@', 2));
+    if v_dom = 'scalepods.co' or v_dom like '%.scalepods.co' then
+      update public.accounts set company_domain = 'scalepods.co' where id = r.id and company_domain is null;
+    elsif not public.is_blocked_consumer_domain(v_dom) then
+      insert into public.company_domains (domain, primary_account_id, tier, is_free_tier_exhausted, is_exempt)
+      values (v_dom, r.id, r.tier, false, false)
+      on conflict (domain) do nothing;
+
+      update public.accounts set company_domain = v_dom where id = r.id and company_domain is null;
+    end if;
+  end loop;
+end;
+$$;
+
+notify pgrst, 'reload schema';
+
+-- =========================================================================
+-- FILE: 0060_enforce_round_completion_on_advance.sql
+-- =========================================================================
+
+-- Enforce round completion when advancing candidate
+-- Drops 'incomplete' from valid advancement statuses and supports 'completed', 'passed', 'awaiting_review', 'evaluated', 'reviewed'.
+
+create or replace function public.decide_application(
+  p_application_id uuid,
+  p_action text,
+  p_rejection_reason text default null,
+  p_confirm_rejection boolean default false
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_application public.applications%rowtype;
+  v_campaign public.campaigns%rowtype;
+  v_current_round public.round_instances%rowtype;
+  v_round public.campaign_rounds%rowtype;
+  v_next_number integer;
+  v_next_round public.campaign_rounds%rowtype;
+  v_new_round_id uuid;
+  v_deadline timestamptz;
+  v_event_type text;
+  v_key text;
+begin
+  if p_action not in ('advance','reject','hold','resume') then
+    raise exception 'invalid_application_action' using detail = 'Choose Advance, Reject, Hold, or Resume.';
+  end if;
+
+  select * into v_application
+  from public.applications
+  where id = p_application_id
+  for update;
+  if not found then
+    raise exception 'application_not_found' using detail = 'The application was not found.';
+  end if;
+
+  if coalesce(auth.role(), '') <> 'service_role' and auth.uid() is distinct from v_application.account_id then
+    raise exception 'not_authorized' using detail = 'The application is outside this workspace.';
+  end if;
+
+  select * into v_campaign
+  from public.campaigns
+  where id = v_application.campaign_id;
+  if not found then
+    raise exception 'campaign_not_found';
+  end if;
+
+  if v_campaign.status not in ('open', 'on') then
+    raise exception 'job_closed' using detail = 'A closed job does not allow hiring actions.';
+  end if;
+
+  if p_action = 'hold' then
+    if v_application.status = 'on_hold' then
+      raise exception 'application_already_on_hold' using detail = 'This application is already on hold.';
+    end if;
+    update public.applications
+    set status_before_hold = status, status = 'on_hold'
+    where id = v_application.id;
+    return jsonb_build_object('application_id', v_application.id, 'status', 'on_hold');
+  elsif p_action = 'resume' then
+    if v_application.status <> 'on_hold' then
+      raise exception 'application_not_on_hold' using detail = 'This application is not on hold.';
+    end if;
+    update public.applications
+    set status = coalesce(status_before_hold, 'active'), status_before_hold = null
+    where id = v_application.id;
+    return jsonb_build_object('application_id', v_application.id, 'status', coalesce(v_application.status_before_hold, 'active'));
+  end if;
+
+  if v_application.status = 'on_hold' then
+    raise exception 'application_on_hold' using detail = 'Resume this application before advancing or rejecting it.';
+  end if;
+
+  if p_action = 'reject' then
+    if v_application.current_stage = 'round' and v_application.current_round_number is not null then
+      select * into v_current_round
+      from public.round_instances
+      where application_id = v_application.id
+        and round_number = v_application.current_round_number
+      order by created_at desc
+      limit 1;
+      if found and v_current_round.status = 'no_show' then
+        null;
+      elsif found and v_current_round.round_type = 'human_interview'
+            and v_current_round.status = 'completed'
+            and not exists (
+              select 1 from public.interviewer_feedback f
+              where f.round_instance_id = v_current_round.id
+            ) then
+        raise exception 'feedback_required' using detail = 'Submit interviewer feedback before deciding this round.';
+      end if;
+    end if;
+
+    update public.applications
+    set status = 'rejected', status_before_hold = null,
+        rejection_reason = nullif(btrim(p_rejection_reason), '')
+    where id = v_application.id;
+
+    insert into public.workflow_outbox (
+      account_id, application_id, event_type, idempotency_key, payload
+    ) values (
+      coalesce(v_application.account_id, v_campaign.account_id), v_application.id, 'candidate_rejected',
+      'application:' || v_application.id::text || ':rejected',
+      jsonb_build_object('campaign_id', v_application.campaign_id, 'reason', nullif(btrim(p_rejection_reason), ''))
+    ) on conflict (idempotency_key) do nothing;
+
+    return jsonb_build_object('application_id', v_application.id, 'status', 'rejected');
+  end if;
+
+  if v_application.status = 'rejected' then
+    raise exception 'application_rejected' using detail = 'A rejected application is final.';
+  end if;
+
+  if v_application.current_stage = 'offer' or v_application.status in ('offer_sent', 'offer_accepted', 'offer_rejected', 'offer_declined') then
+    raise exception 'offer_stage_reached' using detail = 'This application has already reached the offer stage.';
+  end if;
+
+  -- Advance action logic
+  if p_action = 'advance' then
+    -- Handle transition from document_verification stage to offer stage
+    if v_application.current_stage = 'document_verification' then
+      update public.applications
+      set current_stage = 'offer', current_round_number = null, status = 'offer_ready'
+      where id = v_application.id;
+      return jsonb_build_object('application_id', v_application.id, 'status', 'offer_ready', 'stage', 'offer');
+    end if;
+
+    if v_application.current_stage = 'needs_review' then
+      v_next_number := 1;
+    else
+      select * into v_current_round
+      from public.round_instances
+      where application_id = v_application.id
+        and round_number = v_application.current_round_number
+      order by created_at desc
+      limit 1;
+      if not found or v_current_round.status not in ('completed','passed','awaiting_review','evaluated','reviewed') then
+        raise exception 'round_not_ready' using detail = 'The current round must be completed before advancing.';
+      end if;
+      if v_current_round.status = 'no_show' then
+        raise exception 'no_show_rejection_only' using detail = 'A no-show can only be rejected after recruiter confirmation.';
+      end if;
+      v_next_number := coalesce(v_application.current_round_number, 0) + 1;
+    end if;
+
+    -- If past final configured round, advance into document_verification stage
+    if v_next_number > coalesce(v_campaign.number_of_rounds, 1) then
+      update public.applications
+      set current_stage = 'document_verification', current_round_number = null, status = 'active'
+      where id = v_application.id;
+      return jsonb_build_object('application_id', v_application.id, 'status', 'active', 'stage', 'document_verification');
+    end if;
+
+    select * into v_next_round
+    from public.campaign_rounds
+    where campaign_id = v_application.campaign_id and round_number = v_next_number;
+    if not found then
+      -- Fallback to document_verification if next round is missing
+      update public.applications
+      set current_stage = 'document_verification', current_round_number = null, status = 'active'
+      where id = v_application.id;
+      return jsonb_build_object('application_id', v_application.id, 'status', 'active', 'stage', 'document_verification');
+    end if;
+
+    v_deadline := null;
+    if v_next_round.round_type = 'assignment' then
+      v_deadline := now() + make_interval(hours => coalesce(v_next_round.assignment_deadline_hours, 48));
+    end if;
+
+    insert into public.round_instances (
+      account_id, candidate_id, campaign_id, application_id,
+      round_number, round_type, status, deadline_at
+    ) values (
+      coalesce(v_application.account_id, v_campaign.account_id),
+      v_application.candidate_id,
+      v_application.campaign_id,
+      v_application.id,
+      v_next_number,
+      v_next_round.round_type,
+      'pending',
+      v_deadline
+    ) returning id into v_new_round_id;
+
+    if v_next_round.round_type = 'assignment' then
+      insert into public.assignments (
+        account_id, application_id, round_instance_id, brief_text, deadline_at
+      ) values (
+        coalesce(v_application.account_id, v_campaign.account_id),
+        v_application.id,
+        v_new_round_id,
+        v_next_round.brief_text,
+        v_deadline
+      );
+    end if;
+
+    update public.applications
+    set current_stage = 'round', current_round_number = v_next_number, status = 'active'
+    where id = v_application.id;
+
+    v_event_type := case when v_next_round.round_type = 'ai_voice_call'
+      then 'voice_call_ready' else 'round_invitation' end;
+    v_key := 'application:' || v_application.id::text || ':round:' || v_next_number::text || ':' || v_event_type;
+    insert into public.workflow_outbox (
+      account_id, application_id, round_instance_id, event_type, idempotency_key, payload
+    ) values (
+      coalesce(v_application.account_id, v_campaign.account_id),
+      v_application.id,
+      v_new_round_id,
+      v_event_type,
+      v_key,
+      jsonb_build_object('campaign_id', v_application.campaign_id, 'round_number', v_next_number, 'round_type', v_next_round.round_type)
+    ) on conflict (idempotency_key) do nothing;
+
+    return jsonb_build_object(
+      'application_id', v_application.id,
+      'status', 'active',
+      'stage', 'round',
+      'round_number', v_next_number,
+      'round_instance_id', v_new_round_id,
+      'event_type', v_event_type
+    );
+  end if;
+
+  raise exception 'unsupported_action';
+end;
+$$;
+
+revoke all on function public.decide_application(uuid, text, text, boolean) from public, anon;
+grant execute on function public.decide_application(uuid, text, text, boolean) to authenticated, service_role;
+
+-- =========================================================================
+-- FILE: 0061_domain_account_limits.sql
+-- =========================================================================
+
+-- 0061_domain_account_limits.sql
+-- Tiered account allowance per company domain:
+-- Free: 3 accounts
+-- Basic: 3 accounts
+-- Growth: 5 accounts
+-- Enterprise: 10 accounts
+-- scalepods.co remains permanently exempt with unlimited accounts.
+
+-- =========================================================================
+-- 1. HELPER FUNCTION TO GET MAX ACCOUNTS FOR TIER
+-- =========================================================================
+create or replace function public.get_domain_max_accounts(p_tier text)
+returns integer
+language sql
+immutable
+as $$
+  select case lower(coalesce(p_tier, 'free'))
+    when 'enterprise' then 10
+    when 'growth' then 5
+    when 'basic' then 3
+    when 'free' then 3
+    else 3
+  end;
+$$;
+
+grant execute on function public.get_domain_max_accounts(text) to authenticated, anon, service_role;
+
+-- =========================================================================
+-- 2. UPDATE CHECK_DOMAIN_ADMISSIBILITY
+-- =========================================================================
+create or replace function public.check_domain_admissibility(
+  p_email text,
+  p_account_id uuid default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_domain text;
+  v_domain_row public.company_domains%rowtype;
+  v_account_count integer := 0;
+  v_max_accounts integer := 3;
+begin
+  if p_email is null or position('@' in p_email) <= 1 then
+    return jsonb_build_object(
+      'allowed', false,
+      'code', 'INVALID_EMAIL',
+      'reason', 'Please provide a valid email address.'
+    );
+  end if;
+
+  v_domain := lower(split_part(trim(p_email), '@', 2));
+
+  -- 1. scalepods.co exemption (unlimited)
+  if public.is_domain_exempt(v_domain) then
+    return jsonb_build_object(
+      'allowed', true,
+      'domain', v_domain,
+      'is_exempt', true,
+      'is_exhausted', false,
+      'tier', 'enterprise',
+      'max_accounts', null
+    );
+  end if;
+
+  -- 2. Consumer domain check
+  if public.is_blocked_consumer_domain(v_domain) then
+    return jsonb_build_object(
+      'allowed', false,
+      'domain', v_domain,
+      'is_exempt', false,
+      'code', 'BLOCKED_CONSUMER',
+      'reason', 'Personal email providers like Gmail and Yahoo are not permitted for recruiter accounts. Please use your official company work email.'
+    );
+  end if;
+
+  -- 3. Check existing company domain status
+  select * into v_domain_row
+  from public.company_domains
+  where domain = v_domain;
+
+  if found then
+    -- If free tier is exhausted and still on free tier
+    if v_domain_row.is_free_tier_exhausted and v_domain_row.tier = 'free' then
+      return jsonb_build_object(
+        'allowed', false,
+        'domain', v_domain,
+        'is_exempt', false,
+        'is_exhausted', true,
+        'tier', v_domain_row.tier,
+        'code', 'FREE_TIER_EXHAUSTED',
+        'reason', 'Your organization (' || v_domain || ') has exhausted its free tier trial. No new accounts can be created under this domain. Please upgrade to a paid plan.'
+      );
+    end if;
+
+    -- Count existing accounts under this company domain
+    select count(*) into v_account_count
+    from public.accounts
+    where company_domain = v_domain;
+
+    v_max_accounts := public.get_domain_max_accounts(v_domain_row.tier);
+
+    -- Check if limit reached
+    if v_account_count >= v_max_accounts then
+      return jsonb_build_object(
+        'allowed', false,
+        'domain', v_domain,
+        'is_exempt', false,
+        'is_exhausted', false,
+        'tier', v_domain_row.tier,
+        'current_count', v_account_count,
+        'max_accounts', v_max_accounts,
+        'code', 'DOMAIN_ACCOUNT_LIMIT_REACHED',
+        'reason', 'Your organization (' || v_domain || ') has reached its limit of ' || v_max_accounts || ' accounts for the ' || upper(v_domain_row.tier) || ' plan. Please upgrade your plan to add more team members.'
+      );
+    end if;
+
+    return jsonb_build_object(
+      'allowed', true,
+      'domain', v_domain,
+      'is_exempt', false,
+      'is_exhausted', false,
+      'tier', v_domain_row.tier,
+      'current_count', v_account_count,
+      'max_accounts', v_max_accounts
+    );
+  end if;
+
+  -- Brand new company domain on free tier (allows up to 3 accounts)
+  return jsonb_build_object(
+    'allowed', true,
+    'domain', v_domain,
+    'is_exempt', false,
+    'is_exhausted', false,
+    'tier', 'free',
+    'current_count', 0,
+    'max_accounts', 3
+  );
+end;
+$$;
+
+grant execute on function public.check_domain_admissibility(text, uuid) to authenticated, anon, service_role;
+
+-- =========================================================================
+-- 3. UPDATE HANDLE_NEW_USER TRIGGER
+-- =========================================================================
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_email text;
+  v_domain text;
+  v_domain_row public.company_domains%rowtype;
+  v_is_exempt boolean := false;
+  v_account_count integer := 0;
+  v_max_accounts integer := 3;
+  v_tier_to_assign text := 'free';
+begin
+  v_email := coalesce(new.email, '');
+  if position('@' in v_email) > 1 then
+    v_domain := lower(split_part(trim(v_email), '@', 2));
+    v_is_exempt := public.is_domain_exempt(v_domain);
+
+    if not v_is_exempt then
+      -- Reject consumer webmail
+      if public.is_blocked_consumer_domain(v_domain) then
+        raise exception 'Consumer email domains are not permitted for recruiter signups. Please use your company work email.' using errcode = '22023';
+      end if;
+
+      -- Check existing domain entry
+      select * into v_domain_row
+      from public.company_domains
+      where domain = v_domain;
+
+      if found then
+        -- Reject if domain exhausted free tier
+        if v_domain_row.is_free_tier_exhausted and v_domain_row.tier = 'free' then
+          raise exception 'Your company domain (%) has exhausted its free tier trial. Upgrade is required.', v_domain using errcode = '22023';
+        end if;
+
+        -- Count accounts under domain
+        select count(*) into v_account_count
+        from public.accounts
+        where company_domain = v_domain;
+
+        v_max_accounts := public.get_domain_max_accounts(v_domain_row.tier);
+
+        -- Reject if account limit reached for the company's tier
+        if v_account_count >= v_max_accounts then
+          raise exception 'Your organization (%) has reached its limit of % accounts for the % plan. Please upgrade to add more accounts.', v_domain, v_max_accounts, upper(v_domain_row.tier) using errcode = '22023';
+        end if;
+
+        v_tier_to_assign := v_domain_row.tier;
+      else
+        -- Register new company domain on free tier
+        insert into public.company_domains (domain, primary_account_id, tier, is_free_tier_exhausted, is_exempt)
+        values (v_domain, new.id, 'free', false, false)
+        on conflict (domain) do nothing;
+
+        v_tier_to_assign := 'free';
+      end if;
+    else
+      -- scalepods.co exemption: ensure domain row exists
+      insert into public.company_domains (domain, primary_account_id, tier, is_free_tier_exhausted, is_exempt)
+      values ('scalepods.co', null, 'enterprise', false, true)
+      on conflict (domain) do update set is_exempt = true;
+
+      v_tier_to_assign := 'enterprise';
+    end if;
+  end if;
+
+  -- Create accounts row
+  insert into public.accounts (id, billing_anchor_date, name, company_name, email, company_domain, tier)
+  values (
+    new.id,
+    current_date,
+    coalesce(
+      new.raw_user_meta_data->>'name',
+      new.raw_user_meta_data->>'full_name',
+      new.raw_user_meta_data->>'user_name'
+    ),
+    new.raw_user_meta_data->>'company_name',
+    v_email,
+    case when v_is_exempt then 'scalepods.co' else v_domain end,
+    v_tier_to_assign
+  )
+  on conflict (id) do update set
+    name = coalesce(accounts.name, excluded.name),
+    company_name = coalesce(accounts.company_name, excluded.company_name),
+    email = coalesce(excluded.email, accounts.email),
+    company_domain = coalesce(accounts.company_domain, excluded.company_domain);
+
+  return new;
+end $$;
+
+notify pgrst, 'reload schema';
