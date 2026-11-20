@@ -251,7 +251,7 @@ export function AppShell({
         ) : null}
 
         {/* Page content */}
-        <main className="flex-1 px-3.5 sm:px-5 py-5 pb-16 sm:pb-8 pt-4 sm:pt-6">
+        <main className="flex-1 px-3.5 sm:px-5 py-5 pb-36 sm:pb-40 pt-4 sm:pt-6">
           <div className="mx-auto max-w-[1400px]">{children}</div>
         </main>
       </div>

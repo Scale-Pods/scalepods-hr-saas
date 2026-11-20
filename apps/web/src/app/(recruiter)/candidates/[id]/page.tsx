@@ -890,7 +890,7 @@ export default function CandidateProfilePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-12 sm:pb-20">
       <button
         type="button"
         onClick={handleGoBack}
@@ -1309,7 +1309,7 @@ export default function CandidateProfilePage() {
 
       <SectionCard
         title="Outreach history"
-        subtitle="Record of automated candidate notifications, interview invites, and communications."
+        subtitle="Record of automated candidate notifications, interview invites, and communications. Click any row or the View button to inspect message details."
       >
         <OutreachTable
           rows={outreach}
@@ -1997,7 +1997,7 @@ function OutreachTable({
             <TableHead>Channel</TableHead>
             <TableHead>Delivery</TableHead>
             <TableHead>Fallback</TableHead>
-            <TableHead className="w-[60px] text-right">View</TableHead>
+            <TableHead className="w-[90px] text-right pr-6">View</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -2013,9 +2013,16 @@ function OutreachTable({
               roundNumber,
             );
             return (
-              <TableRow key={r.id}>
+              <TableRow
+                key={r.id}
+                className="cursor-pointer hover:bg-muted/60 transition-colors group"
+                onClick={() => setSelectedMessage(r)}
+                title="Click row to view dispatched communication text"
+              >
                 <TableCell className="text-muted-foreground">{formatDateTime(r.sent_at)}</TableCell>
-                <TableCell className="text-foreground font-medium">{displayLabel}</TableCell>
+                <TableCell className="text-foreground font-medium group-hover:text-primary transition-colors">
+                  {displayLabel}
+                </TableCell>
                 <TableCell className="text-muted-foreground capitalize">
                   {r.channel.replace(/_/g, " ")}
                 </TableCell>
@@ -2025,17 +2032,24 @@ function OutreachTable({
                 <TableCell className="text-muted-foreground">
                   {r.fallback_used ? "Yes" : "No"}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell
+                  className="text-right pr-6"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedMessage(r);
+                  }}
+                >
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg inline-flex items-center justify-center"
+                    className="h-8 px-2.5 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg inline-flex items-center justify-center gap-1.5"
                     onClick={() => setSelectedMessage(r)}
                     title="View what was sent to candidate"
                     aria-label="View what was sent to candidate"
                   >
                     <Eye className="h-4 w-4" />
+                    <span className="text-xs font-medium hidden sm:inline">View</span>
                   </Button>
                 </TableCell>
               </TableRow>

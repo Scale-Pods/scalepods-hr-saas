@@ -72,6 +72,7 @@ const INITIAL_MESSAGES: ChatMessage[] = [
 export function ScalePodsDashboardChat() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  const [showPill, setShowPill] = useState(true);
   const [hasUnread, setHasUnread] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputValue, setInputValue] = useState("");
@@ -572,14 +573,28 @@ export function ScalePodsDashboardChat() {
       {/* Floating Widget Container at Bottom Right */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
         {/* ── 1. Floating 'Chat now' Pill (Matching Screenshot) ── */}
-        {!isOpen && (
-          <button
-            type="button"
-            onClick={() => setIsOpen(true)}
-            className="mb-2.5 inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white dark:border-slate-800/90 dark:bg-slate-900/95 px-3.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-md hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition duration-150 active:scale-95 cursor-pointer"
-          >
-            <span>Chat now</span>
-          </button>
+        {!isOpen && showPill && (
+          <div className="mb-2.5 inline-flex items-center rounded-full border border-slate-200/90 bg-white dark:border-slate-800/90 dark:bg-slate-900/95 shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition duration-150">
+            <button
+              type="button"
+              onClick={() => setIsOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+            >
+              <span>Chat now</span>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowPill(false);
+              }}
+              title="Dismiss prompt"
+              aria-label="Dismiss chat prompt"
+              className="pr-2.5 pl-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
         )}
 
         {/* ── 2. Expanded Chat Dialog (100% Conversational) ── */}
