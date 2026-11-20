@@ -130,7 +130,37 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // 2. If in round stage, verify that the current round is actually completed before advancing
+        // 2. If in resume screening stage, verify resume match score exists before advancing to Round 1
+        if (appRow && (appRow.current_stage === "needs_review" || !appRow.current_stage)) {
+          const { data: scData } = await adminSupabase
+            .from("scorecards")
+            .select("id, overall_score")
+            .eq("application_id", appRow.id)
+            .not("overall_score", "is", null)
+            .limit(1)
+            .maybeSingle();
+
+          const { data: dlData } = await adminSupabase
+            .from("decision_ledger")
+            .select("id, score")
+            .eq("application_id", appRow.id)
+            .not("score", "is", null)
+            .limit(1)
+            .maybeSingle();
+
+          if (!scData && !dlData) {
+            return NextResponse.json(
+              {
+                error:
+                  "Cannot advance candidate: An AI resume screening score is required before moving to Round 1.",
+                code: "SCORE_REQUIRED",
+              },
+              { status: 400 },
+            );
+          }
+        }
+
+        // 3. If in round stage, verify that the current round is actually completed before advancing
         if (appRow && appRow.current_stage === "round" && appRow.current_round_number != null) {
           // Look up current round instance: try by application_id first, fallback to candidate_id + campaign_id
           let { data: currentRound } = await adminSupabase
@@ -307,6 +337,42 @@ export async function POST(req: NextRequest) {
               {
                 error: "Cannot advance candidate: The current round must be completed first.",
                 code: "ROUND_NOT_COMPLETED",
+              },
+              { status: 400 },
+            );
+          }
+
+          // Check that round evaluation score exists before advancing
+          const { data: roundScorecard } = await adminSupabase
+            .from("scorecards")
+            .select("id, overall_score")
+            .or(
+              currentRound?.id
+                ? `round_instance_id.eq.${currentRound.id},application_id.eq.${appRow.id}`
+                : `application_id.eq.${appRow.id}`,
+            )
+            .not("overall_score", "is", null)
+            .limit(1)
+            .maybeSingle();
+
+          const { data: roundDl } = await adminSupabase
+            .from("decision_ledger")
+            .select("id, score")
+            .eq("application_id", appRow.id)
+            .not("score", "is", null)
+            .limit(1)
+            .maybeSingle();
+
+          const hasScore =
+            (roundScorecard && roundScorecard.overall_score != null) ||
+            (roundDl && roundDl.score != null);
+
+          if (!hasScore) {
+            return NextResponse.json(
+              {
+                error:
+                  "Cannot advance candidate: Round evaluation score is required before moving to the next stage.",
+                code: "SCORE_REQUIRED",
               },
               { status: 400 },
             );

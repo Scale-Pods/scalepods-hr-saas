@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     // 1. Fetch source template
     const { data: sourceTpl, error: tplErr } = await admin
       .from("offer_templates")
-      .select("id, account_id, name, file_name, storage_path")
+      .select("id, account_id, name, file_name, storage_path, raw_text")
       .eq("id", body.source_template_id)
       .maybeSingle();
 
@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
     let newTemplate: unknown = null;
     let insertError: { message?: string } | null = null;
     const reusableRawText =
-      (await extractDocumentTextFromDocxBuffer(newBuffer)) ||
+      (await extractDocumentTextFromDocxBuffer(replacedBuffer)) ||
       sourceTpl.raw_text ||
       "[Reusable DOCX Template]";
 

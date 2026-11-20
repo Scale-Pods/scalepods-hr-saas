@@ -458,6 +458,12 @@ export function PrepareOfferModal({
       COMPENSATION: salary,
       currency,
       CURRENCY: currency,
+      salary_currency: currency,
+      SALARY_CURRENCY: currency,
+      salary_words: isIntern ? stipendWords : grossAnnualWords,
+      SALARY_WORDS: isIntern ? stipendWords : grossAnnualWords,
+      salary_in_words: isIntern ? stipendWords : grossAnnualWords,
+      SALARY_IN_WORDS: isIntern ? stipendWords : grossAnnualWords,
       start_date: formattedStartDate,
       joining_date: formattedStartDate,
       START_DATE: formattedStartDate,
@@ -1476,16 +1482,25 @@ export function PrepareOfferModal({
                         stripped.startsWith("date_") ||
                         stripped === "date";
                       const isEmail = lower.includes("email");
+                      const isCurrency = lower.includes("currency");
                       const isWords = lower.includes("word") || lower.includes("in_words");
                       const isNumeric =
                         !isWords &&
+                        !isCurrency &&
+                        !lower.includes("type") &&
+                        !lower.includes("mode") &&
+                        !lower.includes("frequency") &&
+                        !lower.includes("period") &&
                         (lower.includes("amount") ||
                           lower.includes("salary") ||
                           lower.includes("stipend") ||
                           lower.includes("ctc") ||
                           lower.includes("bonus"));
                       const label = formatOfferVarLabel(v);
-                      const currentVal = dynamicValues[v] ?? dynamicValues[v.toUpperCase()] ?? "";
+                      const currentVal =
+                        dynamicValues[v] ??
+                        dynamicValues[v.toUpperCase()] ??
+                        (isCurrency ? currency || "INR" : "");
 
                       const fieldId = `field-${v}`;
                       return (
@@ -1542,7 +1557,9 @@ export function PrepareOfferModal({
                                   [v.toUpperCase()]: e.target.value,
                                 }))
                               }
-                              placeholder={isEmail ? "name@example.com" : label}
+                              placeholder={
+                                isEmail ? "name@example.com" : isCurrency ? "e.g. INR, USD" : label
+                              }
                               className="h-8 text-xs"
                             />
                           )}

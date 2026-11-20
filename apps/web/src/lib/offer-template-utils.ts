@@ -17,6 +17,13 @@ export const STANDARD_OFFER_VAR_KEYS = new Set([
   "SALARY",
   "COMPENSATION",
   "CURRENCY",
+  "SALARY_CURRENCY",
+  "SALARY_WORDS",
+  "SALARY_IN_WORDS",
+  "STIPEND_WORDS",
+  "STIPEND_AMOUNT",
+  "GROSS_ANNUAL",
+  "GROSS_ANNUAL_WORDS",
   "START_DATE",
   "JOINING_DATE",
   "SPECIAL_TERMS",
@@ -644,7 +651,13 @@ export function renderOfferTemplateText(
   const candidateEmail = normalized.CANDIDATE_EMAIL || normalized.EMAIL || "";
   const role = normalized.ROLE || normalized.POSITION_TITLE || normalized.DESIGNATION || "Team Member";
   const salary = normalized.SALARY || normalized.GROSS_ANNUAL || normalized.STIPEND_AMOUNT || "";
-  const salaryWords = normalized.SALARY_WORDS || normalized.GROSS_ANNUAL_WORDS || normalized.STIPEND_WORDS || (salary ? numberToWords(salary) : "");
+  const currency = normalized.CURRENCY || normalized.SALARY_CURRENCY || "INR";
+  const salaryWords =
+    normalized.SALARY_WORDS ||
+    normalized.SALARY_IN_WORDS ||
+    normalized.GROSS_ANNUAL_WORDS ||
+    normalized.STIPEND_WORDS ||
+    (salary ? numberToWords(salary) : "");
   const joiningDate = normalized.JOINING_DATE || normalized.START_DATE || normalized.DATE_OF_JOINING || "";
   const offerDate = normalized.OFFER_DATE || normalized.ISSUE_DATE || normalized.DATE || new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
   const department = normalized.DEPARTMENT || "Software Development";
@@ -670,7 +683,11 @@ export function renderOfferTemplateText(
     DESIGNATION: role,
     SALARY: salary,
     COMPENSATION: salary,
+    CURRENCY: currency,
+    SALARY_CURRENCY: currency,
     SALARY_WORDS: salaryWords,
+    SALARY_IN_WORDS: salaryWords,
+    STIPEND_WORDS: salaryWords,
     JOINING_DATE: joiningDate,
     START_DATE: joiningDate,
     DATE_OF_JOINING: joiningDate,

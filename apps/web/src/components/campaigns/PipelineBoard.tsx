@@ -306,47 +306,22 @@ export function PipelineBoard({
     );
   };
 
-  const isCandidateRoundCompleted = (cand: ViewCandidate): boolean => {
+  const hasCandidateScore = (cand: ViewCandidate): boolean => {
     const stage = (cand.current_stage || "").toLowerCase();
     const isRound =
       cand.current_round_number != null || Boolean(cand.round_number) || stage.includes("round");
 
-    if (!isRound) return true;
-
-    // Check round decision / status
-    const status = (cand.decision || cand.status || "").toLowerCase();
-    if (
-      status === "completed" ||
-      status === "passed" ||
-      status === "awaiting_review" ||
-      status === "evaluated" ||
-      status === "reviewed" ||
-      status === "incomplete"
-    ) {
-      return true;
+    if (!isRound) {
+      // In Resume Screening: must have an evaluated resume score
+      return cand.resume_score != null || cand.latest_score != null;
     }
 
-    // Check interview status
-    if (
-      cand.interview_status === "completed" ||
-      cand.interview_status === "evaluated" ||
-      cand.interview_status === "reviewed" ||
-      (cand.interview_status === "incomplete" && (cand.answers_count ?? 0) > 0)
-    ) {
-      return true;
-    }
+    // In an assessment/interview round: must have an evaluated score
+    return cand.ai_interview_score != null || cand.latest_score != null;
+  };
 
-    // Check score evaluation for this round
-    if (cand.ai_interview_score != null || cand.latest_score != null) {
-      return true;
-    }
-
-    // Check if answers were provided
-    if ((cand.answers_count ?? 0) > 0) {
-      return true;
-    }
-
-    return false;
+  const isCandidateRoundCompleted = (cand: ViewCandidate): boolean => {
+    return hasCandidateScore(cand);
   };
 
   // Action handlers
@@ -382,8 +357,12 @@ export function PipelineBoard({
       Boolean(cand.round_number) ||
       (cand.current_stage || "").toLowerCase().includes("round");
 
-    if (isRound && !isCandidateRoundCompleted(cand)) {
-      showErrorToast("Cannot advance candidate: The current round must be completed first.");
+    if (!isDocStage && !hasCandidateScore(cand)) {
+      showErrorToast(
+        isRound
+          ? "Cannot advance candidate: Round evaluation score is required before moving to the next stage."
+          : "Cannot advance candidate: AI resume screening score is required before moving to Round 1.",
+      );
       return;
     }
 
@@ -1137,19 +1116,40 @@ export function PipelineBoard({
                                     </Button>
                                   )
                                 ) : (
-                                  <Button
-                                    size="sm"
-                                    disabled={isBusy || isJobClosed}
-                                    onClick={() => handleAdvance(cand)}
-                                    className="h-6 px-2.5 text-[10px] font-semibold gap-1 bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 whitespace-nowrap cursor-pointer"
-                                  >
-                                    {isBusy ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <ArrowRight className="h-3 w-3" />
-                                    )}
-                                    Advance
-                                  </Button>
+                                  (() => {
+                                    const hasScore = hasCandidateScore(cand);
+                                    const isRound =
+                                      cand.current_round_number != null ||
+                                      Boolean(cand.round_number) ||
+                                      (cand.current_stage || "").toLowerCase().includes("round");
+                                    return (
+                                      <Button
+                                        size="sm"
+                                        disabled={isBusy || isJobClosed || !hasScore}
+                                        onClick={() => handleAdvance(cand)}
+                                        className={cn(
+                                          "h-6 px-2.5 text-[10px] font-semibold gap-1 shrink-0 whitespace-nowrap",
+                                          hasScore
+                                            ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                                            : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
+                                        )}
+                                        title={
+                                          !hasScore
+                                            ? isRound
+                                              ? "Round evaluation score is required before advancing"
+                                              : "Resume screening score is required before advancing"
+                                            : "Advance candidate to next stage"
+                                        }
+                                      >
+                                        {isBusy ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <ArrowRight className="h-3 w-3" />
+                                        )}
+                                        Advance
+                                      </Button>
+                                    );
+                                  })()
                                 ))}
                             </div>
                           </div>
@@ -1392,19 +1392,40 @@ export function PipelineBoard({
                                 </Button>
                               )
                             ) : (
-                              <Button
-                                size="sm"
-                                disabled={isBusy || isJobClosed}
-                                onClick={() => handleAdvance(cand)}
-                                className="h-7 px-2.5 text-xs font-semibold gap-1 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
-                              >
-                                {isBusy ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <ArrowRight className="h-3.5 w-3.5" />
-                                )}
-                                Advance
-                              </Button>
+                              (() => {
+                                const hasScore = hasCandidateScore(cand);
+                                const isRound =
+                                  cand.current_round_number != null ||
+                                  Boolean(cand.round_number) ||
+                                  (cand.current_stage || "").toLowerCase().includes("round");
+                                return (
+                                  <Button
+                                    size="sm"
+                                    disabled={isBusy || isJobClosed || !hasScore}
+                                    onClick={() => handleAdvance(cand)}
+                                    className={cn(
+                                      "h-7 px-2.5 text-xs font-semibold gap-1",
+                                      hasScore
+                                        ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                                        : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
+                                    )}
+                                    title={
+                                      !hasScore
+                                        ? isRound
+                                          ? "Round evaluation score is required before advancing"
+                                          : "Resume screening score is required before advancing"
+                                        : "Advance candidate to next stage"
+                                    }
+                                  >
+                                    {isBusy ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <ArrowRight className="h-3.5 w-3.5" />
+                                    )}
+                                    Advance
+                                  </Button>
+                                );
+                              })()
                             ))}
                         </div>
                       </TableCell>
