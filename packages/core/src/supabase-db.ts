@@ -17,6 +17,7 @@ export type Database = {
           quiet_hours_end: string | null;
           max_messages_per_candidate_per_day: number | null;
           company_name: string | null;
+          company_logo_url?: string | null;
           name: string | null;
           email?: string;
           timezone: string;
@@ -36,6 +37,7 @@ export type Database = {
           quiet_hours_end?: string | null;
           max_messages_per_candidate_per_day?: number | null;
           company_name?: string | null;
+          company_logo_url?: string | null;
           name?: string | null;
           email?: string;
           timezone?: string;
@@ -53,6 +55,7 @@ export type Database = {
           quiet_hours_end?: string | null;
           max_messages_per_candidate_per_day?: number | null;
           company_name?: string | null;
+          company_logo_url?: string | null;
           name?: string | null;
           email?: string;
           timezone?: string;

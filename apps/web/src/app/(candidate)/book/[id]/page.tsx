@@ -1,13 +1,7 @@
 "use client";
 
 import type { AvailableSlots, BookingContext } from "@scalepods/core";
-import {
-  browserTimeZone,
-  buildTimeSlots,
-  formatDateTime,
-  formatTime,
-  localDateKey,
-} from "@scalepods/core";
+import { buildTimeSlots, formatDateTime, formatTime, localDateKey } from "@scalepods/core";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -20,8 +14,7 @@ type View = "loading" | "pick" | "booked" | "error";
 
 function ErrorCard({ message, title }: { message?: string; title?: string }) {
   const isDeadline =
-    message?.toLowerCase().includes("deadline") ||
-    title?.toLowerCase().includes("deadline");
+    message?.toLowerCase().includes("deadline") || title?.toLowerCase().includes("deadline");
 
   if (isDeadline) {
     return (
@@ -172,7 +165,9 @@ export default function BookPage() {
       if (/interview_slot_unavailable|already booked|slot_unavailable|45000/i.test(message)) {
         message =
           "This interview slot was just booked by another candidate. Please select another convenient time slot.";
-      } else if (/error in the workflow|error in workflow|workflow execution failed/i.test(message)) {
+      } else if (
+        /error in the workflow|error in workflow|workflow execution failed/i.test(message)
+      ) {
         message =
           "Unable to book this slot at this time. Please choose another slot or contact the recruiter.";
       }
@@ -192,6 +187,8 @@ export default function BookPage() {
   if (view === "booked" && (success || ctx)) {
     const r = success ?? ctx?.round_instance ?? null;
     const meetLink = r?.meet_link ?? ctx?.round_instance.meet_link ?? null;
+    const companyName = (ctx?.account as { company_name?: string | null })?.company_name;
+    const roleName = ctx?.campaign?.name;
     return (
       <div className="py-12 text-center">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-fill-quaternary/70 text-2xl">
@@ -200,6 +197,12 @@ export default function BookPage() {
         <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">
           Your slot is booked!
         </h1>
+        {roleName && (
+          <p className="mt-1 text-xs font-medium text-muted-foreground">
+            {roleName}
+            {companyName && <span> · {companyName}</span>}
+          </p>
+        )}
         {r?.scheduled_at && (
           <p className="mt-2 text-sm text-label-secondary">{formatDateTime(r?.scheduled_at)}</p>
         )}
@@ -236,12 +239,35 @@ export default function BookPage() {
     );
   }
 
+  const companyName = (ctx?.account as { company_name?: string | null })?.company_name;
+  const roleName = ctx?.campaign?.name;
+
   return (
     <div>
-      <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">Pick a time</h1>
-      <p className="mt-1.5 text-sm text-label-secondary">
-        {isRescheduleMode ? "Select a new slot below:" : "Choose a slot to book your interview."}
-      </p>
+      <div className="mb-2">
+        {roleName && (
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-primary">
+            {roleName}
+            {companyName && (
+              <span className="text-muted-foreground font-normal"> · {companyName}</span>
+            )}
+          </div>
+        )}
+        <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">Pick a time</h1>
+        <p className="mt-1 text-sm text-label-secondary">
+          {isRescheduleMode ? "Select a new slot below:" : "Choose a slot to book your interview."}
+        </p>
+      </div>
+
+      <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-border/70 bg-fill-quaternary/70 p-3.5 text-xs text-muted-foreground">
+        <span className="shrink-0 text-base leading-none">ℹ️</span>
+        <div className="leading-relaxed">
+          <strong className="text-foreground">Schedule Notice:</strong> By default, interview slots
+          are available from <strong>Monday to Friday only</strong> (weekends excluded). If your
+          campaign opens on a weekend, the earliest available booking day is Monday.
+        </div>
+      </div>
+
       {bookingError && (
         <div className="mt-4 rounded-2xl border border-destructive/20 bg-destructive/10 p-4 text-xs font-medium text-destructive">
           {bookingError}
@@ -286,7 +312,11 @@ function SlotPicker({
   selected: { start: string; end: string } | null;
   setSelected: (s: { start: string; end: string } | null) => void;
 }) {
-  const tz = browserTimeZone();
+  const defaultTz =
+    (ctx.account as { timezone?: string | null })?.timezone ||
+    (typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : null) ||
+    "Asia/Kolkata";
+  const [tz, setTz] = useState(defaultTz);
   const token = useSearchParams().get("tok") ?? "";
   const riId = useParams<{ id: string }>().id;
   const dailyStart = ctx.round.daily_start_time ?? "09:00";
@@ -418,7 +448,10 @@ function SlotPicker({
   return (
     <div className="glass-panel mt-6 space-y-5 rounded-[28px] p-5 sm:p-6">
       <div>
-        <p className="mb-1 text-xs font-medium text-label-secondary">Select a day</p>
+        <p className="mb-1 text-xs font-medium text-label-secondary">
+          Select a day{" "}
+          <span className="text-[11px] text-muted-foreground/80 font-normal">(Mon–Fri)</span>
+        </p>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {availableDays.map((d) => {
             const key = localDateKey(d);
@@ -447,7 +480,33 @@ function SlotPicker({
       </div>
 
       <div>
-        <p className="mb-1 text-xs font-medium text-label-secondary">Pick a slot · {tz}</p>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-label-secondary">Pick a slot</p>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="text-[13px]">🌐</span>
+            <select
+              aria-label="Timezone"
+              value={tz}
+              onChange={(e) => {
+                setTz(e.target.value);
+                setSelected(null);
+              }}
+              className="rounded-lg border border-border/70 bg-fill-quaternary px-2 py-1 text-xs text-foreground focus:outline-none"
+            >
+              <option value="Asia/Kolkata">India (IST · Asia/Kolkata)</option>
+              <option value="Asia/Dubai">Dubai (GST · Asia/Dubai)</option>
+              <option value="Asia/Singapore">Singapore (SGT · Asia/Singapore)</option>
+              <option value="Asia/Riyadh">Riyadh (AST · Asia/Riyadh)</option>
+              <option value="Europe/London">London (GMT/BST · Europe/London)</option>
+              <option value="Europe/Berlin">Berlin (CET · Europe/Berlin)</option>
+              <option value="America/New_York">New York (ET · America/New_York)</option>
+              <option value="America/Chicago">Chicago (CT · America/Chicago)</option>
+              <option value="America/Los_Angeles">Los Angeles (PT · America/Los_Angeles)</option>
+              <option value="Australia/Sydney">Sydney (AET · Australia/Sydney)</option>
+              <option value="UTC">UTC</option>
+            </select>
+          </div>
+        </div>
         {loadingSlots ? (
           <div className="space-y-2 py-6">
             <Skeleton className="h-8 w-full" />

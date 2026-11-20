@@ -362,6 +362,7 @@ export const bookingContextSchema = z.object({
     name: z.string().nullable(),
     email: z.string(),
     phone: z.string().nullable(),
+    resume_url: z.string().nullable().optional(),
   }),
   campaign: z.object({
     id: z.string(),
@@ -380,8 +381,13 @@ export const bookingContextSchema = z.object({
     duration_minutes: z.number().int().min(1).nullable(),
   }),
   account: z.object({
+    id: z.string().optional(),
     tier: z.enum(["free", "basic", "growth", "enterprise"]),
     voice_screening_included: z.boolean(),
+    company_name: z.string().nullable().optional(),
+    company_logo_url: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    timezone: z.string().nullable().optional(),
   }),
   booked_event: z
     .object({

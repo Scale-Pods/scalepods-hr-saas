@@ -6,7 +6,7 @@ export function formatDateTime(iso: string | null | undefined, tz?: string): str
     return new Intl.DateTimeFormat(undefined, {
       dateStyle: "medium",
       timeStyle: "short",
-      timeZone: tz,
+      timeZone: tz || "Asia/Kolkata",
     }).format(new Date(iso));
   } catch {
     return new Date(iso).toLocaleString();
@@ -96,9 +96,9 @@ export function localDateKey(d: Date = new Date()): string {
 /** "Europe/Berlin" style IANA zone from the browser. */
 export function browserTimeZone(): string {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
   } catch {
-    return "UTC";
+    return "Asia/Kolkata";
   }
 }
 
@@ -108,7 +108,7 @@ export function initials(name: string | null | undefined): string {
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
-    .map((p) => p[0]!.toUpperCase())
+    .map((p) => (p[0] ? p[0].toUpperCase() : ""))
     .join("");
 }
 

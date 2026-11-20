@@ -84,6 +84,12 @@ function SettingsPageInner() {
 
   const [profileUserName, setProfileUserName] = useState(account?.name ?? "");
   const [profileCompanyName, setProfileCompanyName] = useState(account?.company_name ?? "");
+  const [profileCompanyLogo, setProfileCompanyLogo] = useState(
+    (account as { company_logo_url?: string | null })?.company_logo_url ?? "",
+  );
+  const [profileTimezone, setProfileTimezone] = useState(
+    (account as { timezone?: string | null })?.timezone ?? "Asia/Kolkata",
+  );
   const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
@@ -92,12 +98,18 @@ function SettingsPageInner() {
     setMaxPerDay(account?.max_messages_per_candidate_per_day ?? 3);
     setProfileUserName(account?.name ?? "");
     setProfileCompanyName(account?.company_name ?? "");
+    setProfileCompanyLogo(
+      (account as { company_logo_url?: string | null })?.company_logo_url ?? "",
+    );
+    setProfileTimezone((account as { timezone?: string | null })?.timezone ?? "Asia/Kolkata");
   }, [
     account?.quiet_hours_start,
     account?.quiet_hours_end,
     account?.max_messages_per_candidate_per_day,
     account?.name,
     account?.company_name,
+    (account as { company_logo_url?: string | null })?.company_logo_url,
+    (account as { timezone?: string | null })?.timezone,
   ]);
 
   const load = useCallback(async () => {
@@ -259,6 +271,8 @@ function SettingsPageInner() {
         .update({
           name: profileUserName.trim() || null,
           company_name: profileCompanyName.trim() || null,
+          company_logo_url: profileCompanyLogo.trim() || null,
+          timezone: profileTimezone.trim() || "Asia/Kolkata",
         })
         .eq("id", account.id);
       if (error) {
@@ -398,9 +412,75 @@ function SettingsPageInner() {
               onChange={(e) => setProfileCompanyName(e.target.value)}
             />
           </div>
+          <div>
+            <label
+              htmlFor="profile-company-logo"
+              className="mb-1 block text-xs font-medium text-muted-foreground"
+            >
+              Company Logo URL (optional)
+            </label>
+            <Input
+              id="profile-company-logo"
+              placeholder="e.g. https://yourcompany.com/logo.png"
+              value={profileCompanyLogo}
+              onChange={(e) => setProfileCompanyLogo(e.target.value)}
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="profile-timezone"
+              className="mb-1 block text-xs font-medium text-muted-foreground"
+            >
+              Workspace Timezone
+            </label>
+            <select
+              id="profile-timezone"
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              value={profileTimezone}
+              onChange={(e) => setProfileTimezone(e.target.value)}
+            >
+              <option value="Asia/Kolkata" className="bg-popover text-popover-foreground">
+                India Standard Time (IST) · Asia/Kolkata (Default)
+              </option>
+              <option value="Asia/Dubai" className="bg-popover text-popover-foreground">
+                Gulf Standard Time (GST) · Asia/Dubai (+04:00)
+              </option>
+              <option value="Asia/Singapore" className="bg-popover text-popover-foreground">
+                Singapore Time (SGT) · Asia/Singapore (+08:00)
+              </option>
+              <option value="Asia/Riyadh" className="bg-popover text-popover-foreground">
+                Arabia Standard Time (AST) · Asia/Riyadh (+03:00)
+              </option>
+              <option value="Europe/London" className="bg-popover text-popover-foreground">
+                London / GMT / BST · Europe/London
+              </option>
+              <option value="Europe/Berlin" className="bg-popover text-popover-foreground">
+                Central European Time · Europe/Berlin
+              </option>
+              <option value="America/New_York" className="bg-popover text-popover-foreground">
+                US Eastern Time · America/New_York (-05:00)
+              </option>
+              <option value="America/Chicago" className="bg-popover text-popover-foreground">
+                US Central Time · America/Chicago (-06:00)
+              </option>
+              <option value="America/Denver" className="bg-popover text-popover-foreground">
+                US Mountain Time · America/Denver (-07:00)
+              </option>
+              <option value="America/Los_Angeles" className="bg-popover text-popover-foreground">
+                US Pacific Time · America/Los_Angeles (-08:00)
+              </option>
+              <option value="Australia/Sydney" className="bg-popover text-popover-foreground">
+                Australian Eastern · Australia/Sydney (+10:00)
+              </option>
+              <option value="UTC" className="bg-popover text-popover-foreground">
+                Coordinated Universal Time · UTC
+              </option>
+            </select>
+          </div>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Company name is shown to candidates on booking portals and outreach emails.
+          Workspace timezone defaults to India (Asia/Kolkata · IST) and controls interview
+          availability, automated candidate outreach schedules, and quiet hours.
         </p>
         <Button className="mt-3" onClick={saveProfile} disabled={savingProfile}>
           {savingProfile ? "Saving..." : "Save workspace profile"}
