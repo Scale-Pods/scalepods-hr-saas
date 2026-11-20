@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { fetchCandidateProfile } from "./api";
 
 export function useCandidateProfile(
@@ -8,12 +8,14 @@ export function useCandidateProfile(
   tier: string,
   campaignId?: string | null,
   accountId?: string | null,
+  enabled: boolean = true,
 ) {
   return useQuery({
-    queryKey: ["candidates", "profile", id, accountId ?? "anon", campaignId ?? "default"],
+    queryKey: ["candidates", "profile", id, accountId ?? "default", campaignId ?? "default"],
     queryFn: () => fetchCandidateProfile(id as string, tier, campaignId, accountId),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && enabled,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
     refetchInterval: false,
   });
 }

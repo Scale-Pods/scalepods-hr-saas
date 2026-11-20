@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { deleteCampaign, fetchCampaignDetail, fetchCampaigns, updateCampaignStatus } from "./api";
 
 export const campaignsKey = ["campaigns", "list"] as const;
@@ -10,6 +10,7 @@ export function useCampaigns() {
     queryKey: campaignsKey,
     queryFn: fetchCampaigns,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
 }
@@ -20,6 +21,7 @@ export function useCampaignDetail(id: string | undefined) {
     queryFn: () => fetchCampaignDetail(id as string),
     enabled: Boolean(id),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
 }

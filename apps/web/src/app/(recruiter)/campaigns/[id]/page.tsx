@@ -86,37 +86,50 @@ export default function CampaignDetailPage() {
   useEffect(() => {
     if (!id) return;
     const supabase = supabaseBrowser();
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedInvalidate = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
+      }, 300);
+    };
+
     const channel = supabase
       .channel(`campaign-live-sync-${id}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "round_instances", filter: `campaign_id=eq.${id}` },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
-        },
+        debouncedInvalidate,
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "applications", filter: `campaign_id=eq.${id}` },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
-        },
+        debouncedInvalidate,
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "interview_sessions" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "interview_answers" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "scorecards" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "decision_ledger" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", id] });
-      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "interview_sessions" },
+        debouncedInvalidate,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "interview_answers" },
+        debouncedInvalidate,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "scorecards" },
+        debouncedInvalidate,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "decision_ledger" },
+        debouncedInvalidate,
+      )
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, [id, queryClient]);

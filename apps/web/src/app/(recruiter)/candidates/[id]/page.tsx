@@ -308,6 +308,7 @@ export default function CandidateProfilePage() {
     tier,
     selectedCampaignId,
     account?.id,
+    !accountLoading,
   );
   const candidate = data?.candidate;
   const application = data?.application;
@@ -461,15 +462,20 @@ export default function CandidateProfilePage() {
   useEffect(() => {
     if (!id) return;
     const supabase = supabaseBrowser();
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedInvalidate = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
+      }, 300);
+    };
+
     const channel = supabase
       .channel(`candidate-live-sync-${id}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "round_instances", filter: `candidate_id=eq.${id}` },
-        () => {
-          refetch();
-          queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
-        },
+        debouncedInvalidate,
       )
       .on(
         "postgres_changes",
@@ -479,33 +485,30 @@ export default function CandidateProfilePage() {
           table: "interview_sessions",
           filter: `candidate_id=eq.${id}`,
         },
-        () => {
-          refetch();
-          queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
-        },
+        debouncedInvalidate,
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "interview_answers" }, () => {
-        refetch();
-        queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "scorecards" }, () => {
-        refetch();
-        queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
-      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "interview_answers" },
+        debouncedInvalidate,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "scorecards" },
+        debouncedInvalidate,
+      )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "decision_ledger", filter: `candidate_id=eq.${id}` },
-        () => {
-          refetch();
-          queryClient.invalidateQueries({ queryKey: ["candidates", "profile", id] });
-        },
+        debouncedInvalidate,
       )
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [id, refetch, queryClient]);
+  }, [id, queryClient]);
 
   // Application Contact Editing States
   const [contactModalOpen, setContactModalOpen] = useState(false);

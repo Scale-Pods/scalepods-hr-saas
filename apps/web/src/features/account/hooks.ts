@@ -1,7 +1,7 @@
 "use client";
 
 import type { CompanyDomainsRow } from "@scalepods/core";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { useSession } from "@/features/auth/hooks";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -53,6 +53,7 @@ export function useAccount() {
     enabled: Boolean(userId),
     // Cache account details across page transitions for fast shell rendering
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });

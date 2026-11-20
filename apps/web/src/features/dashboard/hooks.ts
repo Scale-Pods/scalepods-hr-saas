@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useSession } from "@/features/auth/hooks";
 import {
   fetchCandidateNames,
@@ -24,6 +24,7 @@ export function useDashboardKpis() {
     queryKey: dashboardKeys.kpis,
     queryFn: fetchDashboardKpis,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
 }
@@ -33,6 +34,7 @@ export function useUpcomingInterviews() {
     queryKey: dashboardKeys.upcoming,
     queryFn: fetchUpcomingInterviews,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
 }
@@ -42,6 +44,7 @@ export function useLedger() {
     queryKey: dashboardKeys.ledger,
     queryFn: () => fetchLedger(200),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
 }

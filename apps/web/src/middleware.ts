@@ -62,16 +62,38 @@ export async function middleware(request: NextRequest) {
       return res;
     }
 
-    // Do not block lightweight RSC prefetch requests on remote auth network verification
-    const isPrefetch =
+    // Client-side router transitions & prefetching:
+    // Do not stall internal SPA navigation on remote Supabase auth network round-trips.
+    // Validate session locally via cookie (refreshes only when expired).
+    const isClientNavigation =
+      request.headers.get("rsc") === "1" ||
+      Boolean(request.headers.get("next-router-state-tree")) ||
       request.headers.get("purpose") === "prefetch" ||
       request.headers.get("next-router-prefetch") === "1" ||
       request.headers.get("x-middleware-prefetch") === "1";
 
-    if (isPrefetch) {
+    if (isClientNavigation) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        const redirect = request.nextUrl.clone();
+        redirect.pathname = "/auth";
+        redirect.search = "";
+        redirect.searchParams.set("next", fullTarget);
+        const res = NextResponse.redirect(redirect);
+        for (const c of response.cookies.getAll()) {
+          res.cookies.set(c);
+        }
+        return res;
+      }
+
       return response;
     }
 
+    // Full document navigation (initial entry, browser reload):
+    // Verify with remote Supabase auth with timeout and graceful fallback
     const timeoutPromise = new Promise<{ data: { user: null }; error: Error }>((resolve) =>
       setTimeout(() => resolve({ data: { user: null }, error: new Error("Auth timeout") }), 2500),
     );
@@ -81,15 +103,21 @@ export async function middleware(request: NextRequest) {
     } = await Promise.race([supabase.auth.getUser(), timeoutPromise]);
 
     if (!user) {
-      const redirect = request.nextUrl.clone();
-      redirect.pathname = "/auth";
-      redirect.search = "";
-      redirect.searchParams.set("next", fullTarget);
-      const res = NextResponse.redirect(redirect);
-      for (const c of response.cookies.getAll()) {
-        res.cookies.set(c);
+      // Check local session cookie fallback in case remote getUser timed out
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        const redirect = request.nextUrl.clone();
+        redirect.pathname = "/auth";
+        redirect.search = "";
+        redirect.searchParams.set("next", fullTarget);
+        const res = NextResponse.redirect(redirect);
+        for (const c of response.cookies.getAll()) {
+          res.cookies.set(c);
+        }
+        return res;
       }
-      return res;
     }
   }
 
