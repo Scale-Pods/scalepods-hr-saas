@@ -203,21 +203,19 @@ export async function POST(req: NextRequest) {
 
           let isActuallyCompleted = isCompletedStatus;
 
-          if (!isActuallyCompleted) {
+          if (!isActuallyCompleted && currentRound?.id) {
             // Check A: Scorecards (by round_instance_id)
-            if (currentRound?.id) {
-              const { data: scData } = await adminSupabase
-                .from("scorecards")
-                .select("id, overall_score")
-                .eq("round_instance_id", currentRound.id)
-                .maybeSingle();
-              if (scData && scData.overall_score != null) {
-                isActuallyCompleted = true;
-              }
+            const { data: scData } = await adminSupabase
+              .from("scorecards")
+              .select("id, overall_score")
+              .eq("round_instance_id", currentRound.id)
+              .maybeSingle();
+            if (scData && scData.overall_score != null) {
+              isActuallyCompleted = true;
             }
 
             // Check B: Interview sessions (by round_instance_id)
-            if (!isActuallyCompleted && currentRound?.id) {
+            if (!isActuallyCompleted) {
               const { data: sessData } = await adminSupabase
                 .from("interview_sessions")
                 .select("id, status")
@@ -228,30 +226,24 @@ export async function POST(req: NextRequest) {
 
               if (
                 sessData &&
-                (sessData.status === "completed" ||
-                  sessData.status === "evaluated" ||
-                  sessData.status === "incomplete")
+                (sessData.status === "completed" || sessData.status === "evaluated")
               ) {
                 isActuallyCompleted = true;
               } else if (sessData?.id) {
                 // Check if scorecard exists by session_id
                 const { data: scBySess } = await adminSupabase
                   .from("scorecards")
-                  .select("id")
+                  .select("id, overall_score")
                   .eq("session_id", sessData.id)
                   .maybeSingle();
-                if (scBySess?.id) {
+                if (scBySess && scBySess.overall_score != null) {
                   isActuallyCompleted = true;
                 }
               }
             }
 
             // Check C: Human interview feedback
-            if (
-              !isActuallyCompleted &&
-              currentRound?.round_type === "human_interview" &&
-              currentRound.id
-            ) {
+            if (!isActuallyCompleted && currentRound.round_type === "human_interview") {
               const { data: fbData } = await adminSupabase
                 .from("interviewer_feedback")
                 .select("id")
@@ -261,11 +253,7 @@ export async function POST(req: NextRequest) {
             }
 
             // Check D: Assignment submissions
-            if (
-              !isActuallyCompleted &&
-              currentRound?.round_type === "assignment" &&
-              currentRound.id
-            ) {
+            if (!isActuallyCompleted && currentRound.round_type === "assignment") {
               const { data: subData } = await adminSupabase
                 .from("assignment_submissions")
                 .select("id")
@@ -274,56 +262,32 @@ export async function POST(req: NextRequest) {
               if (subData) isActuallyCompleted = true;
             }
 
-            // Check E: Decision Ledger (scores from voice screen, AI interviews, or reviews)
+            // Check E: Decision Ledger strictly for this round instance
             if (!isActuallyCompleted) {
-              const dlFilters = [
-                currentRound?.id ? `round_instance_id.eq.${currentRound.id}` : null,
-                `application_id.eq.${appRow.id}`,
-                appRow.candidate_id ? `candidate_id.eq.${appRow.candidate_id}` : null,
-              ].filter(Boolean);
+              const { data: dlEntries } = await adminSupabase
+                .from("decision_ledger")
+                .select("id, stage, score, round_instance_id")
+                .eq("round_instance_id", currentRound.id)
+                .limit(5);
 
-              if (dlFilters.length > 0) {
-                const { data: dlEntries } = await adminSupabase
-                  .from("decision_ledger")
-                  .select("id, stage, score, round_instance_id")
-                  .or(dlFilters.join(","))
-                  .limit(10);
-
-                if (dlEntries && dlEntries.length > 0) {
-                  const hasValidEntry = dlEntries.some(
-                    (d) =>
-                      (d.round_instance_id && d.round_instance_id === currentRound?.id) ||
-                      d.stage === "voice_screen" ||
-                      d.stage === "ai_interview" ||
-                      d.stage === "round" ||
-                      (d.score != null &&
-                        d.stage !== "resume_screening" &&
-                        !d.stage?.includes("resume")),
-                  );
-                  if (hasValidEntry) {
-                    isActuallyCompleted = true;
-                  }
+              if (dlEntries && dlEntries.length > 0) {
+                const hasValidEntry = dlEntries.some((d) => d.score != null);
+                if (hasValidEntry) {
+                  isActuallyCompleted = true;
                 }
               }
             }
 
-            // Check F: Outreach Log (connected/completed AI voice screening call)
-            if (!isActuallyCompleted) {
+            // Check F: Outreach Log strictly for this voice round instance with completed status
+            if (!isActuallyCompleted && currentRound.round_type === "ai_voice_call") {
               const { data: callOutreach } = await adminSupabase
                 .from("outreach_log")
                 .select("id, delivery_state, status, channel")
-                .or(
-                  `application_id.eq.${appRow.id},candidate_id.eq.${appRow.candidate_id || "none"}`,
-                )
+                .eq("round_instance_id", currentRound.id)
                 .eq("channel", "voice_call")
                 .limit(5);
 
-              const hasConnectedCall = callOutreach?.some(
-                (o) =>
-                  o.delivery_state === "connected" ||
-                  o.delivery_state === "delivered" ||
-                  o.status === "completed",
-              );
+              const hasConnectedCall = callOutreach?.some((o) => o.status === "completed");
               if (hasConnectedCall) {
                 isActuallyCompleted = true;
               }
@@ -401,15 +365,6 @@ export async function POST(req: NextRequest) {
               .from("round_instances")
               .update({ status: "completed", application_id: appRow.id })
               .eq("id", currentRound.id);
-          } else {
-            await adminSupabase.from("round_instances").insert({
-              account_id: appRow.account_id || user.id,
-              candidate_id: appRow.candidate_id,
-              campaign_id: appRow.campaign_id,
-              application_id: appRow.id,
-              round_number: appRow.current_round_number,
-              status: "completed",
-            });
           }
 
           const { data: campaignRow } = await adminSupabase

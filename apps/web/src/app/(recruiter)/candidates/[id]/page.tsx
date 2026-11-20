@@ -561,10 +561,10 @@ export default function CandidateProfilePage() {
     application?.current_stage === "round" && application?.current_round_number != null;
 
   const isDocStage =
-    application?.current_stage === "document_verification" ||
-    application?.status === "document_verification" ||
-    application?.status === "documents_requested" ||
-    application?.status === "documents_verified";
+    (application?.current_stage as string) === "document_verification" ||
+    (application?.status as string) === "document_verification" ||
+    (application?.status as string) === "documents_requested" ||
+    (application?.status as string) === "documents_verified";
 
   const currentRoundInstance = useMemo(() => {
     if (!isRoundStage) return null;
@@ -574,8 +574,8 @@ export default function CandidateProfilePage() {
   const isCurrentRoundCompleted = useMemo(() => {
     // 1. If in Document Verification stage: all docs must be verified
     if (isDocStage) {
-      if (application?.documents_status === "verified") return true;
-      const docs = application?.requested_documents;
+      if ((application as Record<string, unknown>)?.documents_status === "verified") return true;
+      const docs = (application as Record<string, unknown>)?.requested_documents;
       return Boolean(
         Array.isArray(docs) &&
           docs.length > 0 &&
@@ -586,61 +586,71 @@ export default function CandidateProfilePage() {
     // 2. If in Resume Screening stage: candidate MUST have a resume screening score!
     if (!isRoundStage) {
       const hasResumeScore = (data?.timeline || []).some(
-        (t) =>
-          (t.stage === "resume_screening" || t.stage === "needs_review") && t.score != null,
+        (t) => (t.stage === "resume_screening" || t.stage === "needs_review") && t.score != null,
       );
       if (hasResumeScore) return true;
-      if (latestScorecard?.stage === "resume_screening" && latestScorecard.overall_score != null) {
+      if (latestScorecard?.overall_score != null) {
         return true;
       }
       return false;
     }
 
-    // 3. If in an assessment / interview Round: candidate MUST have an evaluated score specifically for this round!
+    // 3. If in an assessment / interview Round: candidate MUST have completed the round!
+    if (!currentRoundInstance) return false;
+
+    // Status checks on the round instance (must NOT include "incomplete")
+    const status = (currentRoundInstance.status || "").toLowerCase();
+    if (
+      status === "completed" ||
+      status === "passed" ||
+      status === "awaiting_review" ||
+      status === "evaluated" ||
+      status === "reviewed"
+    ) {
+      return true;
+    }
+
     // Check DialNexa voice call scorecard
-    const hasVoiceScorecard = dialnexaCalls.some(
-      (c) =>
-        c.scorecard != null &&
-        (c.scorecard.overall_score != null ||
-          ("score" in c.scorecard && c.scorecard.score != null)),
-    );
-    if (hasVoiceScorecard) return true;
+    if (currentRoundInstance.round_type === "ai_voice_call") {
+      const hasVoiceScorecard = dialnexaCalls.some(
+        (c) =>
+          (c.status === "completed" || c.scorecard != null) &&
+          (c.duration > 0 || Boolean(c.transcript)),
+      );
+      if (hasVoiceScorecard) return true;
+    }
 
     // Check scorecard specifically for current round instance
     if (
       latestScorecard != null &&
-      latestScorecard.overall_score != null &&
-      (currentRoundInstance
-        ? latestScorecard.round_instance_id === currentRoundInstance.id
-        : latestScorecard.stage !== "resume_screening")
+      latestScorecard.round_instance_id === currentRoundInstance.id &&
+      (latestScorecard.overall_score != null || latestScorecard.recommendation != null)
     ) {
       return true;
     }
 
     // Check timeline entry specifically for current round with a non-null score
     const hasCurrentRoundTimelineScore = (data?.timeline || []).some(
-      (t) =>
-        t.score != null &&
-        t.stage !== "resume_screening" &&
-        t.stage !== "needs_review" &&
-        (currentRoundInstance
-          ? t.round_instance_id === currentRoundInstance.id
-          : t.stage?.includes("round") || t.stage === "ai_interview"),
+      (t) => t.score != null && t.round_instance_id === currentRoundInstance.id,
     );
     if (hasCurrentRoundTimelineScore) return true;
 
-    // Check interviewer feedback with score
+    // Check interviewer feedback
     if (
-      interviewerFeedback.some(
-        (f) =>
-          (currentRoundInstance ? f.round_instance_id === currentRoundInstance.id : true) &&
-          ("overall_score" in f ? f.overall_score != null : false),
-      )
+      currentRoundInstance.round_type === "human_interview" &&
+      interviewerFeedback.some((f) => f.round_instance_id === currentRoundInstance.id)
     ) {
       return true;
     }
 
-    // Unscored or still evaluating: CANNOT advance
+    // Check assignment submission
+    if (
+      currentRoundInstance.round_type === "assignment" &&
+      assignmentSubmissions.some((s) => s.round_instance_id === currentRoundInstance.id)
+    ) {
+      return true;
+    }
+
     return false;
   }, [
     isDocStage,
@@ -649,9 +659,10 @@ export default function CandidateProfilePage() {
     dialnexaCalls,
     latestScorecard,
     interviewerFeedback,
+    assignmentSubmissions,
     data?.timeline,
-    application?.documents_status,
-    application?.requested_documents,
+    (application as Record<string, unknown>)?.documents_status,
+    (application as Record<string, unknown>)?.requested_documents,
   ]);
 
   const handleAdvance = async () => {
@@ -1010,7 +1021,7 @@ export default function CandidateProfilePage() {
                         ? isDocStage
                           ? "Required documents must be verified before advancing"
                           : isRoundStage
-                            ? "Round evaluation score is required before advancing"
+                            ? "Candidate cannot be advanced without completing the round"
                             : "Resume screening score is required before advancing"
                         : "Advance candidate to next stage"
                     }

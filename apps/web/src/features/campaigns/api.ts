@@ -299,20 +299,15 @@ export async function fetchCampaignDetail(id: string): Promise<CampaignDetail> {
             d.stage?.includes("resume")) &&
           d.score != null,
       );
+      const currentRoundNum = app.current_round_number ?? 1;
       const appRi = roundInstances.find(
         (r) =>
-          r.application_id === app.id ||
-          (r.candidate_id === app.candidate_id &&
-            r.round_number === (app.current_round_number ?? 1)),
+          (r.application_id === app.id || r.candidate_id === app.candidate_id) &&
+          r.round_number === currentRoundNum,
       );
-      const appRoundScoreRow = dlList.find(
-        (d) =>
-          ((appRi && d.round_instance_id === appRi.id) ||
-            (d.application_id === app.id &&
-              d.score_type !== "resume" &&
-              !d.stage?.includes("resume"))) &&
-          d.score != null,
-      );
+      const appRoundScoreRow = appRi
+        ? dlList.find((d) => d.round_instance_id === appRi.id && d.score != null)
+        : null;
 
       const appSession = appRi ? allSessions.find((s) => s.round_instance_id === appRi.id) : null;
       const appCard = allScorecards.find(
@@ -506,6 +501,19 @@ export async function reviewCandidateRound(params: {
   }
 
   if (appId) {
+    if (params.roundInstanceId && params.decision) {
+      try {
+        await supabase
+          .from("round_instances")
+          .update({
+            status: params.decision,
+            reviewer_cutoff: params.reviewerCutoff,
+          })
+          .eq("id", params.roundInstanceId);
+      } catch (riUpdateErr) {
+        console.warn("Could not pre-update round instance status before advance:", riUpdateErr);
+      }
+    }
     await decideApplication({
       applicationId: appId,
       action: params.decision === "failed" ? "reject" : "advance",

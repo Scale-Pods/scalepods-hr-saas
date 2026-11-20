@@ -2599,8 +2599,8 @@ begin
       and round_number = v_application.current_round_number
     order by created_at desc
     limit 1;
-    if not found or v_current_round.status not in ('completed','incomplete') then
-      raise exception 'round_not_ready' using detail = 'The current round must be completed or marked Incomplete before advancing.';
+    if not found or v_current_round.status not in ('completed','passed','awaiting_review','evaluated','reviewed') then
+      raise exception 'round_not_ready' using detail = 'The current round must be completed before advancing.';
     end if;
     if v_current_round.status = 'no_show' then
       raise exception 'no_show_rejection_only' using detail = 'A no-show can only be rejected after recruiter confirmation.';

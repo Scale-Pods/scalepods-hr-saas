@@ -158,15 +158,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // 3. Map candidates
     const candidates = applicationsList.map((app) => {
       const currentRoundNum = app.current_round_number ?? 1;
-      const appRi =
-        roundInstances.find(
-          (r) =>
-            (r.application_id === app.id || r.candidate_id === app.candidate_id) &&
-            r.round_number === currentRoundNum,
-        ) ||
-        roundInstances.find(
-          (r) => r.application_id === app.id || r.candidate_id === app.candidate_id,
-        );
+      const appRi = roundInstances.find(
+        (r) =>
+          (r.application_id === app.id || r.candidate_id === app.candidate_id) &&
+          r.round_number === currentRoundNum,
+      );
 
       const appResumeScoreRow = dlList.find(
         (d) =>
@@ -177,14 +173,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           d.score != null,
       );
 
-      const appRoundScoreRow = dlList.find(
-        (d) =>
-          ((appRi && d.round_instance_id === appRi.id) ||
-            (d.application_id === app.id &&
-              d.score_type !== "resume" &&
-              !d.stage?.includes("resume"))) &&
-          d.score != null,
-      );
+      const appRoundScoreRow = appRi
+        ? dlList.find((d) => d.round_instance_id === appRi.id && d.score != null)
+        : null;
 
       const appSession = appRi ? allSessions.find((s) => s.round_instance_id === appRi.id) : null;
 
@@ -200,14 +191,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           (appRi && a.round_instance_id === appRi.id),
       );
 
-      const appVoiceOutreach = allOutreach.find(
-        (o) =>
-          (o.application_id === app.id || o.candidate_id === app.candidate_id) &&
-          o.channel === "voice_call" &&
-          (o.delivery_state === "connected" ||
-            o.delivery_state === "delivered" ||
-            o.status === "completed"),
-      );
+      const appVoiceOutreach =
+        appRi?.round_type === "ai_voice_call"
+          ? allOutreach.find(
+              (o) =>
+                (o.application_id === app.id || o.candidate_id === app.candidate_id) &&
+                o.channel === "voice_call" &&
+                o.status === "completed",
+            )
+          : null;
 
       let interviewStatus:
         | "not_started"
@@ -224,7 +216,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         appRi?.status === "passed" ||
         appRi?.status === "awaiting_review" ||
         appRi?.status === "evaluated" ||
-        appVoiceOutreach != null
+        (appVoiceOutreach != null && appVoiceOutreach.status === "completed")
       ) {
         interviewStatus = "completed";
       } else if (appSession?.status === "incomplete" || appRi?.status === "incomplete") {

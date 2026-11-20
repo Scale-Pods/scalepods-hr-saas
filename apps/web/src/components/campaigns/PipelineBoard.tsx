@@ -53,6 +53,7 @@ import {
   type ViewCandidate,
   verifyApplicationDocument,
 } from "@/features/campaigns/api";
+import { isCandidateRoundCompleted } from "@/features/campaigns/round-completion";
 import { cn } from "@/lib/utils";
 import { PrepareOfferModal } from "./PrepareOfferModal";
 import { RequestDocumentsModal } from "./RequestDocumentsModal";
@@ -306,7 +307,7 @@ export function PipelineBoard({
     );
   };
 
-  const hasCandidateScore = (cand: ViewCandidate): boolean => {
+  const canCandidateAdvance = (cand: ViewCandidate): boolean => {
     const stage = (cand.current_stage || "").toLowerCase();
     const isRound =
       cand.current_round_number != null || Boolean(cand.round_number) || stage.includes("round");
@@ -316,12 +317,8 @@ export function PipelineBoard({
       return cand.resume_score != null;
     }
 
-    // In an assessment/interview round: must have an evaluated score specifically for this round
-    return cand.ai_interview_score != null;
-  };
-
-  const isCandidateRoundCompleted = (cand: ViewCandidate): boolean => {
-    return hasCandidateScore(cand);
+    // In an assessment/interview round: must have completed the round
+    return isCandidateRoundCompleted(cand);
   };
 
   // Action handlers
@@ -357,13 +354,17 @@ export function PipelineBoard({
       Boolean(cand.round_number) ||
       (cand.current_stage || "").toLowerCase().includes("round");
 
-    if (!isDocStage && !hasCandidateScore(cand)) {
-      showErrorToast(
-        isRound
-          ? "Cannot advance candidate: Round evaluation score is required before moving to the next stage."
-          : "Cannot advance candidate: AI resume screening score is required before moving to Round 1.",
-      );
-      return;
+    if (!isDocStage) {
+      if (isRound && !isCandidateRoundCompleted(cand)) {
+        showErrorToast("Cannot advance candidate: The current round must be completed first.");
+        return;
+      }
+      if (!isRound && cand.resume_score == null) {
+        showErrorToast(
+          "Cannot advance candidate: AI resume screening score is required before moving to Round 1.",
+        );
+        return;
+      }
     }
 
     setActionBusyId(cand.application_id);
@@ -1117,7 +1118,7 @@ export function PipelineBoard({
                                   )
                                 ) : (
                                   (() => {
-                                    const hasScore = hasCandidateScore(cand);
+                                    const canAdvance = canCandidateAdvance(cand);
                                     const isRound =
                                       cand.current_round_number != null ||
                                       Boolean(cand.round_number) ||
@@ -1125,18 +1126,18 @@ export function PipelineBoard({
                                     return (
                                       <Button
                                         size="sm"
-                                        disabled={isBusy || isJobClosed || !hasScore}
+                                        disabled={isBusy || isJobClosed || !canAdvance}
                                         onClick={() => handleAdvance(cand)}
                                         className={cn(
                                           "h-6 px-2.5 text-[10px] font-semibold gap-1 shrink-0 whitespace-nowrap",
-                                          hasScore
+                                          canAdvance
                                             ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
                                             : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
                                         )}
                                         title={
-                                          !hasScore
+                                          !canAdvance
                                             ? isRound
-                                              ? "Round evaluation score is required before advancing"
+                                              ? "Candidate cannot be advanced without completing the round"
                                               : "Resume screening score is required before advancing"
                                             : "Advance candidate to next stage"
                                         }
@@ -1393,7 +1394,7 @@ export function PipelineBoard({
                               )
                             ) : (
                               (() => {
-                                const hasScore = hasCandidateScore(cand);
+                                const canAdvance = canCandidateAdvance(cand);
                                 const isRound =
                                   cand.current_round_number != null ||
                                   Boolean(cand.round_number) ||
@@ -1401,18 +1402,18 @@ export function PipelineBoard({
                                 return (
                                   <Button
                                     size="sm"
-                                    disabled={isBusy || isJobClosed || !hasScore}
+                                    disabled={isBusy || isJobClosed || !canAdvance}
                                     onClick={() => handleAdvance(cand)}
                                     className={cn(
                                       "h-7 px-2.5 text-xs font-semibold gap-1",
-                                      hasScore
+                                      canAdvance
                                         ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
                                         : "opacity-40 cursor-not-allowed bg-muted text-muted-foreground",
                                     )}
                                     title={
-                                      !hasScore
+                                      !canAdvance
                                         ? isRound
-                                          ? "Round evaluation score is required before advancing"
+                                          ? "Candidate cannot be advanced without completing the round"
                                           : "Resume screening score is required before advancing"
                                         : "Advance candidate to next stage"
                                     }
