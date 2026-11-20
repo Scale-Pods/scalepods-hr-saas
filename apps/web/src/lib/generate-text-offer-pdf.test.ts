@@ -275,4 +275,81 @@ RIGHT: Manish Authorized Signatory For Ziegler Talent Acquisition Lead "CC:" Eng
     const expectedCenterX = 50 + (495.28 - centerW) / 2;
     expect(Number(centerMatch?.[3])).toBeCloseTo(expectedCenterX, 1);
   });
+
+  it("detects right logo alignment from docx template and renders logo at right margin", () => {
+    const docxPath =
+      "C:/Users/aqibf/.gemini/antigravity/brain/c1a33689-b2eb-4708-881b-dafa9e1830c3/.user_uploaded/media_1795000158153_0da472f6.docx";
+
+    // 1. If user docx file exists, test native extraction of right-aligned logo
+    if (fs.existsSync(docxPath)) {
+      const docxBuf = fs.readFileSync(docxPath);
+      const logoInfo = extractDocumentLogoInfoFromDocxBuffer(docxBuf);
+      expect(logoInfo).not.toBeNull();
+      expect(logoInfo?.format).toBe("png");
+      expect(logoInfo?.alignment).toBe("right");
+
+      const pdfBuf = generateStyledOfferPdf("OFFER LETTER\n\nDear Aqib Khan,", {
+        companyName: "XYZ Company",
+        logoImage: logoInfo,
+        logoAlignment: logoInfo?.alignment,
+      });
+      const pdfAscii = pdfBuf.toString("latin1");
+      expect(pdfAscii).toContain("/LogoImg");
+
+      // Calculate expected right-aligned X coordinate: PAGE_W (595.28) - MARGIN_R (50) - logoW
+      // Logo maxH is 46, aspect is width/height, logoW = logoH * aspect.
+      // The Do command format: `q <logoW> 0 0 <logoH> <logoX> <logoY> cm /LogoImg Do Q`
+      const match = pdfAscii.match(
+        /q ([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm \/LogoImg Do Q/,
+      );
+      expect(match).not.toBeNull();
+      const logoW = Number(match?.[1]);
+      const logoX = Number(match?.[3]);
+      const expectedRightX = 595.28 - 50 - logoW;
+      expect(Math.abs(logoX - expectedRightX)).toBeLessThan(0.05);
+      // Confirmed right-aligned (X > 350, not left margin 50.00)
+      expect(logoX).toBeGreaterThan(350);
+    }
+
+    // 2. Test left vs right vs center alignment explicitly
+    const dummyPng = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+      "base64",
+    );
+
+    // Left aligned: logoX = MARGIN_L = 50.00
+    const leftPdf = generateStyledOfferPdf("OFFER LETTER", {
+      companyName: "Acme Left",
+      logoImage: { buffer: dummyPng, format: "png", width: 100, height: 50 },
+      logoAlignment: "left",
+    }).toString("latin1");
+    const leftMatch = leftPdf.match(
+      /q ([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm \/LogoImg Do Q/,
+    );
+    expect(Number(leftMatch?.[3])).toBeCloseTo(50.0, 1);
+
+    // Right aligned: logoX = PAGE_W (595.28) - MARGIN_R (50) - logoW (92) = 453.28
+    const rightPdf = generateStyledOfferPdf("OFFER LETTER", {
+      companyName: "Acme Right",
+      logoImage: { buffer: dummyPng, format: "png", width: 100, height: 50 },
+      logoAlignment: "right",
+    }).toString("latin1");
+    const rightMatch = rightPdf.match(
+      /q ([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm \/LogoImg Do Q/,
+    );
+    expect(Number(rightMatch?.[3])).toBeGreaterThan(400);
+
+    // Center aligned: logoX = MARGIN_L (50) + (USABLE_W - logoW)/2
+    const centerPdf = generateStyledOfferPdf("OFFER LETTER", {
+      companyName: "Acme Center",
+      logoImage: { buffer: dummyPng, format: "png", width: 100, height: 50 },
+      logoAlignment: "center",
+    }).toString("latin1");
+    const centerMatch = centerPdf.match(
+      /q ([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm \/LogoImg Do Q/,
+    );
+    const centerW = Number(centerMatch?.[1]);
+    const expectedCenterX = 50 + (495.28 - centerW) / 2;
+    expect(Number(centerMatch?.[3])).toBeCloseTo(expectedCenterX, 1);
+  });
 });

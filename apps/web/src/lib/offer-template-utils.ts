@@ -1,3 +1,5 @@
+import { numberToWords } from "./number-to-words";
+
 /**
  * Shared helpers for extracting {{VAR_NAME}} placeholders from offer letter
  * templates and substituting filled values for preview / PDF generation.
@@ -723,4 +725,112 @@ export function formatPlainTextAsRichHtml(text: string): string {
   flushList();
   flushTable();
   return out.join("\n");
+}
+
+export function isOfferTemplatePlaceholder(text?: string | null): boolean {
+  if (!text) return true;
+  const trimmed = text.trim();
+  return (
+    !trimmed ||
+    trimmed === "[Raw DOCX Template]" ||
+    trimmed === "[Reusable DOCX Template]" ||
+    trimmed === "[Finished Letter]" ||
+    trimmed === "[Finished Letter - Sent As-Is]" ||
+    /^Employment Offer & Agreement\s+Dear\s+/i.test(trimmed)
+  );
+}
+
+export interface StandardOfferLetterOptions {
+  isIntern: boolean;
+  candidateName: string;
+  positionTitle: string;
+  companyName: string;
+  salary: string;
+  currency?: string;
+  stipendAmount?: string;
+  stipendWords?: string;
+  duration?: string;
+  refNo?: string;
+  issueDate?: string;
+  joiningDate?: string;
+  signatoryName?: string;
+  signatoryTitle?: string;
+  signatoryDate?: string;
+}
+
+export function generateStandardOfferLetterText(opts: StandardOfferLetterOptions): string {
+  const currency = opts.currency || "INR";
+  const year = new Date().getFullYear();
+  const refNo = opts.refNo || `SP/${year}/OFFER/101`;
+  const issueDate =
+    opts.issueDate ||
+    new Date().toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  const joiningDate = opts.joiningDate || "09 November 2026";
+  const salaryWords = numberToWords(opts.salary);
+  const stipendAmount = opts.stipendAmount || opts.salary || "5000";
+  const stipendWords = opts.stipendWords || numberToWords(stipendAmount);
+  const duration = opts.duration || (opts.isIntern ? "3 Months" : "Full-time");
+  const candidateName = opts.candidateName || "Candidate";
+  const positionTitle = opts.positionTitle || "Team Member";
+  const companyName = opts.companyName || "ScalePods Partner";
+  const signatoryName = opts.signatoryName || "Manish";
+  const signatoryTitle = opts.signatoryTitle || "Talent Acquisition Lead";
+  const signatoryDate = opts.signatoryDate || issueDate;
+
+  return [
+    `| Ref: ${refNo} | Date: ${issueDate} |`,
+    `| Dear ${candidateName}, | Starting Date: ${joiningDate} |`,
+    "",
+    opts.isIntern ? "INTERNSHIP APPOINTMENT LETTER" : "APPOINTMENT LETTER",
+    "",
+    opts.isIntern
+      ? `We are pleased to offer you an internship position with ${companyName} as ${positionTitle}. We were impressed by your background and potential, and we are confident that you will make valuable contributions to our team while gaining meaningful professional experience.`
+      : `We are pleased to offer you the position of ${positionTitle} with ${companyName}. We believe that your skills and experience will be a valuable asset to our company and look forward to your contributions.`,
+    "",
+    "TERMS OF ENGAGEMENT",
+    "",
+    "1. Role & Scope",
+    `You will be engaged as ${positionTitle}. In this role, you will be expected to devote your full business time, attention, and energies to the performance of your duties.`,
+    "",
+    opts.isIntern ? "2. Duration" : "2. Compensation & Benefits",
+    opts.isIntern
+      ? `Your internship will be for a duration of ${duration}, commencing on ${joiningDate}, unless terminated earlier in accordance with the terms herein.`
+      : `Your gross annual compensation will be ${currency} ${opts.salary} /- (${salaryWords}). Detailed breakdown is provided in the Annexure.`,
+    "",
+    opts.isIntern ? "3. Stipend & Allowances" : "3. Working Hours & Leave",
+    opts.isIntern
+      ? `You will receive a monthly stipend of ${currency} ${stipendAmount} /- (${stipendWords}), payable on or before the last working day of each calendar month.`
+      : "You will be expected to work 5 days a week. You are entitled to standard paid leaves as per company policy.",
+    "",
+    "4. Confidentiality",
+    `During and after your engagement with ${companyName}, you shall maintain strict confidentiality regarding all proprietary information, trade secrets, software, designs, algorithms, customer lists, and business affairs of the company.`,
+    "",
+    "5. Intellectual Property",
+    `All inventions, discoveries, designs, software, documentation, and works of authorship created by you in the course of your engagement shall be the sole and exclusive property of ${companyName}.`,
+    "",
+    "6. Code of Conduct",
+    `You agree to adhere to all workplace policies, rules, regulations, and standards of conduct established by ${companyName}.`,
+    "",
+    "7. Termination",
+    opts.isIntern
+      ? "Either party may terminate this internship at any time with 15 days written notice, or payment of stipend in lieu thereof."
+      : "Either party may terminate this employment with 30 days written notice, or salary in lieu thereof.",
+    "",
+    `We look forward to welcoming you to the ${companyName} team.`,
+    "",
+    `For ${companyName}`,
+    signatoryName,
+    signatoryTitle,
+    "Signature: ______________________",
+    `Date: ${signatoryDate}`,
+    "",
+    "ACKNOWLEDGEMENT",
+    `I, ${candidateName}, accept the above terms and agree to work with ${companyName} as ${positionTitle} under the conditions stated herein.`,
+    "",
+    "| Signature: __________________ | Date: __________________ | Place: __________________ |",
+  ].join("\n");
 }

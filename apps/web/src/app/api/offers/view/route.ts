@@ -1,7 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
-import { renderOfferTemplateText } from "@/lib/offer-template-utils";
+import {
+  generateStandardOfferLetterText,
+  isOfferTemplatePlaceholder,
+  renderOfferTemplateText,
+} from "@/lib/offer-template-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -237,6 +241,9 @@ export async function GET(req: NextRequest) {
 
     let resolvedRenderedHtml = offerRow?.rendered_html?.trim() || null;
     let resolvedRenderedText = offerRow?.rendered_text?.trim() || null;
+    if (isOfferTemplatePlaceholder(resolvedRenderedText)) {
+      resolvedRenderedText = null;
+    }
 
     if (!resolvedRenderedHtml && !resolvedRenderedText && offerRow?.offer_template_id) {
       const { data: tplRow } = await adminSupabase
@@ -247,9 +254,36 @@ export async function GET(req: NextRequest) {
       if (tplRow?.html_content?.trim()) {
         resolvedRenderedHtml = renderOfferTemplateText(tplRow.html_content.trim(), dynamicVars);
       }
-      if (tplRow?.raw_text?.trim()) {
+      if (tplRow?.raw_text?.trim() && !isOfferTemplatePlaceholder(tplRow.raw_text)) {
         resolvedRenderedText = renderOfferTemplateText(tplRow.raw_text.trim(), dynamicVars);
       }
+    }
+
+    if (!resolvedRenderedHtml && !resolvedRenderedText) {
+      const isIntern =
+        String(fieldValues.letter_type || fieldValues.LETTER_TYPE || "").toLowerCase() === "intern" ||
+        positionTitle.toLowerCase().includes("intern");
+      resolvedRenderedText = generateStandardOfferLetterText({
+        isIntern,
+        candidateName,
+        positionTitle,
+        companyName,
+        salary,
+        currency,
+        stipendAmount: (fieldValues.stipend_amount || fieldValues.STIPEND_AMOUNT) as string,
+        stipendWords: (fieldValues.stipend_words || fieldValues.STIPEND_WORDS) as string,
+        duration: (fieldValues.duration || fieldValues.DURATION) as string,
+        refNo: String(fieldValues.REF_NO || fieldValues.ref_no || `SP/${new Date().getFullYear()}/OFFER/101`),
+        issueDate: String(
+          fieldValues.issue_date ||
+            fieldValues.ISSUE_DATE ||
+            fieldValues.signatory_date ||
+            new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+        ),
+        joiningDate: startDate,
+        signatoryName,
+        signatoryTitle,
+      });
     }
 
     const sentAt =

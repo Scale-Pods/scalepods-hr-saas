@@ -4,6 +4,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
 import { detectPlaceholders } from "@/lib/offers/detect-placeholders";
 import { fillOfferDocx, OfferDocxError } from "@/lib/offers/fill-docx";
+import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
 import {
   applyTextReplacementsToDocx,
   type ReplacementInstruction,
@@ -175,6 +176,10 @@ export async function POST(req: NextRequest) {
 
     let newTemplate: unknown = null;
     let insertError: { message?: string } | null = null;
+    const reusableRawText =
+      (await extractDocumentTextFromDocxBuffer(newBuffer)) ||
+      sourceTpl.raw_text ||
+      "[Reusable DOCX Template]";
 
     const fullPayload = {
       account_id: user.id,
@@ -182,7 +187,7 @@ export async function POST(req: NextRequest) {
       name: newName,
       file_name: sourceTpl.file_name,
       storage_path: newStoragePath,
-      raw_text: "[Reusable DOCX Template]",
+      raw_text: reusableRawText,
       variables: detectedPlaceholders,
       placeholders: detectedPlaceholders,
       is_finished_letter: false,
@@ -200,7 +205,7 @@ export async function POST(req: NextRequest) {
         name: newName,
         file_name: sourceTpl.file_name,
         storage_path: newStoragePath,
-        raw_text: "[Reusable DOCX Template]",
+        raw_text: reusableRawText,
         variables: detectedPlaceholders,
         is_default: false,
         created_by: user.id,

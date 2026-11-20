@@ -4,6 +4,8 @@ import {
   extractAllOfferVariables,
   extractCustomOfferVariables,
   formatOfferVarLabel,
+  generateStandardOfferLetterText,
+  isOfferTemplatePlaceholder,
   renderOfferTemplateText,
 } from "./offer-template-utils";
 import { extractDocumentTextFromDocxXml, pruneDocxXmlConditions } from "./offers/prune-docx-xml";
@@ -258,5 +260,59 @@ TERMS OF ENGAGEMENT`;
     expect(text).toContain("6 Months internship as Sales and Marketing intern");
     expect(text).toContain("| # | Component | Monthly |");
     expect(text).toContain("| 1 | Stipend | 8000 |");
+  });
+
+  it("identifies template placeholders correctly via isOfferTemplatePlaceholder", () => {
+    expect(isOfferTemplatePlaceholder(null)).toBe(true);
+    expect(isOfferTemplatePlaceholder("")).toBe(true);
+    expect(isOfferTemplatePlaceholder("[Raw DOCX Template]")).toBe(true);
+    expect(isOfferTemplatePlaceholder("[Reusable DOCX Template]")).toBe(true);
+    expect(isOfferTemplatePlaceholder("[Finished Letter]")).toBe(true);
+    expect(isOfferTemplatePlaceholder("[Finished Letter - Sent As-Is]")).toBe(true);
+    expect(
+      isOfferTemplatePlaceholder(
+        "Employment Offer & Agreement\n\nDear John,\n\nWe are pleased to extend this offer",
+      ),
+    ).toBe(true);
+    expect(isOfferTemplatePlaceholder("APPOINTMENT LETTER\n\nDear Harika Adepu,\n\nTERMS OF ENGAGEMENT")).toBe(
+      false,
+    );
+  });
+
+  it("generates full structured ScalePods offer letter text matching dashboard view", () => {
+    const fulltimeLetter = generateStandardOfferLetterText({
+      isIntern: false,
+      candidateName: "Adepu Harika",
+      positionTitle: "ML Engineer",
+      companyName: "ScalePods Partner",
+      salary: "60000",
+      currency: "INR",
+      refNo: "SP/2026/OFFER/101",
+      issueDate: "November 19, 2026",
+      joiningDate: "09 November 2026",
+      signatoryName: "Manish",
+      signatoryTitle: "Talent Acquisition Lead",
+    });
+
+    expect(fulltimeLetter).toContain("Ref: SP/2026/OFFER/101");
+    expect(fulltimeLetter).toContain("Date: November 19, 2026");
+    expect(fulltimeLetter).toContain("Dear Adepu Harika, | Starting Date: 09 November 2026");
+    expect(fulltimeLetter).toContain("APPOINTMENT LETTER");
+    expect(fulltimeLetter).toContain("TERMS OF ENGAGEMENT");
+    expect(fulltimeLetter).toContain("1. Role & Scope");
+    expect(fulltimeLetter).toContain("You will be engaged as ML Engineer.");
+    expect(fulltimeLetter).toContain("2. Compensation & Benefits");
+    expect(fulltimeLetter).toContain("Your gross annual compensation will be INR 60000 /- (Sixty Thousand Rupees Only)");
+    expect(fulltimeLetter).toContain("3. Working Hours & Leave");
+    expect(fulltimeLetter).toContain("4. Confidentiality");
+    expect(fulltimeLetter).toContain("5. Intellectual Property");
+    expect(fulltimeLetter).toContain("6. Code of Conduct");
+    expect(fulltimeLetter).toContain("7. Termination");
+    expect(fulltimeLetter).toContain("For ScalePods Partner");
+    expect(fulltimeLetter).toContain("Manish");
+    expect(fulltimeLetter).toContain("Talent Acquisition Lead");
+    expect(fulltimeLetter).toContain("ACKNOWLEDGEMENT");
+    expect(fulltimeLetter).toContain("I, Adepu Harika, accept the above terms");
+    expect(fulltimeLetter).toContain("| Signature: __________________ | Date: __________________ | Place: __________________ |");
   });
 });

@@ -107,8 +107,21 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Extract text from DOCX
-    const extractedRawText =
-      (await extractDocumentTextFromDocxBuffer(buffer)) || "[Raw DOCX Template]";
+    let extractedRawText = (await extractDocumentTextFromDocxBuffer(buffer)) || "";
+    if (!extractedRawText) {
+      try {
+        const mammoth = await import("mammoth");
+        const mammothRes = await mammoth.extractRawText({ buffer });
+        if (mammothRes.value?.trim()) {
+          extractedRawText = mammothRes.value.trim();
+        }
+      } catch (mammothErr) {
+        console.warn("[api/offer-templates/upload] Mammoth fallback error:", mammothErr);
+      }
+    }
+    if (!extractedRawText) {
+      extractedRawText = "[Raw DOCX Template]";
+    }
 
     // 4. Invoke n8n Claude Parser Webhook ("hiring/offer-template-parse")
     const n8nVariables: string[] = [];

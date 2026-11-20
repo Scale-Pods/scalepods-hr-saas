@@ -432,11 +432,41 @@ export async function extractDocumentTextFromDocxBuffer(
     const docBytes = unzipped["word/document.xml"];
     if (docBytes) {
       const xml = fflate.strFromU8(docBytes);
-      return extractDocumentTextFromDocxXml(xml, data);
+      const text = extractDocumentTextFromDocxXml(xml, data);
+      if (text && text.trim().length > 0) {
+        return text;
+      }
     }
   } catch (err) {
-    console.warn("[extractDocumentTextFromDocxBuffer] Error reading docx buffer:", err);
+    console.warn("[extractDocumentTextFromDocxBuffer] Error reading docx buffer via fflate:", err);
   }
+
+  // Fallback to mammoth for complex OpenXML schemas, shapes, or Google Docs exports
+  try {
+    const mammoth = await import("mammoth");
+    const rawRes = await mammoth.extractRawText({ buffer: docxBuffer });
+    if (rawRes.value?.trim()) {
+      let rawText = rawRes.value.trim();
+      if (data) {
+        const normalized: Record<string, string> = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (v !== undefined && v !== null && String(v).trim() !== "") {
+            normalized[k.toUpperCase()] = String(v).trim();
+            normalized[k.toLowerCase()] = String(v).trim();
+            normalized[k] = String(v).trim();
+          }
+        }
+        rawText = rawText.replace(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g, (match, key: string) => {
+          const cleanKey = key.trim().toUpperCase();
+          return normalized[cleanKey] ?? normalized[key.trim()] ?? match;
+        });
+      }
+      return rawText;
+    }
+  } catch (mammothErr) {
+    console.warn("[extractDocumentTextFromDocxBuffer] Mammoth fallback note:", mammothErr);
+  }
+
   return "";
 }
 

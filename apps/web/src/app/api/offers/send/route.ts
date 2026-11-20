@@ -8,7 +8,12 @@ import {
   numberToWords,
 } from "@/lib/generate-styled-offer-pdf";
 import { callN8nGateway } from "@/lib/n8n-gateway";
-import { cleanOfferTemplateDirectives, renderOfferTemplateText } from "@/lib/offer-template-utils";
+import {
+  cleanOfferTemplateDirectives,
+  generateStandardOfferLetterText,
+  isOfferTemplatePlaceholder,
+  renderOfferTemplateText,
+} from "@/lib/offer-template-utils";
 import { fillOfferDocx } from "@/lib/offers/fill-docx";
 import {
   type DocumentLogoInfo,
@@ -367,13 +372,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (!textToRender || textToRender === "[Raw DOCX Template]") {
-        if (renderedText?.trim() && renderedText.trim() !== "[Raw DOCX Template]") {
+      if (!textToRender || isOfferTemplatePlaceholder(textToRender)) {
+        if (renderedText?.trim() && !isOfferTemplatePlaceholder(renderedText)) {
           textToRender = cleanOfferTemplateDirectives(renderedText.trim(), {
             letterType: isIntern ? "intern" : "fulltime",
             isIntern,
           });
-        } else if (tplRow?.raw_text && tplRow.raw_text !== "[Raw DOCX Template]") {
+        } else if (tplRow?.raw_text && !isOfferTemplatePlaceholder(tplRow.raw_text)) {
           const cleanedTpl = cleanOfferTemplateDirectives(tplRow.raw_text, {
             letterType: isIntern ? "intern" : "fulltime",
             isIntern,
@@ -383,7 +388,34 @@ export async function POST(req: NextRequest) {
             resolvedFieldValues as Record<string, string>,
           );
         } else {
-          textToRender = `Employment Offer & Agreement\n\nDear ${candidateName},\n\nWe are pleased to extend this offer of employment for the position of ${parsed.data.field_values?.position_title || "Team Member"}.`;
+          textToRender = generateStandardOfferLetterText({
+            isIntern,
+            candidateName,
+            positionTitle,
+            companyName,
+            salary,
+            currency,
+            stipendAmount: resolvedFieldValues.stipend_amount as string,
+            stipendWords: resolvedFieldValues.stipend_words as string,
+            duration,
+            refNo: String(
+              resolvedFieldValues.ref_no ||
+                resolvedFieldValues.REF_NO ||
+                `SP/${new Date().getFullYear()}/OFFER/101`,
+            ),
+            issueDate: String(
+              resolvedFieldValues.issue_date ||
+                resolvedFieldValues.ISSUE_DATE ||
+                new Date().toLocaleDateString("en-US", {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                }),
+            ),
+            joiningDate: startDate,
+            signatoryName,
+            signatoryTitle,
+          });
         }
       }
 
@@ -494,6 +526,7 @@ export async function POST(req: NextRequest) {
     try {
       const { response, payload } = await callN8nGateway("hiring/offer-send", token || "", {
         ...parsed.data,
+        rendered_text: textToRender,
         recruiter_email: user.email,
         recruiter_id: user.id,
         pdf_base64: pdfBase64,
@@ -532,7 +565,7 @@ export async function POST(req: NextRequest) {
         campaign_id: parsed.data.campaign_id,
         application_id: parsed.data.application_id,
         offer_template_id: offerTemplateId,
-        rendered_text: renderedText || null,
+        rendered_text: textToRender || renderedText || null,
         rendered_html: renderedHtml || null,
         filled_docx_path: filledDocxPath,
         generated_pdf_path: generatedPdfPath,

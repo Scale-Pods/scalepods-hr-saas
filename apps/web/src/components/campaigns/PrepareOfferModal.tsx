@@ -41,6 +41,8 @@ import { numberToWords } from "@/lib/number-to-words";
 import {
   cleanOfferTemplateDirectives,
   formatOfferVarLabel,
+  generateStandardOfferLetterText,
+  isOfferTemplatePlaceholder,
   normalizeVarKey,
   renderOfferTemplateText,
   STANDARD_OFFER_VAR_KEYS,
@@ -543,12 +545,49 @@ export function PrepareOfferModal({
     if (!hasSelectedTemplate) return "";
     const source = selectedTemplate?.raw_text || "";
     const isIntern = offerType === "intern";
+    const allVals = buildAllOfferValues();
+
+    if (isOfferTemplatePlaceholder(source)) {
+      return generateStandardOfferLetterText({
+        isIntern,
+        candidateName: candidateName.trim() || candidate?.name || "Candidate",
+        positionTitle: positionTitle || "Team Member",
+        companyName: companyName || "ScalePods Partner",
+        salary: salary || (isIntern ? "5000" : "600000"),
+        currency: currency || "INR",
+        stipendAmount: (allVals.STIPEND_AMOUNT as string) || salary || "5000",
+        stipendWords: allVals.STIPEND_WORDS as string,
+        duration: allVals.DURATION as string,
+        refNo: allVals.REF_NO as string,
+        issueDate: allVals.ISSUE_DATE as string,
+        joiningDate: startDate || (allVals.START_DATE as string),
+        signatoryName: signatoryName || "Manish",
+        signatoryTitle: (dynamicValues.SIGNATORY_TITLE as string) || "Talent Acquisition Lead",
+        signatoryDate,
+      });
+    }
+
     const cleaned = cleanOfferTemplateDirectives(source, {
       letterType: isIntern ? "intern" : "fulltime",
       isIntern,
     });
-    return renderOfferTemplateText(cleaned, buildAllOfferValues());
-  }, [hasSelectedTemplate, selectedTemplate, offerType, buildAllOfferValues]);
+    return renderOfferTemplateText(cleaned, allVals);
+  }, [
+    hasSelectedTemplate,
+    selectedTemplate,
+    offerType,
+    buildAllOfferValues,
+    candidateName,
+    candidate?.name,
+    positionTitle,
+    companyName,
+    salary,
+    currency,
+    startDate,
+    signatoryName,
+    dynamicValues.SIGNATORY_TITLE,
+    signatoryDate,
+  ]);
 
   // Load PDF preview via generic DOCX engine
   const loadPdfPreview = useCallback(async () => {

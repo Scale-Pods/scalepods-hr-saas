@@ -6,7 +6,12 @@ import {
   getDefaultLetterheadBuffer,
   numberToWords,
 } from "@/lib/generate-styled-offer-pdf";
-import { cleanOfferTemplateDirectives, renderOfferTemplateText } from "@/lib/offer-template-utils";
+import {
+  cleanOfferTemplateDirectives,
+  generateStandardOfferLetterText,
+  isOfferTemplatePlaceholder,
+  renderOfferTemplateText,
+} from "@/lib/offer-template-utils";
 import {
   type DocumentLogoInfo,
   extractDocumentImageFromDocxBuffer,
@@ -238,8 +243,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (!textToRender || textToRender === "[Raw DOCX Template]") {
-        if (tpl?.raw_text && tpl.raw_text !== "[Raw DOCX Template]") {
+      if (!textToRender || isOfferTemplatePlaceholder(textToRender)) {
+        if (tpl?.raw_text && !isOfferTemplatePlaceholder(tpl.raw_text)) {
           const cleanedTpl = cleanOfferTemplateDirectives(tpl.raw_text, {
             letterType: isIntern ? "intern" : "fulltime",
             isIntern,
@@ -251,9 +256,9 @@ export async function POST(req: NextRequest) {
 
     // 2. Fall back to client rendered_text if valid and not the placeholder
     if (
-      (!textToRender || textToRender === "[Raw DOCX Template]") &&
+      (!textToRender || isOfferTemplatePlaceholder(textToRender)) &&
       body?.rendered_text?.trim() &&
-      body.rendered_text.trim() !== "[Raw DOCX Template]"
+      !isOfferTemplatePlaceholder(body.rendered_text)
     ) {
       textToRender = cleanOfferTemplateDirectives(body.rendered_text.trim(), {
         letterType: isIntern ? "intern" : "fulltime",
@@ -261,8 +266,31 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (!textToRender || textToRender === "[Raw DOCX Template]") {
-      textToRender = `Employment Offer & Agreement\n\nDear ${body?.candidate_name || "Candidate"},\n\nWe are pleased to extend this offer of employment for the position of ${body?.position_title || "Team Member"}.`;
+    if (!textToRender || isOfferTemplatePlaceholder(textToRender)) {
+      textToRender = generateStandardOfferLetterText({
+        isIntern,
+        candidateName: (values.candidate_name as string) || (body?.candidate_name as string) || "Candidate",
+        positionTitle: (values.position_title as string) || (body?.position_title as string) || "Team Member",
+        companyName: (values.company_name as string) || (body?.company_name as string) || "ScalePods Partner",
+        salary: (values.salary as string) || (body?.salary as string) || (isIntern ? "5000" : "600000"),
+        currency: (values.currency as string) || (body?.currency as string) || "INR",
+        stipendAmount: values.stipend_amount,
+        stipendWords: values.stipend_words,
+        duration: values.duration,
+        refNo: String(values.REF_NO || values.ref_no || `SP/${new Date().getFullYear()}/OFFER/101`),
+        issueDate: String(values.ISSUE_DATE || values.issue_date || signatoryDate),
+        joiningDate: String(
+          values.start_date ||
+            values.START_DATE ||
+            values.joining_date ||
+            values.JOINING_DATE ||
+            (body?.start_date as string) ||
+            "09 November 2026",
+        ),
+        signatoryName: (values.signatory_name as string) || (body?.signatory_name as string) || "Manish",
+        signatoryTitle: (values.signatory_title as string) || (body?.signatory_title as string) || "Talent Acquisition Lead",
+        signatoryDate,
+      });
     }
 
     const isDefaultTemplate = Boolean(
@@ -602,7 +630,7 @@ export async function GET(req: NextRequest) {
     let pdfBuf: Buffer | null = null;
 
     // A. Render from stored rendered text
-    if (offerRow?.rendered_text && offerRow.rendered_text !== "[Raw DOCX Template]") {
+    if (offerRow?.rendered_text && !isOfferTemplatePlaceholder(offerRow.rendered_text)) {
       const isDefault = offerRow.rendered_text.includes("ScalePods");
       pdfBuf = generateStyledOfferPdf(offerRow.rendered_text, {
         companyName,
@@ -650,7 +678,7 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      if (!pdfBuf && tplRow?.raw_text && tplRow.raw_text !== "[Raw DOCX Template]") {
+      if (!pdfBuf && tplRow?.raw_text && !isOfferTemplatePlaceholder(tplRow.raw_text)) {
         const rendered = renderOfferTemplateText(tplRow.raw_text, resolvedVariables);
         pdfBuf = generateStyledOfferPdf(rendered, {
           companyName,
@@ -700,7 +728,7 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      if (!pdfBuf && latestTpl?.raw_text && latestTpl.raw_text !== "[Raw DOCX Template]") {
+      if (!pdfBuf && latestTpl?.raw_text && !isOfferTemplatePlaceholder(latestTpl.raw_text)) {
         const rendered = renderOfferTemplateText(latestTpl.raw_text, resolvedVariables);
         pdfBuf = generateStyledOfferPdf(rendered, {
           companyName,
@@ -715,56 +743,23 @@ export async function GET(req: NextRequest) {
 
     // D. Guaranteed fallback: Generate structured styled PDF matching ScalePods Word Template
     if (!pdfBuf) {
-      const textToRender = [
-        `| Ref: ${refNo} | Date: ${todayFormatted} |`,
-        `| Dear ${candidateName}, | Starting Date: ${joiningDate} |`,
-        "",
-        isIntern ? "INTERNSHIP APPOINTMENT LETTER" : "APPOINTMENT LETTER",
-        "",
-        isIntern
-          ? `We are pleased to offer you an internship position with ${companyName} as ${positionTitle}. We were impressed by your background and potential, and we are confident that you will make valuable contributions to our team while gaining meaningful professional experience.`
-          : `We are pleased to offer you the position of ${positionTitle} with ${companyName}. We believe that your skills and experience will be a valuable asset to our company and look forward to your contributions.`,
-        "",
-        "TERMS OF ENGAGEMENT",
-        "",
-        `1. Role & Scope`,
-        `You will be engaged as ${positionTitle}. In this role, you will be expected to devote your full business time, attention, and energies to the performance of your duties.`,
-        "",
-        isIntern ? `2. Duration` : `2. Compensation & Benefits`,
-        isIntern
-          ? `Your internship will be for a duration of ${duration}, commencing on ${joiningDate}, unless terminated earlier in accordance with the terms herein.`
-          : `Your gross annual compensation will be INR ${salary} /- (${numberToWords(salary)}). Detailed breakdown is provided in the Annexure.`,
-        "",
-        isIntern ? `3. Stipend & Allowances` : `3. Working Hours & Leave`,
-        isIntern
-          ? `You will receive a monthly stipend of INR ${stipendAmount} /- (${stipendWords}), payable on or before the last working day of each calendar month.`
-          : `You will be expected to work 5 days a week. You are entitled to standard paid leaves as per company policy.`,
-        "",
-        `4. Confidentiality`,
-        `During and after your engagement with ${companyName}, you shall maintain strict confidentiality regarding all proprietary information, trade secrets, software, designs, algorithms, customer lists, and business affairs of the company.`,
-        "",
-        `5. Intellectual Property`,
-        `All inventions, discoveries, designs, software, documentation, and works of authorship created by you in the course of your engagement shall be the sole and exclusive property of ${companyName}.`,
-        "",
-        `6. Code of Conduct`,
-        `You agree to adhere to all workplace policies, rules, regulations, and standards of conduct established by ${companyName}.`,
-        "",
-        `7. Termination`,
-        isIntern
-          ? `Either party may terminate this internship at any time with 15 days written notice, or payment of stipend in lieu thereof.`
-          : `Either party may terminate this employment with 30 days written notice, or salary in lieu thereof.`,
-        "",
-        `We look forward to welcoming you to the ${companyName} team.`,
-        "",
-        `For ${companyName}`,
+      const textToRender = generateStandardOfferLetterText({
+        isIntern,
+        candidateName,
+        positionTitle,
+        companyName,
+        salary,
+        currency: (fieldValues.currency as string) || "INR",
+        stipendAmount,
+        stipendWords,
+        duration,
+        refNo,
+        issueDate: todayFormatted,
+        joiningDate,
         signatoryName,
         signatoryTitle,
-        "",
-        `ACKNOWLEDGEMENT`,
-        `I, ${candidateName}, accept the above terms and agree to work with ${companyName} as ${positionTitle} under the conditions stated herein.`,
-        "",
-        `| Signature: __________________ | Date: __________________ | Place: __________________ |`,
-      ].join("\n");
+        signatoryDate,
+      });
 
       pdfBuf = generateStyledOfferPdf(textToRender, {
         companyName,
