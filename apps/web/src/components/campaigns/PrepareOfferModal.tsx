@@ -912,6 +912,12 @@ export function PrepareOfferModal({
         throw new Error(errorMsg);
       }
 
+      if (data.email_dispatched === false) {
+        throw new Error(
+          data.detail || data.email_warning || "Offer saved but candidate email dispatch failed.",
+        );
+      }
+
       showToast(`Offer letter dispatched to ${candidate.name}!`);
       onComplete();
       onOpenChange(false);

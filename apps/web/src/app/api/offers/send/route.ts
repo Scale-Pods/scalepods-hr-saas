@@ -24,6 +24,7 @@ import {
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function getAuthClient(accessToken?: string) {
   const env = getEnv();
@@ -532,9 +533,23 @@ export async function POST(req: NextRequest) {
     let n8nStatus = 200;
     let n8nErrorDetail: string | null = null;
 
+    const candidateEmail =
+      appRow?.candidate_email ||
+      (fieldValues.candidate_email as string) ||
+      (fieldValues.CANDIDATE_EMAIL as string) ||
+      "";
+
+    if (!appRow?.candidate_email && candidateEmail) {
+      await adminSupabase
+        .from("applications")
+        .update({ candidate_email: candidateEmail })
+        .eq("id", parsed.data.application_id);
+    }
+
     try {
       const { response, payload } = await callN8nGateway("hiring/offer-send", token || "", {
         ...parsed.data,
+        candidate_email: candidateEmail,
         rendered_text: textToRender,
         recruiter_email: user.email,
         recruiter_id: user.id,
@@ -555,64 +570,6 @@ export async function POST(req: NextRequest) {
       console.warn("[api/offers/send] n8n gateway unreachable:", n8nErr);
     }
 
-    // Guaranteed persistence: Update applications table
-    await adminSupabase
-      .from("applications")
-      .update({ status: "offer_sent", current_stage: "offer" })
-      .eq("id", parsed.data.application_id);
-
-    // Guaranteed persistence: Upsert into offers table
-    try {
-      const { data: existingOffer } = await adminSupabase
-        .from("offers")
-        .select("id")
-        .eq("application_id", parsed.data.application_id)
-        .maybeSingle();
-
-      const offerRecord = {
-        account_id: user.id,
-        campaign_id: parsed.data.campaign_id,
-        application_id: parsed.data.application_id,
-        offer_template_id: offerTemplateId,
-        rendered_text: textToRender || renderedText || null,
-        rendered_html: renderedHtml || null,
-        filled_docx_path: filledDocxPath,
-        generated_pdf_path: generatedPdfPath,
-        send_as_is: sendAsIs,
-        field_values: resolvedFieldValues,
-        candidate_email: appRow?.candidate_email || (fieldValues.candidate_email as string) || "",
-        company_signer_email: user.email || "",
-        status: "sent_to_candidate",
-        sent_to_candidate_at: new Date().toISOString(),
-      };
-
-      if (existingOffer) {
-        await adminSupabase.from("offers").update(offerRecord).eq("id", existingOffer.id);
-      } else {
-        await adminSupabase.from("offers").insert(offerRecord);
-      }
-    } catch (offerSaveErr) {
-      console.warn(
-        "[api/offers/send] Failed to persist offer record in offers table:",
-        offerSaveErr,
-      );
-    }
-
-    // Record offer decision in decision_ledger
-    try {
-      await adminSupabase.from("decision_ledger").insert({
-        account_id: user.id,
-        application_id: parsed.data.application_id,
-        campaign_id: parsed.data.campaign_id,
-        stage: "offer",
-        decision: "offer_sent",
-        action: "offer",
-        rationale: `Offer letter generated for position ${positionTitle} (${currency} ${salary}).`,
-        source: "recruiter",
-        decided_at: new Date().toISOString(),
-      });
-    } catch {}
-
     const responseOffer = {
       candidate_name: candidateName,
       position_title: positionTitle,
@@ -623,11 +580,69 @@ export async function POST(req: NextRequest) {
       signatory_name: signatoryName,
       signatory_title: signatoryTitle,
       field_values: resolvedFieldValues,
-      rendered_text: renderedText || null,
+      rendered_text: textToRender || renderedText || null,
       sent_at: new Date().toISOString(),
     };
 
     if (n8nSuccess) {
+      // Guaranteed persistence: Update applications table only on successful dispatch
+      await adminSupabase
+        .from("applications")
+        .update({ status: "offer_sent", current_stage: "offer" })
+        .eq("id", parsed.data.application_id);
+
+      // Guaranteed persistence: Upsert into offers table
+      try {
+        const { data: existingOffer } = await adminSupabase
+          .from("offers")
+          .select("id")
+          .eq("application_id", parsed.data.application_id)
+          .maybeSingle();
+
+        const offerRecord = {
+          account_id: user.id,
+          campaign_id: parsed.data.campaign_id,
+          application_id: parsed.data.application_id,
+          offer_template_id: offerTemplateId,
+          rendered_text: textToRender || renderedText || null,
+          rendered_html: renderedHtml || null,
+          filled_docx_path: filledDocxPath,
+          generated_pdf_path: generatedPdfPath,
+          send_as_is: sendAsIs,
+          field_values: resolvedFieldValues,
+          candidate_email: candidateEmail,
+          company_signer_email: user.email || "",
+          status: "sent_to_candidate",
+          sent_to_candidate_at: new Date().toISOString(),
+        };
+
+        if (existingOffer) {
+          await adminSupabase.from("offers").update(offerRecord).eq("id", existingOffer.id);
+        } else {
+          await adminSupabase.from("offers").insert(offerRecord);
+        }
+      } catch (offerSaveErr) {
+        console.warn(
+          "[api/offers/send] Failed to persist offer record in offers table:",
+          offerSaveErr,
+        );
+      }
+
+      // Record offer decision in decision_ledger
+      try {
+        await adminSupabase.from("decision_ledger").insert({
+          account_id: user.id,
+          application_id: parsed.data.application_id,
+          campaign_id: parsed.data.campaign_id,
+          stage: "offer",
+          decision: "offer_sent",
+          action: "offer",
+          rationale: `Offer letter generated for position ${positionTitle} (${currency} ${salary}).`,
+          source: "recruiter",
+          decided_at: new Date().toISOString(),
+        });
+      } catch {}
+
       return NextResponse.json(
         typeof n8nPayload === "object" && n8nPayload !== null
           ? {
@@ -641,13 +656,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      email_dispatched: false,
-      email_warning: n8nErrorDetail || "n8n webhook did not respond with 2xx",
-      offer: responseOffer,
-      message: `Offer letter saved for ${candidateName || appRow?.candidate_email || "candidate"}, but email dispatch via n8n failed (${n8nErrorDetail || "unknown error"}).`,
-    });
+    // If n8n failed or was unreachable, do NOT falsely claim the offer was dispatched
+    return NextResponse.json(
+      {
+        error: "Failed to dispatch offer email",
+        detail:
+          n8nErrorDetail ||
+          "n8n automation engine did not return 2xx. The email was not delivered to the candidate.",
+        email_dispatched: false,
+        offer: responseOffer,
+      },
+      { status: 502 },
+    );
   } catch (dispatchError) {
     console.error("[api/offers/send] Offer dispatch error:", dispatchError);
     return NextResponse.json(
