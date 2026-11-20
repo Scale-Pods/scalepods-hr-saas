@@ -6,6 +6,7 @@ import { ArrowLeft, Building2, Eye, EyeOff, Loader2, Lock, Mail, User } from "lu
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { LegalModal } from "@/components/legal/LegalModal";
 import { LoadingScreen } from "@/components/shared/LoadingScreen";
 import { showToast } from "@/components/shared/TierLimitToast";
@@ -64,6 +65,16 @@ function AuthInner() {
     setLegalModalOpen(true);
   };
 
+  const handleEmailBlur = () => {
+    if (mode !== "signup" || !email.trim()) return;
+    const validation = validateRecruiterEmail(email);
+    if (!validation.allowed) {
+      const reason = validation.reason || "Please use your official company work email.";
+      setErrorMsg(reason);
+      toast.error(reason);
+    }
+  };
+
   const resendEmail = async () => {
     if (!signupSuccessEmail) return;
     setResending(true);
@@ -111,7 +122,9 @@ function AuthInner() {
         // 1. Client-side recruiter email validation
         const emailValidation = validateRecruiterEmail(email);
         if (!emailValidation.allowed) {
-          setErrorMsg(emailValidation.reason || "Please use your official company work email.");
+          const reason = emailValidation.reason || "Please use your official company work email.";
+          setErrorMsg(reason);
+          toast.error(reason);
           setBusy(false);
           return;
         }
@@ -126,9 +139,10 @@ function AuthInner() {
           if (domainCheckRes.ok) {
             const domainData = await domainCheckRes.json();
             if (!domainData.allowed) {
-              setErrorMsg(
-                domainData.reason || "Your company domain is not eligible for registration.",
-              );
+              const reason =
+                domainData.reason || "Your company domain is not eligible for registration.";
+              setErrorMsg(reason);
+              toast.error(reason);
               setBusy(false);
               return;
             }
@@ -182,13 +196,29 @@ function AuthInner() {
         router.push(target);
       }
     } catch (err) {
-      const msg =
+      let msg =
         err instanceof AuthError
           ? err.message
           : err instanceof Error
             ? err.message
             : "An unexpected error occurred. Please try again.";
+
+      // Translate generic Supabase trigger error into clear user guidance
+      const lower = msg.toLowerCase();
+      if (lower.includes("database error") || lower.includes("saving new user")) {
+        const domainCheck = validateRecruiterEmail(email);
+        if (!domainCheck.allowed) {
+          msg =
+            domainCheck.reason ||
+            "Personal email providers like Yahoo and Gmail are not permitted for recruiter accounts. Please use your official company work email.";
+        } else {
+          msg =
+            "Registration restricted: an account for this company domain already exists on the Free tier, or the domain has exhausted its free trial. Please sign in with the primary account or upgrade.";
+        }
+      }
+
       setErrorMsg(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -466,7 +496,11 @@ function AuthInner() {
                       required
                       placeholder="you@company.com"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (errorMsg) setErrorMsg(null);
+                      }}
+                      onBlur={handleEmailBlur}
                       className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 px-3.5 py-2 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20"
                     />
                   </div>
