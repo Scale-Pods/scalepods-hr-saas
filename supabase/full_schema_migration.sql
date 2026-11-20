@@ -7820,7 +7820,7 @@ begin
         'current_count', v_account_count,
         'max_accounts', v_max_accounts,
         'code', 'DOMAIN_ACCOUNT_LIMIT_REACHED',
-        'reason', 'Your organization (' || v_domain || ') has reached its limit of ' || v_max_accounts || ' accounts for the ' || upper(v_domain_row.tier) || ' plan. Please upgrade your plan to add more team members.'
+        'reason', 'Your organization (' || v_domain || ') has reached its limit of ' || v_max_accounts || ' free tier accounts for the ' || upper(v_domain_row.tier) || ' plan. Please upgrade your plan to add more team members.'
       );
     end if;
 
@@ -7899,10 +7899,11 @@ begin
 
         -- Reject if account limit reached for the company's tier
         if v_account_count >= v_max_accounts then
-          raise exception 'Your organization (%) has reached its limit of % accounts for the % plan. Please upgrade to add more accounts.', v_domain, v_max_accounts, upper(v_domain_row.tier) using errcode = '22023';
+          raise exception 'Your organization (%) has reached its limit of % free tier accounts for the % plan. Please upgrade to add more accounts.', v_domain, v_max_accounts, upper(v_domain_row.tier) using errcode = '22023';
         end if;
 
-        v_tier_to_assign := v_domain_row.tier;
+        -- Newly registered accounts for the company domain are given free tier accounts
+        v_tier_to_assign := 'free';
       else
         -- Register new company domain on free tier
         insert into public.company_domains (domain, primary_account_id, tier, is_free_tier_exhausted, is_exempt)

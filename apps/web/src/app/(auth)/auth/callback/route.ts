@@ -168,7 +168,7 @@ async function validateUserDomainAccess(
           new URL(
             "/auth?error=domain_limit_reached&message=" +
               encodeURIComponent(
-                `Your organization (${domain}) has reached its limit of ${maxAccounts} accounts for the ${domainRow.tier.toUpperCase()} plan. Upgrade is required to add more accounts.`,
+                `Your organization (${domain}) has reached its limit of ${maxAccounts} free tier accounts for the ${domainRow.tier.toUpperCase()} plan. Upgrade is required to add more accounts.`,
               ),
             origin,
           ),

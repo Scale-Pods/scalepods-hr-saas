@@ -127,7 +127,7 @@ async function handleDomainCheck(email?: string | null, domainParam?: string | n
           currentCount,
           maxAccounts,
           code: "DOMAIN_ACCOUNT_LIMIT_REACHED",
-          reason: `Your organization (${domain}) has reached its limit of ${maxAccounts} accounts for the ${domainRow.tier.toUpperCase()} plan. Please upgrade your plan to add more team members.`,
+          reason: `Your organization (${domain}) has reached its limit of ${maxAccounts} free tier accounts for the ${domainRow.tier.toUpperCase()} plan. Please upgrade your plan to add more team members.`,
         });
       }
 
