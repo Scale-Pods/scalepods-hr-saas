@@ -347,4 +347,97 @@ Sincerely,
     expect(rendered).not.toContain("[Company Website]");
     expect(rendered).not.toContain("[HR Email Address]");
   });
+
+  it("preserves all sections of standard offer letter when isIntern is true", () => {
+    const template = `{{COMPANY_NAME}}
+{{COMPANY_ADDRESS}}
+{{COMPANY_WEBSITE}} | {{HR_EMAIL_ADDRESS}}
+Date: {{OFFER_DATE}}
+
+OFFER OF EMPLOYMENT
+To, {{CANDIDATE_NAME}}
+Email: {{CANDIDATE_EMAIL}}
+{{CANDIDATE_LOCATION}}
+
+Subject: Offer of Employment for the Position of {{ROLE}}
+
+Dear {{CANDIDATE_NAME}},
+
+We are pleased to offer you the position of {{ROLE}} at {{COMPANY_NAME}}. Based on your qualifications, technical knowledge, and potential, we believe you would be a valuable addition to our organization.
+
+We are excited about the possibility of having you join our team and contribute to our software development projects.
+
+1. Employment Details
+Designation: {{ROLE}}
+Department: {{DEPARTMENT}}
+Employment Type: {{EMPLOYMENT_TYPE}}
+Work Location: {{WORK_LOCATION}}
+Date of Joining: {{JOINING_DATE}}
+Reporting To: {{REPORTING_TO}}
+
+2. Compensation
+Your annual Cost to Company (CTC) will be {{SALARY}} ({{SALARY_WORDS}}).
+The salary will be paid {{PAYMENT_FREQUENCY}}, subject to applicable statutory deductions.
+
+3. Roles and Responsibilities
+Your responsibilities will include:
+- Developing responsive and user-friendly web applications.
+- Collaborating with team members.
+
+4. Terms and Conditions
+You will undergo a probation period of {{PROBATION_PERIOD}}.
+
+5. Acceptance of Offer
+Sincerely,
+{{HR_MANAGER_NAME}}
+{{COMPANY_NAME}}
+{{HR_CONTACT_DETAILS}}
+
+CANDIDATE ACCEPTANCE
+I, {{CANDIDATE_NAME}}, hereby accept the offer of employment for the position of {{ROLE}} under the terms and conditions mentioned above.
+Candidate Signature: ______________________
+Date: ______________________`;
+
+    const cleaned = cleanOfferTemplateDirectives(template, { isIntern: true });
+    expect(cleaned).toContain("1. Employment Details");
+    expect(cleaned).toContain("2. Compensation");
+    expect(cleaned).toContain("3. Roles and Responsibilities");
+    expect(cleaned).toContain("4. Terms and Conditions");
+    expect(cleaned).toContain("5. Acceptance of Offer");
+
+    const rendered = renderOfferTemplateText(template, {
+      COMPANY_NAME: "Scalepods",
+      COMPANY_ADDRESS: "GCR, Road No 3, Mumbai",
+      COMPANY_WEBSITE: "https://www.scalepods.co",
+      HR_EMAIL_ADDRESS: "aqib@scalepods.tech",
+      OFFER_DATE: "20-11-2026",
+      CANDIDATE_NAME: "Manish Gandla",
+      CANDIDATE_EMAIL: "manishgandla22@gmail.com",
+      CANDIDATE_LOCATION: "Remote",
+      ROLE: "AI Automation Intern",
+      DEPARTMENT: "Engineering",
+      EMPLOYMENT_TYPE: "Internship",
+      WORK_LOCATION: "Remote",
+      JOINING_DATE: "04-12-2026",
+      REPORTING_TO: "Aqib Firdous Khan",
+      SALARY: "5000",
+      SALARY_WORDS: "Five Thousand Only",
+      PAYMENT_FREQUENCY: "1st to 3rd of each month",
+      PROBATION_PERIOD: "3 Months",
+      HR_MANAGER_NAME: "Aqib",
+      HR_CONTACT_DETAILS: "aqib@scalepods.tech",
+      LETTER_TYPE: "intern",
+    });
+
+    expect(rendered).toContain("Scalepods");
+    expect(rendered).toContain("Manish Gandla");
+    expect(rendered).toContain("AI Automation Intern");
+    expect(rendered).toContain("1. Employment Details");
+    expect(rendered).toContain("2. Compensation");
+    expect(rendered).toContain("5000 (Five Thousand Only)");
+    expect(rendered).toContain("3. Roles and Responsibilities");
+    expect(rendered).toContain("4. Terms and Conditions");
+    expect(rendered).toContain("5. Acceptance of Offer");
+    expect(rendered).toContain("Aqib");
+  });
 });

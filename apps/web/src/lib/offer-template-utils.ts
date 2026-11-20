@@ -52,12 +52,11 @@ function cleanOfferTemplateDirectivesHtml(
   html: string,
   options?: { letterType?: string; isIntern?: boolean; incentiveNote?: string },
 ): string {
-  const hasSpecificType = Boolean(options?.letterType?.trim() || options?.isIntern !== undefined);
-  // If template has no ScalePods conditional directives and no specific letter type requested, keep entire content untouched
-  if (
-    !hasSpecificType &&
-    !/Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD/i.test(html)
-  ) {
+  const hasScalePodsDirectives =
+    /Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD|Alternatively,\s*we are pleased|For Regular Full-Time Position:|For Internship Position:|INTERNSHIP APPOINTMENT LETTER/i.test(
+      html,
+    );
+  if (!hasScalePodsDirectives) {
     return html;
   }
 
@@ -75,6 +74,7 @@ function cleanOfferTemplateDirectivesHtml(
 
   if (blocks.length === 0) return html;
 
+  const hasSpecificType = Boolean(options?.letterType?.trim() || options?.isIntern !== undefined);
   const rawLetterType = String(options?.letterType || "")
     .toLowerCase()
     .trim();
@@ -196,7 +196,12 @@ function cleanOfferTemplateDirectivesHtml(
     }
 
     // 6. Fallback deduplication for templates where directive tables were already missing or stripped
-    if (hasSpecificType) {
+    const isDualHtml =
+      /INTERNSHIP APPOINTMENT LETTER/i.test(html) &&
+      /APPOINTMENT LETTER/i.test(html) &&
+      /internship position/i.test(html);
+
+    if (hasSpecificType && isDualHtml) {
       // Titles deduplication
       if (/^APPOINTMENT LETTER$/i.test(text) && isIntern) continue;
       if (/^INTERNSHIP APPOINTMENT LETTER$/i.test(text) && !isIntern) continue;
@@ -294,11 +299,12 @@ function cleanOfferTemplateDirectivesText(
   }
   const hasSpecificType = Boolean(rawLetterType || options?.isIntern !== undefined);
 
-  // If template has no ScalePods conditional directives and no specific letter type requested, keep entire content untouched
-  if (
-    !hasSpecificType &&
-    !/Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD/i.test(content)
-  ) {
+  // If template has no conditional directives, keep entire content untouched
+  const hasScalePodsDirectives =
+    /Show this section only when|LETTER_TYPE\s*=|INCENTIVE_NOTE|ATTACH_LETTERHEAD|Alternatively,\s*we are pleased|For Regular Full-Time Position:|For Internship Position:/i.test(
+      content,
+    );
+  if (!hasScalePodsDirectives) {
     return content;
   }
 
@@ -429,7 +435,11 @@ function cleanOfferTemplateDirectivesText(
     }
 
     // 7. Handle AI-mutated dual templates (Alternatively, For Regular Full-Time Position, etc.)
-    if (hasSpecificType) {
+    const isDualTemplate =
+      /Alternatively,\s*we are pleased|For Regular Full-Time Position:|For Internship Position:/i.test(
+        preprocessed,
+      );
+    if (hasSpecificType && isDualTemplate) {
       // Titles deduplication
       if (/^APPOINTMENT LETTER$/i.test(lineTrim) && isIntern) continue;
       if (/^INTERNSHIP APPOINTMENT LETTER$/i.test(lineTrim) && !isIntern) continue;
@@ -446,8 +456,16 @@ function cleanOfferTemplateDirectivesText(
           continue;
         }
         if (skipMode === "fulltime_opening") {
-          if (/contribute to our growth/i.test(lineTrim)) {
+          if (
+            /contribute to our growth/i.test(lineTrim) ||
+            /^(?:\d+\.|\bSection\b|[A-Z\s]{4,}:)/.test(lineTrim) ||
+            !lineTrim
+          ) {
             skipMode = "none";
+            if (/^(?:\d+\.|\bSection\b|[A-Z\s]{4,}:)/.test(lineTrim)) {
+              result.push(rawLine);
+              continue;
+            }
           }
           continue;
         }
@@ -467,8 +485,16 @@ function cleanOfferTemplateDirectivesText(
           continue;
         }
         if (skipMode === "intern_opening") {
-          if (/contribute meaningfully to our initiatives/i.test(lineTrim)) {
+          if (
+            /contribute meaningfully to our initiatives/i.test(lineTrim) ||
+            /^(?:\d+\.|\bSection\b|[A-Z\s]{4,}:)/.test(lineTrim) ||
+            !lineTrim
+          ) {
             skipMode = "none";
+            if (/^(?:\d+\.|\bSection\b|[A-Z\s]{4,}:)/.test(lineTrim)) {
+              result.push(rawLine);
+              continue;
+            }
           }
           continue;
         }

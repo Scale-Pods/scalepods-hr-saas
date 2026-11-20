@@ -6,7 +6,9 @@ import { generateStyledOfferPdf } from "../generate-styled-offer-pdf";
 describe("Offer Letter Template & Styled PDF Integration", () => {
   it("extracts letterhead image and renders exact internship offer PDF without 'Full-time' duration or '(0)' stipend", async () => {
     // Check bundled scalepods-letterhead.jpg
-    const assetPath = path.resolve(process.cwd(), "src/lib/offers/assets/scalepods-letterhead.jpg");
+    const assetPath = fs.existsSync(path.resolve(process.cwd(), "src/lib/offers/assets/scalepods-letterhead.jpg"))
+      ? path.resolve(process.cwd(), "src/lib/offers/assets/scalepods-letterhead.jpg")
+      : path.resolve(process.cwd(), "apps/web/src/lib/offers/assets/scalepods-letterhead.jpg");
     expect(fs.existsSync(assetPath)).toBe(true);
     const defaultBgBuf = fs.readFileSync(assetPath);
     expect(defaultBgBuf.length).toBeGreaterThan(50000);
