@@ -19,7 +19,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { RazorpayInvoiceItem } from "@/app/api/razorpay/invoices/route";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -108,7 +108,7 @@ function getInvoiceStatusMeta(status: string) {
   }
 }
 
-export default function BillingPage() {
+function BillingInner() {
   const searchParams = useSearchParams();
   const isDomainLockedParam = searchParams.get("domain_locked") === "1";
   const { account, refreshAccount } = useAccount();
@@ -384,6 +384,14 @@ export default function BillingPage() {
         onPlanUpdated={refreshAccount}
       />
     </div>
+  );
+}
+
+export default function BillingPage() {
+  return (
+    <Suspense fallback={null}>
+      <BillingInner />
+    </Suspense>
   );
 }
 
