@@ -1,6 +1,6 @@
 "use client";
 
-import { type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
+import { normalizeLogoUrl, type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
 import { ArrowLeft, Check, Link2, Loader2, Mail, MessageSquare, Phone, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -265,19 +265,23 @@ function SettingsPageInner() {
     if (!account?.id) return;
     setSavingProfile(true);
     try {
+      const normalizedLogo = normalizeLogoUrl(profileCompanyLogo) ?? null;
       const supabase = supabaseBrowser();
       const { error } = await supabase
         .from("accounts")
         .update({
           name: profileUserName.trim() || null,
           company_name: profileCompanyName.trim() || null,
-          company_logo_url: profileCompanyLogo.trim() || null,
+          company_logo_url: normalizedLogo,
           timezone: profileTimezone.trim() || "Asia/Kolkata",
         })
         .eq("id", account.id);
       if (error) {
         showErrorToast(error);
         return;
+      }
+      if (normalizedLogo) {
+        setProfileCompanyLogo(normalizedLogo);
       }
       await refreshAccount();
       showToast("Workspace profile saved.");
@@ -421,10 +425,28 @@ function SettingsPageInner() {
             </label>
             <Input
               id="profile-company-logo"
-              placeholder="e.g. https://yourcompany.com/logo.png"
+              placeholder="e.g. https://yourcompany.com/logo.png or Google Drive link"
               value={profileCompanyLogo}
               onChange={(e) => setProfileCompanyLogo(e.target.value)}
             />
+            {profileCompanyLogo.trim() && (
+              <div className="mt-2 flex items-center gap-3 rounded-md border border-border/40 bg-muted/20 p-2">
+                <span className="text-xs text-muted-foreground">Logo preview:</span>
+                {/* biome-ignore lint/performance/noImgElement: dynamic user logo preview URL cannot be statically configured in next.config images remotePatterns */}
+                <img
+                  src={normalizeLogoUrl(profileCompanyLogo) || profileCompanyLogo}
+                  alt="Workspace Logo Preview"
+                  className="max-h-8 max-w-[140px] object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = "none";
+                  }}
+                />
+              </div>
+            )}
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Paste a direct image link or Google Drive link (Drive links are automatically
+              converted into direct images).
+            </p>
           </div>
           <div>
             <label

@@ -144,3 +144,33 @@ export function dailySeries(isos: string[], days: number, now: Date = new Date()
   }
   return buckets;
 }
+
+/**
+ * Normalizes user-provided logo URLs (e.g. Google Drive, Dropbox) into direct,
+ * renderable image stream URLs for email clients and browsers.
+ */
+export function normalizeLogoUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  // Google Drive file view / sharing link -> direct thumbnail/image CDN URL
+  const gdriveFileMatch = trimmed.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/i);
+  if (gdriveFileMatch?.[1]) {
+    return `https://lh3.googleusercontent.com/d/${gdriveFileMatch[1]}`;
+  }
+
+  const gdriveIdMatch = trimmed.match(
+    /drive\.google\.com\/(?:open|uc)\?[^#]*\bid=([a-zA-Z0-9_-]+)/i,
+  );
+  if (gdriveIdMatch?.[1]) {
+    return `https://lh3.googleusercontent.com/d/${gdriveIdMatch[1]}`;
+  }
+
+  // Dropbox share link -> direct raw image stream
+  if (trimmed.includes("dropbox.com")) {
+    return trimmed.replace(/\bdl=0\b/g, "raw=1");
+  }
+
+  return trimmed;
+}
