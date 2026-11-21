@@ -1,7 +1,7 @@
 "use client";
 
 import type { AssignmentContext } from "@scalepods/core";
-import { formatCountdown } from "@scalepods/core";
+import { formatCountdown, normalizeLogoUrl } from "@scalepods/core";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,7 @@ import {
 
 function ErrorCard({ message, title }: { message?: string; title?: string }) {
   const isDeadlinePassed =
-    message?.toLowerCase().includes("deadline") ||
-    title?.toLowerCase().includes("deadline");
+    message?.toLowerCase().includes("deadline") || title?.toLowerCase().includes("deadline");
 
   if (isDeadlinePassed) {
     return (
@@ -29,7 +28,8 @@ function ErrorCard({ message, title }: { message?: string; title?: string }) {
             {title ?? "The assignment deadline has passed"}
           </h1>
           <p className="mx-auto max-w-sm text-sm text-muted-foreground">
-            The submission window for this assignment has closed. Please contact the recruiter if you need assistance or an extension.
+            The submission window for this assignment has closed. Please contact the recruiter if
+            you need assistance or an extension.
           </p>
         </CardContent>
       </Card>
@@ -139,18 +139,40 @@ export default function AssignmentPage() {
     }
   }, [ctx, files, roundInstanceId, text, token]);
 
+  const companyName = ctx?.account?.company_name;
+  const companyLogo = normalizeLogoUrl(ctx?.account?.company_logo_url);
+
   if (submitted) {
     return (
       <div className="py-12 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-fill-quaternary/70 text-2xl">
-          📤
-        </div>
+        {companyLogo ? (
+          <div className="mx-auto mb-4 flex justify-center">
+            {/* biome-ignore lint/performance/noImgElement: dynamic tenant logo URL */}
+            <img
+              src={companyLogo}
+              alt={companyName || "Company logo"}
+              className="h-12 max-w-[160px] rounded-lg object-contain bg-background/80 border border-border/40 p-1"
+            />
+          </div>
+        ) : (
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-fill-quaternary/70 text-2xl">
+            📤
+          </div>
+        )}
         <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">
           Assignment submitted
         </h1>
         <p className="mx-auto mt-2 max-w-sm text-sm text-label-secondary">
-          Thanks! We&apos;ve received your submission for round {ctx?.round.round_number ?? 1}. The
-          recruiter will get back to you within a few business days.
+          Thanks! We&apos;ve received your submission for{" "}
+          <strong className="text-foreground">{ctx?.campaign.name ?? "the role"}</strong>
+          {companyName ? (
+            <>
+              {" "}
+              at <strong className="text-foreground">{companyName}</strong>
+            </>
+          ) : null}{" "}
+          (Round {ctx?.round.round_number ?? 1}). The hiring team will review your work and get back
+          to you shortly.
         </p>
       </div>
     );
@@ -165,21 +187,59 @@ export default function AssignmentPage() {
 
   return (
     <div className="space-y-5">
+      {/* Company Branding & Role Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-border/70 bg-card/60 p-4 backdrop-blur shadow-xs">
+        <div className="flex items-center gap-3">
+          {companyLogo ? (
+            /* biome-ignore lint/performance/noImgElement: dynamic tenant logo URL */
+            <img
+              src={companyLogo}
+              alt={companyName || "Company logo"}
+              className="h-10 max-w-[150px] rounded-lg object-contain bg-background/80 border border-border/40 p-1"
+            />
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-base font-bold text-primary border border-primary/20">
+              {(companyName || "C").charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-primary">
+              {companyName || "Company"}
+            </div>
+            <div className="text-sm font-semibold text-foreground">{ctx.campaign.name}</div>
+          </div>
+        </div>
+        <div>
+          <span className="inline-flex items-center rounded-full bg-secondary/80 px-3 py-1 text-xs font-medium text-secondary-foreground border border-border/50">
+            Round {ctx.round.round_number} of {ctx.campaign.number_of_rounds}
+          </span>
+        </div>
+      </div>
+
       <div>
         <h1 className="text-2xl font-bold tracking-[-0.022em] text-foreground">
-          Take-home assignment
+          Practical Take-Home Assignment
         </h1>
-        <p className="mt-1.5 text-sm text-label-secondary">
-          {ctx.campaign.name} · Round {ctx.round.round_number} of {ctx.campaign.number_of_rounds}
+        <p className="mt-1 text-xs text-muted-foreground">
+          Please review the instructions, prepare your solution, and submit all deliverables before
+          the deadline.
         </p>
         {deadline && (
-          <p
-            className={`mt-4 text-[34px] font-light leading-none tracking-[-0.03em] tabular-nums ${
-              deadline.includes("0h") ? "text-destructive" : "text-foreground"
-            }`}
-          >
-            {deadline}
-          </p>
+          <div className="mt-3.5 flex items-center gap-3 rounded-xl border border-border/60 bg-muted/20 p-3.5">
+            <span className="text-xl">⏱️</span>
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Time Remaining
+              </div>
+              <div
+                className={`text-xl font-bold tabular-nums ${
+                  deadline.includes("0h") ? "text-destructive" : "text-foreground"
+                }`}
+              >
+                {deadline}
+              </div>
+            </div>
+          </div>
         )}
       </div>
 

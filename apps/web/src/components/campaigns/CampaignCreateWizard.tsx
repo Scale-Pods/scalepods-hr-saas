@@ -710,7 +710,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
             : undefined,
         brief_text: r.round_type === "assignment" ? r.brief_text.trim() || null : undefined,
         assignment_deadline_hours:
-          r.round_type === "assignment" ? r.assignment_deadline_hours : undefined,
+          r.round_type === "assignment" ? Number(r.assignment_deadline_hours) || 72 : undefined,
         duration_minutes: r.round_type === "assignment" ? undefined : 30,
         questions:
           r.round_type === "ai_interview" || r.round_type === "ai_voice_call"

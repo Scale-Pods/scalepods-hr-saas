@@ -453,6 +453,16 @@ export const assignmentContextSchema = z.object({
     cutoff_score: z.number().nullable(),
     brief_text: z.string().nullable().optional(),
   }),
+  account: z
+    .object({
+      id: z.string().optional(),
+      company_name: z.string().nullable().optional(),
+      company_logo_url: z.string().nullable().optional(),
+      name: z.string().nullable().optional(),
+      timezone: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   submission: z
     .object({
       id: z.string(),

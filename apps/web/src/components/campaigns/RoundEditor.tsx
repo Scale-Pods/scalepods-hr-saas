@@ -40,7 +40,7 @@ export interface RoundDraft {
   daily_start_time: string;
   daily_end_time: string;
   brief_text: string;
-  assignment_deadline_hours: number;
+  assignment_deadline_hours: number | string;
 }
 
 export const DEFAULT_ROUND: RoundDraft = {
@@ -370,10 +370,22 @@ export function RoundEditor({
                 type="number"
                 min={12}
                 max={336}
-                value={round.assignment_deadline_hours}
-                onChange={(e) =>
-                  onChange({ assignment_deadline_hours: Number(e.target.value) || 72 })
-                }
+                value={round.assignment_deadline_hours ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onChange({
+                    assignment_deadline_hours: val === "" ? "" : Number(val),
+                  });
+                }}
+                onBlur={() => {
+                  if (
+                    round.assignment_deadline_hours === "" ||
+                    Number(round.assignment_deadline_hours) <= 0 ||
+                    Number.isNaN(Number(round.assignment_deadline_hours))
+                  ) {
+                    onChange({ assignment_deadline_hours: 72 });
+                  }
+                }}
                 className="w-36 bg-card"
               />
               <span className="mt-1 block text-xs text-muted-foreground">
