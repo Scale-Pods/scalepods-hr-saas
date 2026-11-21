@@ -47,3 +47,4 @@ create trigger trg_normalize_accounts_logo
 update public.accounts
 set company_logo_url = public.normalize_company_logo_url(company_logo_url)
 where company_logo_url is not null;
+
