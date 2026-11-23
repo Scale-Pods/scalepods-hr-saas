@@ -168,6 +168,7 @@ export async function POST(req: NextRequest) {
 
     // 5. Send Email via n8n automation gateway
     const emailPayload = {
+      account_id: campaignRow?.account_id || user.id,
       application_id: appRow.id,
       candidate_name: candidateName,
       candidate_email: candidateEmail,

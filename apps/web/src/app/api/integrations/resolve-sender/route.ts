@@ -17,8 +17,17 @@ export async function GET(req: NextRequest) {
   const recruiterEmail = searchParams.get("recruiter_email") || undefined;
   const companyName = searchParams.get("company_name") || undefined;
 
-  if (!accountId) {
-    return NextResponse.json({ error: "account_id is required" }, { status: 400 });
+  if (!accountId || accountId === "null" || accountId === "undefined") {
+    // Graceful platform fallback if accountId is not known
+    return NextResponse.json({
+      sender_type: channel === "email" ? "ses_fallback" : "managed_line_fallback",
+      is_fallback: true,
+      email: "info@scalepods.tech",
+      reply_to: recruiterEmail || "info@scalepods.tech",
+      sender_name: companyName || "ScalePods",
+      phone_number_id: "1080270115170890",
+      phone_number: "+91 77385 58481",
+    });
   }
 
   try {
