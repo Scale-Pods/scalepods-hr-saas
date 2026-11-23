@@ -67,3 +67,4 @@ revoke all on function public.get_assignment_context(uuid,text,int) from public;
 grant execute on function public.get_assignment_context(uuid,text,int) to anon,authenticated,service_role;
 
 notify pgrst, 'reload schema';
+

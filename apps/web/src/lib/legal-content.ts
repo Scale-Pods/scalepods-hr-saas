@@ -90,9 +90,10 @@ export const PRIVACY_POLICY: LegalDocument = {
         "The use of raw or derived user data received from Workspace APIs will adhere to the Google User Data Policy, including the Limited Use requirements.",
       ],
       listItems: [
-        "Purpose & Minimization: ScalePods requests the narrowest scope necessary (https://www.googleapis.com/auth/calendar.events) solely to check interviewer availability and create scheduled interview calendar appointments on behalf of hiring teams.",
+        "Purpose & Minimization: ScalePods requests the narrowest scopes necessary: (1) https://www.googleapis.com/auth/calendar.events solely to check interviewer availability and schedule candidate interview appointments, and (2) https://www.googleapis.com/auth/gmail.send solely to dispatch candidate communications, invitations, reminders, and offer letters explicitly initiated by hiring teams.",
+        "No Mailbox Reading or Harvesting: ScalePods does NOT access, read, search, index, store, or delete existing emails in your inbox or mailbox folders. The application only transmits outbound emails explicitly created or approved by the recruiter.",
         "Prohibition on AI/ML Training: In strict compliance with Google Workspace API Limited Use requirements, raw, aggregated, or derived data obtained from Google Workspace APIs is NEVER transferred, shared, sold, or used to train, retrain, or improve foundational, generalized, or third-party machine learning (ML) or artificial intelligence (AI) models.",
-        "Data Isolation & Control: Google OAuth access tokens and calendar references are encrypted at rest and in transit, isolated per team member via strict Row-Level Security, and are never shared across organizations or with unapproved third parties. Users can revoke calendar access at any time through their ScalePods settings or Google account security page.",
+        "Data Isolation & Control: Google OAuth access tokens and credentials are encrypted at rest (AES-256) and in transit, isolated per organization via strict Row-Level Security, and are never shared across accounts or with unapproved third parties. Recruiters can revoke Google access at any time through their ScalePods settings or Google account security page.",
       ],
     },
     {

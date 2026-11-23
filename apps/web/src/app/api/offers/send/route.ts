@@ -2,6 +2,7 @@ import { offerRequestSchema } from "@scalepods/core";
 import { createClient, type User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
+import { resolveAccountEmailSender } from "@/lib/channel-integrations";
 import {
   generateStyledOfferPdf,
   getDefaultLetterheadBuffer,
@@ -361,7 +362,10 @@ export async function POST(req: NextRequest) {
           try {
             filledBuffer = sendAsIs ? docxBuffer : fillOfferDocx(docxBuffer, resolvedFieldValues);
           } catch (fillErr) {
-            console.warn("[api/offers/send] Note: fillOfferDocx warning, using docxBuffer:", fillErr);
+            console.warn(
+              "[api/offers/send] Note: fillOfferDocx warning, using docxBuffer:",
+              fillErr,
+            );
             filledBuffer = docxBuffer;
           }
           textToRender = await extractDocumentTextFromDocxBuffer(docxBuffer, resolvedFieldValues);
@@ -378,7 +382,11 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (tplRow?.raw_text && !isOfferTemplatePlaceholder(tplRow.raw_text) && tplRow.raw_text.includes("{{")) {
+      if (
+        tplRow?.raw_text &&
+        !isOfferTemplatePlaceholder(tplRow.raw_text) &&
+        tplRow.raw_text.includes("{{")
+      ) {
         const cleanedTpl = cleanOfferTemplateDirectives(tplRow.raw_text, {
           letterType: isIntern ? "intern" : "fulltime",
           isIntern,
@@ -509,7 +517,8 @@ export async function POST(req: NextRequest) {
         if (filledBuffer) {
           uploadPromises.push(
             adminSupabase.storage.from("offer-templates").upload(auditDocxPath, filledBuffer, {
-              contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              contentType:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
               upsert: true,
             }),
           );
@@ -560,6 +569,8 @@ export async function POST(req: NextRequest) {
         .eq("id", parsed.data.application_id);
     }
 
+    const resolvedSender = await resolveAccountEmailSender(user.id, user.email, companyName);
+
     try {
       const { response, payload } = await callN8nGateway("hiring/offer-send", token || "", {
         ...parsed.data,
@@ -569,6 +580,7 @@ export async function POST(req: NextRequest) {
         recruiter_id: user.id,
         pdf_base64: pdfBase64,
         pdf_filename: pdfFilename,
+        sender_info: resolvedSender,
       });
 
       if (response.ok) {

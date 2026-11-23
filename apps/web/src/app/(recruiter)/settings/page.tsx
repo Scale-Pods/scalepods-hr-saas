@@ -1,11 +1,12 @@
 "use client";
 
 import { normalizeLogoUrl, type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
-import { ArrowLeft, Check, Link2, Loader2, Mail, MessageSquare, Phone, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Link2, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { OfferTemplateManager } from "@/components/offers/OfferTemplateManager";
+import { ChannelIntegrationsManager } from "@/components/settings/ChannelIntegrationsManager";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -165,6 +166,20 @@ function SettingsPageInner() {
       showErrorToast("The calendar connection did not complete — try again.");
     }
   }, [calendarOutcome, load]);
+
+  const emailOutcome =
+    params.get("email") || (params.get("channel") === "email" ? params.get("status") : null);
+  useEffect(() => {
+    if (emailOutcome === "connected") {
+      showToast("Email connected — candidate communications will now send from your own address.");
+    } else if (
+      emailOutcome === "error" ||
+      emailOutcome === "token_failed" ||
+      emailOutcome === "invalid_state"
+    ) {
+      showErrorToast("The email connection did not complete — please try again.");
+    }
+  }, [emailOutcome]);
 
   const sendTeammateInvite = async (member: TeamMemberRow) => {
     if (!session?.access_token) return;
@@ -797,65 +812,10 @@ function SettingsPageInner() {
       )}
 
       <SectionCard
-        title="Sending identity"
-        subtitle={'Which "from" address / WhatsApp number candidate messages come from.'}
+        title="Channel Identities & Integrations"
+        subtitle="Manage your sending email (Google OAuth2) and WhatsApp Business number, with automatic ScalePods platform fallbacks."
       >
-        <div className="space-y-2.5 text-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg border border-border/40 bg-card/60 px-3.5 py-2.5">
-            <div className="flex items-center gap-2 text-foreground text-xs min-w-0">
-              <Mail className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-              <span className="truncate">
-                Email:{" "}
-                <strong className="text-foreground">
-                  {t.customIdentity ? "Custom domain" : "ScalePods platform"}
-                </strong>
-              </span>
-            </div>
-            {!t.customIdentity && (
-              <span className="self-start sm:self-auto rounded-full bg-muted/80 px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40 shrink-0">
-                Custom domain available on Growth & Enterprise
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg border border-border/40 bg-card/60 px-3.5 py-2.5">
-            <div className="flex items-center gap-2 text-foreground text-xs min-w-0">
-              <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-              <span className="truncate">
-                WhatsApp:{" "}
-                <strong className="text-foreground">
-                  {t.whatsapp
-                    ? t.customIdentity
-                      ? "Custom dedicated number"
-                      : "ScalePods managed line"
-                    : "Not enabled"}
-                </strong>
-              </span>
-            </div>
-            {!t.whatsapp && (
-              <span className="self-start sm:self-auto rounded-full bg-muted/80 px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40 shrink-0">
-                Available on Basic, Growth & Enterprise
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg border border-border/40 bg-card/60 px-3.5 py-2.5">
-            <div className="flex items-center gap-2 text-foreground text-xs min-w-0">
-              <Phone className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-              <span className="truncate">
-                AI Voice line:{" "}
-                <strong className="text-foreground">
-                  {t.voiceScreening ? "ScalePods outbound telephony" : "Not enabled"}
-                </strong>
-              </span>
-            </div>
-            {!t.voiceScreening && (
-              <span className="self-start sm:self-auto rounded-full bg-muted/80 px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40 shrink-0">
-                Available on Basic, Growth & Enterprise
-              </span>
-            )}
-          </div>
-        </div>
+        <ChannelIntegrationsManager accountId={account?.id} accessToken={session?.access_token} />
       </SectionCard>
 
       {/* Remove Teammate Confirmation Dialog */}
