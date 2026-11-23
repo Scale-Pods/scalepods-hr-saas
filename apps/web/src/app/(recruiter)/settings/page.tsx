@@ -1,7 +1,7 @@
 "use client";
 
 import { normalizeLogoUrl, type TeamMemberRow, TIER_LIMITS } from "@scalepods/core";
-import { ArrowLeft, Check, Link2, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Link2, Loader2, Mail, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
