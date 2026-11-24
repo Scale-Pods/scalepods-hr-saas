@@ -333,9 +333,9 @@ function AuthInner() {
       />
 
       {/* ── Modern SaaS Floating Header (Clean & Uncluttered) ── */}
-      <header className="relative z-20 w-full max-w-5xl mx-auto px-4 sm:px-6 pt-4 pb-1 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center">
+      <header className="relative z-20 w-full max-w-5xl mx-auto px-4 sm:px-6 pt-4 pb-1 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 shrink-0">
+          <Link href="/" className="flex items-center shrink-0">
             {/* biome-ignore lint/performance/noImgElement: static navbar brand logo */}
             <img
               src="/brand/scalepods-navbar-logo.png"
@@ -343,7 +343,7 @@ function AuthInner() {
               className="h-8 sm:h-9 w-auto object-contain brightness-0 invert drop-shadow-[0_0_12px_rgba(59,130,246,0.35)]"
             />
           </Link>
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-blue-400">
+          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-blue-400 whitespace-nowrap shrink-0">
             <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
             Talent Intelligence Platform
           </span>

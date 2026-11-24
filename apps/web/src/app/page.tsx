@@ -92,9 +92,9 @@ export default function HomePage() {
 
       {/* ── Modern SaaS Navigation Bar ── */}
       <header className="sticky top-0 z-50 w-full border-b border-slate-300/70 bg-white/90 dark:border-slate-800/80 dark:bg-[#080D1A]/85 backdrop-blur-xl transition-colors duration-200 shadow-xs">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 lg:gap-6">
           {/* Logo & Brand */}
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <Link href="/" className="flex items-center shrink-0">
               <img
                 src="/brand/scalepods-navbar-logo.png"
@@ -102,31 +102,43 @@ export default function HomePage() {
                 className="h-7 sm:h-9 w-auto object-contain dark:brightness-0 dark:invert drop-shadow-[0_0_12px_rgba(59,130,246,0.25)] transition duration-200"
               />
             </Link>
-            <span className="hidden lg:inline-flex items-center gap-1.5 rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 dark:text-blue-400">
+            <span className="hidden xl:inline-flex items-center gap-1.5 rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 dark:text-blue-400 whitespace-nowrap shrink-0">
               <span className="h-1.5 w-1.5 rounded-full bg-blue-500 dark:bg-blue-400 animate-pulse" />
               Talent Intelligence Platform
             </span>
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-7 text-xs font-semibold text-slate-700 dark:text-slate-300">
-            <a href="#solutions" className="hover:text-blue-600 dark:hover:text-white transition">
+          <nav className="hidden md:flex items-center gap-4 lg:gap-6 xl:gap-7 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <a
+              href="#solutions"
+              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-white transition"
+            >
               Solutions
             </a>
-            <a href="#features" className="hover:text-blue-600 dark:hover:text-white transition">
+            <a
+              href="#features"
+              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-white transition"
+            >
               Features
             </a>
-            <a href="#pricing" className="hover:text-blue-600 dark:hover:text-white transition">
+            <a
+              href="#pricing"
+              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-white transition"
+            >
               Pricing
             </a>
-            <a href="#enterprise" className="hover:text-blue-600 dark:hover:text-white transition">
+            <a
+              href="#enterprise"
+              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-white transition"
+            >
               Enterprise Security
             </a>
             <a
               href="https://www.scalepods.co"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-white transition"
+              className="whitespace-nowrap flex items-center gap-1 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-white transition"
             >
               <span>About ScalePods</span>
               <ArrowUpRight className="h-3 w-3" />
