@@ -111,6 +111,7 @@ function getInvoiceStatusMeta(status: string) {
 function BillingInner() {
   const searchParams = useSearchParams();
   const isDomainLockedParam = searchParams.get("domain_locked") === "1";
+  const upgradeParam = searchParams.get("upgrade") || searchParams.get("plan");
   const { account, refreshAccount } = useAccount();
   const { data: session } = useSession();
   const { data: reports } = useReports(account?.id);
@@ -125,7 +126,13 @@ function BillingInner() {
 
   const showDomainLockBanner = isDomainLockedParam || isDomainExhausted;
 
-  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(Boolean(upgradeParam));
+
+  useEffect(() => {
+    if (upgradeParam) {
+      setCompareOpen(true);
+    }
+  }, [upgradeParam]);
 
   // Preload Razorpay checkout script in the background
   useEffect(() => {

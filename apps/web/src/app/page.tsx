@@ -116,6 +116,9 @@ export default function HomePage() {
             <a href="#features" className="hover:text-blue-600 dark:hover:text-white transition">
               Features
             </a>
+            <a href="#pricing" className="hover:text-blue-600 dark:hover:text-white transition">
+              Pricing
+            </a>
             <a href="#enterprise" className="hover:text-blue-600 dark:hover:text-white transition">
               Enterprise Security
             </a>
@@ -226,6 +229,14 @@ export default function HomePage() {
               className="block text-sm font-semibold text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-white transition py-1"
             >
               Features
+            </a>
+            {/* biome-ignore lint/a11y/useValidAnchor: in-page hash anchor */}
+            <a
+              href="#pricing"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block text-sm font-semibold text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-white transition py-1"
+            >
+              Pricing
             </a>
             {/* biome-ignore lint/a11y/useValidAnchor: in-page hash anchor */}
             <a
@@ -604,7 +615,310 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── 5. Enterprise Security & Architecture ── */}
+        {/* ── 5. Transparent Pricing & Plans Section ── */}
+        <section
+          id="pricing"
+          className="scroll-mt-24 w-full max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20"
+        >
+          <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-50 dark:border-blue-500/30 dark:bg-blue-500/10 px-3.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400">
+              <Sparkles className="h-3.5 w-3.5" /> Simple, Transparent Plans
+            </div>
+            <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-3">
+              Scale hiring without per-seat surprises
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-300 max-w-xl mx-auto">
+              Start free with full platform access. Upgrade anytime as your campaign volume and
+              interview demands grow.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 lg:gap-6 items-stretch">
+            {/* 1. Free Plan */}
+            <div className="rounded-3xl border border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-[#0B1020]/90 dark:text-white p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-bold">Free</h3>
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full">
+                    Starter
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 min-h-[32px]">
+                  For individual recruiters and trial campaigns.
+                </p>
+                <div className="mb-6 flex items-baseline gap-1">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">
+                    ₹0
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    / forever
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>50</strong> Resumes Screened / mo
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>1</strong> Active Campaign
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>2</strong> Rounds per Campaign
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>10</strong> AI Video Interviews
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>Email Candidate Outreach</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>7-Day Media Retention</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800/80">
+                <Link
+                  href="/auth?mode=signup"
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:bg-slate-800 dark:text-white py-2.5 text-xs font-semibold shadow-xs transition active:scale-[0.99]"
+                >
+                  <span>Get Started Free</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
+
+            {/* 2. Basic Plan */}
+            <div className="rounded-3xl border border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-[#0B1020]/90 dark:text-white p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-bold">Basic</h3>
+                  <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2.5 py-0.5 rounded-full">
+                    Emerging
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 min-h-[32px]">
+                  For growing teams scaling initial hiring funnels.
+                </p>
+                <div className="mb-6 flex items-baseline gap-1">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">
+                    ₹1
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    / month
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>250</strong> Resumes Screened / mo
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>3</strong> Active Campaigns
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>4</strong> Rounds per Campaign
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>50</strong> AI Interviews (Rollover)
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>20</strong> AI Voice Screenings
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>WhatsApp & Email Outreach</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>5 Offer Letters / mo</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800/80">
+                <Link
+                  href="/auth?mode=signup&plan=basic"
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-500/40 bg-blue-50 hover:bg-blue-100 text-blue-700 dark:border-blue-500/30 dark:bg-blue-600/10 dark:hover:bg-blue-600/20 dark:text-blue-300 py-2.5 text-xs font-semibold shadow-xs transition active:scale-[0.99]"
+                >
+                  <span>Choose Basic</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
+
+            {/* 3. Growth Plan (Most Popular Highlight) */}
+            <div className="rounded-3xl border-2 border-blue-500 bg-white dark:bg-[#0E1628] text-slate-900 dark:text-white p-6 flex flex-col justify-between shadow-xl shadow-blue-500/15 relative lg:-translate-y-2 transition">
+              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-blue-600 to-cyan-600 px-3 py-1 text-[10px] font-bold tracking-wider text-white uppercase shadow-md flex items-center gap-1 whitespace-nowrap">
+                <Zap className="h-3 w-3 fill-current" /> Most Popular
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2 mt-1">
+                  <h3 className="text-lg font-bold text-blue-600 dark:text-blue-400">Growth</h3>
+                  <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full">
+                    Best Value
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 min-h-[32px]">
+                  For fast-growing hiring teams and talent agencies.
+                </p>
+                <div className="mb-6 flex items-baseline gap-1">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">
+                    ₹2
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    / month
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                  <div className="flex items-start gap-2 font-semibold text-blue-600 dark:text-blue-300">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>Unlimited Resume Screenings</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>25</strong> Active Campaigns
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>6</strong> Rounds per Campaign
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>200</strong> AI Interviews (Rollover)
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>100</strong> AI Voice Screenings
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>Take-Home Assignment Rounds</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>50 Offer Letters / mo</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>Priority 24h Support</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800/80">
+                <Link
+                  href="/auth?mode=signup&plan=growth"
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white py-2.5 text-xs font-semibold shadow-lg shadow-blue-500/25 transition active:scale-[0.99]"
+                >
+                  <span>Choose Growth</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
+
+            {/* 4. Enterprise Plan */}
+            <div className="rounded-3xl border border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-[#0B1020]/90 dark:text-white p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-bold">Enterprise</h3>
+                  <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 px-2.5 py-0.5 rounded-full">
+                    Custom
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 min-h-[32px]">
+                  For large enterprises needing custom scale and compliance.
+                </p>
+                <div className="mb-6 flex items-baseline gap-1">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">
+                    Custom
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    / SLA
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>Unlimited Campaigns & Rounds</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>Committed AI & Voice Volume</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>Custom ATS & HRIS Integrations</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>Role-Based Multi-Seat Workspaces</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>Dedicated Account Manager</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <span>Custom SLA & Security Reviews</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800/80">
+                <Link
+                  href="/auth?mode=signup&plan=enterprise"
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:bg-slate-800 dark:text-white py-2.5 text-xs font-semibold shadow-xs transition active:scale-[0.99]"
+                >
+                  <span>Contact Sales</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 6. Enterprise Security & Architecture ── */}
         <section id="enterprise" className="w-full max-w-5xl mx-auto px-4 sm:px-6 pb-16 sm:pb-20">
           <div className="rounded-3xl border border-slate-200 bg-white text-slate-900 shadow-lg shadow-slate-200/40 dark:border-slate-800 dark:bg-[#0B1020]/90 dark:text-white p-6 sm:p-10 text-center transition-colors">
             <div className="max-w-2xl mx-auto">

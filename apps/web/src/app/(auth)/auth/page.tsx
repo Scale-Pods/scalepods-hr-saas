@@ -2,7 +2,17 @@
 
 import { validateRecruiterEmail } from "@scalepods/core";
 import { AuthError } from "@supabase/supabase-js";
-import { ArrowLeft, Building2, Eye, EyeOff, Loader2, Lock, Mail, User } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
+  Mail,
+  Sparkles,
+  User,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -20,8 +30,27 @@ function AuthInner() {
   const searchParams = useSearchParams();
   const hasNext = Boolean(searchParams.get("next"));
   const modeParam = searchParams.get("mode");
+  const planParam = searchParams.get("plan");
   const { data: session, isPending } = useSession();
   const [mode, setMode] = useState<Mode>(modeParam === "signup" ? "signup" : "signin");
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(planParam);
+
+  useEffect(() => {
+    if (planParam) {
+      const normalized = planParam.toLowerCase();
+      setSelectedPlan(normalized);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("scalepods_intended_plan", normalized);
+        } catch {}
+      }
+    } else if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("scalepods_intended_plan");
+        if (stored) setSelectedPlan(stored);
+      } catch {}
+    }
+  }, [planParam]);
 
   useEffect(() => {
     if (modeParam === "signup" || modeParam === "signin") {
@@ -100,9 +129,22 @@ function AuthInner() {
     // If bounced here with ?next=..., the server indicated this request is unauthenticated.
     // Never auto-redirect to avoid infinite loop.
     if (session && !hasNext) {
-      router.replace("/dashboard");
+      let targetPlan = selectedPlan || planParam;
+      if (!targetPlan && typeof window !== "undefined") {
+        try {
+          targetPlan = localStorage.getItem("scalepods_intended_plan");
+        } catch {}
+      }
+      if (targetPlan && targetPlan !== "free") {
+        try {
+          localStorage.removeItem("scalepods_intended_plan");
+        } catch {}
+        router.replace(`/billing?upgrade=${encodeURIComponent(targetPlan)}`);
+      } else {
+        router.replace("/dashboard");
+      }
     }
-  }, [session, router, hasNext]);
+  }, [session, router, hasNext, selectedPlan, planParam]);
 
   if (isPending) {
     return <LoadingScreen message="Establishing secure connection..." />;
@@ -176,7 +218,20 @@ function AuthInner() {
               })
               .eq("id", data.session.user.id);
           }
-          router.push("/dashboard");
+          let targetPlan = selectedPlan || planParam;
+          if (!targetPlan && typeof window !== "undefined") {
+            try {
+              targetPlan = localStorage.getItem("scalepods_intended_plan");
+            } catch {}
+          }
+          if (targetPlan && targetPlan !== "free") {
+            try {
+              localStorage.removeItem("scalepods_intended_plan");
+            } catch {}
+            router.push(`/billing?upgrade=${encodeURIComponent(targetPlan)}`);
+          } else {
+            router.push("/dashboard");
+          }
         } else if (
           data.user &&
           Array.isArray(data.user.identities) &&
@@ -192,8 +247,21 @@ function AuthInner() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        const target = searchParams.get("next") || "/dashboard";
-        router.push(target);
+        let targetPlan = selectedPlan || planParam;
+        if (!targetPlan && typeof window !== "undefined") {
+          try {
+            targetPlan = localStorage.getItem("scalepods_intended_plan");
+          } catch {}
+        }
+        if (targetPlan && targetPlan !== "free") {
+          try {
+            localStorage.removeItem("scalepods_intended_plan");
+          } catch {}
+          router.push(`/billing?upgrade=${encodeURIComponent(targetPlan)}`);
+        } else {
+          const target = searchParams.get("next") || "/dashboard";
+          router.push(target);
+        }
       }
     } catch (err) {
       let msg =
@@ -386,6 +454,42 @@ function AuthInner() {
                     className="mb-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3.5 py-2 text-xs font-medium text-destructive"
                   >
                     {errorMsg}
+                  </div>
+                )}
+
+                {/* Selected Plan Intent Pill */}
+                {mode === "signup" && selectedPlan && selectedPlan !== "free" && (
+                  <div className="mb-3.5 flex items-center justify-between rounded-xl border border-blue-500/35 bg-blue-500/10 px-3.5 py-2 text-xs text-blue-300">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Sparkles className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                      <span className="truncate">
+                        Selected:{" "}
+                        <strong className="capitalize text-white">{selectedPlan} Plan</strong>{" "}
+                        <span className="text-blue-200/80">
+                          (
+                          {selectedPlan === "basic"
+                            ? "₹1/mo"
+                            : selectedPlan === "growth"
+                              ? "₹2/mo"
+                              : "Custom"}
+                          )
+                        </span>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPlan(null);
+                        if (typeof window !== "undefined") {
+                          try {
+                            localStorage.removeItem("scalepods_intended_plan");
+                          } catch {}
+                        }
+                      }}
+                      className="text-[11px] underline text-blue-400 hover:text-white shrink-0 ml-2"
+                    >
+                      Clear
+                    </button>
                   </div>
                 )}
 
