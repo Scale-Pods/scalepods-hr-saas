@@ -5,6 +5,11 @@ import {
   cadenceTierEditability,
   clampCadence,
   defaultCadenceForTier,
+  evaluateInterviewReminderStage,
+  getCalendarDateString,
+  isSameCalendarDay,
+  isTomorrowCalendarDay,
+  isWeekendDay,
 } from "./cadence";
 
 describe("defaultCadenceForTier", () => {
@@ -252,5 +257,78 @@ describe("sendTime configuration & validation", () => {
       "basic",
     );
     expect(clamped.stages.reminder_day1?.sendTime).toBeUndefined();
+  });
+});
+
+describe("Timezone-Aware Calendar & Interview Reminder Dispatch Safety", () => {
+  it("correctly identifies weekend days in different timezones", () => {
+    // 2026-11-21 is Saturday, 2026-11-22 is Sunday, 2026-11-23 is Monday
+    expect(isWeekendDay("2026-11-21T10:00:00Z", "UTC")).toBe(true);
+    expect(isWeekendDay("2026-11-22T14:30:00+05:30", "Asia/Kolkata")).toBe(true);
+    expect(isWeekendDay("2026-11-23T10:00:00+05:30", "Asia/Kolkata")).toBe(false);
+  });
+
+  it("formats calendar dates accurately per timezone", () => {
+    // 2026-11-22T20:00:00Z is 2026-11-23T01:30:00 in Asia/Kolkata
+    expect(getCalendarDateString("2026-11-22T20:00:00Z", "UTC")).toBe("2026-11-22");
+    expect(getCalendarDateString("2026-11-22T20:00:00Z", "Asia/Kolkata")).toBe("2026-11-23");
+  });
+
+  it("checks same calendar day and tomorrow calendar day correctly", () => {
+    const sunIst = "2026-11-22T14:30:00+05:30";
+    const monIst = "2026-11-23T10:00:00+05:30";
+
+    expect(isSameCalendarDay(sunIst, monIst, "Asia/Kolkata")).toBe(false);
+    expect(isTomorrowCalendarDay(sunIst, monIst, "Asia/Kolkata")).toBe(true);
+  });
+
+  it("never sends 'Your Interview Is Today' on Sunday for a Monday interview", () => {
+    // Exact user scenario: Candidate received email on Sunday at 14:30 IST for an interview on Monday
+    const nowOnSunday = "2026-11-22T14:30:00+05:30"; // Sunday 2:30 PM IST (09:00 UTC)
+    const mondayInterview = "2026-11-23T14:30:00+05:30"; // Monday 2:30 PM IST (24h away)
+
+    const evaluation = evaluateInterviewReminderStage({
+      scheduledAt: mondayInterview,
+      now: nowOnSunday,
+      timezone: "Asia/Kolkata",
+      sendTime: "09:00",
+    });
+
+    // Must NOT be interview_day ("Your Interview Is Today")
+    expect(evaluation.stage).not.toBe("interview_day");
+    // Must be pre_interview_reminder ("Interview Tomorrow")
+    expect(evaluation.stage).toBe("pre_interview_reminder");
+    expect(evaluation.shouldDispatch).toBe(true);
+    expect(evaluation.reason).toBe("interview_is_tomorrow");
+  });
+
+  it("sends 'Your Interview Is Today' on Monday morning for a Monday interview", () => {
+    const nowOnMonday = "2026-11-23T09:30:00+05:30"; // Monday 9:30 AM IST
+    const mondayInterview = "2026-11-23T14:30:00+05:30"; // Monday 2:30 PM IST
+
+    const evaluation = evaluateInterviewReminderStage({
+      scheduledAt: mondayInterview,
+      now: nowOnMonday,
+      timezone: "Asia/Kolkata",
+      sendTime: "09:00",
+    });
+
+    expect(evaluation.shouldDispatch).toBe(true);
+    expect(evaluation.stage).toBe("interview_day");
+    expect(evaluation.reason).toBe("interview_is_today");
+  });
+
+  it("blocks interview_day dispatch on weekends even if an interview was somehow scheduled", () => {
+    const sundayTime = "2026-11-22T11:00:00+05:30";
+    const evaluation = evaluateInterviewReminderStage({
+      scheduledAt: sundayTime,
+      now: sundayTime,
+      timezone: "Asia/Kolkata",
+      sendTime: "09:00",
+    });
+
+    expect(evaluation.shouldDispatch).toBe(false);
+    expect(evaluation.stage).toBeNull();
+    expect(evaluation.reason).toBe("weekend_blocked_no_interview_day");
   });
 });

@@ -45,6 +45,24 @@ export async function GET(request: NextRequest) {
   if (!roundInstanceId || !token) {
     return NextResponse.json({ error: "A valid booking link is required." }, { status: 400 });
   }
+
+  // Enforce no weekend bookings: Saturday (6) and Sunday (0) are excluded
+  const [yearNum, monthNum, dayNum] = date.split("-").map(Number);
+  const dayOfWeek = new Date(Date.UTC(yearNum, monthNum - 1, dayNum)).getUTCDay();
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    let dummyMin = new Date().toISOString();
+    let dummyMax = dummyMin;
+    try {
+      dummyMin = localTimeToUtc(date, startTime, timeZone);
+      dummyMax = localTimeToUtc(date, endTime, timeZone);
+    } catch {}
+    return NextResponse.json({
+      window: { start: dummyMin, end: dummyMax },
+      blocked: [{ start: dummyMin, end: dummyMax }],
+      slots: [],
+      error: "Weekend bookings are not permitted. Please select a weekday (Monday to Friday).",
+    });
+  }
   let timeMin: string;
   let timeMax: string;
   try {

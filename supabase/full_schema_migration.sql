@@ -4293,8 +4293,8 @@ values
   -- =========================================================================
   -- 1. Book Your Interview Slot (Day 0 & Day 1)
   ('interview_invite', 'email', 'approved',
-   'Interview Invitation: {{job_title}} - {{candidate_name}} | {{company_name}}',
-   '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://fvjsaourhzzyvvzrgwan.supabase.co/storage/v1/object/public/Logo''s/2125980a-scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">Congratulations! You''re Selected for the Interview Round</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Congratulations! You have successfully been selected for the <strong>interview round</strong> for the <strong>{{job_title}}</strong> role at <strong>{{company_name}}</strong>.</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Please select a convenient date and time slot for your interview using the button below:</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{booking_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Book Interview Slot</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">If you face any issues while booking or have questions, please feel free to reach out.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>',
+   'Book Your Interview Slot: {{job_title}} - {{candidate_name}} | {{company_name}}',
+   '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://inkfjgmnxkfitnegpiej.supabase.co/storage/v1/object/public/Logo/scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">Book Your Interview Slot</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">This is a quick reminder to book your interview slot for the <strong>{{job_title}}</strong> role.</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{booking_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Book Interview Slot</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">If you face any issues while booking or have questions, please feel free to reach out.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>',
    null, 'en'),
 
   ('booking_reminder_day1', 'email', 'approved',
@@ -7945,5 +7945,797 @@ begin
 
   return new;
 end $$;
+
+notify pgrst, 'reload schema';
+
+-- =========================================================================
+-- FILE: 0062_booking_context_enrichment.sql
+-- =========================================================================
+
+-- Migration 0062: Enrich accounts and get_booking_context with company branding, resume_url, and account metadata
+
+alter table public.accounts
+  add column if not exists company_logo_url text,
+  alter column timezone set default 'Asia/Kolkata';
+
+-- Update accounts with default UTC or null to India timezone
+update public.accounts
+  set timezone = 'Asia/Kolkata'
+  where timezone is null or timezone = 'UTC';
+
+create or replace function public.get_booking_context(
+  p_round_instance_id uuid,p_token text,p_tz_offset_minutes int default 0
+) returns jsonb language plpgsql security definer set search_path=public
+as $$
+declare v_ri public.round_instances%rowtype; v_cand public.candidates%rowtype; v_camp public.campaigns%rowtype;
+  v_cr public.campaign_rounds%rowtype; v_account public.accounts%rowtype; v_booked jsonb;
+begin
+  if not public.candidate_token_valid(p_token,'booking',p_round_instance_id) then
+    raise exception 'invalid_link' using detail='This booking link is invalid or has expired.';
+  end if;
+  select * into v_ri from public.round_instances where id=p_round_instance_id;
+  if not found or v_ri.round_type<>'human_interview' then raise exception 'round_not_bookable'; end if;
+  select * into v_camp from public.campaigns where id=v_ri.campaign_id and account_id=v_ri.account_id;
+  if not found or v_camp.status<>'open' then raise exception 'job_closed'; end if;
+  select * into v_cand from public.candidates where id=v_ri.candidate_id;
+  select * into v_cr from public.campaign_rounds where campaign_id=v_ri.campaign_id and round_number=v_ri.round_number;
+  select * into v_account from public.accounts where id=v_ri.account_id;
+  select jsonb_build_object('event_id',ce.event_id,'slot_start',ce.slot_start,'slot_end',ce.slot_end,
+    'meet_link',ce.meet_link,'interviewer_email',ce.interviewer_email) into v_booked
+    from public.calendar_events ce where ce.round_instance_id=v_ri.id;
+  return jsonb_build_object(
+    'round_instance',jsonb_build_object('id',v_ri.id,'round_type',v_ri.round_type,'status',v_ri.status,
+      'scheduled_at',v_ri.scheduled_at,'meet_link',coalesce(v_ri.meet_link, v_ri.conferencing_link, v_booked->>'meet_link'),'event_id',v_ri.event_id,'deadline_at',v_ri.deadline_at,'reschedule_count',v_ri.reschedule_count),
+    'candidate',jsonb_build_object('id',v_cand.id,'name',v_cand.name,'email',v_cand.email,'phone',v_cand.phone,'resume_url',v_cand.resume_url),
+    'campaign',jsonb_build_object('id',v_camp.id,'name',v_camp.name,'number_of_rounds',v_camp.number_of_rounds,'opening_date',v_camp.opening_date,'closing_date',v_camp.closing_date),
+    'round',jsonb_build_object('round_number',v_cr.round_number,'round_type',v_cr.round_type,
+      'interviewer_email',coalesce(v_cr.interviewer_email,(select tm.email from public.team_members tm where tm.id=v_cr.assigned_team_member_id)),
+      'cutoff_score',v_cr.cutoff_score,'daily_start_time',to_char(v_cr.daily_start_time,'HH24:MI'),
+      'daily_end_time',to_char(v_cr.daily_end_time,'HH24:MI'),'duration_minutes',v_cr.duration_minutes),
+    'account',jsonb_build_object('id',v_account.id,'company_name',v_account.company_name,'company_logo_url',v_account.company_logo_url,'name',v_account.name,'timezone',coalesce(v_account.timezone, 'Asia/Kolkata'),'tier',v_account.tier,'voice_screening_included',v_account.tier in ('basic','growth','enterprise')),
+    'booked_event',v_booked
+  );
+end;
+$$;
+
+revoke all on function public.get_booking_context(uuid,text,int) from public;
+grant execute on function public.get_booking_context(uuid,text,int) to anon,authenticated,service_role;
+
+-- =========================================================================
+-- FILE: 0063_candidate_resume_sync.sql
+-- =========================================================================
+
+-- Migration 0063: Sync application resume_path to candidate and enrich get_booking_context
+
+-- 1. Backfill candidates.resume_url from applications.resume_path
+update public.candidates c
+set resume_url = a.resume_path
+from public.applications a
+where a.candidate_id = c.id
+  and a.resume_path is not null
+  and (c.resume_url is null or c.resume_url = '');
+
+-- 2. Trigger to keep candidates.resume_url synced with applications.resume_path
+create or replace function public.sync_candidate_resume_from_application()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.resume_path is not null and btrim(new.resume_path) <> '' then
+    update public.candidates
+    set resume_url = btrim(new.resume_path)
+    where id = new.candidate_id
+      and (resume_url is null or resume_url = '' or resume_url <> btrim(new.resume_path));
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_sync_candidate_resume on public.applications;
+create trigger trg_sync_candidate_resume
+  after insert or update of resume_path on public.applications
+  for each row execute function public.sync_candidate_resume_from_application();
+
+-- 3. Update get_booking_context to pull resume from applications table with candidates fallback
+create or replace function public.get_booking_context(
+  p_round_instance_id uuid,p_token text,p_tz_offset_minutes int default 0
+) returns jsonb language plpgsql security definer set search_path=public
+as $$
+declare 
+  v_ri public.round_instances%rowtype; 
+  v_cand public.candidates%rowtype; 
+  v_camp public.campaigns%rowtype;
+  v_cr public.campaign_rounds%rowtype; 
+  v_account public.accounts%rowtype; 
+  v_booked jsonb;
+  v_resume_url text;
+begin
+  if not public.candidate_token_valid(p_token,'booking',p_round_instance_id) then
+    raise exception 'invalid_link' using detail='This booking link is invalid or has expired.';
+  end if;
+  select * into v_ri from public.round_instances where id=p_round_instance_id;
+  if not found or v_ri.round_type<>'human_interview' then raise exception 'round_not_bookable'; end if;
+  select * into v_camp from public.campaigns where id=v_ri.campaign_id and account_id=v_ri.account_id;
+  if not found or v_camp.status<>'open' then raise exception 'job_closed'; end if;
+  select * into v_cand from public.candidates where id=v_ri.candidate_id;
+  select * into v_cr from public.campaign_rounds where campaign_id=v_ri.campaign_id and round_number=v_ri.round_number;
+  select * into v_account from public.accounts where id=v_ri.account_id;
+
+  -- Resolve resume from applications table first, then candidate
+  select a.resume_path into v_resume_url
+  from public.applications a
+  where (a.id = v_ri.application_id)
+     or (a.campaign_id = v_ri.campaign_id and a.candidate_id = v_ri.candidate_id)
+  order by a.created_at desc
+  limit 1;
+
+  if v_resume_url is null or v_resume_url = '' then
+    v_resume_url := v_cand.resume_url;
+  end if;
+
+  select jsonb_build_object('event_id',ce.event_id,'slot_start',ce.slot_start,'slot_end',ce.slot_end,
+    'meet_link',ce.meet_link,'interviewer_email',ce.interviewer_email) into v_booked
+    from public.calendar_events ce where ce.round_instance_id=v_ri.id;
+  return jsonb_build_object(
+    'round_instance',jsonb_build_object('id',v_ri.id,'round_type',v_ri.round_type,'status',v_ri.status,
+      'scheduled_at',v_ri.scheduled_at,'meet_link',coalesce(v_ri.meet_link, v_ri.conferencing_link, v_booked->>'meet_link'),'event_id',v_ri.event_id,'deadline_at',v_ri.deadline_at,'reschedule_count',v_ri.reschedule_count),
+    'candidate',jsonb_build_object('id',v_cand.id,'name',v_cand.name,'email',v_cand.email,'phone',v_cand.phone,'resume_url',v_resume_url),
+    'campaign',jsonb_build_object('id',v_camp.id,'name',v_camp.name,'number_of_rounds',v_camp.number_of_rounds,'opening_date',v_camp.opening_date,'closing_date',v_camp.closing_date),
+    'round',jsonb_build_object('round_number',v_cr.round_number,'round_type',v_cr.round_type,
+      'interviewer_email',coalesce(v_cr.interviewer_email,(select tm.email from public.team_members tm where tm.id=v_cr.assigned_team_member_id)),
+      'cutoff_score',v_cr.cutoff_score,'daily_start_time',to_char(v_cr.daily_start_time,'HH24:MI'),
+      'daily_end_time',to_char(v_cr.daily_end_time,'HH24:MI'),'duration_minutes',v_cr.duration_minutes),
+    'account',jsonb_build_object('id',v_account.id,'company_name',v_account.company_name,'company_logo_url',v_account.company_logo_url,'name',v_account.name,'timezone',coalesce(v_account.timezone, 'Asia/Kolkata'),'tier',v_account.tier,'voice_screening_included',v_account.tier in ('basic','growth','enterprise')),
+    'booked_event',v_booked
+  );
+end;
+$$;
+
+revoke all on function public.get_booking_context(uuid,text,int) from public;
+grant execute on function public.get_booking_context(uuid,text,int) to anon,authenticated,service_role;
+
+-- =========================================================================
+-- FILE: 0064_auto_normalize_logo_url.sql
+-- =========================================================================
+
+-- Migration 0064: Auto-normalize company_logo_url for Google Drive / Dropbox links
+
+create or replace function public.normalize_company_logo_url(p_url text)
+returns text language plpgsql immutable as $$
+declare
+  v_match text[];
+begin
+  if p_url is null or btrim(p_url) = '' then
+    return null;
+  end if;
+
+  -- Google Drive /file/d/<id>
+  v_match := regexp_matches(p_url, 'drive\.google\.com/file/d/([a-zA-Z0-9_-]+)', 'i');
+  if v_match is not null and array_length(v_match, 1) >= 1 then
+    return 'https://lh3.googleusercontent.com/d/' || v_match[1];
+  end if;
+
+  -- Google Drive id=<id>
+  v_match := regexp_matches(p_url, 'drive\.google\.com/(?:open|uc)\?[^#]*\bid=([a-zA-Z0-9_-]+)', 'i');
+  if v_match is not null and array_length(v_match, 1) >= 1 then
+    return 'https://lh3.googleusercontent.com/d/' || v_match[1];
+  end if;
+
+  -- Dropbox dl=0 -> raw=1
+  if position('dropbox.com' in p_url) > 0 then
+    return regexp_replace(p_url, '\bdl=0\b', 'raw=1', 'g');
+  end if;
+
+  return btrim(p_url);
+end;
+$$;
+
+create or replace function public.trg_normalize_accounts_logo()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  new.company_logo_url := public.normalize_company_logo_url(new.company_logo_url);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_normalize_accounts_logo on public.accounts;
+create trigger trg_normalize_accounts_logo
+  before insert or update of company_logo_url on public.accounts
+  for each row execute function public.trg_normalize_accounts_logo();
+
+-- Normalize existing accounts
+update public.accounts
+set company_logo_url = public.normalize_company_logo_url(company_logo_url)
+where company_logo_url is not null;
+
+-- =========================================================================
+-- FILE: 0065_update_interview_invite_email_template.sql
+-- =========================================================================
+
+-- Migration 0065: Update interview invitation and reminder templates with dynamic company and role
+
+-- 1. Initial Invitation (Informs and congratulates candidate on selection)
+update public.notification_templates
+set 
+  subject = 'Interview Invitation: {{job_title}} - {{candidate_name}} | {{company_name}}',
+  body_html = '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://fvjsaourhzzyvvzrgwan.supabase.co/storage/v1/object/public/Logo''s/2125980a-scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">Congratulations! You''re Selected for the Interview Round</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Congratulations! You have successfully been selected for the <strong>interview round</strong> for the <strong>{{job_title}}</strong> role at <strong>{{company_name}}</strong>.</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Please select a convenient date and time slot for your interview using the button below:</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{booking_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Book Interview Slot</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">If you face any issues while booking or have questions, please feel free to reach out.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>'
+where stage = 'interview_invite'
+  and channel = 'email';
+
+-- 2. Day 1 Reminder (Remains reminder, with dynamic role and company)
+update public.notification_templates
+set
+  subject = 'Reminder: Book Your Interview Slot for {{job_title}} | {{company_name}}',
+  body_html = '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://fvjsaourhzzyvvzrgwan.supabase.co/storage/v1/object/public/Logo''s/2125980a-scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">Book Your Interview Slot</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">This is a quick reminder to book your interview slot for the <strong>{{job_title}}</strong> role at <strong>{{company_name}}</strong>.</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{booking_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Book Interview Slot</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">If you face any issues while booking or have questions, please feel free to reach out.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>'
+where stage = 'booking_reminder_day1'
+  and channel = 'email';
+
+-- 3. Day 3 Reminder (Remains reminder, with dynamic role and company)
+update public.notification_templates
+set
+  subject = 'Your Interview Invite is Expiring: {{job_title}} | {{company_name}}',
+  body_html = '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://fvjsaourhzzyvvzrgwan.supabase.co/storage/v1/object/public/Logo''s/2125980a-scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">Your Invite Is Expiring</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">We are still waiting for you to select a time for your interview for the <strong>{{job_title}}</strong> role at <strong>{{company_name}}</strong>.</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">Please book now to keep your application active.</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{booking_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Book Interview Slot</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">If you face any issues while booking or have questions, please feel free to reach out.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>'
+where stage = 'booking_reminder_day3'
+  and channel = 'email';
+
+-- 4. Final Notice (Remains final notice reminder, with dynamic role and company)
+update public.notification_templates
+set
+  subject = 'Final Notice: Book Your Interview Slot for {{job_title}} | {{company_name}}',
+  body_html = '<div style="background:#f5f7fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;"><table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#10274a;border-radius:24px;"><tr><td style="padding:40px 40px 36px;"><div style="text-align:center;margin-bottom:28px;"><img src="https://fvjsaourhzzyvvzrgwan.supabase.co/storage/v1/object/public/Logo''s/2125980a-scalepods-logo-white.png" alt="ScalePods" height="48" style="height:48px;border:0;"><h1 style="margin:12px 0 0;font-size:22px;color:#e6ebf5;">Final Notice</h1></div><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#ffffff;">Hi <strong>{{candidate_first_name}}</strong>,</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">This is your <strong>final notice</strong> to book your interview slot for the <strong>{{job_title}}</strong> role at <strong>{{company_name}}</strong>.</p><p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#e6ebf5;">The booking link will expire soon.</p><table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:28px auto;"><tr><td style="background:#22c55e;border-radius:10px;"><a href="{{booking_link}}" style="display:inline-block;padding:16px 36px;font-size:17px;font-weight:bold;color:#0b2540;text-decoration:none;">Book Interview Slot</a></td></tr></table><div style="background:#0a1b2e;border-left:4px solid #22c55e;border-radius:8px;padding:16px 20px;margin:24px 0;font-size:15px;line-height:1.6;color:#e6ebf5;">If you face any issues while booking or have questions, please feel free to reach out.</div><p style="margin:24px 0 0;font-size:16px;line-height:1.6;color:#ffffff;">Regards,<br><strong>{{company_name}}</strong><br>HR Team</p></td></tr></table></div>'
+where stage = 'booking_final_notice'
+  and channel = 'email';
+
+-- =========================================================================
+-- FILE: 0066_assignment_context_enrichment.sql
+-- =========================================================================
+
+-- Migration 0066: Enrich get_assignment_context with account company details (company_name, company_logo_url, timezone)
+
+create or replace function public.get_assignment_context(
+  p_round_instance_id uuid,
+  p_token text,
+  p_tz_offset_minutes int default 0
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_ri round_instances%rowtype;
+declare v_camp campaigns%rowtype;
+declare v_cr campaign_rounds%rowtype;
+declare v_assign assignments%rowtype;
+declare v_account accounts%rowtype;
+declare v_sub jsonb;
+begin
+  if not public.candidate_token_valid(p_token, 'assignment', p_round_instance_id) then
+    raise exception 'invalid_link' using detail = 'This assignment link is invalid or has expired.';
+  end if;
+  select * into v_ri from round_instances where id = p_round_instance_id;
+  if not found then raise exception 'invalid_link' using detail = 'Round not found.'; end if;
+  select * into v_camp from campaigns where id = v_ri.campaign_id;
+  select * into v_cr from campaign_rounds
+    where campaign_id = v_ri.campaign_id and round_number = v_ri.round_number;
+  select * into v_assign from assignments
+    where round_instance_id = v_ri.id;
+  select * into v_account from accounts
+    where id = v_camp.account_id;
+
+  select jsonb_build_object(
+    'id', s.id, 'text_response', s.text_response, 'file_paths', s.file_paths, 'submitted_at', s.submitted_at
+  ) into v_sub
+  from assignment_submissions s
+  where s.round_instance_id = v_ri.id
+  order by s.submitted_at desc
+  limit 1;
+
+  return jsonb_build_object(
+    'round_instance', jsonb_build_object(
+      'id', v_ri.id, 'round_type', v_ri.round_type,
+      'status', v_ri.status, 'deadline_at', coalesce(v_assign.deadline_at, v_ri.deadline_at)
+    ),
+    'campaign', jsonb_build_object(
+      'id', v_camp.id, 'name', v_camp.name, 'jd_text', v_camp.jd_text,
+      'number_of_rounds', coalesce(v_camp.number_of_rounds, 1)
+    ),
+    'round', jsonb_build_object(
+      'round_number', v_cr.round_number, 'round_type', v_cr.round_type,
+      'cutoff_score', v_cr.cutoff_score,
+      'brief_text', coalesce(v_assign.brief_text, v_cr.brief_text)
+    ),
+    'account', case when v_account.id is not null then jsonb_build_object(
+      'id', v_account.id,
+      'company_name', v_account.company_name,
+      'company_logo_url', v_account.company_logo_url,
+      'name', v_account.name,
+      'timezone', coalesce(v_account.timezone, 'Asia/Kolkata')
+    ) else null end,
+    'submission', v_sub
+  );
+end $$;
+
+revoke all on function public.get_assignment_context(uuid,text,int) from public;
+grant execute on function public.get_assignment_context(uuid,text,int) to anon,authenticated,service_role;
+
+notify pgrst, 'reload schema';
+
+-- =========================================================================
+-- FILE: 0067_account_channel_integrations.sql
+-- =========================================================================
+
+-- Migration 0067: Account Channel Integrations (Email OAuth2 & Meta WhatsApp Embedded Signup)
+-- Provides multi-tenant "Bring Your Own Identity" (BYOI) for candidate communications,
+-- with automatic fallback to platform (info@scalepods.tech) and ScalePods WhatsApp (+91 77385 58481).
+
+create table if not exists public.account_channel_integrations (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  channel text not null check (channel in ('email', 'whatsapp', 'voice')),
+  provider text not null check (provider in ('google_oauth', 'microsoft_oauth', 'smtp', 'meta_embedded', 'meta_manual', 'dialnexa_verified')),
+  status text not null default 'active' check (status in ('active', 'pending', 'expired', 'revoked', 'disconnected')),
+  
+  -- Email specific fields
+  sender_email text,
+  sender_name text,
+  
+  -- WhatsApp / Voice specific fields
+  phone_number text,
+  phone_number_id text,
+  waba_id text,
+  
+  -- Encrypted / OAuth credential storage
+  access_token text,
+  refresh_token text,
+  token_expires_at timestamptz,
+  
+  -- Generic provider metadata
+  metadata jsonb not null default '{}'::jsonb,
+  
+  connected_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint account_channel_provider_unique unique (account_id, channel, provider)
+);
+
+create index if not exists aci_account_channel_status_idx 
+  on public.account_channel_integrations (account_id, channel, status);
+
+alter table public.account_channel_integrations enable row level security;
+
+-- Tenant isolation: recruiters only access their own integrations
+create policy account_channel_integrations_isolation on public.account_channel_integrations
+  for all 
+  using (account_id = auth.uid()) 
+  with check (account_id = auth.uid());
+
+-- Permissions for authenticated recruiters and service role
+grant select, insert, update, delete on table public.account_channel_integrations to authenticated;
+grant all on table public.account_channel_integrations to service_role;
+
+-- Helper RPC function to query active sending channel or return fallback info
+create or replace function public.get_account_sending_channel(p_account_id uuid, p_channel text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rec record;
+  v_account_email text;
+  v_company_name text;
+begin
+  select auth_u.email, acc.company_name
+  into v_account_email, v_company_name
+  from public.accounts acc
+  left join auth.users auth_u on auth_u.id = acc.id
+  where acc.id = p_account_id;
+
+  select *
+  into v_rec
+  from public.account_channel_integrations
+  where account_id = p_account_id
+    and channel = p_channel
+    and status = 'active'
+  order by updated_at desc
+  limit 1;
+
+  if p_channel = 'email' then
+    if v_rec.id is not null and v_rec.sender_email is not null then
+      return jsonb_build_object(
+        'channel', 'email',
+        'is_fallback', false,
+        'provider', v_rec.provider,
+        'sender_email', v_rec.sender_email,
+        'sender_name', coalesce(v_rec.sender_name, v_company_name, 'ScalePods'),
+        'has_token', v_rec.access_token is not null,
+        'reply_to', v_rec.sender_email
+      );
+    else
+      return jsonb_build_object(
+        'channel', 'email',
+        'is_fallback', true,
+        'provider', 'scalepods_fallback',
+        'sender_email', 'info@scalepods.tech',
+        'sender_name', coalesce(v_company_name, 'ScalePods') || ' via ScalePods',
+        'reply_to', coalesce(v_account_email, 'info@scalepods.tech')
+      );
+    end if;
+  elsif p_channel = 'whatsapp' then
+    if v_rec.id is not null and v_rec.phone_number_id is not null then
+      return jsonb_build_object(
+        'channel', 'whatsapp',
+        'is_fallback', false,
+        'provider', v_rec.provider,
+        'phone_number', v_rec.phone_number,
+        'phone_number_id', v_rec.phone_number_id,
+        'waba_id', v_rec.waba_id,
+        'has_token', v_rec.access_token is not null
+      );
+    else
+      return jsonb_build_object(
+        'channel', 'whatsapp',
+        'is_fallback', true,
+        'provider', 'platform_fallback',
+        'phone_number', '+91 77385 58481',
+        'phone_number_id', '1080270115170890'
+      );
+    end if;
+  end if;
+
+  return jsonb_build_object('error', 'unknown_channel');
+end;
+$$;
+
+grant execute on function public.get_account_sending_channel(uuid, text) to authenticated, anon, service_role;
+
+-- =========================================================================
+-- FILE: 0068_enforce_no_weekend_bookings_and_cadence_safety.sql
+-- =========================================================================
+
+-- Migration 0068: Enforce no weekend bookings and cadence reminder safety
+-- 1. Strictly block weekend bookings and reschedules at the database level
+-- 2. Reject weekend availability slots in get_available_slots RPC
+-- 3. Add validate_interview_reminder_dispatch to prevent 'interview_day' ("Your Interview Is Today")
+--    from firing on weekends or on the wrong calendar day.
+
+-- 1. Update book_interview_slot
+create or replace function public.book_interview_slot(
+  p_round_instance_id uuid,
+  p_token text,
+  p_slot_start timestamptz,
+  p_slot_end timestamptz,
+  p_event_id text,
+  p_meet_link text,
+  p_is_reschedule boolean default false
+) returns void language plpgsql security definer set search_path=public
+as $$
+declare
+  v_round public.round_instances%rowtype;
+  v_cr public.campaign_rounds%rowtype;
+  v_job public.campaigns%rowtype;
+  v_interviewer_email text;
+  v_resched_count int;
+  v_account_tz text := 'UTC';
+begin
+  if coalesce(auth.role(),'') <> 'service_role' then
+    raise exception 'service_role_required' using errcode='42501';
+  end if;
+
+  if not public.candidate_token_valid(p_token, 'booking', p_round_instance_id) then
+    raise exception 'booking_token_invalid' using errcode='28000';
+  end if;
+
+  select * into v_round
+  from public.round_instances
+  where id = p_round_instance_id
+  for update;
+
+  if not found or v_round.round_type <> 'human_interview' then
+    raise exception 'round_not_bookable';
+  end if;
+
+  -- Lookup account timezone
+  select coalesce(timezone, 'UTC') into v_account_tz
+  from public.accounts
+  where id = v_round.account_id;
+  if v_account_tz is null or v_account_tz = '' then
+    v_account_tz := 'UTC';
+  end if;
+
+  -- Weekend check: Saturday (6) and Sunday (0) are strictly disallowed
+  if extract(dow from (p_slot_start at time zone v_account_tz)) in (0, 6) then
+    raise exception 'weekend_booking_not_allowed' using errcode='40003',
+      detail = 'Interview bookings are not permitted on weekends (Saturday and Sunday).';
+  end if;
+
+  select * into v_job
+  from public.campaigns
+  where id = v_round.campaign_id and account_id = v_round.account_id;
+
+  if not found or v_job.status <> 'open' then
+    raise exception 'job_closed';
+  end if;
+
+  select * into v_cr
+  from public.campaign_rounds
+  where campaign_id = v_round.campaign_id and round_number = v_round.round_number;
+
+  v_interviewer_email := coalesce(
+    v_cr.interviewer_email,
+    (select tm.email from public.team_members tm where tm.id = v_cr.assigned_team_member_id),
+    ''
+  );
+
+  perform pg_advisory_xact_lock(hashtext('booking_interviewer:' || coalesce(nullif(v_interviewer_email, ''), v_round.account_id::text)));
+
+  v_resched_count := coalesce(v_round.reschedule_count, 0);
+
+  -- Reschedule Branch
+  if (p_is_reschedule or v_round.status = 'scheduled') and (v_round.event_id is not null or p_event_id is not null) then
+    if v_resched_count >= 3 then
+      raise exception 'max_reschedules_exceeded' using errcode='55001';
+    end if;
+
+    if exists (
+      select 1 from public.calendar_events e
+      where e.round_instance_id <> v_round.id
+        and e.interviewer_email = v_interviewer_email
+        and e.slot_start < p_slot_end
+        and e.slot_end > p_slot_start
+    ) then
+      raise exception 'interview_slot_unavailable' using errcode='45000';
+    end if;
+
+    update public.calendar_events
+    set slot_start = p_slot_start,
+        slot_end = p_slot_end,
+        event_id = coalesce(p_event_id, event_id)
+    where round_instance_id = v_round.id;
+
+    if not found then
+      insert into public.calendar_events(account_id, round_instance_id, interviewer_email, event_id, slot_start, slot_end)
+      values(v_round.account_id, v_round.id, v_interviewer_email, coalesce(p_event_id, v_round.event_id, ''), p_slot_start, p_slot_end);
+    end if;
+
+    update public.round_instances
+    set scheduled_at = p_slot_start,
+        event_id = coalesce(p_event_id, event_id),
+        meet_link = coalesce(p_meet_link, meet_link),
+        conferencing_link = coalesce(p_meet_link, conferencing_link),
+        reschedule_count = v_resched_count + 1
+    where id = v_round.id;
+
+    return;
+
+  -- Initial Booking Branch
+  elsif v_round.status = 'pending' and not p_is_reschedule then
+    if exists (
+      select 1 from public.calendar_events e
+      where e.round_instance_id <> v_round.id
+        and e.interviewer_email = v_interviewer_email
+        and e.slot_start < p_slot_end
+        and e.slot_end > p_slot_start
+    ) then
+      raise exception 'interview_slot_unavailable' using errcode='45000';
+    end if;
+
+    insert into public.calendar_events(account_id, round_instance_id, interviewer_email, event_id, slot_start, slot_end)
+    values(v_round.account_id, v_round.id, v_interviewer_email, p_event_id, p_slot_start, p_slot_end);
+
+    update public.round_instances
+    set status = 'scheduled',
+        scheduled_at = p_slot_start,
+        event_id = p_event_id,
+        meet_link = p_meet_link,
+        conferencing_link = p_meet_link,
+        reschedule_count = 0
+    where id = v_round.id;
+
+    return;
+
+  else
+    raise exception 'booking_state_conflict' using errcode='55000';
+  end if;
+end;
+$$;
+
+revoke all on function public.book_interview_slot(uuid,text,timestamptz,timestamptz,text,text,boolean) from public,anon,authenticated;
+grant execute on function public.book_interview_slot(uuid,text,timestamptz,timestamptz,text,text,boolean) to service_role;
+
+-- 2. Update get_available_slots to reject weekend dates
+create or replace function public.get_available_slots(
+  p_round_instance_id uuid,
+  p_token text,
+  p_date date,
+  p_start_time time,
+  p_end_time time,
+  p_timezone text default 'UTC'
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_ri round_instances%rowtype;
+  v_cr campaign_rounds%rowtype;
+  v_day_start timestamptz;
+  v_day_end timestamptz;
+begin
+  if not public.candidate_token_valid(p_token, 'booking', p_round_instance_id) then
+    raise exception 'invalid_link' using detail = 'Invalid or expired booking link.';
+  end if;
+
+  v_day_start := (p_date::text || 'T' || p_start_time::text)::timestamp AT TIME ZONE p_timezone;
+  v_day_end   := (p_date::text || 'T' || p_end_time::text)::timestamp AT TIME ZONE p_timezone;
+
+  -- Block weekends: Saturday (6) and Sunday (0)
+  if extract(dow from p_date) in (0, 6) then
+    return jsonb_build_object(
+      'window', jsonb_build_object('start', v_day_start, 'end', v_day_end),
+      'blocked', jsonb_build_array(jsonb_build_object('start', v_day_start, 'end', v_day_end)),
+      'slots', '[]'::jsonb,
+      'notice', 'Weekends (Saturday and Sunday) are excluded from interview booking.'
+    );
+  end if;
+
+  select * into v_ri from round_instances where id = p_round_instance_id;
+  select * into v_cr from campaign_rounds
+    where campaign_id = v_ri.campaign_id and round_number = v_ri.round_number;
+
+  if v_cr.interviewer_email is null then
+    return jsonb_build_object(
+      'window', jsonb_build_object('start', v_day_start, 'end', v_day_end),
+      'blocked', '[]'::jsonb
+    );
+  end if;
+
+  return jsonb_build_object(
+    'window', jsonb_build_object('start', v_day_start, 'end', v_day_end),
+    'blocked', coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object('start', e.slot_start, 'end', e.slot_end)
+        )
+        from public.calendar_events e
+        where e.interviewer_email = v_cr.interviewer_email
+          and e.slot_start < v_day_end
+          and e.slot_end   > v_day_start
+      ),
+      '[]'::jsonb
+    )
+  );
+end $$;
+
+grant execute on function public.get_available_slots(uuid, text, date, time, time, text) to anon, authenticated, service_role;
+
+-- 3. Function to validate interview reminder dispatch
+-- Prevents "interview_day" from sending on a weekend or when the calendar date is not today.
+create or replace function public.validate_interview_reminder_dispatch(
+  p_round_instance_id uuid,
+  p_stage text,
+  p_now timestamptz default now()
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_ri public.round_instances%rowtype;
+  v_tz text := 'UTC';
+  v_now_local_date date;
+  v_sched_local_date date;
+  v_now_dow int;
+  v_norm_stage text;
+begin
+  select * into v_ri from public.round_instances where id = p_round_instance_id;
+  if not found then
+    return jsonb_build_object('allowed', false, 'reason', 'round_instance_not_found');
+  end if;
+
+  if v_ri.scheduled_at is null then
+    return jsonb_build_object('allowed', false, 'reason', 'interview_not_scheduled');
+  end if;
+
+  select coalesce(timezone, 'UTC') into v_tz
+  from public.accounts
+  where id = v_ri.account_id;
+  if v_tz is null or v_tz = '' then v_tz := 'UTC'; end if;
+
+  v_now_local_date   := (p_now at time zone v_tz)::date;
+  v_sched_local_date := (v_ri.scheduled_at at time zone v_tz)::date;
+  v_now_dow          := extract(dow from (p_now at time zone v_tz));
+
+  v_norm_stage := lower(trim(p_stage));
+
+  -- Guard interview-day stage ("Your Interview Is Today")
+  if v_norm_stage in ('interview_day', 'interview_link_today', 'interview_link_dispatch', 'interview_link') then
+    -- Cannot send on weekends since interviews do not take place on weekends
+    if v_now_dow in (0, 6) then
+      return jsonb_build_object(
+        'allowed', false,
+        'reason', 'weekend_interview_day_blocked',
+        'detail', 'Interviews are not scheduled on weekends. Interview day notification suppressed.'
+      );
+    end if;
+
+    -- Must match the exact calendar date in local timezone
+    if v_now_local_date <> v_sched_local_date then
+      if v_sched_local_date = v_now_local_date + 1 then
+        return jsonb_build_object(
+          'allowed', false,
+          'reason', 'interview_is_tomorrow',
+          'suggested_stage', 'pre_interview_24h',
+          'detail', 'Interview is tomorrow, not today. Use pre_interview_reminder.'
+        );
+      else
+        return jsonb_build_object(
+          'allowed', false,
+          'reason', 'date_mismatch',
+          'detail', 'Current local date does not match scheduled interview date.'
+        );
+      end if;
+    end if;
+
+    return jsonb_build_object('allowed', true, 'reason', 'calendar_date_matches_today');
+  end if;
+
+  -- Guard pre-interview reminder ("Interview Tomorrow: 24h before")
+  if v_norm_stage in ('pre_interview_reminder', 'pre_interview_24h', 'pre_interview') then
+    if v_sched_local_date <= v_now_local_date then
+      return jsonb_build_object(
+        'allowed', false,
+        'reason', 'interview_already_today_or_past',
+        'detail', 'Pre-interview 24h reminder is only valid prior to interview day.'
+      );
+    end if;
+    return jsonb_build_object('allowed', true, 'reason', 'pre_interview_window_valid');
+  end if;
+
+  return jsonb_build_object('allowed', true, 'reason', 'stage_not_time_critical');
+end;
+$$;
+
+grant execute on function public.validate_interview_reminder_dispatch(uuid, text, timestamptz) to anon, authenticated, service_role;
+
+-- 4. Enhance can_send_now to support cadence validation
+create or replace function public.can_send_now(
+  p_account_id uuid default null,
+  p_candidate_id uuid default null,
+  p_stage text default null,
+  p_round_instance_id uuid default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_tz text := 'UTC';
+  v_val jsonb;
+begin
+  if p_account_id is not null then
+    select coalesce(timezone, 'UTC') into v_tz
+    from public.accounts
+    where id = p_account_id;
+    if v_tz is null then v_tz := 'UTC'; end if;
+  end if;
+
+  -- If stage and round_instance_id are provided, run dispatch validation
+  if p_stage is not null and p_round_instance_id is not null then
+    v_val := public.validate_interview_reminder_dispatch(p_round_instance_id, p_stage, now());
+    if not coalesce((v_val->>'allowed')::boolean, true) then
+      return v_val;
+    end if;
+  end if;
+
+  return jsonb_build_object(
+    'allowed', true,
+    'reason', 'window_open'
+  );
+end;
+$$;
+
+grant execute on function public.can_send_now(uuid, uuid, text, uuid) to anon, authenticated, service_role;
 
 notify pgrst, 'reload schema';

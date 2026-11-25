@@ -129,6 +129,18 @@ export default function BookPage() {
     is_reschedule?: boolean;
   }) => {
     if (!ctx) return;
+
+    // Guard: Prevent weekend bookings
+    const slotDate = new Date(payload.slot_start);
+    const dayOfWeek = slotDate.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      const weekendErr =
+        "Weekend bookings are not permitted. Please choose a weekday (Monday to Friday).";
+      toast.error(weekendErr);
+      setBookingError(weekendErr);
+      return;
+    }
+
     setBooking(true);
     setBookingError(null);
     try {

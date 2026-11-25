@@ -470,3 +470,182 @@ export function cadenceConfigPayload(config: CadenceConfig, tier: Tier): Cadence
   }
   return { stages };
 }
+
+// --------------------------------------------------------------------------
+// Timezone-Aware Calendar & Interview Reminder Dispatch Safety
+// --------------------------------------------------------------------------
+
+/**
+ * Returns the "YYYY-MM-DD" local calendar date string for a given date in a specific timezone.
+ */
+export function getCalendarDateString(date: Date | string, timezone = "UTC"): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "";
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(d);
+}
+
+/**
+ * Returns the 24-hour "HH:MM" local time string for a given date in a specific timezone.
+ */
+export function getLocalTimeString(date: Date | string, timezone = "UTC"): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "";
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  return formatter.format(d);
+}
+
+/**
+ * Checks whether a given timestamp falls on a weekend (Saturday or Sunday)
+ * in the specified timezone.
+ */
+export function isWeekendDay(date: Date | string, timezone = "UTC"): boolean {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return false;
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+  });
+  const weekday = formatter.format(d);
+  return weekday === "Sat" || weekday === "Sun";
+}
+
+/**
+ * Checks whether two timestamps fall on the exact same calendar date in the given timezone.
+ */
+export function isSameCalendarDay(
+  dateA: Date | string,
+  dateB: Date | string,
+  timezone = "UTC",
+): boolean {
+  const strA = getCalendarDateString(dateA, timezone);
+  const strB = getCalendarDateString(dateB, timezone);
+  return !!strA && !!strB && strA === strB;
+}
+
+/**
+ * Checks whether targetDate falls on the calendar day immediately following baseDate (Day + 1)
+ * in the given timezone.
+ */
+export function isTomorrowCalendarDay(
+  baseDate: Date | string,
+  targetDate: Date | string,
+  timezone = "UTC",
+): boolean {
+  const baseStr = getCalendarDateString(baseDate, timezone);
+  const targetStr = getCalendarDateString(targetDate, timezone);
+  if (!baseStr || !targetStr) return false;
+
+  const [by, bm, bd] = baseStr.split("-").map(Number);
+  const baseUtcNext = new Date(Date.UTC(by, bm - 1, bd + 1));
+  const expectedNextStr = baseUtcNext.toISOString().slice(0, 10);
+  return targetStr === expectedNextStr;
+}
+
+export interface InterviewReminderEvaluation {
+  shouldDispatch: boolean;
+  stage: "interview_day" | "pre_interview_reminder" | null;
+  reason: string;
+}
+
+/**
+ * Evaluates whether an interview notification is eligible to be dispatched,
+ * guaranteeing that:
+ * 1. "interview_day" ("Your Interview Is Today") ONLY fires when scheduled_at
+ *    matches the current local calendar date (D-0).
+ * 2. "interview_day" NEVER fires on a Saturday or Sunday when weekends are excluded.
+ * 3. An interview scheduled for tomorrow (D-1) evaluates strictly to
+ *    "pre_interview_reminder" ("Interview Tomorrow"), never "interview_day".
+ */
+export function evaluateInterviewReminderStage(params: {
+  scheduledAt: Date | string;
+  now?: Date | string;
+  timezone?: string;
+  sendTime?: string;
+}): InterviewReminderEvaluation {
+  const tz = params.timezone || "UTC";
+  const sendTime = params.sendTime || "09:00";
+  const scheduledDate =
+    typeof params.scheduledAt === "string" ? new Date(params.scheduledAt) : params.scheduledAt;
+  const nowDate = params.now
+    ? typeof params.now === "string"
+      ? new Date(params.now)
+      : params.now
+    : new Date();
+
+  if (Number.isNaN(scheduledDate.getTime()) || Number.isNaN(nowDate.getTime())) {
+    return { shouldDispatch: false, stage: null, reason: "invalid_date_provided" };
+  }
+
+  // If already past the scheduled time
+  if (scheduledDate.getTime() < nowDate.getTime()) {
+    return { shouldDispatch: false, stage: null, reason: "interview_already_passed" };
+  }
+
+  const isToday = isSameCalendarDay(nowDate, scheduledDate, tz);
+  const isTomorrow = isTomorrowCalendarDay(nowDate, scheduledDate, tz);
+  const currentIsWeekend = isWeekendDay(nowDate, tz);
+
+  // Case 1: Interview is on the same calendar day (D-0)
+  if (isToday) {
+    // Weekend safety guard: no interviews on weekends
+    if (currentIsWeekend) {
+      return {
+        shouldDispatch: false,
+        stage: null,
+        reason: "weekend_blocked_no_interview_day",
+      };
+    }
+
+    // Check sendTime (e.g. 09:00 local time)
+    const currentHm = getLocalTimeString(nowDate, tz);
+    if (currentHm < sendTime) {
+      return {
+        shouldDispatch: false,
+        stage: null,
+        reason: `send_time_not_reached: current time ${currentHm} is before ${sendTime}`,
+      };
+    }
+
+    return {
+      shouldDispatch: true,
+      stage: "interview_day",
+      reason: "interview_is_today",
+    };
+  }
+
+  // Case 2: Interview is on the next calendar day (D-1)
+  if (isTomorrow) {
+    const diffHours = (scheduledDate.getTime() - nowDate.getTime()) / (1000 * 60 * 60);
+    // Eligible within 36 hours window of tomorrow's interview
+    if (diffHours <= 36 && diffHours >= 12) {
+      return {
+        shouldDispatch: true,
+        stage: "pre_interview_reminder",
+        reason: "interview_is_tomorrow",
+      };
+    }
+
+    return {
+      shouldDispatch: false,
+      stage: null,
+      reason: `pre_interview_window_not_matched: ${diffHours.toFixed(1)}h remaining`,
+    };
+  }
+
+  return {
+    shouldDispatch: false,
+    stage: null,
+    reason: "interview_not_today_or_tomorrow",
+  };
+}
