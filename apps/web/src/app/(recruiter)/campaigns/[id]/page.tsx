@@ -969,6 +969,7 @@ export default function CampaignDetailPage() {
                 value={voiceConfigDraft}
                 onChange={setVoiceConfigDraft}
                 jobTitle={campaign.name}
+                jobDescription={campaign.jd_text || ""}
                 onSave={handleSaveVoiceConfig}
                 isSaving={isSavingVoiceConfig}
               />

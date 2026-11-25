@@ -261,6 +261,14 @@ export async function GET(req: Request) {
             (postAnalysis.transcript as string) ||
             null;
 
+          const meta = {
+            ...parseMetaObj(detail.metadata),
+            ...parseMetaObj(detail.notes),
+            ...parseMetaObj(detail.variables),
+            ...parseMetaObj(detail.dynamic_variables),
+          };
+          const isCallTest = checkIsTestCall(detail, meta);
+
           const callObj = {
             id: (detail.id as string) || callId,
             duration: Number(detail.duration || 0),
@@ -272,6 +280,8 @@ export async function GET(req: Request) {
             recording_url: recUrl,
             transcript: rawTranscript,
             turns: finalTurns,
+            is_test_call: isCallTest,
+            source: (meta.source as string) || (isCallTest ? "test_call" : "campaign_call"),
           };
 
           return NextResponse.json({
@@ -603,6 +613,8 @@ export async function GET(req: Request) {
           transcript: rawTranscript,
           turns: finalTurns,
           scorecard: callScorecard,
+          is_test_call: isCallTest,
+          source: (meta.source as string) || (isCallTest ? "test_call" : "campaign_call"),
         };
 
         // If call is completed and candidate belongs to this account, auto-record score in decision_ledger

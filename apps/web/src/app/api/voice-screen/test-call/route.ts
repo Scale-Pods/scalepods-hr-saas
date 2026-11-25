@@ -64,11 +64,11 @@ export async function POST(req: Request) {
         job_description:
           body.job_description ||
           body.jd_text ||
-          "Full-stack web application development, microservices, cloud infrastructure, and collaborative engineering.",
-        candidate_resume:
-          body.candidate_resume ||
-          body.resume_text ||
-          "Seasoned software engineer with 6+ years building distributed applications, modern web interfaces, and backend systems.",
+          (role_title ? `Role and responsibilities for ${role_title}.` : ""),
+        candidate_resume: body.candidate_resume || body.resume_text || "",
+        questions: Array.isArray(topics)
+          ? topics.map((t: any) => (typeof t === "string" ? t : t?.text)).filter(Boolean)
+          : undefined,
         outbound_from_number:
           voice_call_config?.outbound_from_number ||
           voice_call_config?.from_phone_number ||
@@ -140,14 +140,8 @@ export async function POST(req: Request) {
             from: outboundFromNumber,
             caller_id: outboundFromNumber,
             phone_number_id: outboundPhoneNumberId,
-            job_description:
-              body.job_description ||
-              body.jd_text ||
-              "Full-stack web application development, microservices, cloud infrastructure, and collaborative engineering.",
-            candidate_resume:
-              body.candidate_resume ||
-              body.resume_text ||
-              "Seasoned software engineer with 6+ years building distributed applications, modern web interfaces, and backend systems.",
+            job_description: body.job_description || body.jd_text || "",
+            candidate_resume: body.candidate_resume || body.resume_text || "",
             is_test_call: true,
             plan_tier: "enterprise",
             tier: "enterprise",

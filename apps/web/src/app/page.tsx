@@ -92,7 +92,7 @@ export default function HomePage() {
 
       {/* ── Modern SaaS Navigation Bar ── */}
       <header className="sticky top-0 z-50 w-full border-b border-slate-300/70 bg-white/90 dark:border-slate-800/80 dark:bg-[#080D1A]/85 backdrop-blur-xl transition-colors duration-200 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 lg:gap-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 lg:gap-8">
           {/* Logo & Brand */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <Link href="/" className="flex items-center shrink-0">
@@ -102,35 +102,35 @@ export default function HomePage() {
                 className="h-7 sm:h-9 w-auto object-contain dark:brightness-0 dark:invert drop-shadow-[0_0_12px_rgba(59,130,246,0.25)] transition duration-200"
               />
             </Link>
-            <span className="hidden xl:inline-flex items-center gap-1.5 rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 dark:text-blue-400 whitespace-nowrap shrink-0">
+            <span className="hidden 2xl:inline-flex items-center gap-1.5 rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 dark:text-blue-400 whitespace-nowrap shrink-0">
               <span className="h-1.5 w-1.5 rounded-full bg-blue-500 dark:bg-blue-400 animate-pulse" />
               Talent Intelligence Platform
             </span>
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-4 lg:gap-6 xl:gap-7 text-xs font-semibold text-slate-700 dark:text-slate-300">
+          <nav className="hidden lg:flex items-center gap-6 xl:gap-8 text-xs font-semibold text-slate-700 dark:text-slate-300 shrink-0">
             <a
               href="#solutions"
-              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-white transition"
+              className="whitespace-nowrap shrink-0 hover:text-blue-600 dark:hover:text-white transition"
             >
               Solutions
             </a>
             <a
               href="#features"
-              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-white transition"
+              className="whitespace-nowrap shrink-0 hover:text-blue-600 dark:hover:text-white transition"
             >
               Features
             </a>
             <a
               href="#pricing"
-              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-white transition"
+              className="whitespace-nowrap shrink-0 hover:text-blue-600 dark:hover:text-white transition"
             >
               Pricing
             </a>
             <a
               href="#enterprise"
-              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-white transition"
+              className="whitespace-nowrap shrink-0 hover:text-blue-600 dark:hover:text-white transition"
             >
               Enterprise Security
             </a>
@@ -138,10 +138,10 @@ export default function HomePage() {
               href="https://www.scalepods.co"
               target="_blank"
               rel="noopener noreferrer"
-              className="whitespace-nowrap flex items-center gap-1 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-white transition"
+              className="whitespace-nowrap shrink-0 flex items-center gap-1 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-white transition"
             >
               <span>About ScalePods</span>
-              <ArrowUpRight className="h-3 w-3" />
+              <ArrowUpRight className="h-3 w-3 shrink-0" />
             </a>
           </nav>
 
@@ -152,7 +152,7 @@ export default function HomePage() {
               type="button"
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
               aria-label="Switch theme"
-              className="hidden md:flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white/90 text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white transition shadow-sm active:scale-95"
+              className="hidden lg:flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white/90 text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white transition shadow-sm active:scale-95 shrink-0"
             >
               {mounted && resolvedTheme === "dark" ? (
                 <Sun className="h-4 w-4 text-amber-400" />
@@ -163,7 +163,7 @@ export default function HomePage() {
 
             <Link
               href="/auth?mode=signin"
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:border-slate-700/70 dark:bg-slate-800/40 dark:hover:bg-slate-800/80 dark:hover:border-slate-600 px-3.5 py-2 text-xs font-semibold dark:text-white shadow-sm transition active:scale-[0.99] whitespace-nowrap"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:border-slate-700/70 dark:bg-slate-800/40 dark:hover:bg-slate-800/80 dark:hover:border-slate-600 px-3.5 py-2 text-xs font-semibold dark:text-white shadow-sm transition active:scale-[0.99] whitespace-nowrap shrink-0"
             >
               <LogIn className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
               <span>Sign In</span>
@@ -171,7 +171,7 @@ export default function HomePage() {
 
             <Link
               href="/auth?mode=signup"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-md shadow-blue-600/25 transition active:scale-[0.99] whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 px-3 py-1.5 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-md shadow-blue-600/25 transition active:scale-[0.99] whitespace-nowrap shrink-0"
             >
               <span>Get Started</span>
               <ArrowRight className="h-3.5 w-3.5" />
@@ -181,7 +181,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800 transition shadow-sm"
+              className="lg:hidden flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800 transition shadow-sm"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
@@ -191,7 +191,7 @@ export default function HomePage() {
 
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-b border-slate-200 bg-white/95 px-5 py-4 dark:border-slate-800 dark:bg-[#080D1A]/95 backdrop-blur-2xl shadow-xl space-y-4 animate-in slide-in-from-top-2 duration-150">
+          <div className="lg:hidden border-b border-slate-200 bg-white/95 px-5 py-4 dark:border-slate-800 dark:bg-[#080D1A]/95 backdrop-blur-2xl shadow-xl space-y-4 animate-in slide-in-from-top-2 duration-150">
             {/* Top theme switcher inside mobile drawer */}
             <div className="flex items-center justify-between pb-3.5 border-b border-slate-200 dark:border-slate-800">
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">

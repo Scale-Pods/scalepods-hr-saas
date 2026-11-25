@@ -91,6 +91,7 @@ export interface DialnexaConfigEditorProps {
   value: DialnexaVoiceConfig;
   onChange: (value: DialnexaVoiceConfig) => void;
   jobTitle?: string;
+  jobDescription?: string;
   className?: string;
   onSave?: (value: DialnexaVoiceConfig) => Promise<void> | void;
   isSaving?: boolean;
@@ -100,6 +101,7 @@ export function DialnexaConfigEditor({
   value,
   onChange,
   jobTitle,
+  jobDescription,
   className,
   onSave,
   isSaving = false,
@@ -411,11 +413,11 @@ export function DialnexaConfigEditor({
         VOICE_CALL_TYPES.find((t) => t.id === selectedCallTypeId) || VOICE_CALL_TYPES[1];
       const currentAgentName = getDialnexaVoiceName(value.voice || value.voice_id);
       let activePrompt = value.prompt;
-      if (callType && callTypeTopics.length > 0) {
+      if (!activePrompt && callType && callTypeTopics.length > 0) {
         activePrompt = callType.buildPrompt(callTypeTopics, currentAgentName);
-        if (jobTitle?.trim()) {
-          activePrompt = activePrompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
-        }
+      }
+      if (activePrompt && jobTitle?.trim()) {
+        activePrompt = activePrompt.replace(/\{\{job_title\}\}/g, jobTitle.trim());
       }
       let activeFirstMessage = value.first_message || callType?.buildFirstMessage(currentAgentName);
       if (jobTitle?.trim() && activeFirstMessage) {
@@ -429,6 +431,7 @@ export function DialnexaConfigEditor({
           phone_number: testPhoneNumber,
           candidate_name: testCandidateName.trim() || "Alex Morgan",
           role_title: jobTitle || "ScalePods Voice Agent Test",
+          job_description: jobDescription || "",
           prompt: activePrompt,
           custom_prompt: activePrompt,
           first_message: activeFirstMessage,
@@ -443,6 +446,7 @@ export function DialnexaConfigEditor({
             first_message: activeFirstMessage,
             topics: callTypeTopics,
             call_type_id: selectedCallTypeId,
+            job_description: jobDescription || "",
             outbound_from_number:
               value.outbound_from_number || value.from_phone_number || "+912264233051",
             from_phone_number:

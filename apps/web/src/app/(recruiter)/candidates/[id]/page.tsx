@@ -816,6 +816,15 @@ export default function CandidateProfilePage() {
             if (c.is_test_call === true || c.is_test_call === "true") return false;
             const source = String(c.source || "").toLowerCase();
             if (source.includes("test")) return false;
+            const cName = String(c.candidate_name || "").toLowerCase();
+            if (
+              cName.includes("recruiter test") ||
+              cName.includes("test candidate") ||
+              cName.includes("alex morgan")
+            )
+              return false;
+            const rTitle = String(c.role_title || "").toLowerCase();
+            if (rTitle.includes("agent test") || rTitle.includes("voice agent test")) return false;
             return true;
           });
           setDialnexaCalls(realCalls);

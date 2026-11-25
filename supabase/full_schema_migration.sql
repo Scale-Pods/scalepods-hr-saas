@@ -8750,3 +8750,60 @@ notify pgrst, 'reload schema';
 -- Fix PGRST203: PostgREST function overloading ambiguity
 -- Drop the legacy 2-argument signature so PostgREST resolves to the 4-argument signature with defaults.
 drop function if exists public.can_send_now(uuid, uuid);
+
+-- =========================================================================
+-- FILE: 0068_update_ai_interview_notification_templates.sql
+-- =========================================================================
+-- Migration 0068: Update AI Interview WhatsApp Notification Templates
+update public.notification_templates
+set
+  meta_template_name = 'ai_interview_invite_v1',
+  body_html = 'Hi {{1}}, congratulations on moving forward for the {{2}} role at {{3}}!
+
+You have been invited to complete your AI-powered interview. Please access your interview room and start using the link below:
+{{4}}
+
+This link is valid for 5 days. You will need a quiet environment, camera, and microphone. Best of luck!',
+  updated_at = now()
+where stage = 'ai_interview_invite'
+  and channel = 'whatsapp'
+  and account_id is null;
+
+update public.notification_templates
+set
+  meta_template_name = 'ai_interview_reminder_day1',
+  body_html = 'Hi {{1}}, a quick reminder to complete your AI-powered interview for the {{2}} role at {{3}}.
+
+You can start whenever you''re ready using this link: {{4}}',
+  updated_at = now()
+where stage = 'ai_interview_reminder_day1'
+  and channel = 'whatsapp'
+  and account_id is null;
+
+update public.notification_templates
+set
+  meta_template_name = 'ai_interview_reminder_day3',
+  body_html = 'Hi {{1}}, we are still waiting for you to complete your AI interview for the {{2}} role at {{3}}.
+
+Please access your interview session here: {{4}}.
+
+We recommend completing it soon so we can review your application.',
+  updated_at = now()
+where stage = 'ai_interview_reminder_day3'
+  and channel = 'whatsapp'
+  and account_id is null;
+
+update public.notification_templates
+set
+  meta_template_name = 'ai_interview_final_notice',
+  body_html = 'Hi {{1}}, this is your final reminder to complete your AI interview for the {{2}} role at {{3}}.
+
+Your access link will expire soon: {{4}}.
+
+Please complete it now to keep your application active.',
+  updated_at = now()
+where stage = 'ai_interview_final_notice'
+  and channel = 'whatsapp'
+  and account_id is null;
+
+notify pgrst, 'reload schema';
