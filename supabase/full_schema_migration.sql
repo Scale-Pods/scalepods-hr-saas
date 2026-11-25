@@ -8699,6 +8699,9 @@ $$;
 grant execute on function public.validate_interview_reminder_dispatch(uuid, text, timestamptz) to anon, authenticated, service_role;
 
 -- 4. Enhance can_send_now to support cadence validation
+-- Drop the legacy 2-arg signature so PostgREST resolves the overload unambiguously
+drop function if exists public.can_send_now(uuid, uuid);
+
 create or replace function public.can_send_now(
   p_account_id uuid default null,
   p_candidate_id uuid default null,
@@ -8739,3 +8742,11 @@ $$;
 grant execute on function public.can_send_now(uuid, uuid, text, uuid) to anon, authenticated, service_role;
 
 notify pgrst, 'reload schema';
+
+-- =========================================================================
+-- FILE: 0069_drop_overloaded_can_send_now.sql
+-- =========================================================================
+
+-- Fix PGRST203: PostgREST function overloading ambiguity
+-- Drop the legacy 2-argument signature so PostgREST resolves to the 4-argument signature with defaults.
+drop function if exists public.can_send_now(uuid, uuid);

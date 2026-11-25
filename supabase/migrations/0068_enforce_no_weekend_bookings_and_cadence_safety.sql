@@ -306,6 +306,9 @@ $$;
 grant execute on function public.validate_interview_reminder_dispatch(uuid, text, timestamptz) to anon, authenticated, service_role;
 
 -- 4. Enhance can_send_now to support cadence validation
+-- Drop the legacy 2-arg signature so PostgREST resolves the overload unambiguously
+drop function if exists public.can_send_now(uuid, uuid);
+
 create or replace function public.can_send_now(
   p_account_id uuid default null,
   p_candidate_id uuid default null,
