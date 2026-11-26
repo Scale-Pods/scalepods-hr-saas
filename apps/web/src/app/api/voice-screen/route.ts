@@ -210,8 +210,16 @@ export async function POST(req: Request) {
           company_name: body.company_name || "ScalePods",
           job_description: campaignJdText,
           candidate_resume: candidateResumeText,
-          questions: roundQuestions,
-          evaluation_criteria: roundCriteria,
+          questions:
+            Array.isArray(voiceCallConfig.topics) && voiceCallConfig.topics.length > 0
+              ? (voiceCallConfig.topics as Array<{ text?: string }>)
+                  .map((t) => t?.text || "")
+                  .filter(Boolean)
+              : roundQuestions,
+          evaluation_criteria:
+            Array.isArray(voiceCallConfig.topics) && voiceCallConfig.topics.length > 0
+              ? undefined
+              : roundCriteria,
           outbound_from_number:
             voiceCallConfig?.outbound_from_number ||
             voiceCallConfig?.from_phone_number ||

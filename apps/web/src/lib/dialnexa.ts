@@ -390,7 +390,9 @@ export async function syncDialnexaAgentConfig(
       }
     }
 
-    if (params.questions && params.questions.length > 0) {
+    const hasExclusiveTopicsBlock = fullPrompt.includes("EXCLUSIVE CONFIGURED TOPICS");
+
+    if (!hasExclusiveTopicsBlock && params.questions && params.questions.length > 0) {
       const formattedQuestions = params.questions
         .filter((q) => Boolean(q?.trim()))
         .map((q, idx) => `${idx + 1}. ${q.trim()}`)
@@ -400,7 +402,11 @@ export async function syncDialnexaAgentConfig(
       }
     }
 
-    if (params.evaluation_criteria && params.evaluation_criteria.length > 0) {
+    if (
+      !hasExclusiveTopicsBlock &&
+      params.evaluation_criteria &&
+      params.evaluation_criteria.length > 0
+    ) {
       const formattedCriteria = params.evaluation_criteria
         .filter((c) => Boolean(c?.trim()))
         .map((c) => `- ${c.trim()}`)

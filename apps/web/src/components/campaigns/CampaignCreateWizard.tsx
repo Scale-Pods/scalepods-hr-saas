@@ -713,16 +713,16 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
           r.round_type === "assignment" ? Number(r.assignment_deadline_hours) || 72 : undefined,
         duration_minutes: r.round_type === "assignment" ? undefined : 30,
         questions:
-          r.round_type === "ai_interview" || r.round_type === "ai_voice_call"
+          r.round_type === "ai_interview"
             ? [
                 "Tell me about your technical background and experience.",
                 "Describe how you handle ambiguous requirements.",
               ]
-            : undefined,
+            : r.round_type === "ai_voice_call"
+              ? (dialnexaConfig.topics || []).map((t) => t.text).filter(Boolean)
+              : undefined,
         evaluation_criteria:
-          r.round_type === "ai_interview" ||
-          r.round_type === "ai_voice_call" ||
-          r.round_type === "assignment"
+          r.round_type === "ai_interview" || r.round_type === "assignment"
             ? ["Technical Competency", "Communication", "Problem Solving"]
             : undefined,
       })),
@@ -1329,6 +1329,7 @@ export function CampaignCreateWizard({ onSuccess, onCancel }: CampaignCreateWiza
                   value={dialnexaConfig}
                   onChange={setDialnexaConfig}
                   jobTitle={name}
+                  jobDescription={jdText}
                 />
               </div>
             ) : null}

@@ -459,12 +459,20 @@ export async function POST(req: NextRequest) {
               role_title: camp?.name || "Open Position",
               company_name: "ScalePods",
               job_description: camp?.jd_text || undefined,
-              questions: Array.isArray(nextRoundDef?.questions)
-                ? (nextRoundDef.questions as string[])
-                : undefined,
-              evaluation_criteria: Array.isArray(nextRoundDef?.evaluation_criteria)
-                ? (nextRoundDef.evaluation_criteria as string[])
-                : undefined,
+              questions:
+                Array.isArray(voiceConfig.topics) && voiceConfig.topics.length > 0
+                  ? (voiceConfig.topics as Array<{ text?: string }>)
+                      .map((t) => t?.text || "")
+                      .filter(Boolean)
+                  : Array.isArray(nextRoundDef?.questions)
+                    ? (nextRoundDef.questions as string[])
+                    : undefined,
+              evaluation_criteria:
+                Array.isArray(voiceConfig.topics) && voiceConfig.topics.length > 0
+                  ? undefined
+                  : Array.isArray(nextRoundDef?.evaluation_criteria)
+                    ? (nextRoundDef.evaluation_criteria as string[])
+                    : undefined,
               outbound_from_number:
                 (voiceConfig.outbound_from_number as string) ||
                 (voiceConfig.from_phone_number as string) ||
@@ -813,8 +821,14 @@ async function triggerImmediateVoiceCallIfEligible(
           candidate_name: app.candidate_name ?? undefined,
           role_title: roleTitle,
           company_name: "ScalePods",
-          questions: roundQuestions,
-          evaluation_criteria: roundCriteria,
+          questions:
+            Array.isArray(voiceConfig.topics) && voiceConfig.topics.length > 0
+              ? voiceConfig.topics.map((t) => t?.text || "").filter(Boolean)
+              : roundQuestions,
+          evaluation_criteria:
+            Array.isArray(voiceConfig.topics) && voiceConfig.topics.length > 0
+              ? undefined
+              : roundCriteria,
           outbound_from_number:
             voiceConfig?.outbound_from_number ||
             voiceConfig?.from_phone_number ||
