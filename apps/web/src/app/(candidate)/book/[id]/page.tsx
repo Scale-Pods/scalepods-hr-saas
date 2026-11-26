@@ -84,10 +84,10 @@ export default function BookPage() {
         if (cancelled) return;
         setCtx(c);
         if (
-          (c.booked_event?.event_id && mode !== "reschedule") ||
-          c.round_instance.status === "scheduled" ||
           c.round_instance.status === "passed" ||
-          c.round_instance.status === "completed"
+          c.round_instance.status === "completed" ||
+          ((c.booked_event?.event_id || c.round_instance.status === "scheduled") &&
+            mode !== "reschedule")
         ) {
           setView("booked");
         } else {
