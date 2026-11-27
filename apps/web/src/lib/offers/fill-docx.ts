@@ -24,13 +24,17 @@ function validateXmlTags(xml: string): void {
   // Check for unclosed tag: "{{" followed by characters without a closing "}}"
   const unclosedMatch = xml.match(/\{\{[^}]*(?:<(?!\/w:t>)[^>]+>[^}]*)*$/);
   if (unclosedMatch) {
-    console.warn(`[validateXmlTags] Warning: Malformed or unclosed tag in document XML: ${unclosedMatch[0]}`);
+    console.warn(
+      `[validateXmlTags] Warning: Malformed or unclosed tag in document XML: ${unclosedMatch[0]}`,
+    );
   }
 
   // Check for "{{" followed by another "{{" before "}}"
   const nestedMatch = xml.match(/\{\{[^}]*\{\{/);
   if (nestedMatch) {
-    console.warn(`[validateXmlTags] Warning: Malformed nested tag in document XML: ${nestedMatch[0]}`);
+    console.warn(
+      `[validateXmlTags] Warning: Malformed nested tag in document XML: ${nestedMatch[0]}`,
+    );
   }
 
   // Check single brace mismatch where an opening {{ is not closed on the line/paragraph

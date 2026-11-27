@@ -55,7 +55,9 @@ export async function POST(req: NextRequest) {
         if (Array.isArray(val.statuses)) {
           for (const statusObj of val.statuses as Array<Record<string, unknown>>) {
             const wamid = String(statusObj.id || "");
-            const status = String(statusObj.status || "").toLowerCase().trim();
+            const status = String(statusObj.status || "")
+              .toLowerCase()
+              .trim();
             const recipient = String(statusObj.recipient_id || "").replace(/\D/g, "");
 
             if (!status) continue;
@@ -127,7 +129,9 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[api/webhooks/whatsapp] Error handling webhook:", err);
     // Respond 200 to prevent Meta from disabling the webhook endpoint on transient error
-    return NextResponse.json({ success: false, error: "Internal processing error" }, { status: 200 });
+    return NextResponse.json(
+      { success: false, error: "Internal processing error" },
+      { status: 200 },
+    );
   }
 }
-

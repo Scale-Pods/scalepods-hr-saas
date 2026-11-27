@@ -58,7 +58,10 @@ export async function POST(req: NextRequest) {
     });
 
     if (rpcError) {
-      console.error("[api/calendar/authorize-teammate] create_calendar_oauth_state failed:", rpcError);
+      console.error(
+        "[api/calendar/authorize-teammate] create_calendar_oauth_state failed:",
+        rpcError,
+      );
       return NextResponse.json(
         { error: rpcError.message || "Failed to create calendar authorization state." },
         { status: 500 },
@@ -93,4 +96,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

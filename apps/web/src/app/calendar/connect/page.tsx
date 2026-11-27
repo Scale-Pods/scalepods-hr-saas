@@ -1,22 +1,22 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import {
+  AlertCircle,
+  ArrowRight,
+  Building2,
   Calendar,
   CheckCircle,
-  AlertCircle,
-  Loader2,
   Clock,
+  Loader2,
   Shield,
-  Building2,
   User,
-  ArrowRight,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 
 interface ConnectInfo {
   valid: boolean;
@@ -112,13 +112,15 @@ function TeammateCalendarConnectContent() {
               <div className="flex items-start gap-2.5">
                 <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                 <p className="text-muted-foreground">
-                  <strong className="text-foreground">Availability Synced:</strong> Candidates will only be able to book slots when you are free.
+                  <strong className="text-foreground">Availability Synced:</strong> Candidates will
+                  only be able to book slots when you are free.
                 </p>
               </div>
               <div className="flex items-start gap-2.5">
                 <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                 <p className="text-muted-foreground">
-                  <strong className="text-foreground">Automated Events:</strong> Confirmed interview rounds will automatically appear on your calendar with Google Meet video links.
+                  <strong className="text-foreground">Automated Events:</strong> Confirmed interview
+                  rounds will automatically appear on your calendar with Google Meet video links.
                 </p>
               </div>
             </div>
@@ -163,7 +165,8 @@ function TeammateCalendarConnectContent() {
           </div>
           <CardContent className="p-6 text-center text-xs text-muted-foreground space-y-4">
             <p>
-              Please contact your recruiting team lead or workspace administrator to request a fresh calendar invitation link.
+              Please contact your recruiting team lead or workspace administrator to request a fresh
+              calendar invitation link.
             </p>
           </CardContent>
         </Card>
@@ -182,7 +185,10 @@ function TeammateCalendarConnectContent() {
               <span className="font-bold tracking-tight text-lg text-foreground">
                 Scale<span className="text-primary">Pods</span>
               </span>
-              <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-semibold border-primary/30 text-primary">
+              <Badge
+                variant="outline"
+                className="text-[10px] uppercase tracking-wider font-semibold border-primary/30 text-primary"
+              >
                 Interviewer Setup
               </Badge>
             </div>
@@ -196,7 +202,8 @@ function TeammateCalendarConnectContent() {
             Connect Your Google Calendar
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1.5 leading-relaxed">
-            Allow {info.company_name} to schedule candidate interview rounds according to your availability.
+            Allow {info.company_name} to schedule candidate interview rounds according to your
+            availability.
           </p>
         </div>
 
@@ -214,8 +221,12 @@ function TeammateCalendarConnectContent() {
               <span className="text-muted-foreground flex items-center gap-1 font-medium">
                 <Building2 className="h-3.5 w-3.5" /> Workspace
               </span>
-              <span className="font-semibold text-foreground text-sm block">{info.company_name}</span>
-              <span className="text-[11px] text-muted-foreground block capitalize">{info.role}</span>
+              <span className="font-semibold text-foreground text-sm block">
+                {info.company_name}
+              </span>
+              <span className="text-[11px] text-muted-foreground block capitalize">
+                {info.role}
+              </span>
             </div>
           </div>
 
@@ -225,8 +236,12 @@ function TeammateCalendarConnectContent() {
               <div className="flex items-center gap-2.5">
                 <CheckCircle className="h-5 w-5 text-emerald-500 shrink-0" />
                 <div>
-                  <span className="font-semibold text-foreground block">Calendar Already Linked</span>
-                  <span className="text-muted-foreground font-mono text-[11px]">{info.google_email}</span>
+                  <span className="font-semibold text-foreground block">
+                    Calendar Already Linked
+                  </span>
+                  <span className="text-muted-foreground font-mono text-[11px]">
+                    {info.google_email}
+                  </span>
                 </div>
               </div>
               <Badge variant="outline" className="border-emerald-500/40 text-emerald-500 shrink-0">
@@ -246,7 +261,9 @@ function TeammateCalendarConnectContent() {
                   <Clock className="h-3 w-3" />
                 </div>
                 <span>
-                  <strong className="text-foreground">Free/Busy Times:</strong> Checks your free time slots to prevent double-booking. Meeting titles and personal events remain private.
+                  <strong className="text-foreground">Free/Busy Times:</strong> Checks your free
+                  time slots to prevent double-booking. Meeting titles and personal events remain
+                  private.
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
@@ -254,7 +271,8 @@ function TeammateCalendarConnectContent() {
                   <Calendar className="h-3 w-3" />
                 </div>
                 <span>
-                  <strong className="text-foreground">Interview Events:</strong> Adds scheduled interviews with candidate details and Google Meet video conference links.
+                  <strong className="text-foreground">Interview Events:</strong> Adds scheduled
+                  interviews with candidate details and Google Meet video conference links.
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
@@ -262,7 +280,8 @@ function TeammateCalendarConnectContent() {
                   <Shield className="h-3 w-3" />
                 </div>
                 <span>
-                  <strong className="text-foreground">Security Guaranteed:</strong> You can revoke access at any time from your Google Account security settings.
+                  <strong className="text-foreground">Security Guaranteed:</strong> You can revoke
+                  access at any time from your Google Account security settings.
                 </span>
               </div>
             </div>
@@ -303,7 +322,9 @@ function TeammateCalendarConnectContent() {
                     />
                   </svg>
                   <span>
-                    {info.is_connected ? "Reconnect Google Calendar" : "Sign in & Connect Google Calendar"}
+                    {info.is_connected
+                      ? "Reconnect Google Calendar"
+                      : "Sign in & Connect Google Calendar"}
                   </span>
                   <ArrowRight className="h-4 w-4 text-muted-foreground ml-auto" />
                 </>
@@ -329,4 +350,3 @@ export default function TeammateCalendarConnectPage() {
     </Suspense>
   );
 }
-

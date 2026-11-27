@@ -46,7 +46,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         {
           valid: false,
-          error: "This calendar invitation link has expired. Please ask your recruiter for a new link.",
+          error:
+            "This calendar invitation link has expired. Please ask your recruiter for a new link.",
         },
         { status: 410 },
       );

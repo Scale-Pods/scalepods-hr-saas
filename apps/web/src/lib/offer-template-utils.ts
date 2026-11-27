@@ -39,7 +39,8 @@ export const STANDARD_OFFER_VAR_KEYS = new Set([
   "COMPANY_LOGO_PATH",
 ]);
 
-const PLACEHOLDER_REGEX = /\{\{\s*([A-Za-z0-9_ -]+?)\s*\}\}|\[\s*([A-Za-z0-9_ -]+?)\s*\]|<([A-Za-z0-9_ -]+?)>/g;
+const PLACEHOLDER_REGEX =
+  /\{\{\s*([A-Za-z0-9_ -]+?)\s*\}\}|\[\s*([A-Za-z0-9_ -]+?)\s*\]|<([A-Za-z0-9_ -]+?)>/g;
 
 export function normalizeVarKey(rawKey: string): string {
   return rawKey
@@ -649,7 +650,8 @@ export function renderOfferTemplateText(
   const companyName = normalized.COMPANY_NAME || normalized.COMPANY || "ScalePods";
   const candidateName = normalized.CANDIDATE_NAME || normalized.NAME || "Candidate";
   const candidateEmail = normalized.CANDIDATE_EMAIL || normalized.EMAIL || "";
-  const role = normalized.ROLE || normalized.POSITION_TITLE || normalized.DESIGNATION || "Team Member";
+  const role =
+    normalized.ROLE || normalized.POSITION_TITLE || normalized.DESIGNATION || "Team Member";
   const salary = normalized.SALARY || normalized.GROSS_ANNUAL || normalized.STIPEND_AMOUNT || "";
   const currency = normalized.CURRENCY || normalized.SALARY_CURRENCY || "INR";
   const salaryWords =
@@ -658,18 +660,29 @@ export function renderOfferTemplateText(
     normalized.GROSS_ANNUAL_WORDS ||
     normalized.STIPEND_WORDS ||
     (salary ? numberToWords(salary) : "");
-  const joiningDate = normalized.JOINING_DATE || normalized.START_DATE || normalized.DATE_OF_JOINING || "";
-  const offerDate = normalized.OFFER_DATE || normalized.ISSUE_DATE || normalized.DATE || new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const joiningDate =
+    normalized.JOINING_DATE || normalized.START_DATE || normalized.DATE_OF_JOINING || "";
+  const offerDate =
+    normalized.OFFER_DATE ||
+    normalized.ISSUE_DATE ||
+    normalized.DATE ||
+    new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
   const department = normalized.DEPARTMENT || "Software Development";
   const empType = normalized.EMPLOYMENT_TYPE || normalized.LETTER_TYPE || "Full-Time";
-  const workLocation = normalized.WORK_LOCATION || normalized.COMPANY_LOCATION || normalized.LOCATION || normalized.CANDIDATE_LOCATION || "Remote";
+  const workLocation =
+    normalized.WORK_LOCATION ||
+    normalized.COMPANY_LOCATION ||
+    normalized.LOCATION ||
+    normalized.CANDIDATE_LOCATION ||
+    "Remote";
   const candidateLocation = normalized.CANDIDATE_LOCATION || workLocation;
   const reportingTo = normalized.REPORTING_TO || normalized.REPORTING_MANAGER || "Project Manager";
   const paymentFrequency = normalized.PAYMENT_FREQUENCY || "monthly";
   const probationPeriod = normalized.PROBATION_PERIOD || "3 Months";
   const hrManagerName = normalized.HR_MANAGER_NAME || normalized.SIGNATORY_NAME || "HR Manager";
   const companyWebsite = normalized.COMPANY_WEBSITE || "https://www.scalepods.co";
-  const companyEmail = normalized.COMPANY_EMAIL || normalized.HR_EMAIL_ADDRESS || "info@scalepods.tech";
+  const companyEmail =
+    normalized.COMPANY_EMAIL || normalized.HR_EMAIL_ADDRESS || "info@scalepods.tech";
   const hrContactDetails = normalized.HR_CONTACT_DETAILS || companyEmail || companyWebsite;
   const companyAddress = normalized.COMPANY_ADDRESS || workLocation;
 

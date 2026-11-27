@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import React, { useEffect, useRef, useState } from "react";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AgentActionButton } from "@/features/agent/scalepodsKnowledge";
 import { getScalePodsAnswer } from "@/features/agent/scalepodsKnowledge";
 
@@ -68,7 +69,7 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
 
   // Auto-scroll when messages update
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && (messages.length >= 0 || isTyping)) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isTyping, isOpen]);
@@ -89,7 +90,10 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
   const playChime = () => {
     if (!soundEnabled || typeof window === "undefined") return;
     try {
-      const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const audioCtx = new (
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      )();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = "sine";
@@ -190,20 +194,28 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
   // Helper to format basic markdown (bold, lists, headings)
   const renderFormattedText = (raw: string) => {
     const lines = raw.split("\n");
-    return lines.map((line, idx) => {
+    let lineSeq = 0;
+    return lines.map((line) => {
+      const lineKey = `l-${lineSeq++}`;
       if (!line.trim()) {
-        return <div key={idx} className="h-2" />;
+        return <div key={lineKey} className="h-2" />;
       }
       if (line.startsWith("### ")) {
         return (
-          <h4 key={idx} className="font-bold text-sm sm:text-base mt-2 mb-1 text-slate-900 dark:text-white">
+          <h4
+            key={lineKey}
+            className="font-bold text-sm sm:text-base mt-2 mb-1 text-slate-900 dark:text-white"
+          >
             {renderInlineMarkdown(line.replace("### ", ""))}
           </h4>
         );
       }
       if (line.startsWith("## ")) {
         return (
-          <h3 key={idx} className="font-bold text-base mt-2 mb-1 text-slate-900 dark:text-white">
+          <h3
+            key={lineKey}
+            className="font-bold text-base mt-2 mb-1 text-slate-900 dark:text-white"
+          >
             {renderInlineMarkdown(line.replace("## ", ""))}
           </h3>
         );
@@ -211,7 +223,10 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
       if (line.trim().startsWith("- ") || line.trim().startsWith("• ")) {
         const bulletText = line.trim().substring(2);
         return (
-          <div key={idx} className="flex items-start gap-2 my-1 text-xs sm:text-[13px] leading-relaxed">
+          <div
+            key={lineKey}
+            className="flex items-start gap-2 my-1 text-xs sm:text-[13px] leading-relaxed"
+          >
             <span className="text-blue-500 font-bold shrink-0 mt-0.5">•</span>
             <span>{renderInlineMarkdown(bulletText)}</span>
           </div>
@@ -220,14 +235,17 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
       const numMatch = line.trim().match(/^(\d+)\.\s+(.*)/);
       if (numMatch) {
         return (
-          <div key={idx} className="flex items-start gap-2 my-1 text-xs sm:text-[13px] leading-relaxed">
+          <div
+            key={lineKey}
+            className="flex items-start gap-2 my-1 text-xs sm:text-[13px] leading-relaxed"
+          >
             <span className="font-bold text-blue-500 shrink-0">{numMatch[1]}.</span>
             <span>{renderInlineMarkdown(numMatch[2])}</span>
           </div>
         );
       }
       return (
-        <p key={idx} className="my-1 text-xs sm:text-[13px] leading-relaxed">
+        <p key={lineKey} className="my-1 text-xs sm:text-[13px] leading-relaxed">
           {renderInlineMarkdown(line)}
         </p>
       );
@@ -235,20 +253,22 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
   };
 
   const renderInlineMarkdown = (text: string) => {
-    const tokenRegex = /(\*\*\[.*?\]\(.*?\)\*\*|\[\*\*.*?\*\*\]\(.*?\)|\[.*?\]\(.*?\)|(?:\*\*.*?\*\*))/g;
+    const tokenRegex =
+      /(\*\*\[.*?\]\(.*?\)\*\*|\[\*\*.*?\*\*\]\(.*?\)|\[.*?\]\(.*?\)|(?:\*\*.*?\*\*))/g;
     const parts = text.split(tokenRegex);
-    return parts.map((part, i) => {
+    let partSeq = 0;
+    return parts.map((part) => {
+      const partKey = `p-${partSeq++}`;
       // 1. Bold link: **[Text](url)** or [**Text**](url)
       const boldLinkMatch =
-        part.match(/^\*\*\[(.*?)\]\((.*?)\)\*\*$/) ||
-        part.match(/^\[\*\*(.*?)\*\*\]\((.*?)\)$/);
+        part.match(/^\*\*\[(.*?)\]\((.*?)\)\*\*$/) || part.match(/^\[\*\*(.*?)\*\*\]\((.*?)\)$/);
       if (boldLinkMatch) {
         const linkText = boldLinkMatch[1];
         const linkUrl = boldLinkMatch[2];
         const isExternal = linkUrl.startsWith("http");
         return (
           <a
-            key={i}
+            key={partKey}
             href={linkUrl}
             target={isExternal ? "_blank" : undefined}
             rel={isExternal ? "noopener noreferrer" : undefined}
@@ -267,7 +287,7 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
         const isExternal = linkUrl.startsWith("http");
         return (
           <a
-            key={i}
+            key={partKey}
             href={linkUrl}
             target={isExternal ? "_blank" : undefined}
             rel={isExternal ? "noopener noreferrer" : undefined}
@@ -281,7 +301,7 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
       // 3. Bold text: **Text**
       if (part.startsWith("**") && part.endsWith("**")) {
         return (
-          <strong key={i} className="font-semibold text-slate-900 dark:text-white">
+          <strong key={partKey} className="font-semibold text-slate-900 dark:text-white">
             {part.slice(2, -2)}
           </strong>
         );
@@ -303,10 +323,11 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
       >
         {/* ── 1. Greeting Callout Card (Intercom/Signwell Style as in Screenshot) ── */}
         {!isOpen && showGreetingCard && (
-          <div className="mb-2.5 animate-in fade-in slide-in-from-bottom-2 duration-200">
-            <div
+          <div className="relative mb-2.5 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <button
+              type="button"
               onClick={() => setIsOpen(true)}
-              className="group relative flex items-start gap-3 rounded-2xl border border-slate-200/90 bg-white/95 dark:border-slate-800 dark:bg-[#0E1628]/95 px-4 py-3.5 shadow-xl shadow-slate-900/10 dark:shadow-2xl dark:shadow-black/50 backdrop-blur-xl text-slate-800 dark:text-slate-100 max-w-[310px] sm:max-w-[340px] cursor-pointer hover:border-blue-400 dark:hover:border-blue-500/50 transition duration-200"
+              className="group relative flex w-full items-start gap-3 rounded-2xl border border-slate-200/90 bg-white/95 dark:border-slate-800 dark:bg-[#0E1628]/95 px-4 py-3.5 shadow-xl shadow-slate-900/10 dark:shadow-2xl dark:shadow-black/50 backdrop-blur-xl text-left text-slate-800 dark:text-slate-100 max-w-[310px] sm:max-w-[340px] cursor-pointer hover:border-blue-400 dark:hover:border-blue-500/50 transition duration-200"
             >
               {/* ScalePods Logo Avatar Badge */}
               <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 p-1.5 shadow-sm">
@@ -328,20 +349,20 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
                   ScalePods AI • 2m
                 </p>
               </div>
+            </button>
 
-              {/* Dismiss button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowGreetingCard(false);
-                }}
-                className="absolute top-2.5 right-2.5 p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
-                aria-label="Dismiss greeting"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            {/* Dismiss button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowGreetingCard(false);
+              }}
+              className="absolute top-2.5 right-2.5 p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+              aria-label="Dismiss greeting"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
         )}
 
@@ -390,9 +411,7 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
                       AGENT
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Online
-                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Online</p>
                 </div>
               </div>
 
@@ -486,9 +505,9 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
                         {/* Action Buttons */}
                         {msg.actionButtons && msg.actionButtons.length > 0 && (
                           <div className="mt-3 pt-2.5 border-t border-slate-200 dark:border-slate-700/60 flex flex-wrap gap-2">
-                            {msg.actionButtons.map((btn, bIdx) => (
+                            {msg.actionButtons.map((btn) => (
                               <Link
-                                key={bIdx}
+                                key={`${btn.label}-${btn.href}`}
                                 href={btn.href}
                                 target={btn.isExternal ? "_blank" : undefined}
                                 rel={btn.isExternal ? "noopener noreferrer" : undefined}
@@ -518,9 +537,9 @@ export function ScalePodsChatAgent({ position = "right" }: ScalePodsChatAgentPro
                     {/* Interactive suggestions chips (aligned with message bubble, max 3) */}
                     {!isUser && msg.suggestions && msg.suggestions.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5 ml-[38px] max-w-[calc(100%-38px)]">
-                        {msg.suggestions.slice(0, 3).map((sug, sIdx) => (
+                        {msg.suggestions.slice(0, 3).map((sug) => (
                           <button
-                            key={sIdx}
+                            key={sug}
                             type="button"
                             onClick={() => handleSendMessage(sug)}
                             className="rounded-xl border border-blue-500/25 bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:border-blue-500/40 px-2.5 py-1 text-[11px] font-medium transition active:scale-95 text-left"

@@ -274,9 +274,9 @@ TERMS OF ENGAGEMENT`;
         "Employment Offer & Agreement\n\nDear John,\n\nWe are pleased to extend this offer",
       ),
     ).toBe(true);
-    expect(isOfferTemplatePlaceholder("APPOINTMENT LETTER\n\nDear Harika Adepu,\n\nTERMS OF ENGAGEMENT")).toBe(
-      false,
-    );
+    expect(
+      isOfferTemplatePlaceholder("APPOINTMENT LETTER\n\nDear Harika Adepu,\n\nTERMS OF ENGAGEMENT"),
+    ).toBe(false);
   });
 
   it("generates full structured ScalePods offer letter text matching dashboard view", () => {
@@ -302,7 +302,9 @@ TERMS OF ENGAGEMENT`;
     expect(fulltimeLetter).toContain("1. Role & Scope");
     expect(fulltimeLetter).toContain("You will be engaged as ML Engineer.");
     expect(fulltimeLetter).toContain("2. Compensation & Benefits");
-    expect(fulltimeLetter).toContain("Your gross annual compensation will be INR 60000 /- (Sixty Thousand Rupees Only)");
+    expect(fulltimeLetter).toContain(
+      "Your gross annual compensation will be INR 60000 /- (Sixty Thousand Rupees Only)",
+    );
     expect(fulltimeLetter).toContain("3. Working Hours & Leave");
     expect(fulltimeLetter).toContain("4. Confidentiality");
     expect(fulltimeLetter).toContain("5. Intellectual Property");
@@ -313,7 +315,9 @@ TERMS OF ENGAGEMENT`;
     expect(fulltimeLetter).toContain("Talent Acquisition Lead");
     expect(fulltimeLetter).toContain("ACKNOWLEDGEMENT");
     expect(fulltimeLetter).toContain("I, Adepu Harika, accept the above terms");
-    expect(fulltimeLetter).toContain("| Signature: __________________ | Date: __________________ | Place: __________________ |");
+    expect(fulltimeLetter).toContain(
+      "| Signature: __________________ | Date: __________________ | Place: __________________ |",
+    );
   });
 
   it("replaces square-bracketed placeholders like [COMPANY NAME], [Company Website], and [HR Email Address]", () => {

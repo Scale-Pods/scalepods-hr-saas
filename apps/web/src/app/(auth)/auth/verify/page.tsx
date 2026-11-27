@@ -175,7 +175,7 @@ function VerifyInner() {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [searchParams, router]);
+  }, [searchParams]);
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -397,7 +397,8 @@ function VerifyInner() {
         </div>
         <h2 className="text-xl font-bold tracking-tight text-white">Email Verified!</h2>
         <p className="mt-2 text-sm text-slate-400">
-          Your email address has been successfully verified. Please sign in to access your ScalePods account.
+          Your email address has been successfully verified. Please sign in to access your ScalePods
+          account.
         </p>
         <div className="mt-6">
           <Button

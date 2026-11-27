@@ -4,12 +4,12 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/env";
 import { detectPlaceholders } from "@/lib/offers/detect-placeholders";
 import { fillOfferDocx, OfferDocxError } from "@/lib/offers/fill-docx";
-import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
 import {
   applyTextReplacementsToDocx,
   type ReplacementInstruction,
   type TextMatchItem,
 } from "@/lib/offers/make-reusable";
+import { extractDocumentTextFromDocxBuffer } from "@/lib/offers/prune-docx-xml";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";

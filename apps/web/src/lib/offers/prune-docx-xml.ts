@@ -406,22 +406,31 @@ export function extractDocumentTextFromDocxXml(
     const normalized: Record<string, string> = {};
     for (const [k, v] of Object.entries(data)) {
       if (v !== undefined && v !== null && String(v).trim() !== "") {
-        const clean = k.trim().replace(/^\{\{\s*|\s*\}\}$|^\[\s*|\s*\]$|^<\s*|\s*>$/g, "").replace(/[\s-]+/g, "_").toUpperCase();
+        const clean = k
+          .trim()
+          .replace(/^\{\{\s*|\s*\}\}$|^\[\s*|\s*\]$|^<\s*|\s*>$/g, "")
+          .replace(/[\s-]+/g, "_")
+          .toUpperCase();
         normalized[clean] = String(v).trim();
         normalized[k] = String(v).trim();
       }
     }
     const companyName = normalized.COMPANY_NAME || normalized.COMPANY || "ScalePods";
     const companyWebsite = normalized.COMPANY_WEBSITE || "https://www.scalepods.co";
-    const companyEmail = normalized.COMPANY_EMAIL || normalized.HR_EMAIL_ADDRESS || "info@scalepods.tech";
-    const workLocation = normalized.WORK_LOCATION || normalized.COMPANY_LOCATION || normalized.LOCATION || "Remote";
+    const companyEmail =
+      normalized.COMPANY_EMAIL || normalized.HR_EMAIL_ADDRESS || "info@scalepods.tech";
+    const workLocation =
+      normalized.WORK_LOCATION || normalized.COMPANY_LOCATION || normalized.LOCATION || "Remote";
     const hrManagerName = normalized.HR_MANAGER_NAME || normalized.SIGNATORY_NAME || "HR Manager";
     const hrContactDetails = normalized.HR_CONTACT_DETAILS || companyEmail || companyWebsite;
     const companyAddress = normalized.COMPANY_ADDRESS || workLocation;
-    const role = normalized.ROLE || normalized.POSITION_TITLE || normalized.DESIGNATION || "Team Member";
+    const role =
+      normalized.ROLE || normalized.POSITION_TITLE || normalized.DESIGNATION || "Team Member";
     const salary = normalized.SALARY || normalized.GROSS_ANNUAL || normalized.STIPEND_AMOUNT || "";
-    const salaryWords = normalized.SALARY_WORDS || normalized.GROSS_ANNUAL_WORDS || normalized.STIPEND_WORDS || "";
-    const joiningDate = normalized.JOINING_DATE || normalized.START_DATE || normalized.DATE_OF_JOINING || "";
+    const salaryWords =
+      normalized.SALARY_WORDS || normalized.GROSS_ANNUAL_WORDS || normalized.STIPEND_WORDS || "";
+    const joiningDate =
+      normalized.JOINING_DATE || normalized.START_DATE || normalized.DATE_OF_JOINING || "";
     const offerDate = normalized.OFFER_DATE || normalized.ISSUE_DATE || normalized.DATE || "";
 
     const aliasMap: Record<string, string> = {
@@ -456,7 +465,8 @@ export function extractDocumentTextFromDocxXml(
       if (!normalized[k] && v) normalized[k] = v;
     }
 
-    const universalRegex = /\{\{\s*([A-Za-z0-9_ -]+?)\s*\}\}|\[\s*([A-Za-z0-9_ -]+?)\s*\]|<([A-Za-z0-9_ -]+?)>/g;
+    const universalRegex =
+      /\{\{\s*([A-Za-z0-9_ -]+?)\s*\}\}|\[\s*([A-Za-z0-9_ -]+?)\s*\]|<([A-Za-z0-9_ -]+?)>/g;
     fullText = fullText.replace(universalRegex, (match, g1, g2, g3) => {
       const raw = (g1 || g2 || g3 || "").trim();
       const cleanKey = raw.replace(/[\s-]+/g, "_").toUpperCase();
@@ -498,22 +508,39 @@ export async function extractDocumentTextFromDocxBuffer(
         const normalized: Record<string, string> = {};
         for (const [k, v] of Object.entries(data)) {
           if (v !== undefined && v !== null && String(v).trim() !== "") {
-            const clean = k.trim().replace(/^\{\{\s*|\s*\}\}$|^\[\s*|\s*\]$|^<\s*|\s*>$/g, "").replace(/[\s-]+/g, "_").toUpperCase();
+            const clean = k
+              .trim()
+              .replace(/^\{\{\s*|\s*\}\}$|^\[\s*|\s*\]$|^<\s*|\s*>$/g, "")
+              .replace(/[\s-]+/g, "_")
+              .toUpperCase();
             normalized[clean] = String(v).trim();
             normalized[k] = String(v).trim();
           }
         }
         const companyName = normalized.COMPANY_NAME || normalized.COMPANY || "ScalePods";
         const companyWebsite = normalized.COMPANY_WEBSITE || "https://www.scalepods.co";
-        const companyEmail = normalized.COMPANY_EMAIL || normalized.HR_EMAIL_ADDRESS || "info@scalepods.tech";
-        const workLocation = normalized.WORK_LOCATION || normalized.COMPANY_LOCATION || normalized.LOCATION || "Remote";
-        const hrManagerName = normalized.HR_MANAGER_NAME || normalized.SIGNATORY_NAME || "HR Manager";
+        const companyEmail =
+          normalized.COMPANY_EMAIL || normalized.HR_EMAIL_ADDRESS || "info@scalepods.tech";
+        const workLocation =
+          normalized.WORK_LOCATION ||
+          normalized.COMPANY_LOCATION ||
+          normalized.LOCATION ||
+          "Remote";
+        const hrManagerName =
+          normalized.HR_MANAGER_NAME || normalized.SIGNATORY_NAME || "HR Manager";
         const hrContactDetails = normalized.HR_CONTACT_DETAILS || companyEmail || companyWebsite;
         const companyAddress = normalized.COMPANY_ADDRESS || workLocation;
-        const role = normalized.ROLE || normalized.POSITION_TITLE || normalized.DESIGNATION || "Team Member";
-        const salary = normalized.SALARY || normalized.GROSS_ANNUAL || normalized.STIPEND_AMOUNT || "";
-        const salaryWords = normalized.SALARY_WORDS || normalized.GROSS_ANNUAL_WORDS || normalized.STIPEND_WORDS || "";
-        const joiningDate = normalized.JOINING_DATE || normalized.START_DATE || normalized.DATE_OF_JOINING || "";
+        const role =
+          normalized.ROLE || normalized.POSITION_TITLE || normalized.DESIGNATION || "Team Member";
+        const salary =
+          normalized.SALARY || normalized.GROSS_ANNUAL || normalized.STIPEND_AMOUNT || "";
+        const salaryWords =
+          normalized.SALARY_WORDS ||
+          normalized.GROSS_ANNUAL_WORDS ||
+          normalized.STIPEND_WORDS ||
+          "";
+        const joiningDate =
+          normalized.JOINING_DATE || normalized.START_DATE || normalized.DATE_OF_JOINING || "";
         const offerDate = normalized.OFFER_DATE || normalized.ISSUE_DATE || normalized.DATE || "";
 
         const aliasMap: Record<string, string> = {
@@ -548,7 +575,8 @@ export async function extractDocumentTextFromDocxBuffer(
           if (!normalized[k] && v) normalized[k] = v;
         }
 
-        const universalRegex = /\{\{\s*([A-Za-z0-9_ -]+?)\s*\}\}|\[\s*([A-Za-z0-9_ -]+?)\s*\]|<([A-Za-z0-9_ -]+?)>/g;
+        const universalRegex =
+          /\{\{\s*([A-Za-z0-9_ -]+?)\s*\}\}|\[\s*([A-Za-z0-9_ -]+?)\s*\]|<([A-Za-z0-9_ -]+?)>/g;
         rawText = rawText.replace(universalRegex, (match, g1, g2, g3) => {
           const raw = (g1 || g2 || g3 || "").trim();
           const cleanKey = raw.replace(/[\s-]+/g, "_").toUpperCase();

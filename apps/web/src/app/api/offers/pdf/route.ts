@@ -243,7 +243,11 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (tpl?.raw_text && !isOfferTemplatePlaceholder(tpl.raw_text) && tpl.raw_text.includes("{{")) {
+      if (
+        tpl?.raw_text &&
+        !isOfferTemplatePlaceholder(tpl.raw_text) &&
+        tpl.raw_text.includes("{{")
+      ) {
         const cleanedTpl = cleanOfferTemplateDirectives(tpl.raw_text, {
           letterType: isIntern ? "intern" : "fulltime",
           isIntern,
@@ -277,10 +281,14 @@ export async function POST(req: NextRequest) {
     if (!textToRender || isOfferTemplatePlaceholder(textToRender)) {
       textToRender = generateStandardOfferLetterText({
         isIntern,
-        candidateName: (values.candidate_name as string) || (body?.candidate_name as string) || "Candidate",
-        positionTitle: (values.position_title as string) || (body?.position_title as string) || "Team Member",
-        companyName: (values.company_name as string) || (body?.company_name as string) || "ScalePods Partner",
-        salary: (values.salary as string) || (body?.salary as string) || (isIntern ? "5000" : "600000"),
+        candidateName:
+          (values.candidate_name as string) || (body?.candidate_name as string) || "Candidate",
+        positionTitle:
+          (values.position_title as string) || (body?.position_title as string) || "Team Member",
+        companyName:
+          (values.company_name as string) || (body?.company_name as string) || "ScalePods Partner",
+        salary:
+          (values.salary as string) || (body?.salary as string) || (isIntern ? "5000" : "600000"),
         currency: (values.currency as string) || (body?.currency as string) || "INR",
         stipendAmount: values.stipend_amount,
         stipendWords: values.stipend_words,
@@ -295,8 +303,12 @@ export async function POST(req: NextRequest) {
             (body?.start_date as string) ||
             "09 November 2026",
         ),
-        signatoryName: (values.signatory_name as string) || (body?.signatory_name as string) || "Manish",
-        signatoryTitle: (values.signatory_title as string) || (body?.signatory_title as string) || "Talent Acquisition Lead",
+        signatoryName:
+          (values.signatory_name as string) || (body?.signatory_name as string) || "Manish",
+        signatoryTitle:
+          (values.signatory_title as string) ||
+          (body?.signatory_title as string) ||
+          "Talent Acquisition Lead",
         signatoryDate,
       });
     }

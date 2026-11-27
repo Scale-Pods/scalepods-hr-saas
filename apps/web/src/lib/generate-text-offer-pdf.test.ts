@@ -299,9 +299,7 @@ RIGHT: Manish Authorized Signatory For Ziegler Talent Acquisition Lead "CC:" Eng
       // Calculate expected right-aligned X coordinate: PAGE_W (595.28) - MARGIN_R (50) - logoW
       // Logo maxH is 46, aspect is width/height, logoW = logoH * aspect.
       // The Do command format: `q <logoW> 0 0 <logoH> <logoX> <logoY> cm /LogoImg Do Q`
-      const match = pdfAscii.match(
-        /q ([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm \/LogoImg Do Q/,
-      );
+      const match = pdfAscii.match(/q ([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm \/LogoImg Do Q/);
       expect(match).not.toBeNull();
       const logoW = Number(match?.[1]);
       const logoX = Number(match?.[3]);
@@ -323,9 +321,7 @@ RIGHT: Manish Authorized Signatory For Ziegler Talent Acquisition Lead "CC:" Eng
       logoImage: { buffer: dummyPng, format: "png", width: 100, height: 50 },
       logoAlignment: "left",
     }).toString("latin1");
-    const leftMatch = leftPdf.match(
-      /q ([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm \/LogoImg Do Q/,
-    );
+    const leftMatch = leftPdf.match(/q ([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm \/LogoImg Do Q/);
     expect(Number(leftMatch?.[3])).toBeCloseTo(50.0, 1);
 
     // Right aligned: logoX = PAGE_W (595.28) - MARGIN_R (50) - logoW (92) = 453.28

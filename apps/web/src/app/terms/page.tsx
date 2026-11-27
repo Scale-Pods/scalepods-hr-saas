@@ -1,6 +1,6 @@
+import { ArrowLeft, FileText, Mail } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, FileText, Mail } from "lucide-react";
 import { ScalePodsFooter } from "@/components/shared/ScalePodsFooter";
 import { TERMS_OF_SERVICE } from "@/lib/legal-content";
 
@@ -64,16 +64,16 @@ export default function TermsPage() {
             <section key={section.title} className="space-y-3">
               <h2 className="text-xl font-bold text-white tracking-tight">{section.title}</h2>
 
-              {section.paragraphs?.map((p, idx) => (
-                <p key={idx} className="text-sm text-slate-300 leading-relaxed">
+              {section.paragraphs?.map((p) => (
+                <p key={p} className="text-sm text-slate-300 leading-relaxed">
                   {p}
                 </p>
               ))}
 
               {section.listItems && (
                 <ul className="list-disc pl-6 space-y-2 text-sm text-slate-300">
-                  {section.listItems.map((item, idx) => (
-                    <li key={idx}>{item}</li>
+                  {section.listItems.map((item) => (
+                    <li key={item}>{item}</li>
                   ))}
                 </ul>
               )}

@@ -1,6 +1,6 @@
+import { ArrowLeft, Mail, Shield } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Mail, Shield } from "lucide-react";
 import { ScalePodsFooter } from "@/components/shared/ScalePodsFooter";
 import { PRIVACY_POLICY } from "@/lib/legal-content";
 
@@ -71,16 +71,16 @@ export default function PrivacyPage() {
                 </div>
               ))}
 
-              {section.paragraphs?.map((p, idx) => (
-                <p key={idx} className="text-sm text-slate-300 leading-relaxed">
+              {section.paragraphs?.map((p) => (
+                <p key={p} className="text-sm text-slate-300 leading-relaxed">
                   {p}
                 </p>
               ))}
 
               {section.listItems && (
                 <ul className="list-disc pl-6 space-y-2 text-sm text-slate-300">
-                  {section.listItems.map((item, idx) => (
-                    <li key={idx}>{item}</li>
+                  {section.listItems.map((item) => (
+                    <li key={item}>{item}</li>
                   ))}
                 </ul>
               )}
@@ -91,7 +91,9 @@ export default function PrivacyPage() {
         {/* Contact Banner */}
         <div className="mt-16 rounded-2xl border border-blue-500/20 bg-gradient-to-r from-blue-950/40 to-transparent p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-lg font-bold text-white">Have questions about our Privacy Policy?</h3>
+            <h3 className="text-lg font-bold text-white">
+              Have questions about our Privacy Policy?
+            </h3>
             <p className="text-sm text-slate-400 mt-1">
               Reach out directly to our compliance and privacy operations team.
             </p>

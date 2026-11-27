@@ -37,8 +37,8 @@ export function ScalePodsFooter({ onOpenLegal }: ScalePodsFooterProps) {
             </Link>
 
             <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400 max-w-sm mb-6">
-              Architecting the future of enterprise operations through Agentic AI
-              ecosystems, enterprise process automation, and intelligent hiring automation.
+              Architecting the future of enterprise operations through Agentic AI ecosystems,
+              enterprise process automation, and intelligent hiring automation.
             </p>
 
             {/* Social Icons */}
@@ -61,6 +61,7 @@ export function ScalePodsFooter({ onOpenLegal }: ScalePodsFooterProps) {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
+                  <title>Instagram</title>
                   <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
                   <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
                   <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
@@ -85,6 +86,7 @@ export function ScalePodsFooter({ onOpenLegal }: ScalePodsFooterProps) {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
+                  <title>LinkedIn</title>
                   <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
                   <rect x="2" y="9" width="4" height="12" />
                   <circle cx="4" cy="4" r="2" />
@@ -109,6 +111,7 @@ export function ScalePodsFooter({ onOpenLegal }: ScalePodsFooterProps) {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
+                  <title>WhatsApp</title>
                   <path d="M22 11.5A8.5 8.5 0 0 1 13.5 20c-1.3 0-2.6-.3-3.8-.9L4 21l2-5.5A8.5 8.5 0 1 1 22 11.5z" />
                   <path d="M9 8.5c.2-.4.6-.7 1.1-.5l1.5.6c.3.1.4.5.3.8l-.5.9c.7.8 1.4 1.5 2.2 2.2l.9-.5c.3-.1.7 0 .8.3l.6 1.5c.2.5-.1.9-.5 1.1-.9.4-2.1.2-3.3-.6S9 11.2 9 8.5z" />
                 </svg>
