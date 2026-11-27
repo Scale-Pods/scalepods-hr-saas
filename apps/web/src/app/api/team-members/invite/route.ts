@@ -145,6 +145,8 @@ export async function POST(req: NextRequest) {
           );
           const emailPayload = {
             action: "invite_team_member",
+            account_id: user.id,
+            recruiter_email: user.email || "",
             email: member.email,
             name: member.name,
             company_name: companyName,
